@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 import random as rd
 import os
 
-RUNS_PER_DAY = 2
-NUM_DAYS = 3
+RUNS_PER_DAY = 1
+NUM_DAYS = 1
 START_WITH_TODAY = True
 if START_WITH_TODAY:
     first_day = datetime.now()
@@ -35,7 +35,7 @@ for di in range(NUM_DAYS):
         outstr = "Home: " + wells[0] + "\nAways: " + \
             " ".join(wells[1:]) + "\nCondition: " + condition + REST_OF_FILE
 
-        fname = os.path.join(output_dir, thisday.strftime("%Y%m%d_{}.txt".format(ri)))
+        fname = os.path.join(output_dir, thisday.strftime("%Y%m%d_{}.txt".format(ri + 1)))
         if os.path.exists(fname):
             con = "a"
             while not (con in ["y", "n"]):
