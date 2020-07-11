@@ -20,7 +20,8 @@ ENFORCE_DIFFERENT_WELL_COLORS = False
 TEST_NEAREST_WELL = False
 
 data_dir = '/media/WDC4/martindata/bradtask/'
-all_data_dirs = sorted(os.listdir(data_dir), key=lambda s: (s.split('_')[0], s.split('_')[1]))
+all_data_dirs = sorted(os.listdir(data_dir), key=lambda s: (
+    s.split('_')[0], s.split('_')[1]))
 behavior_notes_dir = os.path.join(data_dir, 'behavior_notes')
 
 excluded_dates = []
@@ -41,7 +42,8 @@ with open(well_coords_file, 'r') as wcf:
     csv_reader = csv.reader(wcf)
     for data_row in csv_reader:
         try:
-            well_coords_map[int(data_row[0])] = (int(data_row[1]), int(data_row[2]))
+            well_coords_map[int(data_row[0])] = (
+                int(data_row[1]), int(data_row[2]))
         except Exception as err:
             if data_row[1] != '':
                 print(err)
@@ -58,14 +60,18 @@ RADIUS = 50  # pixels
 VEL_THRESH = 10  # cm/s
 PIXELS_PER_CM = 5.0
 TRODES_SAMPLING_RATE = 30000
-SWITCH_WELL_FACTOR = 0.8  # 0.8 means transition from well a -> b requires rat dist to b to be 0.8 * dist to a
+# 0.8 means transition from well a -> b requires rat dist to b to be 0.8 * dist to a
+SWITCH_WELL_FACTOR = 0.8
 
-DEFLECTION_THRESHOLD = 2000.0  # Typical observed amplitude of LFP deflection on stimulation
+# Typical observed amplitude of LFP deflection on stimulation
+DEFLECTION_THRESHOLD = 2000.0
 SAMPLING_RATE = 30000.0  # Rate at which timestamp data is sampled
-LFP_SAMPLING_RATE = 1500.0  # LFP is subsampled. The timestamps give time according to SAMPLING_RATE above
+# LFP is subsampled. The timestamps give time according to SAMPLING_RATE above
+LFP_SAMPLING_RATE = 1500.0
 # Typical duration of the stimulation artifact - For peak detection
 MIN_ARTIFACT_PERIOD = int(0.1 * LFP_SAMPLING_RATE)
-ACCEPTED_RIPPLE_LENGTH = int(0.2 * LFP_SAMPLING_RATE)  # Typical duration of a Sharp-Wave Ripple
+# Typical duration of a Sharp-Wave Ripple
+ACCEPTED_RIPPLE_LENGTH = int(0.2 * LFP_SAMPLING_RATE)
 
 
 # def readPositionData(data_filename):
@@ -181,9 +187,16 @@ def get_well_coordinates(well_num):
     return well_coords_map[well_num]
 
 
-def getMeanDistToWell(xs, ys, wellx, welly):
+def getMeanDistToWell(xs, ys, wellx, welly, duration=-1, ts=np.array([])):
     # Note nan values are ignored. This is intentional, so caller
     # can just consider some time points by making all other values nan
+    # If duration == -1, use all times points. Otherwise, take only duration in seconds
+    if duration != -1:
+        assert xs.shape == ts.shape
+        dur_idx = np.searchsorted(ts, ts[0] + duration)
+        xs = xs[0:dur_idx]
+        ys = ys[0:dur_idx]
+
     dist_to_well = np.sqrt(np.power(wellx - np.array(xs), 2) +
                            np.power(welly - np.array(ys), 2))
     return np.nanmean(dist_to_well)
@@ -283,6 +296,20 @@ def getSingleWellEntryAndExitTimes(xs, ys, ts, wellx, welly):
     return ts[idx.T[0]], ts[idx2.T[0]]
 
 
+# 2 3
+# 0 1
+def quandrantOfWell(well_idx):
+    if well_idx > 24:
+        res = 2
+    else:
+        res = 0
+
+    if (well_idx - 1) % 8 >= 4:
+        res += 1
+
+    return res
+
+
 if __name__ == "__main__":
     dataob = BTData()
 
@@ -350,9 +377,11 @@ if __name__ == "__main__":
                                                       ".LFP_nt" + session.ripple_detection_tetrodes[i] + "ch1.dat"))
             # lfp_data.append(MountainViewIO.loadLFP(data_file=session.bt_lfp_fnames[-1]))
 
-        position_data = readRawPositionData(file_str + '.1.videoPositionTracking')
+        position_data = readRawPositionData(
+            file_str + '.1.videoPositionTracking')
         if session.separate_probe_file:
-            probe_file_str = os.path.join(session.probe_dir, os.path.basename(session.probe_dir))
+            probe_file_str = os.path.join(
+                session.probe_dir, os.path.basename(session.probe_dir))
             bt_time_clips = readClipData(file_str + '.1.clips')[0]
             probe_time_clips = readClipData(probe_file_str + '.1.clips')[0]
         else:
@@ -368,7 +397,8 @@ if __name__ == "__main__":
         session.bt_pos_ts = ts[bt_start_idx:bt_end_idx]
 
         if session.separate_probe_file:
-            position_data = readRawPositionData(probe_file_str + '.1.videoPositionTracking')
+            position_data = readRawPositionData(
+                probe_file_str + '.1.videoPositionTracking')
             xs, ys, ts = processPosData(position_data)
 
         probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
@@ -388,7 +418,8 @@ if __name__ == "__main__":
                     if line.startswith("Home: "):
                         session.home_well = int(line.split(' ')[1])
                     elif line.startswith("Aways: "):
-                        session.away_wells = [int(w) for w in line.split(' ')[1:]]
+                        session.away_wells = [int(w)
+                                              for w in line.split(' ')[1:]]
                     elif line.startswith("Condition: "):
                         type_in = line.split(' ')[1]
                         if 'Ripple' in type_in or 'Interruption' in type_in:
@@ -398,9 +429,11 @@ if __name__ == "__main__":
                         elif 'Delayed' in type_in:
                             session.isDelayedInterruption = True
                         else:
-                            print("Couldn't recognize Condition {} in file {}".format(type_in, info_file))
+                            print("Couldn't recognize Condition {} in file {}".format(
+                                type_in, info_file))
                     elif line.startswith("Thresh: "):
-                        session.ripple_detection_threshold = float(line.split(' ')[1])
+                        session.ripple_detection_threshold = float(
+                            line.split(' ')[1])
                     elif line.startswith("Last Away: "):
                         session.last_away_well = float(line.split(' ')[2])
                     elif line.startswith("Last well: "):
@@ -410,7 +443,8 @@ if __name__ == "__main__":
                         elif 'A' in ended_on:
                             session.ended_on_home = False
                         else:
-                            print("Couldn't recognize last well {} in file {}".format(ended_on, info_file))
+                            print("Couldn't recognize last well {} in file {}".format(
+                                ended_on, info_file))
                     elif line.startswith("ITI Stim On: "):
                         iti_on = line.split(' ')[3]
                         if 'Y' in iti_on:
@@ -462,7 +496,8 @@ if __name__ == "__main__":
             print("Home well not listed in notes file, skipping")
             continue
 
-        session.home_x, session.home_y = get_well_coordinates(session.home_well)
+        session.home_x, session.home_y = get_well_coordinates(
+            session.home_well)
 
         # ===================================
         # Analyze data
@@ -505,10 +540,173 @@ if __name__ == "__main__":
         session.probe_still_ys = np.array(session.probe_pos_ys)
         session.probe_still_ys[probe_is_mv] = np.nan
 
+        # avg dist to home and times at which rat entered home region
+        session.ctrl_home_well = 49 - session.home_well
+        session.ctrl_home_x, session.ctrl_home_y = get_well_coordinates(
+            session.ctrl_home_well)
+
+        session.bt_nearest_wells = getNearestWell(
+            session.bt_pos_xs, session.bt_pos_ys)
+
+        session.bt_quadrants = np.array(
+            [quandrantOfWell(wi) for wi in session.bt_nearest_wells])
+        session.home_quadrant = quandrantOfWell(session.home_well)
+
+        session.bt_well_entry_idxs, session.bt_well_exit_idxs, \
+            session.bt_well_entry_times, session.bt_well_exit_times = \
+            getWellEntryAndExitTimes(
+                session.bt_nearest_wells, session.bt_pos_ts)
+
+        session.bt_quadrant_entry_idxs, session.bt_quadrant_exit_idxs, \
+            session.bt_quadrant_entry_times, session.bt_quadrant_exit_times = \
+            getWellEntryAndExitTimes(
+                session.bt_quadrants, session.bt_pos_ts)
+
+        for i in range(len(all_well_idxs)):
+            # print("well {} had {} entries, {} exits".format(
+            #     all_well_idxs[i], len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
+            assert len(session.bt_well_entry_times[i]) == len(
+                session.bt_well_exit_times[i])
+
+        session.bt_home_well_entry_times = session.bt_well_entry_times[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_home_well_exit_times = session.bt_well_exit_times[np.argmax(
+            all_well_idxs == session.home_well)]
+
+        session.bt_mean_dist_to_home_well = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+                                                              session.home_x, session.home_y)
+        session.bt_mv_mean_dist_to_home_well = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+                                                                 session.home_x, session.home_y)
+        session.bt_still_mean_dist_to_home_well = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+                                                                    session.home_x, session.home_y)
+
+        session.bt_mean_dist_to_home_well_1min = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+                                                                   session.home_x, session.home_y, duration=60, ts=session.bt_pos_ts)
+        session.bt_mv_mean_dist_to_home_well_1min = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+                                                                      session.home_x, session.home_y, duration=60, ts=session.bt_pos_ts)
+        session.bt_still_mean_dist_to_home_well_1min = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+                                                                         session.home_x, session.home_y, duration=60, ts=session.bt_pos_ts)
+
+        session.bt_mean_dist_to_home_well_30sec = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+                                                                    session.home_x, session.home_y, duration=30, ts=session.bt_pos_ts)
+        session.bt_mv_mean_dist_to_home_well_30sec = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+                                                                       session.home_x, session.home_y, duration=30, ts=session.bt_pos_ts)
+        session.bt_still_mean_dist_to_home_well_30sec = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+                                                                          session.home_x, session.home_y, duration=30, ts=session.bt_pos_ts)
+
+        session.bt_ctrl_home_well_entry_times = session.bt_well_entry_times[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.bt_ctrl_home_well_exit_times = session.bt_well_exit_times[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+
+        session.bt_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+                                                                   session.ctrl_home_x, session.ctrl_home_y)
+        session.bt_mv_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+                                                                      session.ctrl_home_x, session.ctrl_home_y)
+        session.bt_still_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+                                                                         session.ctrl_home_x, session.ctrl_home_y)
+
+        session.bt_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+                                                                        session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.bt_pos_ts)
+        session.bt_mv_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+                                                                           session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.bt_pos_ts)
+        session.bt_still_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+                                                                              session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.bt_pos_ts)
+
+        session.bt_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+                                                                         session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.bt_pos_ts)
+        session.bt_mv_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+                                                                            session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.bt_pos_ts)
+        session.bt_still_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+                                                                               session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.bt_pos_ts)
+
+        # same for during probe
+        session.probe_nearest_wells = getNearestWell(
+            session.probe_pos_xs, session.probe_pos_ys)
+
+        session.probe_well_entry_idxs, session.probe_well_exit_idxs, \
+            session.probe_well_entry_times, session.probe_well_exit_times = \
+            getWellEntryAndExitTimes(
+                session.probe_nearest_wells, session.probe_pos_ts)
+
+        session.probe_quadrants = np.array(
+            [quandrantOfWell(wi) for wi in session.probe_nearest_wells])
+
+        session.probe_quadrant_entry_idxs, session.probe_quadrant_exit_idxs, \
+            session.probe_quadrant_entry_times, session.probe_quadrant_exit_times = \
+            getWellEntryAndExitTimes(
+                session.probe_quadrants, session.probe_pos_ts)
+
+        for i in range(len(all_well_idxs)):
+            # print(i, len(session.probe_well_entry_times[i]), len(session.probe_well_exit_times[i]))
+            assert len(session.probe_well_entry_times[i]) == len(
+                session.probe_well_exit_times[i])
+
+        session.probe_home_well_entry_times = session.probe_well_entry_times[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_home_well_exit_times = session.probe_well_exit_times[np.argmax(
+            all_well_idxs == session.home_well)]
+
+        session.probe_mean_dist_to_home_well = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+                                                                 session.home_x, session.home_y)
+        session.probe_mv_mean_dist_to_home_well = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+                                                                    session.home_x, session.home_y)
+        session.probe_still_mean_dist_to_home_well = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+                                                                       session.home_x, session.home_y)
+
+        session.probe_mean_dist_to_home_well_1min = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+                                                                      session.home_x, session.home_y, duration=60, ts=session.probe_pos_ts)
+        session.probe_mv_mean_dist_to_home_well_1min = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+                                                                         session.home_x, session.home_y, duration=60, ts=session.probe_pos_ts)
+        session.probe_still_mean_dist_to_home_well_1min = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+                                                                            session.home_x, session.home_y, duration=60, ts=session.probe_pos_ts)
+
+        session.probe_mean_dist_to_home_well_30sec = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+                                                                       session.home_x, session.home_y, duration=30, ts=session.probe_pos_ts)
+        session.probe_mv_mean_dist_to_home_well_30sec = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+                                                                          session.home_x, session.home_y, duration=30, ts=session.probe_pos_ts)
+        session.probe_still_mean_dist_to_home_well_30sec = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+                                                                             session.home_x, session.home_y, duration=30, ts=session.probe_pos_ts)
+
+        session.probe_ctrl_home_well_entry_times = session.probe_well_entry_times[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.probe_ctrl_home_well_exit_times = session.probe_well_exit_times[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+
+        session.probe_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+                                                                      session.ctrl_home_x, session.ctrl_home_y)
+        session.probe_mv_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+                                                                         session.ctrl_home_x, session.ctrl_home_y)
+        session.probe_still_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+                                                                            session.ctrl_home_x, session.ctrl_home_y)
+
+        session.probe_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+                                                                           session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.probe_pos_ts)
+        session.probe_mv_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+                                                                              session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.probe_pos_ts)
+        session.probe_still_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+                                                                                 session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.probe_pos_ts)
+
+        session.probe_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+                                                                            session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.probe_pos_ts)
+        session.probe_mv_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+                                                                               session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.probe_pos_ts)
+        session.probe_still_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+                                                                                  session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.probe_pos_ts)
+
+        # ===================================
+        # Now save this session
+        # ===================================
+        dataob.allSessions.append(session)
+
+        # ===================================
+        # extra plotting stuff
+        # ===================================
         if session.date_str in INSPECT_IN_DETAIL:
             if INSPECT_NANVALS:
                 print("{} nan xs, {} nan ys, {} nan ts".format(sum(np.isnan(session.probe_pos_xs)),
-                                                               sum(np.isnan(session.probe_pos_xs)),
+                                                               sum(np.isnan(
+                                                                   session.probe_pos_xs)),
                                                                sum(np.isnan(session.probe_pos_xs))))
 
                 nanxs = np.argwhere(np.isnan(session.probe_pos_xs))
@@ -519,33 +717,22 @@ if __name__ == "__main__":
                     for i in range(min(5, num_nan_x)):
                         ni = nanxs[i]
                         print("index {}, x=({},nan,{}), y=({},{},{}), t=({},{},{})".format(
-                            ni, session.probe_pos_xs[ni - 1], session.probe_pos_xs[ni + 1],
-                            session.probe_pos_ys[ni - 1], session.probe_pos_ys[ni],
-                            session.probe_pos_ys[ni + 1], session.probe_pos_ts[ni - 1],
+                            ni, session.probe_pos_xs[ni -
+                                                     1], session.probe_pos_xs[ni + 1],
+                            session.probe_pos_ys[ni -
+                                                 1], session.probe_pos_ys[ni],
+                            session.probe_pos_ys[ni +
+                                                 1], session.probe_pos_ts[ni - 1],
                             session.probe_pos_ts[ni], session.probe_pos_ts[ni+1]
                         ))
 
             if INSPECT_PROBE_BEHAVIOR_PLOT:
                 plt.clf()
-                plt.scatter(session.home_x, session.home_y, color='green', zorder=2)
+                plt.scatter(session.home_x, session.home_y,
+                            color='green', zorder=2)
                 plt.plot(session.probe_pos_xs, session.probe_pos_ys, zorder=0)
                 plt.grid('on')
                 plt.show()
-
-        # avg dist to home and times at which rat entered home region
-        session.ctrl_home_well = 49 - session.home_well
-        session.ctrl_home_x, session.ctrl_home_y = get_well_coordinates(session.ctrl_home_well)
-
-        session.bt_nearest_wells = getNearestWell(session.bt_pos_xs, session.bt_pos_ys)
-        # if session.date_str in INSPECT_IN_DETAIL and INSPECT_PLOT_WELL_OCCUPANCIES:
-        #     plt.clf()
-        #     plt.scatter(session.bt_pos_xs, session.bt_pos_ys, s=1, c=session.bt_nearest_wells)
-        #     plt.show()
-        #     exit()
-
-        session.bt_well_entry_idxs, session.bt_well_exit_idxs, \
-            session.bt_well_entry_times, session.bt_well_exit_times = \
-            getWellEntryAndExitTimes(session.bt_nearest_wells, session.bt_pos_ts)
 
         if session.date_str in INSPECT_IN_DETAIL and INSPECT_PLOT_WELL_OCCUPANCIES:
             cmap = plt.get_cmap('Set3')
@@ -579,81 +766,13 @@ if __name__ == "__main__":
                     i1 = session.bt_well_entry_idxs[i][j]
                     try:
                         i2 = session.bt_well_exit_idxs[i][j]
-                        plt.plot(session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2], color=color)
+                        plt.plot(
+                            session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2], color=color)
                     except:
                         print("well {} had {} entries, {} exits".format(
                             wi, len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
 
             plt.show()
-
-        for i in range(len(all_well_idxs)):
-            # print("well {} had {} entries, {} exits".format(
-            #     all_well_idxs[i], len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
-            assert len(session.bt_well_entry_times[i]) == len(session.bt_well_exit_times[i])
-
-        session.bt_home_well_entry_times = session.bt_well_entry_times[np.argmax(
-            all_well_idxs == session.home_well)]
-        session.bt_home_well_exit_times = session.bt_well_exit_times[np.argmax(
-            all_well_idxs == session.home_well)]
-
-        session.bt_mean_dist_to_home_well = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
-                                                              session.home_x, session.home_y)
-        session.bt_mv_mean_dist_to_home_well = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
-                                                                 session.home_x, session.home_y)
-        session.bt_still_mean_dist_to_home_well = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
-                                                                    session.home_x, session.home_y)
-
-        session.bt_ctrl_home_well_entry_times = session.bt_well_entry_times[np.argmax(
-            all_well_idxs == session.ctrl_home_well)]
-        session.bt_ctrl_home_well_exit_times = session.bt_well_exit_times[np.argmax(
-            all_well_idxs == session.ctrl_home_well)]
-
-        session.bt_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
-                                                                   session.ctrl_home_x, session.ctrl_home_y)
-        session.bt_mv_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
-                                                                      session.ctrl_home_x, session.ctrl_home_y)
-        session.bt_still_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
-                                                                         session.ctrl_home_x, session.ctrl_home_y)
-
-        # same for during probe
-        session.probe_nearest_wells = getNearestWell(session.probe_pos_xs, session.probe_pos_ys)
-
-        session.probe_well_entry_idxs, session.probe_well_exit_idxs, \
-            session.probe_well_entry_times, session.probe_well_exit_times = \
-            getWellEntryAndExitTimes(session.probe_nearest_wells, session.probe_pos_ts)
-
-        for i in range(len(all_well_idxs)):
-            # print(i, len(session.probe_well_entry_times[i]), len(session.probe_well_exit_times[i]))
-            assert len(session.probe_well_entry_times[i]) == len(session.probe_well_exit_times[i])
-
-        session.probe_home_well_entry_times = session.probe_well_entry_times[np.argmax(
-            all_well_idxs == session.home_well)]
-        session.probe_home_well_exit_times = session.probe_well_exit_times[np.argmax(
-            all_well_idxs == session.home_well)]
-
-        session.probe_mean_dist_to_home_well = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
-                                                                 session.home_x, session.home_y)
-        session.probe_mv_mean_dist_to_home_well = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
-                                                                    session.home_x, session.home_y)
-        session.probe_still_mean_dist_to_home_well = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
-                                                                       session.home_x, session.home_y)
-
-        session.probe_ctrl_home_well_entry_times = session.probe_well_entry_times[np.argmax(
-            all_well_idxs == session.ctrl_home_well)]
-        session.probe_ctrl_home_well_exit_times = session.probe_well_exit_times[np.argmax(
-            all_well_idxs == session.ctrl_home_well)]
-
-        session.probe_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
-                                                                      session.ctrl_home_x, session.ctrl_home_y)
-        session.probe_mv_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
-                                                                         session.ctrl_home_x, session.ctrl_home_y)
-        session.probe_still_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
-                                                                            session.ctrl_home_x, session.ctrl_home_y)
-
-        # ===================================
-        # Now save this session
-        # ===================================
-        dataob.allSessions.append(session)
 
     # save all sessions to disk
     dataob.saveToFile(os.path.join(output_dir, out_filename))

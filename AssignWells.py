@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 import random as rd
 import os
 
-RUNS_PER_DAY = 1
-NUM_DAYS = 1
+RUNS_PER_DAY = 2
+NUM_DAYS = 4
 START_WITH_TODAY = True
 if START_WITH_TODAY:
     first_day = datetime.now()
@@ -14,7 +14,7 @@ output_dir = "./"
 REST_OF_FILE = "\nThresh: Low\nLast Away: \nLast well: \nITI Stim On: \nProbe Stim On: \n"
 
 all_wells = [i + 1 for i in range(48) if not i % 8 in [0, 7]]
-broken_wells = [2, 4, 6, 7, 18]
+broken_wells = [2, 4, 6, 7, 18, 20, 42, 29, 31, 39, 37, 47, 27]
 working_wells = set(all_wells) - set(broken_wells)
 
 thisday = first_day
@@ -35,7 +35,8 @@ for di in range(NUM_DAYS):
         outstr = "Home: " + wells[0] + "\nAways: " + \
             " ".join(wells[1:]) + "\nCondition: " + condition + REST_OF_FILE
 
-        fname = os.path.join(output_dir, thisday.strftime("%Y%m%d_{}.txt".format(ri + 1)))
+        fname = os.path.join(output_dir, thisday.strftime(
+            "%Y%m%d_{}.txt".format(ri + 1)))
         if os.path.exists(fname):
             con = "a"
             while not (con in ["y", "n"]):

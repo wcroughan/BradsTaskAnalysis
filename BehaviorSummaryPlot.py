@@ -98,7 +98,8 @@ def makeASwarmPlot(xvals, yvals, axesNames, categories, output_filename="", titl
     s = pd.Series([xvals, yvals], index=axesNames)
     s['cat'] = categories
     plt.clf()
-    sns.swarmplot(x=axesNames[0], y=axesNames[1], hue='cat', data=s, palette="Set3")
+    sns.swarmplot(x=axesNames[0], y=axesNames[1],
+                  hue='cat', data=s, palette="Set3")
     plt.title(title)
     plt.xlabel(axesNames[0])
     plt.ylabel(axesNames[1])
@@ -191,6 +192,32 @@ for sesh in all_sessions:
     fname = "Probe_dwelltime_" + sesh.name
     makeASwarmPlot(well_idxs, well_dwell_times, axesNames,
                    well_category, output_filename=fname, title=title)
+
+all_quadrants = [0, 1, 2, 3]
+for sesh in all_sessions:
+    quadrant_idxs = []
+    quadrant_dwell_times = []
+    quadrant_category = []
+    for i, wi in enumerate(all_quadrants):
+        for j in range(len(sesh.probe_quadrant_entry_times[i])):
+            quadrant_idxs.append(wi)
+            dwell_time = (sesh.probe_quadrant_exit_times[i][j] -
+                          sesh.probe_quadrant_entry_times[i][j]) / TRODES_SAMPLING_RATE
+            # if dwell_time <= 0:
+            #     print(i, wi, j, sesh.probe_well_entry_times[i][j], sesh.probe_well_exit_times[i][j],
+            #           sesh.probe_well_entry_idxs[i][j], sesh.probe_well_exit_idxs[i][j])
+            quadrant_dwell_times.append(dwell_time)
+            if wi == sesh.home_quadrant:
+                quadrant_category.append("home")
+            else:
+                quadrant_category.append("other")
+
+    axesNames = ['Quadrant number', 'Dwell Time']
+    title = 'Dwell time by Quadrant, Probe - ' + sesh.name
+    fname = "Probe_dwelltime_" + sesh.name
+    makeASwarmPlot(quadrant_idxs, quadrant_dwell_times, axesNames,
+                   quadrant_category, output_filename=fname, title=title)
+
 
 for sesh in all_sessions:
     well_idxs = []
