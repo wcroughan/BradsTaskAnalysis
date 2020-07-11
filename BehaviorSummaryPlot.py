@@ -16,7 +16,7 @@ SAVE_OUTPUT_PLOTS = True
 
 SKIP_BOX_PLOTS = True
 SKIP_SCATTER_PLOTS = True
-SKIP_SWARM_PLOTS = False
+SKIP_SWARM_PLOTS = True
 
 TRODES_SAMPLING_RATE = 30000
 
@@ -110,6 +110,59 @@ def makeASwarmPlot(xvals, yvals, axesNames, categories, output_filename="", titl
         if len(output_filename) == 0:
             output_filename = os.path.join(output_dir, "_".join(
                 axesNames[::-1]) + title)
+        else:
+            output_filename = os.path.join(output_dir, output_filename)
+        plt.savefig(output_filename, dpi=800)
+
+
+def makeAPersevBiasPlot(measure_name, output_filename="", title=""):
+    cnt_home_pos = 0
+    cnt_home_total = 0
+    cnt_other_pos = 0
+    cnt_other_total = 0
+    MAX_NUM_AWAY = 9
+    cnt_away_pos = np.zeros((MAX_NUM_AWAY,))
+    cnt_away_total = np.zeros((MAX_NUM_AWAY,))
+    for sesh in all_sessions:
+        for i, wi in enumerate(all_well_idxs):
+            if wi == sesh.home_well:
+                if sesh.__dict__[measure_name][i] > 0:
+                    cnt_home_pos += 1
+                cnt_home_total += 1
+            elif wi in sesh.visited_away_wells:
+                for ei, awi in enumerate(sesh.visited_away_wells):
+                    if awi == wi:
+                        if sesh.__dict__[measure_name][i] > 0:
+                            cnt_away_pos[ei] += 1
+                        cnt_away_total[ei] += 1
+                        break
+            else:
+                if sesh.__dict__[measure_name][i] > 0:
+                    cnt_other_pos += 1
+                cnt_other_total += 1
+
+    xvals = np.arange(MAX_NUM_AWAY+2)
+    yvals = np.concatenate((np.array([float(cnt_home_pos) / float(cnt_home_total)]),
+                            (cnt_away_pos / cnt_away_total), np.array([float(cnt_other_pos) / float(cnt_other_total)])))
+    axesNames = ["Well type", measure_name]
+    s = pd.Series([xvals, yvals], index=axesNames)
+    categories = np.ones((MAX_NUM_AWAY+2,))
+    categories[0] = 0
+    categories[-1] = 2
+    s['cat'] = categories
+    plt.clf()
+    sns.swarmplot(x=axesNames[0], y=axesNames[1],
+                  hue='cat', data=s, palette="Set3")
+    plt.title(title)
+    plt.xlabel(axesNames[0])
+    plt.ylabel(axesNames[1])
+
+    if SHOW_OUTPUT_PLOTS:
+        plt.show()
+    if SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
+        if len(output_filename) == 0:
+            output_filename = os.path.join(output_dir, "_".join(
+                measure_name) + title)
         else:
             output_filename = os.path.join(output_dir, output_filename)
         plt.savefig(output_filename, dpi=800)
@@ -244,3 +297,8 @@ for sesh in all_sessions:
     fname = "BT_dwelltime_" + sesh.name
     makeASwarmPlot(well_idxs, well_dwell_times, axesNames,
                    well_category, output_filename=fname, title=title)
+
+# ===================================
+# Perseveration bias measures
+# ===================================
+makeAPersevBiasPlot("probe_persev_bias_mean_dist_to_well")

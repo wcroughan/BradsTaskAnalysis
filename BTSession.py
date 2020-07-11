@@ -52,6 +52,7 @@ class BTSession:
         # Well number of away wells
         self.away_wells = []
         self.num_away_found = 0
+        self.num_home_found = 0
 
         # Flags indicating stim condition
         self.isRippleInterruption = False
@@ -101,12 +102,14 @@ class BTSession:
         # Analyzed data: Brad's task
         # ==================================
         self.home_well_find_times = []
+        self.home_well_find_pos_idxs = []
         self.home_well_leave_times = []
         self.home_well_latencies = []
         self.home_well_displacements = []
         self.home_well_distances = []
 
         self.away_well_find_times = []
+        self.away_well_find_pos_idxs = []
         self.away_well_leave_times = []
         self.away_well_latencies = []
         self.away_well_displacements = []

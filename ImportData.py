@@ -153,7 +153,7 @@ def processPosData(position_data):
     position_data['timestamp'] = x
 
     # Remove large jumps in position (tracking errors)
-    for n_reps in range(N_CLEANING_REPS):
+    for _ in range(N_CLEANING_REPS):
         jump_distance = np.sqrt(np.square(np.diff(x_pos, prepend=x_pos[0])) +
                                 np.square(np.diff(y_pos, prepend=y_pos[0])))
         # print(jump_distance)
@@ -200,6 +200,15 @@ def getMeanDistToWell(xs, ys, wellx, welly, duration=-1, ts=np.array([])):
     dist_to_well = np.sqrt(np.power(wellx - np.array(xs), 2) +
                            np.power(welly - np.array(ys), 2))
     return np.nanmean(dist_to_well)
+
+
+def getMeanDistToWells(xs, ys, duration=-1, ts=np.array([])):
+    res = []
+    for wi in all_well_idxs:
+        wx, wy = get_well_coordinates(wi)
+        res.append(getMeanDistToWell(xs, ys, wx, wy, duration=duration, ts=ts))
+
+    return res
 
 
 def getNearestWell(xs, ys, well_idxs=all_well_idxs):
@@ -343,9 +352,11 @@ if __name__ == "__main__":
         #     print(date_str)
         #     continue
 
+        # ======================================================================
         # ===================================
         # Create new session and import raw data
         # ===================================
+        # ======================================================================
         session = BTSession()
         session.date_str = date_str
         session.name = session_dir
@@ -499,15 +510,25 @@ if __name__ == "__main__":
         session.home_x, session.home_y = get_well_coordinates(
             session.home_well)
 
+        # ======================================================================
         # ===================================
         # Analyze data
         # ===================================
+        # ======================================================================
+
+        # ===================================
         # which away wells were visited?
+        # ===================================
         session.num_away_found = next((i for i in range(
             len(session.away_wells)) if session.away_wells[i] == session.last_away_well), -1) + 1
         session.visited_away_wells = session.away_wells[0:session.num_away_found]
+        session.num_home_found = session.num_away_found
+        if session.ended_on_home:
+            session.num_home_found += 1
 
+        # ===================================
         # separating movement time from still time
+        # ===================================
         bt_vel = np.sqrt(np.power(np.diff(session.bt_pos_xs), 2) +
                          np.power(np.diff(session.bt_pos_ys), 2))
         session.bt_vel_cm_s = np.divide(bt_vel, np.diff(session.bt_pos_ts) /
@@ -540,11 +561,16 @@ if __name__ == "__main__":
         session.probe_still_ys = np.array(session.probe_pos_ys)
         session.probe_still_ys[probe_is_mv] = np.nan
 
-        # avg dist to home and times at which rat entered home region
+        # ===================================
+        # Perseveration measures
+        # ===================================
         session.ctrl_home_well = 49 - session.home_well
         session.ctrl_home_x, session.ctrl_home_y = get_well_coordinates(
             session.ctrl_home_well)
 
+        # ===================================
+        # Well and quadrant entry and exit times
+        # ===================================
         session.bt_nearest_wells = getNearestWell(
             session.bt_pos_xs, session.bt_pos_ys)
 
@@ -573,52 +599,10 @@ if __name__ == "__main__":
         session.bt_home_well_exit_times = session.bt_well_exit_times[np.argmax(
             all_well_idxs == session.home_well)]
 
-        session.bt_mean_dist_to_home_well = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
-                                                              session.home_x, session.home_y)
-        session.bt_mv_mean_dist_to_home_well = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
-                                                                 session.home_x, session.home_y)
-        session.bt_still_mean_dist_to_home_well = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
-                                                                    session.home_x, session.home_y)
-
-        session.bt_mean_dist_to_home_well_1min = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
-                                                                   session.home_x, session.home_y, duration=60, ts=session.bt_pos_ts)
-        session.bt_mv_mean_dist_to_home_well_1min = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
-                                                                      session.home_x, session.home_y, duration=60, ts=session.bt_pos_ts)
-        session.bt_still_mean_dist_to_home_well_1min = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
-                                                                         session.home_x, session.home_y, duration=60, ts=session.bt_pos_ts)
-
-        session.bt_mean_dist_to_home_well_30sec = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
-                                                                    session.home_x, session.home_y, duration=30, ts=session.bt_pos_ts)
-        session.bt_mv_mean_dist_to_home_well_30sec = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
-                                                                       session.home_x, session.home_y, duration=30, ts=session.bt_pos_ts)
-        session.bt_still_mean_dist_to_home_well_30sec = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
-                                                                          session.home_x, session.home_y, duration=30, ts=session.bt_pos_ts)
-
         session.bt_ctrl_home_well_entry_times = session.bt_well_entry_times[np.argmax(
             all_well_idxs == session.ctrl_home_well)]
         session.bt_ctrl_home_well_exit_times = session.bt_well_exit_times[np.argmax(
             all_well_idxs == session.ctrl_home_well)]
-
-        session.bt_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
-                                                                   session.ctrl_home_x, session.ctrl_home_y)
-        session.bt_mv_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
-                                                                      session.ctrl_home_x, session.ctrl_home_y)
-        session.bt_still_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
-                                                                         session.ctrl_home_x, session.ctrl_home_y)
-
-        session.bt_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
-                                                                        session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.bt_pos_ts)
-        session.bt_mv_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
-                                                                           session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.bt_pos_ts)
-        session.bt_still_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
-                                                                              session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.bt_pos_ts)
-
-        session.bt_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
-                                                                         session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.bt_pos_ts)
-        session.bt_mv_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
-                                                                            session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.bt_pos_ts)
-        session.bt_still_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
-                                                                               session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.bt_pos_ts)
 
         # same for during probe
         session.probe_nearest_wells = getNearestWell(
@@ -647,52 +631,399 @@ if __name__ == "__main__":
         session.probe_home_well_exit_times = session.probe_well_exit_times[np.argmax(
             all_well_idxs == session.home_well)]
 
-        session.probe_mean_dist_to_home_well = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
-                                                                 session.home_x, session.home_y)
-        session.probe_mv_mean_dist_to_home_well = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
-                                                                    session.home_x, session.home_y)
-        session.probe_still_mean_dist_to_home_well = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
-                                                                       session.home_x, session.home_y)
-
-        session.probe_mean_dist_to_home_well_1min = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
-                                                                      session.home_x, session.home_y, duration=60, ts=session.probe_pos_ts)
-        session.probe_mv_mean_dist_to_home_well_1min = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
-                                                                         session.home_x, session.home_y, duration=60, ts=session.probe_pos_ts)
-        session.probe_still_mean_dist_to_home_well_1min = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
-                                                                            session.home_x, session.home_y, duration=60, ts=session.probe_pos_ts)
-
-        session.probe_mean_dist_to_home_well_30sec = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
-                                                                       session.home_x, session.home_y, duration=30, ts=session.probe_pos_ts)
-        session.probe_mv_mean_dist_to_home_well_30sec = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
-                                                                          session.home_x, session.home_y, duration=30, ts=session.probe_pos_ts)
-        session.probe_still_mean_dist_to_home_well_30sec = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
-                                                                             session.home_x, session.home_y, duration=30, ts=session.probe_pos_ts)
-
         session.probe_ctrl_home_well_entry_times = session.probe_well_entry_times[np.argmax(
             all_well_idxs == session.ctrl_home_well)]
         session.probe_ctrl_home_well_exit_times = session.probe_well_exit_times[np.argmax(
             all_well_idxs == session.ctrl_home_well)]
 
-        session.probe_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
-                                                                      session.ctrl_home_x, session.ctrl_home_y)
-        session.probe_mv_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
-                                                                         session.ctrl_home_x, session.ctrl_home_y)
-        session.probe_still_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
-                                                                            session.ctrl_home_x, session.ctrl_home_y)
+        # ===================================
+        # avg dist to wells
+        # ===================================
+        session.bt_mean_dist_to_wells = getMeanDistToWells(
+            session.bt_pos_xs, session.bt_pos_ys)
+        session.bt_mean_dist_to_wells_1min = getMeanDistToWells(
+            session.bt_pos_xs, session.bt_pos_ys, duration=60, ts=session.bt_pos_ts)
+        session.bt_mean_dist_to_wells_30sec = getMeanDistToWells(
+            session.bt_pos_xs, session.bt_pos_ys, duration=30, ts=session.bt_pos_ts)
+        session.bt_mean_dist_to_home_well = session.bt_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_mean_dist_to_home_well_1min = session.bt_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_mean_dist_to_home_well_30sec = session.bt_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_mean_dist_to_ctrl_home_well = session.bt_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.bt_mean_dist_to_ctrl_home_well_1min = session.bt_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.bt_mean_dist_to_ctrl_home_well_30sec = session.bt_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
 
-        session.probe_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
-                                                                           session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.probe_pos_ts)
-        session.probe_mv_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
-                                                                              session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.probe_pos_ts)
-        session.probe_still_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
-                                                                                 session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.probe_pos_ts)
+        # Just moving times
+        session.bt_mv_mean_dist_to_wells = getMeanDistToWells(
+            session.bt_mv_xs, session.bt_mv_ys)
+        session.bt_mv_mean_dist_to_wells_1min = getMeanDistToWells(
+            session.bt_mv_xs, session.bt_mv_ys, duration=60, ts=session.bt_pos_ts)
+        session.bt_mv_mean_dist_to_wells_30sec = getMeanDistToWells(
+            session.bt_mv_xs, session.bt_mv_ys, duration=30, ts=session.bt_pos_ts)
+        session.bt_mv_mean_dist_to_home_well = session.bt_mv_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_mv_mean_dist_to_home_well_1min = session.bt_mv_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_mv_mean_dist_to_home_well_30sec = session.bt_mv_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_mv_mean_dist_to_ctrl_home_well = session.bt_mv_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.bt_mv_mean_dist_to_ctrl_home_well_1min = session.bt_mv_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.bt_mv_mean_dist_to_ctrl_home_well_30sec = session.bt_mv_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
 
-        session.probe_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
-                                                                            session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.probe_pos_ts)
-        session.probe_mv_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
-                                                                               session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.probe_pos_ts)
-        session.probe_still_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
-                                                                                  session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.probe_pos_ts)
+        # just still times
+        session.bt_still_mean_dist_to_wells = getMeanDistToWells(
+            session.bt_still_xs, session.bt_still_ys)
+        session.bt_still_mean_dist_to_wells_1min = getMeanDistToWells(
+            session.bt_still_xs, session.bt_still_ys, duration=60, ts=session.bt_pos_ts)
+        session.bt_still_mean_dist_to_wells_30sec = getMeanDistToWells(
+            session.bt_still_xs, session.bt_still_ys, duration=30, ts=session.bt_pos_ts)
+        session.bt_still_mean_dist_to_home_well = session.bt_still_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_still_mean_dist_to_home_well_1min = session.bt_still_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_still_mean_dist_to_home_well_30sec = session.bt_still_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.bt_still_mean_dist_to_ctrl_home_well = session.bt_still_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.bt_still_mean_dist_to_ctrl_home_well_1min = session.bt_still_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.bt_still_mean_dist_to_ctrl_home_well_30sec = session.bt_still_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+
+        # same for probe
+        session.probe_mean_dist_to_wells = getMeanDistToWells(
+            session.probe_pos_xs, session.probe_pos_ys)
+        session.probe_mean_dist_to_wells_1min = getMeanDistToWells(
+            session.probe_pos_xs, session.probe_pos_ys, duration=60, ts=session.probe_pos_ts)
+        session.probe_mean_dist_to_wells_30sec = getMeanDistToWells(
+            session.probe_pos_xs, session.probe_pos_ys, duration=30, ts=session.probe_pos_ts)
+        session.probe_mean_dist_to_home_well = session.probe_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_mean_dist_to_home_well_1min = session.probe_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_mean_dist_to_home_well_30sec = session.probe_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_mean_dist_to_ctrl_home_well = session.probe_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.probe_mean_dist_to_ctrl_home_well_1min = session.probe_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.probe_mean_dist_to_ctrl_home_well_30sec = session.probe_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+
+        # Just moving times
+        session.probe_mv_mean_dist_to_wells = getMeanDistToWells(
+            session.probe_mv_xs, session.probe_mv_ys)
+        session.probe_mv_mean_dist_to_wells_1min = getMeanDistToWells(
+            session.probe_mv_xs, session.probe_mv_ys, duration=60, ts=session.probe_pos_ts)
+        session.probe_mv_mean_dist_to_wells_30sec = getMeanDistToWells(
+            session.probe_mv_xs, session.probe_mv_ys, duration=30, ts=session.probe_pos_ts)
+        session.probe_mv_mean_dist_to_home_well = session.probe_mv_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_mv_mean_dist_to_home_well_1min = session.probe_mv_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_mv_mean_dist_to_home_well_30sec = session.probe_mv_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_mv_mean_dist_to_ctrl_home_well = session.probe_mv_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.probe_mv_mean_dist_to_ctrl_home_well_1min = session.probe_mv_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.probe_mv_mean_dist_to_ctrl_home_well_30sec = session.probe_mv_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+
+        # just still times
+        session.probe_still_mean_dist_to_wells = getMeanDistToWells(
+            session.probe_still_xs, session.probe_still_ys)
+        session.probe_still_mean_dist_to_wells_1min = getMeanDistToWells(
+            session.probe_still_xs, session.probe_still_ys, duration=60, ts=session.probe_pos_ts)
+        session.probe_still_mean_dist_to_wells_30sec = getMeanDistToWells(
+            session.probe_still_xs, session.probe_still_ys, duration=30, ts=session.probe_pos_ts)
+        session.probe_still_mean_dist_to_home_well = session.probe_still_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_still_mean_dist_to_home_well_1min = session.probe_still_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_still_mean_dist_to_home_well_30sec = session.probe_still_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.home_well)]
+        session.probe_still_mean_dist_to_ctrl_home_well = session.probe_still_mean_dist_to_wells[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.probe_still_mean_dist_to_ctrl_home_well_1min = session.probe_still_mean_dist_to_wells_1min[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+        session.probe_still_mean_dist_to_ctrl_home_well_30sec = session.probe_still_mean_dist_to_wells_30sec[np.argmax(
+            all_well_idxs == session.ctrl_home_well)]
+
+        # session.bt_mean_dist_to_home_well = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+        #                                                       session.home_x, session.home_y)
+        # session.bt_mv_mean_dist_to_home_well = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+        #                                                          session.home_x, session.home_y)
+        # session.bt_still_mean_dist_to_home_well = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+        #                                                             session.home_x, session.home_y)
+
+        # session.bt_mean_dist_to_home_well_1min = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+        #                                                            session.home_x, session.home_y, duration=60, ts=session.bt_pos_ts)
+        # session.bt_mv_mean_dist_to_home_well_1min = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+        #                                                               session.home_x, session.home_y, duration=60, ts=session.bt_pos_ts)
+        # session.bt_still_mean_dist_to_home_well_1min = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+        #                                                                  session.home_x, session.home_y, duration=60, ts=session.bt_pos_ts)
+
+        # session.bt_mean_dist_to_home_well_30sec = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+        #                                                             session.home_x, session.home_y, duration=30, ts=session.bt_pos_ts)
+        # session.bt_mv_mean_dist_to_home_well_30sec = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+        #                                                                session.home_x, session.home_y, duration=30, ts=session.bt_pos_ts)
+        # session.bt_still_mean_dist_to_home_well_30sec = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+        #                                                                   session.home_x, session.home_y, duration=30, ts=session.bt_pos_ts)
+
+        # ctrl home
+        # session.bt_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+        #                                                            session.ctrl_home_x, session.ctrl_home_y)
+        # session.bt_mv_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+        #                                                               session.ctrl_home_x, session.ctrl_home_y)
+        # session.bt_still_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+        #                                                                  session.ctrl_home_x, session.ctrl_home_y)
+
+        # session.bt_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+        #                                                                 session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.bt_pos_ts)
+        # session.bt_mv_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+        #                                                                    session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.bt_pos_ts)
+        # session.bt_still_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+        #                                                                       session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.bt_pos_ts)
+
+        # session.bt_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.bt_pos_xs, session.bt_pos_ys,
+        #                                                                  session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.bt_pos_ts)
+        # session.bt_mv_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.bt_mv_xs, session.bt_mv_ys,
+        #                                                                     session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.bt_pos_ts)
+        # session.bt_still_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.bt_still_xs, session.bt_still_ys,
+        #                                                                        session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.bt_pos_ts)
+
+        # same for during probe
+        # session.probe_mean_dist_to_home_well = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+        #                                                          session.home_x, session.home_y)
+        # session.probe_mv_mean_dist_to_home_well = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+        #                                                             session.home_x, session.home_y)
+        # session.probe_still_mean_dist_to_home_well = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+        #                                                                session.home_x, session.home_y)
+
+        # session.probe_mean_dist_to_home_well_1min = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+        #                                                               session.home_x, session.home_y, duration=60, ts=session.probe_pos_ts)
+        # session.probe_mv_mean_dist_to_home_well_1min = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+        #                                                                  session.home_x, session.home_y, duration=60, ts=session.probe_pos_ts)
+        # session.probe_still_mean_dist_to_home_well_1min = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+        #                                                                     session.home_x, session.home_y, duration=60, ts=session.probe_pos_ts)
+
+        # session.probe_mean_dist_to_home_well_30sec = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+        #                                                                session.home_x, session.home_y, duration=30, ts=session.probe_pos_ts)
+        # session.probe_mv_mean_dist_to_home_well_30sec = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+        #                                                                   session.home_x, session.home_y, duration=30, ts=session.probe_pos_ts)
+        # session.probe_still_mean_dist_to_home_well_30sec = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+        #                                                                      session.home_x, session.home_y, duration=30, ts=session.probe_pos_ts)
+
+        # # ctrl home well
+        # session.probe_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+        #                                                               session.ctrl_home_x, session.ctrl_home_y)
+        # session.probe_mv_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+        #                                                                  session.ctrl_home_x, session.ctrl_home_y)
+        # session.probe_still_mean_dist_to_ctrl_home_well = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+        #                                                                     session.ctrl_home_x, session.ctrl_home_y)
+
+        # session.probe_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+        #                                                                    session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.probe_pos_ts)
+        # session.probe_mv_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+        #                                                                       session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.probe_pos_ts)
+        # session.probe_still_mean_dist_to_ctrl_home_well_1min = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+        #                                                                          session.ctrl_home_x, session.ctrl_home_y, duration=60, ts=session.probe_pos_ts)
+
+        # session.probe_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.probe_pos_xs, session.probe_pos_ys,
+        #                                                                     session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.probe_pos_ts)
+        # session.probe_mv_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.probe_mv_xs, session.probe_mv_ys,
+        #                                                                        session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.probe_pos_ts)
+        # session.probe_still_mean_dist_to_ctrl_home_well_30sec = getMeanDistToWell(session.probe_still_xs, session.probe_still_ys,
+        #                                                                           session.ctrl_home_x, session.ctrl_home_y, duration=30, ts=session.probe_pos_ts)
+
+        # ===================================
+        # Dwell times
+        # ===================================
+        session.bt_dwell_times = []
+        for i, wi in enumerate(all_well_idxs):
+            session.bt_dwell_times.append(np.array(
+                session.bt_well_exit_times[i]) - np.array(session.bt_well_entry_times[i]))
+
+        session.bt_well_num_entries = []
+        session.bt_well_total_dwell_times = []
+        session.bt_well_avg_dwell_times = []
+        session.bt_well_total_dwell_times_excluding_reward = []
+        session.bt_well_avg_dwell_times_excluding_reward = []
+        for i, wi in enumerate(all_well_idxs):
+            nume = len(session.bt_well_entry_idxs[i])
+            session.bt_well_num_entries.append(nume)
+            total_dwell_time = np.sum(session.bt_dwell_times[i])
+            session.bt_well_total_dwell_times.append(total_dwell_time)
+            session.bt_well_avg_dwell_times.append(
+                total_dwell_time / float(nume))
+
+            total_dwell_time_without_reward = total_dwell_time
+            if wi == session.home_well:
+                if len(session.home_well_find_times) > 0:
+                    # we know which visits were the rewarded ones
+                    for ent, ext in zip(session.bt_well_entry_times[i], session.bt_well_exit_times[i]):
+                        for ft in session.home_well_find_times:
+                            if ft >= ent and ft <= ext:
+                                total_dwell_time_without_reward -= ext - ent
+                else:
+                    # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
+                    dwell_times_sorted = sorted(
+                        session.bt_dwell_times[i], reverse=True)
+                    for i in range(session.num_home_found):
+                        total_dwell_time_without_reward -= dwell_times_sorted[i]
+            elif wi in session.visited_away_wells:
+                if len(session.away_well_find_times) > 0:
+                    # we know which visits were the rewarded ones
+                    for ei, awi in enumerate(session.visited_away_wells):
+                        if awi == wi:
+                            ft = session.away_well_find_times[ei]
+                    for ent, ext in zip(session.bt_well_entry_times[i], session.bt_well_exit_times[i]):
+                        if ft >= ent and ft <= ext:
+                            total_dwell_time_without_reward -= ext - ent
+                            break
+                else:
+                    # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
+                    dwell_times_sorted = sorted(
+                        session.bt_dwell_times[i], reverse=True)
+                    for i in range(session.num_away_found):
+                        total_dwell_time_without_reward -= dwell_times_sorted[i]
+
+            session.bt_well_total_dwell_times_excluding_reward.append(
+                total_dwell_time_without_reward)
+            session.bt_well_avg_dwell_times_excluding_reward.append(
+                total_dwell_time_without_reward / float(nume))
+
+        session.probe_dwell_times = []
+        session.probe_dwell_times_1min = []
+        session.probe_dwell_times_30sec = []
+        for i, wi in enumerate(all_well_idxs):
+            session.probe_dwell_times.append(np.array(
+                session.probe_well_exit_times[i]) - np.array(session.probe_well_entry_times[i]))
+            dts_1min = []
+            dts_30sec = []
+            for ent, ext in zip(session.probe_well_exit_times[i], session.probe_well_entry_times[i]):
+                if ext <= session.probe_pos_ts[0] + 60:
+                    dts_1min.append(ext - ent)
+                if ext <= session.probe_pos_ts[0] + 30:
+                    dts_30sec.append(ext - ent)
+            session.probe_dwell_times_1min.append(dts_1min)
+            session.probe_dwell_times_30sec.append(dts_30sec)
+
+        session.probe_well_num_entries = []
+        session.probe_well_total_dwell_times = []
+        session.probe_well_avg_dwell_times = []
+        session.probe_well_num_entries_1min = []
+        session.probe_well_total_dwell_times_1min = []
+        session.probe_well_avg_dwell_times_1min = []
+        session.probe_well_num_entries_30sec = []
+        session.probe_well_total_dwell_times_30sec = []
+        session.probe_well_avg_dwell_times_30sec = []
+        for i, wi in enumerate(all_well_idxs):
+            nume = len(session.probe_dwell_times[i])
+            session.probe_well_num_entries.append(nume)
+            total_dwell_time = np.sum(session.probe_dwell_times[i])
+            session.probe_well_total_dwell_times.append(total_dwell_time)
+            session.probe_well_avg_dwell_times.append(
+                total_dwell_time / float(nume))
+
+            nume = len(session.probe_dwell_times_1min[i])
+            session.probe_well_num_entries_1min.append(nume)
+            total_dwell_time = np.sum(session.probe_dwell_times_1min[i])
+            session.probe_well_total_dwell_times_1min.append(total_dwell_time)
+            session.probe_well_avg_dwell_times_1min.append(
+                total_dwell_time / float(nume))
+
+            nume = len(session.probe_dwell_times_30sec[i])
+            session.probe_well_num_entries_30sec.append(nume)
+            total_dwell_time = np.sum(session.probe_dwell_times_30sec[i])
+            session.probe_well_total_dwell_times_30sec.append(total_dwell_time)
+            session.probe_well_avg_dwell_times_30sec.append(
+                total_dwell_time / float(nume))
+
+        # ===================================
+        # Latency to well in probe
+        # ===================================
+        session.probe_latency_to_well = []
+        for i, wi in enumerate(all_well_idxs):
+            if len(session.probe_well_entry_times[i]) == 0:
+                session.probe_latency_to_well.append(np.nan)
+            else:
+                session.probe_latency_to_well.append(
+                    session.probe_well_entry_times[0])
+
+        # ===================================
+        # Perseveration bias: How high are perseveration measures for this well compared to the corresponding control well.
+        # ===================================
+
+        session.bt_persev_bias_mean_dist_to_well = []
+        session.bt_persev_bias_num_entries_to_well = []
+        session.bt_persev_bias_total_dwell_time = []
+        session.bt_persev_bias_avg_dwell_time = []
+        session.bt_persev_bias_total_dwell_time_excluding_reward = []
+        session.bt_persev_bias_avg_dwell_time_excluding_reward = []
+        session.probe_persev_bias_mean_dist_to_well = []
+        session.probe_persev_bias_num_entries_to_well = []
+        session.probe_persev_bias_total_dwell_time = []
+        session.probe_persev_bias_avg_dwell_time = []
+        session.probe_persev_bias_mean_dist_to_well_1min = []
+        session.probe_persev_bias_num_entries_to_well_1min = []
+        session.probe_persev_bias_total_dwell_time_1min = []
+        session.probe_persev_bias_avg_dwell_time_1min = []
+        session.probe_persev_bias_mean_dist_to_well_30sec = []
+        session.probe_persev_bias_num_entries_to_well_30sec = []
+        session.probe_persev_bias_total_dwell_time_30sec = []
+        session.probe_persev_bias_avg_dwell_time_30sec = []
+        for i, wi in enumerate(all_well_idxs):
+            cwi = 49 - wi
+            cw_idx = np.argmax(all_well_idxs == cwi)
+            session.bt_persev_bias_mean_dist_to_well.append(session.bt_mean_dist_to_wells[i] -
+                                                            session.bt_mean_dist_to_wells[cw_idx])
+            session.bt_persev_bias_num_entries_to_well.append(
+                session.bt_well_num_entries[i] - session.bt_well_num_entries[cw_idx])
+            session.bt_persev_bias_total_dwell_time.append(
+                session.bt_well_total_dwell_times[i] - session.bt_well_total_dwell_times[cw_idx])
+            session.bt_persev_bias_avg_dwell_time.append(
+                session.bt_well_avg_dwell_times[i] - session.bt_well_avg_dwell_times[cw_idx])
+            session.bt_persev_bias_total_dwell_time_excluding_reward.append(
+                session.bt_well_total_dwell_times_excluding_reward[i] - session.bt_well_total_dwell_times_excluding_reward[cw_idx])
+            session.bt_persev_bias_avg_dwell_time_excluding_reward.append(
+                session.bt_well_avg_dwell_times_excluding_reward[i] - session.bt_well_avg_dwell_times_excluding_reward[cw_idx])
+
+            session.probe_persev_bias_mean_dist_to_well.append(session.probe_mean_dist_to_wells[i] -
+                                                               session.probe_mean_dist_to_wells[cw_idx])
+            session.probe_persev_bias_num_entries_to_well.append(
+                session.probe_well_num_entries[i] - session.probe_well_num_entries[cw_idx])
+            session.probe_persev_bias_total_dwell_time.append(
+                session.probe_well_total_dwell_times[i] - session.probe_well_total_dwell_times[cw_idx])
+            session.probe_persev_bias_avg_dwell_time.append(
+                session.probe_well_avg_dwell_times[i] - session.probe_well_avg_dwell_times[cw_idx])
+
+            session.probe_persev_bias_mean_dist_to_well_1min.append(session.probe_mean_dist_to_wells_1min[i] -
+                                                                    session.probe_mean_dist_to_wells_1min[cw_idx])
+            session.probe_persev_bias_num_entries_to_well_1min.append(
+                session.probe_well_num_entries_1min[i] - session.probe_well_num_entries_1min[cw_idx])
+            session.probe_persev_bias_total_dwell_time_1min.append(
+                session.probe_well_total_dwell_times_1min[i] - session.probe_well_total_dwell_times_1min[cw_idx])
+            session.probe_persev_bias_avg_dwell_time_1min.append(
+                session.probe_well_avg_dwell_times_1min[i] - session.probe_well_avg_dwell_times_1min[cw_idx])
+
+            session.probe_persev_bias_mean_dist_to_well_30sec.append(session.probe_mean_dist_to_wells_30sec[i] -
+                                                                     session.probe_mean_dist_to_wells_30sec[cw_idx])
+            session.probe_persev_bias_num_entries_to_well_30sec.append(
+                session.probe_well_num_entries_30sec[i] - session.probe_well_num_entries_30sec[cw_idx])
+            session.probe_persev_bias_total_dwell_time_30sec.append(
+                session.probe_well_total_dwell_times_30sec[i] - session.probe_well_total_dwell_times_30sec[cw_idx])
+            session.probe_persev_bias_avg_dwell_time_30sec.append(
+                session.probe_well_avg_dwell_times_30sec[i] - session.probe_well_avg_dwell_times_30sec[cw_idx])
 
         # ===================================
         # Now save this session
