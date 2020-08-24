@@ -11,13 +11,16 @@ else:
     raise Exception
 output_dir = "./"
 
-REST_OF_FILE = "\nThresh: Low\nLast Away: \nLast well: \nITI Stim On: \nProbe Stim On: \n"
+REST_OF_FILE = "\nThresh: Low\nLast Away: \nLast well: \nITI Stim On: \nProbe Stim On: \nWeight: \n"
 
 all_wells = [i + 1 for i in range(48) if not i % 8 in [0, 7]]
-broken_wells = [2, 4, 6, 7, 18, 20, 42, 29, 31, 39, 37, 47, 27]
+# broken_wells = [2, 4, 6, 7, 18, 20, 42, 29, 31, 39, 37, 47, 27]
+broken_wells = [2, 3, 4, 20, 42, 34]
 working_wells = set(all_wells) - set(broken_wells)
 
 thisday = first_day
+
+NUM_AWAY_WELLS_PER_SESSION = 10
 
 day_condition_order = [0, 1, 2, 3]
 for di in range(NUM_DAYS):
@@ -27,7 +30,8 @@ for di in range(NUM_DAYS):
     this_day_condition_order = [not (dc & 1), not (dc & 2)]
 
     for ri in range(RUNS_PER_DAY):
-        wells = list(map(lambda i: str(i), rd.sample(working_wells, 10)))
+        wells = list(map(lambda i: str(i), rd.sample(
+            working_wells, NUM_AWAY_WELLS_PER_SESSION + 1)))
         if this_day_condition_order[ri]:
             condition = "Interruption"
         else:
