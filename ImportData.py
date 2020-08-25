@@ -7,6 +7,7 @@ import glob
 import json
 import matplotlib.pyplot as plt
 import random
+import scipy
 # import MountainViewIO
 # import InterruptionAnalysis
 
@@ -16,6 +17,7 @@ INSPECT_NANVALS = False
 INSPECT_PROBE_BEHAVIOR_PLOT = False
 INSPECT_PLOT_WELL_OCCUPANCIES = False
 ENFORCE_DIFFERENT_WELL_COLORS = False
+INSPECT_BOUTS = True
 
 TEST_NEAREST_WELL = False
 
@@ -72,6 +74,12 @@ LFP_SAMPLING_RATE = 1500.0
 MIN_ARTIFACT_PERIOD = int(0.1 * LFP_SAMPLING_RATE)
 # Typical duration of a Sharp-Wave Ripple
 ACCEPTED_RIPPLE_LENGTH = int(0.2 * LFP_SAMPLING_RATE)
+
+# constants for exploration bout analysis
+BOUT_VEL_SM_SIGMA_SECS = 0.5
+PAUSE_MAX_SPEED_CM_S = 5.0
+MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS = 1.0
+MIN_EXPLORE_TIME_SECS = 1.0
 
 
 # def readPositionData(data_filename):
@@ -1026,6 +1034,101 @@ if __name__ == "__main__":
                 session.probe_well_avg_dwell_times_30sec[i] - session.probe_well_avg_dwell_times_30sec[cw_idx])
 
         # ===================================
+        # exploration bouts
+        # ===================================
+
+        POS_FRAME_RATE = np.mode(
+            np.diff(session.bt_pos_ts)) / float(TRODES_SAMPLING_RATE)
+        BOUT_VEL_SM_SIGMA = BOUT_VEL_SM_SIGMA_SECS / POS_FRAME_RATE
+        MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS = 1.0
+        MIN_PAUSE_TIME_FRAMES = int(
+            MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS / POS_FRAME_RATE)
+        MIN_EXPLORE_TIME_FRAMES = int(MIN_EXPLORE_TIME_SECS / POS_FRAME_RATE)
+
+        bt_sm_vel = scipy.ndimage.gaussian_filter1d(
+            session.bt_vel_cm_s, BOUT_VEL_SM_SIGMA)
+
+        is_explore_local = bt_sm_vel > PAUSE_MAX_SPEED_CM_S
+        dil_filt = np.ones((1, MIN_PAUSE_TIME_FRAMES), dtype=int)
+        print(dil_filt.shape, bt_sm_vel.shape)
+        in_pause_bout = np.logical_not(scipy.signal.convolve(
+            is_explore_local.astype(int), dil_filt).astype(bool))
+        # now just undo dilation to get flags
+        is_in_pause = scipy.signal.convolve(
+            in_pause_bout.astype(int), dil_filt).astype(bool)
+        is_in_explore = np.logical_not(is_in_pause)
+
+        assert np.sum(np.isnan(is_in_pause)) == 0
+        assert np.sum(np.isnan(is_in_explore)) == 0
+
+        start_explores = np.where(
+            np.diff(is_in_explore.astype(int)) == 1)[0] + 1
+        if is_in_explore[0]:
+            start_explores = np.insert(start_explores, 0, 0)
+
+        stop_explores = np.where(
+            np.diff(is_in_explore.astype(int)) == -1)[0] + 1
+        if is_in_explore[-1]:
+            stop_explores = np.append(stop_explores, len(is_in_explore))
+
+        bout_len_frames = stop_explores - start_explores
+
+        long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
+        session.bt_explore_bout_starts = start_explores[long_enough]
+        session.bt_explore_bout_ends = stop_explores[long_enough]
+        session.bt_explore_bout_lens = session.bt_explore_bout_ends - \
+            session.bt_explore_bout_starts
+
+        session.bt_bout_count_by_well = np.zeros((1, np.max(all_well_idxs)+1))
+        session.bt_num_bouts = len(session.bt_explore_bout_ends)
+        for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
+            wells_visited = set(session.bt_nearest_wells[bst:ben])
+            for w in wells_visited:
+                session.bt_bout_count_by_well[w] += 1
+
+        probe_sm_vel = scipy.ndimage.gaussian_filter1d(
+            session.probe_vel_cm_s, BOUT_VEL_SM_SIGMA)
+
+        is_explore_local = probe_sm_vel > PAUSE_MAX_SPEED_CM_S
+        dil_filt = np.ones((1, MIN_PAUSE_TIME_FRAMES), dtype=int)
+        print(dil_filt.shape, probe_sm_vel.shape)
+        in_pause_bout = np.logical_not(scipy.signal.convolve(
+            is_explore_local.astype(int), dil_filt).astype(bool))
+        # now just undo dilation to get flags
+        is_in_pause = scipy.signal.convolve(
+            in_pause_bout.astype(int), dil_filt).astype(bool)
+        is_in_explore = np.logical_not(is_in_pause)
+
+        assert np.sum(np.isnan(is_in_pause)) == 0
+        assert np.sum(np.isnan(is_in_explore)) == 0
+
+        start_explores = np.where(
+            np.diff(is_in_explore.astype(int)) == 1)[0] + 1
+        if is_in_explore[0]:
+            start_explores = np.insert(start_explores, 0, 0)
+
+        stop_explores = np.where(
+            np.diff(is_in_explore.astype(int)) == -1)[0] + 1
+        if is_in_explore[-1]:
+            stop_explores = np.append(stop_explores, len(is_in_explore))
+
+        bout_len_frames = stop_explores - start_explores
+
+        long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
+        session.probe_explore_bout_starts = start_explores[long_enough]
+        session.probe_explore_bout_ends = stop_explores[long_enough]
+        session.probe_explore_bout_lens = session.probe_explore_bout_ends - \
+            session.probe_explore_bout_starts
+
+        session.probe_bout_count_by_well = np.zeros(
+            (1, np.max(all_well_idxs)+1))
+        session.probe_num_bouts = len(session.probe_explore_bout_ends)
+        for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
+            wells_visited = set(session.probe_nearest_wells[bst:ben])
+            for w in wells_visited:
+                session.probe_bout_count_by_well[w] += 1
+
+        # ===================================
         # Now save this session
         # ===================================
         dataob.allSessions.append(session)
@@ -1034,6 +1137,41 @@ if __name__ == "__main__":
         # extra plotting stuff
         # ===================================
         if session.date_str in INSPECT_IN_DETAIL:
+            if INSPECT_BOUTS:
+                print("{} probe bouts, {} bt bouts".format(
+                    session.probe_num_bouts, session.bt_num_bouts))
+                x1 = session.probe_pos_ts[0:-1]
+                y1 = probe_sm_vel
+                x2 = x1
+                y2 = y1
+                x1[is_in_explore] = np.nan
+                y1[is_in_explore] = np.nan
+                x2[is_in_pause] = np.nan
+                y2[is_in_pause] = np.nan
+                plt.clf()
+                plt.plot(x1, y1)
+                plt.plot(x2, y2)
+
+                mny = np.min(probe_sm_vel)
+                mxy = np.max(probe_sm_vel)
+                for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
+                    plt.plot([bst, bst], [mny, mxy], 'b')
+                    plt.plot([ben, ben], [mny, mxy], 'r')
+                plt.show()
+
+                for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
+                    plt.clf()
+                    plt.plot(session.probe_pos_xs, session.probe_pos_ys)
+                    plt.plot(
+                        session.probe_pos_xs[bst:ben], session.probe_pos_ys[bst:ben])
+
+                    wells_visited = set(session.probe_nearest_wells[bst:ben])
+                    for w in wells_visited:
+                        wx, wy = get_well_coordinates(w)
+                        plt.scatter(wx, wy, 'r')
+
+                    plt.show()
+
             if INSPECT_NANVALS:
                 print("{} nan xs, {} nan ys, {} nan ts".format(sum(np.isnan(session.probe_pos_xs)),
                                                                sum(np.isnan(
