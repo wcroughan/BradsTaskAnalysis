@@ -8,9 +8,12 @@ import json
 import matplotlib.pyplot as plt
 import random
 import scipy
+from scipy import stats, signal
+from itertools import groupby
 # import MountainViewIO
 # import InterruptionAnalysis
 
+INSPECT_ALL = False
 INSPECT_IN_DETAIL = []
 # INSPECT_IN_DETAIL = ["20200526"]
 INSPECT_NANVALS = False
@@ -20,6 +23,8 @@ ENFORCE_DIFFERENT_WELL_COLORS = False
 RUN_JUST_SPECIFIED = False
 SPECIFIED_DAYS = ["20200604"]
 INSPECT_BOUTS = True
+SAVE_DONT_SHOW = True
+SHOW_CURVATURE_VIDEO = False
 
 TEST_NEAREST_WELL = False
 
@@ -37,6 +42,7 @@ excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
 
 animal_name = 'Martin'
 output_dir = '/media/WDC4/martindata/bradtask/'
+fig_output_dir = '/media/WDC4/martindata/processed_data'
 out_filename = "martin_bradtask.dat"
 
 if os.path.exists(os.path.join(output_dir, out_filename)):
@@ -45,8 +51,13 @@ if os.path.exists(os.path.join(output_dir, out_filename)):
     if confirm != "y":
         exit()
 
-all_well_idxs = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
+all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 all_quadrant_idxs = [0, 1, 2, 3]
+well_name_to_idx = np.empty((np.max(all_well_names)+1))
+well_name_to_idx[:] = np.nan
+for widx, wname in enumerate(all_well_names):
+    well_name_to_idx[wname] = widx
+
 
 MAX_JUMP_DISTANCE = 50
 N_CLEANING_REPS = 2
@@ -72,11 +83,22 @@ MIN_ARTIFACT_PERIOD = int(0.1 * LFP_SAMPLING_RATE)
 ACCEPTED_RIPPLE_LENGTH = int(0.2 * LFP_SAMPLING_RATE)
 
 # constants for exploration bout analysis
-BOUT_VEL_SM_SIGMA_SECS = 0.5
-PAUSE_MAX_SPEED_CM_S = 5.0
-MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS = 1.0
-MIN_EXPLORE_TIME_SECS = 1.0
+# raise Exception("try longer sigmas here")
+BOUT_VEL_SM_SIGMA_SECS = 1.5
+PAUSE_MAX_SPEED_CM_S = 8.0
+MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS = 2.5
+MIN_EXPLORE_TIME_SECS = 3.0
+MIN_EXPLORE_NUM_WELLS = 4
+# COUNT_ONE_WELL_VISIT_PER_BOUT = False
 
+# constants for ballisticity
+# BALL_TIME_INTERVALS = list(range(1, 12, 3))
+BALL_TIME_INTERVALS = list(range(1, 24))
+# KNOT_H_CM = 20.0
+KNOT_H_CM = 8.0
+KNOT_H_POS = KNOT_H_CM * PIXELS_PER_CM
+
+DIST_TO_HOME_RESOLUTION = 30
 
 # def readPositionData(data_filename):
 #     trajectory_data = None
@@ -102,6 +124,8 @@ MIN_EXPLORE_TIME_SECS = 1.0
 #     return trajectory_data
 
 # well_coords_file = '/home/wcroughan/repos/BradsTaskAnalysis/well_locations.csv'
+
+
 def readWellCoordsFile(well_coords_file):
     with open(well_coords_file, 'r') as wcf:
         well_coords_map = {}
@@ -239,7 +263,7 @@ def getMedianDistToWell(xs, ys, wellx, welly, duration=-1, ts=np.array([])):
 
 def getMeanDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
     res = []
-    for wi in all_well_idxs:
+    for wi in all_well_names:
         wx, wy = get_well_coordinates(wi, well_coords)
         res.append(getMeanDistToWell(np.array(xs), np.array(
             ys), wx, wy, duration=duration, ts=np.array(ts)))
@@ -249,7 +273,7 @@ def getMeanDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
 
 def getMedianDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
     res = []
-    for wi in all_well_idxs:
+    for wi in all_well_names:
         wx, wy = get_well_coordinates(wi, well_coords)
         res.append(getMedianDistToWell(np.array(xs), np.array(
             ys), wx, wy, duration=duration, ts=np.array(ts)))
@@ -257,7 +281,7 @@ def getMedianDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
     return res
 
 
-def getNearestWell(xs, ys, well_coords, well_idxs=all_well_idxs):
+def getNearestWell(xs, ys, well_coords, well_idxs=all_well_names):
     well_coords = np.array([get_well_coordinates(i, well_coords) for i in well_idxs])
     tiled_x = np.tile(xs, (len(well_idxs), 1)).T  # each row is one time point
     tiled_y = np.tile(ys, (len(well_idxs), 1)).T
@@ -309,7 +333,7 @@ if __name__ == "__main__" and TEST_NEAREST_WELL:
     # exit()
 
 
-def getWellEntryAndExitTimes(nearest_wells, ts, well_idxs=all_well_idxs, include_neighbors=False):
+def getWellEntryAndExitTimes(nearest_wells, ts, well_idxs=all_well_names, include_neighbors=False):
     entry_times = []
     exit_times = []
     entry_idxs = []
@@ -321,7 +345,7 @@ def getWellEntryAndExitTimes(nearest_wells, ts, well_idxs=all_well_idxs, include
         # same for first point should count as entry, prepending
         if include_neighbors:
             neighbors = list({wi, wi-1, wi+1, wi-7, wi-8, wi-9,
-                              wi+7, wi+8, wi+9}.intersection(all_well_idxs))
+                              wi+7, wi+8, wi+9}.intersection(all_well_names))
             near_well = np.concatenate(([False], np.isin(nearest_wells, neighbors), [False]))
         else:
             near_well = np.concatenate(([False], nearest_wells == wi, [False]))
@@ -369,6 +393,13 @@ def quadrantOfWell(well_idx):
         res += 1
 
     return res
+
+
+def getListOfVisitedWells(nearestWells, countFirstVisitOnly):
+    if countFirstVisitOnly:
+        return list(set(nearestWells))
+    else:
+        return [k for k, g in groupby(nearestWells)]
 
 
 if __name__ == "__main__":
@@ -714,14 +745,14 @@ if __name__ == "__main__":
             getWellEntryAndExitTimes(
                 session.bt_quadrants, session.bt_pos_ts, well_idxs=[0, 1, 2, 3])
 
-        for i in range(len(all_well_idxs)):
+        for i in range(len(all_well_names)):
             # print("well {} had {} entries, {} exits".format(
-            #     all_well_idxs[i], len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
+            #     all_well_names[i], len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
             assert len(session.bt_well_entry_times[i]) == len(
                 session.bt_well_exit_times[i])
 
-        session.home_well_idx_in_allwells = np.argmax(all_well_idxs == session.home_well)
-        session.ctrl_home_well_idx_in_allwells = np.argmax(all_well_idxs == session.ctrl_home_well)
+        session.home_well_idx_in_allwells = np.argmax(all_well_names == session.home_well)
+        session.ctrl_home_well_idx_in_allwells = np.argmax(all_well_names == session.ctrl_home_well)
 
         session.bt_home_well_entry_times = session.bt_well_entry_times[session.home_well_idx_in_allwells]
         session.bt_home_well_exit_times = session.bt_well_exit_times[session.home_well_idx_in_allwells]
@@ -749,7 +780,7 @@ if __name__ == "__main__":
             session.probe_quadrant_entry_times, session.probe_quadrant_exit_times = getWellEntryAndExitTimes(
                 session.probe_quadrants, session.probe_pos_ts, well_idxs=[0, 1, 2, 3])
 
-        for i in range(len(all_well_idxs)):
+        for i in range(len(all_well_names)):
             # print(i, len(session.probe_well_entry_times[i]), len(session.probe_well_exit_times[i]))
             assert len(session.probe_well_entry_times[i]) == len(
                 session.probe_well_exit_times[i])
@@ -993,10 +1024,437 @@ if __name__ == "__main__":
             session.ctrl_home_well_idx_in_allwells]
 
         # ===================================
+        # Ballisticity of movements
+        # ===================================
+
+        furthest_interval = max(BALL_TIME_INTERVALS)
+        assert np.all(np.diff(np.array(BALL_TIME_INTERVALS)) > 0)
+        assert BALL_TIME_INTERVALS[0] > 0
+
+        # idx is (time, interval len, dimension)
+        d1 = len(session.bt_pos_ts) - furthest_interval
+        delta = np.empty((d1, furthest_interval, 2))
+        delta[:] = np.nan
+        dx = np.diff(session.bt_pos_xs)
+        dy = np.diff(session.bt_pos_ys)
+        delta[:, 0, 0] = dx[0:d1]
+        delta[:, 0, 1] = dy[0:d1]
+
+        for i in range(1, furthest_interval):
+            delta[:, i, 0] = delta[:, i-1, 0] + dx[i:i+d1]
+            delta[:, i, 1] = delta[:, i-1, 1] + dy[i:i+d1]
+
+        displacement = np.sqrt(np.sum(np.square(delta), axis=2))
+        last_displacement = displacement[:, -1]
+        session.bt_ball_displacement = last_displacement
+
+        x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
+        y = np.log(displacement)
+        assert np.all(np.logical_or(np.logical_not(np.isnan(y)), displacement == 0))
+        y[y == -np.inf] = np.nan
+        np.nan_to_num(y, copy=False, nan=np.nanmin(y))
+
+        x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
+        y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
+        def m(arg): return np.mean(arg, axis=1)
+        # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
+        beta = m(y*x)/m(np.power(x, 2))
+        session.bt_ballisticity = beta
+        assert np.sum(np.isnan(session.bt_ballisticity)) == 0
+
+        # idx is (time, interval len, dimension)
+        d1 = len(session.probe_pos_ts) - furthest_interval
+        delta = np.empty((d1, furthest_interval, 2))
+        delta[:] = np.nan
+        dx = np.diff(session.probe_pos_xs)
+        dy = np.diff(session.probe_pos_ys)
+        delta[:, 0, 0] = dx[0:d1]
+        delta[:, 0, 1] = dy[0:d1]
+
+        for i in range(1, furthest_interval):
+            delta[:, i, 0] = delta[:, i-1, 0] + dx[i:i+d1]
+            delta[:, i, 1] = delta[:, i-1, 1] + dy[i:i+d1]
+
+        displacement = np.sqrt(np.sum(np.square(delta), axis=2))
+        last_displacement = displacement[:, -1]
+        session.probe_ball_displacement = last_displacement
+
+        x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
+        y = np.log(displacement)
+        assert np.all(np.logical_or(np.logical_not(np.isnan(y)), displacement == 0))
+        y[y == -np.inf] = np.nan
+        np.nan_to_num(y, copy=False, nan=np.nanmin(y))
+
+        x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
+        y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
+        # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
+        beta = m(y*x)/m(np.power(x, 2))
+        session.probe_ballisticity = beta
+        assert np.sum(np.isnan(session.probe_ballisticity)) == 0
+
+        session.bt_well_ballisticities = []
+        session.bt_well_avg_ballisticity_over_time = []
+        session.bt_well_avg_ballisticity_over_visits = []
+        for i, wi in enumerate(all_well_names):
+            session.bt_well_ballisticities.append([])
+            for ei, (weni, wexi) in enumerate(zip(session.bt_well_entry_idxs[i], session.bt_well_exit_idxs[i])):
+                if wexi > session.bt_ballisticity.size:
+                    continue
+                session.bt_well_ballisticities[i].append(session.bt_ballisticity[weni:wexi])
+
+            session.bt_well_avg_ballisticity_over_time.append(
+                np.mean(np.concatenate(session.bt_well_ballisticities[i])))
+            session.bt_well_avg_ballisticity_over_visits.append(
+                np.mean([np.mean(x) for x in session.bt_well_ballisticities[i]]))
+
+        session.probe_well_ballisticities = []
+        session.probe_well_avg_ballisticity_over_time = []
+        session.probe_well_avg_ballisticity_over_visits = []
+        session.probe_well_ballisticities_1min = []
+        session.probe_well_avg_ballisticity_over_time_1min = []
+        session.probe_well_avg_ballisticity_over_visits_1min = []
+        session.probe_well_ballisticities_30sec = []
+        session.probe_well_avg_ballisticity_over_time_30sec = []
+        session.probe_well_avg_ballisticity_over_visits_30sec = []
+        for i, wi in enumerate(all_well_names):
+            session.probe_well_ballisticities.append([])
+            session.probe_well_ballisticities_1min.append([])
+            session.probe_well_ballisticities_30sec.append([])
+            for ei, (weni, wexi) in enumerate(zip(session.probe_well_entry_idxs[i], session.probe_well_exit_idxs[i])):
+                if wexi > session.probe_ballisticity.size:
+                    continue
+                session.probe_well_ballisticities[i].append(session.probe_ballisticity[weni:wexi])
+                if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+                    session.probe_well_ballisticities_1min[i].append(
+                        session.probe_ballisticity[weni:wexi])
+                if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+                    session.probe_well_ballisticities_30sec[i].append(
+                        session.probe_ballisticity[weni:wexi])
+
+            if len(session.probe_well_ballisticities[i]) > 0:
+                session.probe_well_avg_ballisticity_over_time.append(
+                    np.mean(np.concatenate(session.probe_well_ballisticities[i])))
+                session.probe_well_avg_ballisticity_over_visits.append(
+                    np.mean([np.mean(x) for x in session.probe_well_ballisticities[i]]))
+            else:
+                session.probe_well_avg_ballisticity_over_time.append(np.nan)
+                session.probe_well_avg_ballisticity_over_visits.append(np.nan)
+
+            if len(session.probe_well_ballisticities_1min[i]) > 0:
+                session.probe_well_avg_ballisticity_over_time_1min.append(
+                    np.mean(np.concatenate(session.probe_well_ballisticities_1min[i])))
+                session.probe_well_avg_ballisticity_over_visits_1min.append(
+                    np.mean([np.mean(x) for x in session.probe_well_ballisticities_1min[i]]))
+            else:
+                session.probe_well_avg_ballisticity_over_time_1min.append(np.nan)
+                session.probe_well_avg_ballisticity_over_visits_1min.append(np.nan)
+
+            if len(session.probe_well_ballisticities_30sec[i]) > 0:
+                session.probe_well_avg_ballisticity_over_time_30sec.append(
+                    np.mean(np.concatenate(session.probe_well_ballisticities_30sec[i])))
+                session.probe_well_avg_ballisticity_over_visits_30sec.append(
+                    np.mean([np.mean(x) for x in session.probe_well_ballisticities_30sec[i]]))
+            else:
+                session.probe_well_avg_ballisticity_over_time_30sec.append(np.nan)
+                session.probe_well_avg_ballisticity_over_visits_30sec.append(np.nan)
+
+        # ballisticity as a function of distance to home well
+        hwx, hwy = session.well_coords_map[session.home_well]
+        bt_dist_to_home_well = np.sqrt(np.power(hwx - np.array(session.bt_pos_xs), 2) +
+                                       np.power(hwy - np.array(session.bt_pos_ys), 2))
+        chwx, chwy = session.well_coords_map[session.ctrl_home_well]
+        bt_dist_to_ctrl_home_well = np.sqrt(np.power(chwx - np.array(session.bt_pos_xs), 2) +
+                                            np.power(chwy - np.array(session.bt_pos_ys), 2))
+
+        dd = len(session.bt_pos_xs) - session.bt_ballisticity.size
+        ball_padded = np.pad(session.bt_ballisticity, (int(
+            np.floor(float(dd)/2.0)), int(np.ceil(float(dd)/2.0))))
+
+        session.bt_ball_by_dist_to_home_xvals = np.array(
+            range(0, int(np.ceil(np.max(bt_dist_to_home_well))), DIST_TO_HOME_RESOLUTION))
+        session.bt_ball_by_dist_to_home = np.zeros(
+            (len(session.bt_ball_by_dist_to_home_xvals)))
+        session.bt_ball_by_dist_to_ctrl_home = np.zeros(
+            (len(session.bt_ball_by_dist_to_home_xvals)))
+        session.bt_ball_by_dist_to_home_sem = np.zeros(
+            (len(session.bt_ball_by_dist_to_home_xvals)))
+        session.bt_ball_by_dist_to_ctrl_home_sem = np.zeros(
+            (len(session.bt_ball_by_dist_to_home_xvals)))
+        for i, d in enumerate(session.bt_ball_by_dist_to_home_xvals):
+            flag = np.logical_and(bt_dist_to_home_well >= d,
+                                  bt_dist_to_home_well < d + DIST_TO_HOME_RESOLUTION)
+            session.bt_ball_by_dist_to_home[i] = np.nanmean(ball_padded[flag])
+            session.bt_ball_by_dist_to_home_sem[i] = np.nanstd(
+                ball_padded[flag]) / np.sqrt(np.count_nonzero(flag))
+
+            cflag = np.logical_and(bt_dist_to_ctrl_home_well >= d,
+                                   bt_dist_to_ctrl_home_well < d + DIST_TO_HOME_RESOLUTION)
+            session.bt_ball_by_dist_to_ctrl_home[i] = np.nanmean(ball_padded[cflag])
+            session.bt_ball_by_dist_to_ctrl_home_sem[i] = np.nanstd(
+                ball_padded[cflag]) / np.sqrt(np.count_nonzero(cflag))
+
+        hwx, hwy = session.well_coords_map[session.home_well]
+        probe_dist_to_home_well = np.sqrt(np.power(hwx - np.array(session.probe_pos_xs), 2) +
+                                          np.power(hwy - np.array(session.probe_pos_ys), 2))
+        chwx, chwy = session.well_coords_map[session.ctrl_home_well]
+        probe_dist_to_ctrl_home_well = np.sqrt(np.power(chwx - np.array(session.probe_pos_xs), 2) +
+                                               np.power(chwy - np.array(session.probe_pos_ys), 2))
+
+        dd = len(session.probe_pos_xs) - session.probe_ballisticity.size
+        ball_padded = np.pad(session.probe_ballisticity, (int(
+            np.floor(float(dd)/2.0)), int(np.ceil(float(dd)/2.0))))
+
+        session.probe_ball_by_dist_to_home_xvals = np.array(
+            range(0, int(np.ceil(np.max(probe_dist_to_home_well))), DIST_TO_HOME_RESOLUTION))
+        session.probe_ball_by_dist_to_home = np.zeros(
+            (len(session.probe_ball_by_dist_to_home_xvals)))
+        session.probe_ball_by_dist_to_ctrl_home = np.zeros(
+            (len(session.probe_ball_by_dist_to_home_xvals)))
+        session.probe_ball_by_dist_to_home_sem = np.zeros(
+            (len(session.probe_ball_by_dist_to_home_xvals)))
+        session.probe_ball_by_dist_to_ctrl_home_sem = np.zeros(
+            (len(session.probe_ball_by_dist_to_home_xvals)))
+        for i, d in enumerate(session.probe_ball_by_dist_to_home_xvals):
+            flag = np.logical_and(probe_dist_to_home_well >= d,
+                                  probe_dist_to_home_well < d + DIST_TO_HOME_RESOLUTION)
+            session.probe_ball_by_dist_to_home[i] = np.nanmean(ball_padded[flag])
+            session.probe_ball_by_dist_to_home_sem[i] = np.nanstd(
+                ball_padded[flag]) / np.sqrt(np.count_nonzero(flag))
+
+            cflag = np.logical_and(probe_dist_to_ctrl_home_well >= d,
+                                   probe_dist_to_ctrl_home_well < d + DIST_TO_HOME_RESOLUTION)
+            session.probe_ball_by_dist_to_ctrl_home[i] = np.nanmean(ball_padded[cflag])
+            session.probe_ball_by_dist_to_ctrl_home_sem[i] = np.nanstd(
+                ball_padded[cflag]) / np.sqrt(np.count_nonzero(cflag))
+
+        # ===================================
+        # Knot-path-curvature as in https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000638
+        # ===================================
+
+        dx = np.diff(session.bt_pos_xs)
+        dy = np.diff(session.bt_pos_ys)
+
+        if SHOW_CURVATURE_VIDEO:
+            cmap = plt.cm.get_cmap('coolwarm')
+            fig = plt.figure()
+            plt.ion()
+
+        session.bt_curvature = np.empty((dx.size+1))
+        session.bt_curvature_i1 = np.empty((dx.size+1))
+        session.bt_curvature_i2 = np.empty((dx.size+1))
+        session.bt_curvature_dxf = np.empty((dx.size+1))
+        session.bt_curvature_dyf = np.empty((dx.size+1))
+        session.bt_curvature_dxb = np.empty((dx.size+1))
+        session.bt_curvature_dyb = np.empty((dx.size+1))
+        for pi in range(dx.size+1):
+            x0 = session.bt_pos_xs[pi]
+            y0 = session.bt_pos_ys[pi]
+            ii = pi
+            dxf = 0.0
+            dyf = 0.0
+            while ii < dx.size:
+                dxf += dx[ii]
+                dyf += dy[ii]
+                magf = dxf * dxf + dyf * dyf
+                if magf >= KNOT_H_POS * KNOT_H_POS:
+                    break
+                ii += 1
+            if ii == dx.size:
+                session.bt_curvature[pi] = np.nan
+                session.bt_curvature_i1[pi] = np.nan
+                session.bt_curvature_i2[pi] = np.nan
+                session.bt_curvature_dxf[pi] = np.nan
+                session.bt_curvature_dyf[pi] = np.nan
+                session.bt_curvature_dxb[pi] = np.nan
+                session.bt_curvature_dyb[pi] = np.nan
+                continue
+            i2 = ii
+
+            ii = pi - 1
+            dxb = 0.0
+            dyb = 0.0
+            while ii >= 0:
+                dxb += dx[ii]
+                dyb += dy[ii]
+                magb = dxb * dxb + dyb * dyb
+                if magb >= KNOT_H_POS * KNOT_H_POS:
+                    break
+                ii -= 1
+            if ii == -1:
+                session.bt_curvature[pi] = np.nan
+                session.bt_curvature_i1[pi] = np.nan
+                session.bt_curvature_i2[pi] = np.nan
+                session.bt_curvature_dxf[pi] = np.nan
+                session.bt_curvature_dyf[pi] = np.nan
+                session.bt_curvature_dxb[pi] = np.nan
+                session.bt_curvature_dyb[pi] = np.nan
+                continue
+            i1 = ii
+
+            uxf = dxf / np.sqrt(magf)
+            uyf = dyf / np.sqrt(magf)
+            uxb = dxb / np.sqrt(magb)
+            uyb = dyb / np.sqrt(magb)
+            dotprod = uxf * uxb + uyf * uyb
+            session.bt_curvature[pi] = np.arccos(dotprod)
+
+            session.bt_curvature_i1[pi] = i1
+            session.bt_curvature_i2[pi] = i2
+            session.bt_curvature_dxf[pi] = dxf
+            session.bt_curvature_dyf[pi] = dyf
+            session.bt_curvature_dxb[pi] = dxb
+            session.bt_curvature_dyb[pi] = dyb
+
+            if SHOW_CURVATURE_VIDEO:
+                plt.clf()
+                plt.xlim(0, 1200)
+                plt.ylim(0, 1000)
+                plt.plot(session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2])
+                c = np.array(cmap(session.bt_curvature[pi] / 3.15)).reshape(1, -1)
+                plt.scatter(session.bt_pos_xs[pi], session.bt_pos_ys[pi], c=c)
+                plt.show()
+                plt.pause(0.01)
+
+        dx = np.diff(session.probe_pos_xs)
+        dy = np.diff(session.probe_pos_ys)
+
+        session.probe_curvature = np.empty((dx.size+1))
+        session.probe_curvature_i1 = np.empty((dx.size+1))
+        session.probe_curvature_i2 = np.empty((dx.size+1))
+        session.probe_curvature_dxf = np.empty((dx.size+1))
+        session.probe_curvature_dyf = np.empty((dx.size+1))
+        session.probe_curvature_dxb = np.empty((dx.size+1))
+        session.probe_curvature_dyb = np.empty((dx.size+1))
+        for pi in range(dx.size+1):
+            x0 = session.probe_pos_xs[pi]
+            y0 = session.probe_pos_ys[pi]
+            ii = pi
+            dxf = 0.0
+            dyf = 0.0
+            while ii < dx.size:
+                dxf += dx[ii]
+                dyf += dy[ii]
+                magf = np.sqrt(dxf * dxf + dyf * dyf)
+                if magf >= KNOT_H_POS:
+                    break
+                ii += 1
+            if ii == dx.size:
+                session.probe_curvature[pi] = np.nan
+                session.probe_curvature_i1[pi] = np.nan
+                session.probe_curvature_i2[pi] = np.nan
+                session.probe_curvature_dxf[pi] = np.nan
+                session.probe_curvature_dyf[pi] = np.nan
+                session.probe_curvature_dxb[pi] = np.nan
+                session.probe_curvature_dyb[pi] = np.nan
+                continue
+            i2 = ii
+
+            ii = pi - 1
+            dxb = 0.0
+            dyb = 0.0
+            while ii >= 0:
+                dxb += dx[ii]
+                dyb += dy[ii]
+                magb = np.sqrt(dxb * dxb + dyb * dyb)
+                if magb >= KNOT_H_POS:
+                    break
+                ii -= 1
+            if ii == -1:
+                session.probe_curvature[pi] = np.nan
+                session.probe_curvature_i1[pi] = np.nan
+                session.probe_curvature_i2[pi] = np.nan
+                session.probe_curvature_dxf[pi] = np.nan
+                session.probe_curvature_dyf[pi] = np.nan
+                session.probe_curvature_dxb[pi] = np.nan
+                session.probe_curvature_dyb[pi] = np.nan
+                continue
+            i1 = ii
+
+            uxf = dxf / magf
+            uyf = dyf / magf
+            uxb = dxb / magb
+            uyb = dyb / magb
+            dotprod = uxf * uxb + uyf * uyb
+            session.probe_curvature[pi] = np.arccos(dotprod)
+
+            session.probe_curvature_i1[pi] = i1
+            session.probe_curvature_i2[pi] = i2
+            session.probe_curvature_dxf[pi] = dxf
+            session.probe_curvature_dyf[pi] = dyf
+            session.probe_curvature_dxb[pi] = dxb
+            session.probe_curvature_dyb[pi] = dyb
+
+        session.bt_well_curvatures = []
+        session.bt_well_avg_curvature_over_time = []
+        session.bt_well_avg_curvature_over_visits = []
+        for i, wi in enumerate(all_well_names):
+            session.bt_well_curvatures.append([])
+            for ei, (weni, wexi) in enumerate(zip(session.bt_well_entry_idxs[i], session.bt_well_exit_idxs[i])):
+                if wexi > session.bt_curvature.size:
+                    continue
+                session.bt_well_curvatures[i].append(session.bt_curvature[weni:wexi])
+
+            session.bt_well_avg_curvature_over_time.append(
+                np.mean(np.concatenate(session.bt_well_curvatures[i])))
+            session.bt_well_avg_curvature_over_visits.append(
+                np.mean([np.mean(x) for x in session.bt_well_curvatures[i]]))
+
+        session.probe_well_curvatures = []
+        session.probe_well_avg_curvature_over_time = []
+        session.probe_well_avg_curvature_over_visits = []
+        session.probe_well_curvatures_1min = []
+        session.probe_well_avg_curvature_over_time_1min = []
+        session.probe_well_avg_curvature_over_visits_1min = []
+        session.probe_well_curvatures_30sec = []
+        session.probe_well_avg_curvature_over_time_30sec = []
+        session.probe_well_avg_curvature_over_visits_30sec = []
+        for i, wi in enumerate(all_well_names):
+            session.probe_well_curvatures.append([])
+            session.probe_well_curvatures_1min.append([])
+            session.probe_well_curvatures_30sec.append([])
+            for ei, (weni, wexi) in enumerate(zip(session.probe_well_entry_idxs[i], session.probe_well_exit_idxs[i])):
+                if wexi > session.probe_curvature.size:
+                    continue
+                session.probe_well_curvatures[i].append(session.probe_curvature[weni:wexi])
+                if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+                    session.probe_well_curvatures_1min[i].append(
+                        session.probe_curvature[weni:wexi])
+                if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+                    session.probe_well_curvatures_30sec[i].append(
+                        session.probe_curvature[weni:wexi])
+
+            if len(session.probe_well_curvatures[i]) > 0:
+                session.probe_well_avg_curvature_over_time.append(
+                    np.mean(np.concatenate(session.probe_well_curvatures[i])))
+                session.probe_well_avg_curvature_over_visits.append(
+                    np.mean([np.mean(x) for x in session.probe_well_curvatures[i]]))
+            else:
+                session.probe_well_avg_curvature_over_time.append(np.nan)
+                session.probe_well_avg_curvature_over_visits.append(np.nan)
+
+            if len(session.probe_well_curvatures_1min[i]) > 0:
+                session.probe_well_avg_curvature_over_time_1min.append(
+                    np.mean(np.concatenate(session.probe_well_curvatures_1min[i])))
+                session.probe_well_avg_curvature_over_visits_1min.append(
+                    np.mean([np.mean(x) for x in session.probe_well_curvatures_1min[i]]))
+            else:
+                session.probe_well_avg_curvature_over_time_1min.append(np.nan)
+                session.probe_well_avg_curvature_over_visits_1min.append(np.nan)
+
+            if len(session.probe_well_curvatures_30sec[i]) > 0:
+                session.probe_well_avg_curvature_over_time_30sec.append(
+                    np.mean(np.concatenate(session.probe_well_curvatures_30sec[i])))
+                session.probe_well_avg_curvature_over_visits_30sec.append(
+                    np.mean([np.mean(x) for x in session.probe_well_curvatures_30sec[i]]))
+            else:
+                session.probe_well_avg_curvature_over_time_30sec.append(np.nan)
+                session.probe_well_avg_curvature_over_visits_30sec.append(np.nan)
+
+        # ===================================
         # Dwell times
         # ===================================
         session.bt_dwell_times = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             session.bt_dwell_times.append(np.array(
                 session.bt_well_exit_times[i]) - np.array(session.bt_well_entry_times[i]))
 
@@ -1005,7 +1463,7 @@ if __name__ == "__main__":
         session.bt_well_avg_dwell_times = []
         session.bt_well_total_dwell_times_excluding_reward = []
         session.bt_well_avg_dwell_times_excluding_reward = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             nume = len(session.bt_well_entry_idxs[i])
             session.bt_well_num_entries.append(nume)
             total_dwell_time = np.sum(session.bt_dwell_times[i])
@@ -1074,7 +1532,7 @@ if __name__ == "__main__":
         session.probe_dwell_times = []
         session.probe_dwell_times_1min = []
         session.probe_dwell_times_30sec = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             session.probe_dwell_times.append(np.array(
                 session.probe_well_exit_times[i]) - np.array(session.probe_well_entry_times[i]))
             dts_1min = []
@@ -1096,7 +1554,7 @@ if __name__ == "__main__":
         session.probe_well_num_entries_30sec = []
         session.probe_well_total_dwell_times_30sec = []
         session.probe_well_avg_dwell_times_30sec = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             nume = len(session.probe_dwell_times[i])
             session.probe_well_num_entries.append(nume)
             total_dwell_time = np.sum(session.probe_dwell_times[i])
@@ -1120,7 +1578,7 @@ if __name__ == "__main__":
 
         # Same but with neighbors included
         session.bt_dwell_times_ninc = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             session.bt_dwell_times_ninc.append(np.array(
                 session.bt_well_exit_times_ninc[i]) - np.array(session.bt_well_entry_times_ninc[i]))
 
@@ -1129,7 +1587,7 @@ if __name__ == "__main__":
         session.bt_well_avg_dwell_times_ninc = []
         session.bt_well_total_dwell_times_excluding_reward_ninc = []
         session.bt_well_avg_dwell_times_excluding_reward_ninc = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             nume = len(session.bt_well_entry_idxs_ninc[i])
             session.bt_well_num_entries_ninc.append(nume)
             total_dwell_time = np.sum(session.bt_dwell_times_ninc[i])
@@ -1202,7 +1660,7 @@ if __name__ == "__main__":
         session.probe_dwell_times_ninc = []
         session.probe_dwell_times_1min_ninc = []
         session.probe_dwell_times_30sec_ninc = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             session.probe_dwell_times_ninc.append(np.array(
                 session.probe_well_exit_times_ninc[i]) - np.array(session.probe_well_entry_times_ninc[i]))
             dts_1min = []
@@ -1224,7 +1682,7 @@ if __name__ == "__main__":
         session.probe_well_num_entries_30sec_ninc = []
         session.probe_well_total_dwell_times_30sec_ninc = []
         session.probe_well_avg_dwell_times_30sec_ninc = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             nume = len(session.probe_dwell_times_ninc[i])
             session.probe_well_num_entries_ninc.append(nume)
             total_dwell_time = np.sum(session.probe_dwell_times_ninc[i])
@@ -1314,7 +1772,7 @@ if __name__ == "__main__":
         # Latency to well in probe
         # ===================================
         session.probe_latency_to_well = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             if len(session.probe_well_entry_times[i]) == 0:
                 session.probe_latency_to_well.append(np.nan)
             else:
@@ -1343,9 +1801,9 @@ if __name__ == "__main__":
         session.probe_persev_bias_num_entries_to_well_30sec = []
         session.probe_persev_bias_total_dwell_time_30sec = []
         session.probe_persev_bias_avg_dwell_time_30sec = []
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             cwi = 49 - wi
-            cw_idx = np.argmax(all_well_idxs == cwi)
+            cw_idx = np.argmax(all_well_names == cwi)
             session.bt_persev_bias_mean_dist_to_well.append(session.bt_mean_dist_to_wells[i] -
                                                             session.bt_mean_dist_to_wells[cw_idx])
             session.bt_persev_bias_num_entries_to_well.append(
@@ -1400,15 +1858,25 @@ if __name__ == "__main__":
         #
         # difference in effect magnitude by distance from starting location to home well?
         #
+        # Where do ripples happen? Would inform whether to split by away vs home, etc in future experiments
+        #   Only during rest? Can set velocity threshold in future interruptions?
+        #
+        # Based on speed or exploration, is there a more principled way to choose period of probe that is measured? B/c could vary by rat
+        #
+        # avg speed by condition ... could explain higher visits per bout everywhere on SWR trials
+        #
+        # latency to home well in probe, directness of path, etc maybe?
+        #   probably will be nothing, but will probably also be asked for
+        #
+        # Any differences b/w early vs later experiments?
         #
         # ======================================================================
 
         # ===================================
         # exploration bouts
         # ===================================
-
-        POS_FRAME_RATE = np.mode(
-            np.diff(session.bt_pos_ts)) / float(TRODES_SAMPLING_RATE)
+        POS_FRAME_RATE = stats.mode(
+            np.diff(session.bt_pos_ts))[0] / float(TRODES_SAMPLING_RATE)
         BOUT_VEL_SM_SIGMA = BOUT_VEL_SM_SIGMA_SECS / POS_FRAME_RATE
         MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS = 1.0
         MIN_PAUSE_TIME_FRAMES = int(
@@ -1417,130 +1885,259 @@ if __name__ == "__main__":
 
         bt_sm_vel = scipy.ndimage.gaussian_filter1d(
             session.bt_vel_cm_s, BOUT_VEL_SM_SIGMA)
+        session.bt_sm_vel = bt_sm_vel
 
-        is_explore_local = bt_sm_vel > PAUSE_MAX_SPEED_CM_S
-        dil_filt = np.ones((1, MIN_PAUSE_TIME_FRAMES), dtype=int)
-        print(dil_filt.shape, bt_sm_vel.shape)
-        in_pause_bout = np.logical_not(scipy.signal.convolve(
-            is_explore_local.astype(int), dil_filt).astype(bool))
+        bt_is_explore_local = bt_sm_vel > PAUSE_MAX_SPEED_CM_S
+        dil_filt = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
+        in_pause_bout = np.logical_not(signal.convolve(
+            bt_is_explore_local.astype(int), dil_filt, mode='same').astype(bool))
         # now just undo dilation to get flags
-        is_in_pause = scipy.signal.convolve(
-            in_pause_bout.astype(int), dil_filt).astype(bool)
-        is_in_explore = np.logical_not(is_in_pause)
+        session.bt_is_in_pause = signal.convolve(
+            in_pause_bout.astype(int), dil_filt, mode='same').astype(bool)
+        session.bt_is_in_explore = np.logical_not(session.bt_is_in_pause)
 
-        assert np.sum(np.isnan(is_in_pause)) == 0
-        assert np.sum(np.isnan(is_in_explore)) == 0
+        # explicitly adjust flags at reward consumption times
+        for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
+            pidx1 = np.searchsorted(session.bt_pos_ts[0:-1], wft)
+            pidx2 = np.searchsorted(session.bt_pos_ts[0:-1], wlt)
+            session.bt_is_in_pause[pidx1:pidx2] = True
+            session.bt_is_in_explore[pidx1:pidx2] = False
+
+        for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
+            pidx1 = np.searchsorted(session.bt_pos_ts[0:-1], wft)
+            pidx2 = np.searchsorted(session.bt_pos_ts[0:-1], wlt)
+            session.bt_is_in_pause[pidx1:pidx2] = True
+            session.bt_is_in_explore[pidx1:pidx2] = False
+
+        assert np.sum(np.isnan(session.bt_is_in_pause)) == 0
+        assert np.sum(np.isnan(session.bt_is_in_explore)) == 0
+        assert np.all(np.logical_or(session.bt_is_in_pause, session.bt_is_in_explore))
+        assert not np.any(np.logical_and(session.bt_is_in_pause, session.bt_is_in_explore))
 
         start_explores = np.where(
-            np.diff(is_in_explore.astype(int)) == 1)[0] + 1
-        if is_in_explore[0]:
+            np.diff(session.bt_is_in_explore.astype(int)) == 1)[0] + 1
+        if session.bt_is_in_explore[0]:
             start_explores = np.insert(start_explores, 0, 0)
 
         stop_explores = np.where(
-            np.diff(is_in_explore.astype(int)) == -1)[0] + 1
-        if is_in_explore[-1]:
-            stop_explores = np.append(stop_explores, len(is_in_explore))
+            np.diff(session.bt_is_in_explore.astype(int)) == -1)[0] + 1
+        if session.bt_is_in_explore[-1]:
+            stop_explores = np.append(stop_explores, len(session.bt_is_in_explore))
 
         bout_len_frames = stop_explores - start_explores
 
         long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
-        session.bt_explore_bout_starts = start_explores[long_enough]
-        session.bt_explore_bout_ends = stop_explores[long_enough]
+        bout_num_wells_visited = np.zeros((len(start_explores)))
+        for i, (bst, ben) in enumerate(zip(start_explores, stop_explores)):
+            bout_num_wells_visited[i] = len(
+                getListOfVisitedWells(session.bt_nearest_wells[bst:ben], True))
+            # bout_num_wells_visited[i] = len(set(session.bt_nearest_wells[bst:ben]))
+        enough_wells = bout_num_wells_visited >= MIN_EXPLORE_NUM_WELLS
+
+        keep_bout = np.logical_and(long_enough, enough_wells)
+        session.bt_explore_bout_starts = start_explores[keep_bout]
+        session.bt_explore_bout_ends = stop_explores[keep_bout]
         session.bt_explore_bout_lens = session.bt_explore_bout_ends - \
             session.bt_explore_bout_starts
 
-        session.bt_bout_count_by_well = np.zeros((1, np.max(all_well_idxs)+1))
         session.bt_num_bouts = len(session.bt_explore_bout_ends)
+        session.bt_bout_count_by_well = np.zeros((np.max(all_well_names)+1))
+        session.bt_wait_count_by_well = np.zeros((np.max(all_well_names)+1))
+        session.bt_num_waits = session.bt_num_bouts - 1
+        last_stop = 0
         for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
-            wells_visited = set(session.bt_nearest_wells[bst:ben])
+            wells_visited = getListOfVisitedWells(session.bt_nearest_wells[bst:ben], False)
             for w in wells_visited:
                 session.bt_bout_count_by_well[w] += 1
 
+            if bst > 0:
+                wells_waited_at = getListOfVisitedWells(
+                    session.bt_nearest_wells[last_stop:bst], False)
+                for w in wells_waited_at:
+                    session.bt_wait_count_by_well[w] += 1
+
+            last_stop = ben
+
+        session.bt_bout_pct_by_well = session.bt_bout_count_by_well / session.bt_num_bouts
+        session.bt_wait_pct_by_well = session.bt_wait_count_by_well / session.bt_num_waits
+
         probe_sm_vel = scipy.ndimage.gaussian_filter1d(
             session.probe_vel_cm_s, BOUT_VEL_SM_SIGMA)
+        session.probe_sm_vel = probe_sm_vel
 
-        is_explore_local = probe_sm_vel > PAUSE_MAX_SPEED_CM_S
-        dil_filt = np.ones((1, MIN_PAUSE_TIME_FRAMES), dtype=int)
-        print(dil_filt.shape, probe_sm_vel.shape)
-        in_pause_bout = np.logical_not(scipy.signal.convolve(
-            is_explore_local.astype(int), dil_filt).astype(bool))
+        probe_is_explore_local = probe_sm_vel > PAUSE_MAX_SPEED_CM_S
+        dil_filt = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
+        in_pause_bout = np.logical_not(signal.convolve(
+            probe_is_explore_local.astype(int), dil_filt, mode='same').astype(bool))
         # now just undo dilation to get flags
-        is_in_pause = scipy.signal.convolve(
-            in_pause_bout.astype(int), dil_filt).astype(bool)
-        is_in_explore = np.logical_not(is_in_pause)
+        session.probe_is_in_pause = signal.convolve(
+            in_pause_bout.astype(int), dil_filt, mode='same').astype(bool)
+        session.probe_is_in_explore = np.logical_not(session.probe_is_in_pause)
 
-        assert np.sum(np.isnan(is_in_pause)) == 0
-        assert np.sum(np.isnan(is_in_explore)) == 0
+        assert np.sum(np.isnan(session.probe_is_in_pause)) == 0
+        assert np.sum(np.isnan(session.probe_is_in_explore)) == 0
+        assert np.all(np.logical_or(session.probe_is_in_pause, session.probe_is_in_explore))
+        assert not np.any(np.logical_and(session.probe_is_in_pause, session.probe_is_in_explore))
 
         start_explores = np.where(
-            np.diff(is_in_explore.astype(int)) == 1)[0] + 1
-        if is_in_explore[0]:
+            np.diff(session.probe_is_in_explore.astype(int)) == 1)[0] + 1
+        if session.probe_is_in_explore[0]:
             start_explores = np.insert(start_explores, 0, 0)
 
         stop_explores = np.where(
-            np.diff(is_in_explore.astype(int)) == -1)[0] + 1
-        if is_in_explore[-1]:
-            stop_explores = np.append(stop_explores, len(is_in_explore))
+            np.diff(session.probe_is_in_explore.astype(int)) == -1)[0] + 1
+        if session.probe_is_in_explore[-1]:
+            stop_explores = np.append(stop_explores, len(session.probe_is_in_explore))
 
         bout_len_frames = stop_explores - start_explores
 
         long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
-        session.probe_explore_bout_starts = start_explores[long_enough]
-        session.probe_explore_bout_ends = stop_explores[long_enough]
+        bout_num_wells_visited = np.zeros((len(start_explores)))
+        for i, (bst, ben) in enumerate(zip(start_explores, stop_explores)):
+            bout_num_wells_visited[i] = len(
+                getListOfVisitedWells(session.probe_nearest_wells[bst:ben], True))
+        enough_wells = bout_num_wells_visited >= MIN_EXPLORE_NUM_WELLS
+
+        keep_bout = np.logical_and(long_enough, enough_wells)
+        session.probe_explore_bout_starts = start_explores[keep_bout]
+        session.probe_explore_bout_ends = stop_explores[keep_bout]
         session.probe_explore_bout_lens = session.probe_explore_bout_ends - \
             session.probe_explore_bout_starts
 
-        session.probe_bout_count_by_well = np.zeros(
-            (1, np.max(all_well_idxs)+1))
+        session.probe_bout_count_by_well = np.zeros((np.max(all_well_names)+1))
+        session.probe_bout_count_by_well_1min = np.zeros((np.max(all_well_names)+1))
+        session.probe_bout_count_by_well_30sec = np.zeros((np.max(all_well_names)+1))
         session.probe_num_bouts = len(session.probe_explore_bout_ends)
+        session.probe_wait_count_by_well = np.zeros((np.max(all_well_names)+1))
+        session.probe_wait_count_by_well_1min = np.zeros((np.max(all_well_names)+1))
+        session.probe_wait_count_by_well_30sec = np.zeros((np.max(all_well_names)+1))
+        session.probe_num_waits = session.probe_num_bouts - 1
+        last_stop = 0
         for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
-            wells_visited = set(session.probe_nearest_wells[bst:ben])
+            wells_visited = getListOfVisitedWells(session.probe_nearest_wells[bst:ben], False)
             for w in wells_visited:
                 session.probe_bout_count_by_well[w] += 1
+                if session.probe_pos_ts[bst] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+                    session.probe_bout_count_by_well_1min[w] += 1
+                if session.probe_pos_ts[bst] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+                    session.probe_bout_count_by_well_30sec[w] += 1
+
+            if bst > 0:
+                wells_waited_at = getListOfVisitedWells(
+                    session.probe_nearest_wells[last_stop:bst], False)
+                for w in wells_waited_at:
+                    session.probe_wait_count_by_well[w] += 1
+                    if session.probe_pos_ts[ben] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+                        session.probe_wait_count_by_well_1min[w] += 1
+                    if session.probe_pos_ts[ben] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+                        session.probe_wait_count_by_well_30sec[w] += 1
+
+            last_stop = ben
+
+        session.probe_bout_pct_by_well = session.probe_bout_count_by_well / session.probe_num_bouts
+        session.probe_bout_pct_by_well_1min = session.probe_bout_count_by_well_1min / session.probe_num_bouts
+        session.probe_bout_pct_by_well_30sec = session.probe_bout_count_by_well_30sec / session.probe_num_bouts
+        session.probe_wait_pct_by_well = session.probe_wait_count_by_well / session.probe_num_waits
+        session.probe_wait_pct_by_well_1min = session.probe_wait_count_by_well_1min / session.probe_num_waits
+        session.probe_wait_pct_by_well_30sec = session.probe_wait_count_by_well_30sec / session.probe_num_waits
+
+        # add a category at each behavior time point for easy reference later:
+        session.bt_bout_category = np.zeros_like(session.bt_pos_xs)
+        last_stop = 0
+        for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
+            session.bt_bout_category[last_stop:bst] = 1
+            last_stop = ben
+        session.bt_bout_category[last_stop:] = 1
+        for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
+            pidx1 = np.searchsorted(session.bt_pos_ts, wft)
+            pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
+            session.bt_bout_category[pidx1:pidx2] = 2
+        for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
+            pidx1 = np.searchsorted(session.bt_pos_ts, wft)
+            pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
+            session.bt_bout_category[pidx1:pidx2] = 2
+        session.probe_bout_category = np.zeros_like(session.probe_pos_xs)
+        last_stop = 0
+        for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
+            session.probe_bout_category[last_stop:bst] = 1
+            last_stop = ben
+        session.probe_bout_category[last_stop:] = 1
+        for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
+            pidx1 = np.searchsorted(session.probe_pos_ts, wft)
+            pidx2 = np.searchsorted(session.probe_pos_ts, wlt)
+            session.probe_bout_category[pidx1:pidx2] = 2
+        for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
+            pidx1 = np.searchsorted(session.probe_pos_ts, wft)
+            pidx2 = np.searchsorted(session.probe_pos_ts, wlt)
+            session.probe_bout_category[pidx1:pidx2] = 2
 
         # ===================================
         # Now save this session
         # ===================================
         dataob.allSessions.append(session)
+        print("done with", session.name)
 
         # ===================================
         # extra plotting stuff
         # ===================================
-        if session.date_str in INSPECT_IN_DETAIL:
-            if INSPECT_BOUTS:
+        if session.date_str in INSPECT_IN_DETAIL or INSPECT_ALL:
+            if INSPECT_BOUTS and len(session.away_well_find_times) > 0:
                 print("{} probe bouts, {} bt bouts".format(
                     session.probe_num_bouts, session.bt_num_bouts))
-                x1 = session.probe_pos_ts[0:-1]
-                y1 = probe_sm_vel
-                x2 = x1
-                y2 = y1
-                x1[is_in_explore] = np.nan
-                y1[is_in_explore] = np.nan
-                x2[is_in_pause] = np.nan
-                y2[is_in_pause] = np.nan
+                x = session.bt_pos_ts[0:-1]
+                y = bt_sm_vel
+                x1 = np.array(x, copy=True)
+                y1 = np.copy(y)
+                x2 = np.copy(x1)
+                y2 = np.copy(y1)
+                x1[session.bt_is_in_explore] = np.nan
+                y1[session.bt_is_in_explore] = np.nan
+                x2[session.bt_is_in_pause] = np.nan
+                y2[session.bt_is_in_pause] = np.nan
                 plt.clf()
                 plt.plot(x1, y1)
                 plt.plot(x2, y2)
 
-                mny = np.min(probe_sm_vel)
-                mxy = np.max(probe_sm_vel)
-                for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
-                    plt.plot([bst, bst], [mny, mxy], 'b')
-                    plt.plot([ben, ben], [mny, mxy], 'r')
-                plt.show()
+                for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
+                    pidx1 = np.searchsorted(x, wft)
+                    pidx2 = np.searchsorted(x, wlt)
+                    plt.scatter(x[pidx1], y[pidx1], c='green')
+                    plt.scatter(x[pidx2], y[pidx2], c='green')
 
-                for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
+                print(len(session.away_well_find_times))
+                for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
+                    pidx1 = np.searchsorted(x, wft)
+                    pidx2 = np.searchsorted(x, wlt)
+                    plt.scatter(x[pidx1], y[pidx1], c='green')
+                    plt.scatter(x[pidx2], y[pidx2], c='green')
+
+                mny = np.min(bt_sm_vel)
+                mxy = np.max(bt_sm_vel)
+                for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
+                    plt.plot([x[bst], x[bst]], [mny, mxy], 'b')
+                    plt.plot([x[ben-1], x[ben-1]], [mny, mxy], 'r')
+                if SAVE_DONT_SHOW:
+                    plt.savefig(os.path.join(fig_output_dir, "bouts",
+                                             session.name + "_bouts_over_time"), dpi=800)
+                else:
+                    plt.show()
+
+                for i, (bst, ben) in enumerate(zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends)):
                     plt.clf()
-                    plt.plot(session.probe_pos_xs, session.probe_pos_ys)
+                    plt.plot(session.bt_pos_xs, session.bt_pos_ys)
                     plt.plot(
-                        session.probe_pos_xs[bst:ben], session.probe_pos_ys[bst:ben])
+                        session.bt_pos_xs[bst:ben], session.bt_pos_ys[bst:ben])
 
-                    wells_visited = set(session.probe_nearest_wells[bst:ben])
+                    wells_visited = getListOfVisitedWells(session.bt_nearest_wells[bst:ben], True)
                     for w in wells_visited:
                         wx, wy = get_well_coordinates(w, session.well_coords_map)
-                        plt.scatter(wx, wy, 'r')
+                        plt.scatter(wx, wy, c='red')
 
-                    plt.show()
+                    if SAVE_DONT_SHOW:
+                        plt.savefig(os.path.join(fig_output_dir, "bouts",
+                                                 session.name + "_bouts_" + str(i)), dpi=800)
+                    else:
+                        plt.show()
 
             if INSPECT_NANVALS:
                 print("{} nan xs, {} nan ys, {} nan ts".format(sum(np.isnan(session.probe_pos_xs)),
@@ -1573,45 +2170,45 @@ if __name__ == "__main__":
                 plt.grid('on')
                 plt.show()
 
-        if session.date_str in INSPECT_IN_DETAIL and INSPECT_PLOT_WELL_OCCUPANCIES:
-            cmap = plt.get_cmap('Set3')
-            make_colors = True
-            while make_colors:
-                well_colors = np.zeros((48, 4))
-                for i in all_well_idxs:
-                    well_colors[i-1, :] = cmap(random.uniform(0, 1))
+            if INSPECT_PLOT_WELL_OCCUPANCIES:
+                cmap = plt.get_cmap('Set3')
+                make_colors = True
+                while make_colors:
+                    well_colors = np.zeros((48, 4))
+                    for i in all_well_names:
+                        well_colors[i-1, :] = cmap(random.uniform(0, 1))
 
-                make_colors = False
+                    make_colors = False
 
-                if ENFORCE_DIFFERENT_WELL_COLORS:
-                    for i in all_well_idxs:
-                        neighs = [i-8, i-1, i+8, i+1]
-                        for n in neighs:
-                            if n in all_well_idxs and np.all(well_colors[i-1, :] == well_colors[n-1, :]):
-                                make_colors = True
-                                print("gotta remake the colors!")
+                    if ENFORCE_DIFFERENT_WELL_COLORS:
+                        for i in all_well_names:
+                            neighs = [i-8, i-1, i+8, i+1]
+                            for n in neighs:
+                                if n in all_well_names and np.all(well_colors[i-1, :] == well_colors[n-1, :]):
+                                    make_colors = True
+                                    print("gotta remake the colors!")
+                                    break
+
+                            if make_colors:
                                 break
 
-                        if make_colors:
-                            break
+                # print(session.bt_well_entry_idxs)
+                # print(session.bt_well_exit_idxs)
 
-            # print(session.bt_well_entry_idxs)
-            # print(session.bt_well_exit_idxs)
+                plt.clf()
+                for i, wi in enumerate(all_well_names):
+                    color = well_colors[wi-1, :]
+                    for j in range(len(session.bt_well_entry_times[i])):
+                        i1 = session.bt_well_entry_idxs[i][j]
+                        try:
+                            i2 = session.bt_well_exit_idxs[i][j]
+                            plt.plot(
+                                session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2], color=color)
+                        except:
+                            print("well {} had {} entries, {} exits".format(
+                                wi, len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
 
-            plt.clf()
-            for i, wi in enumerate(all_well_idxs):
-                color = well_colors[wi-1, :]
-                for j in range(len(session.bt_well_entry_times[i])):
-                    i1 = session.bt_well_entry_idxs[i][j]
-                    try:
-                        i2 = session.bt_well_exit_idxs[i][j]
-                        plt.plot(
-                            session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2], color=color)
-                    except:
-                        print("well {} had {} entries, {} exits".format(
-                            wi, len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
-
-            plt.show()
+                plt.show()
 
     # save all sessions to disk
     dataob.saveToFile(os.path.join(output_dir, out_filename))

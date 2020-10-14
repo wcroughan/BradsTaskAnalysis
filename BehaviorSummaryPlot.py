@@ -16,16 +16,23 @@ output_dir = '/media/WDC4/martindata/processed_data'
 SHOW_OUTPUT_PLOTS = False
 SAVE_OUTPUT_PLOTS = True
 
-SKIP_BOX_PLOTS = False
-SKIP_SCATTER_PLOTS = False
-SKIP_SWARM_PLOTS = False
-SKIP_PERSEVBIAS_PLOTS = False
-SKIP_PERSEV_MEASURE_PLOTS = False
-SKIP_BINARY_PERSEVBIAS_PLOTS = False
-SKIP_HISTOGRAMS = False
-SKIP_AVG_SPEED_COMP_PLOTS = False
-SKIP_AVG_SPEED_PLOTS = False
-SKIP_PERSEV_QUAD_PLOTS = False
+SKIP_BOX_PLOTS = True
+SKIP_SCATTER_PLOTS = True
+SKIP_SWARM_PLOTS = True
+SKIP_PERSEVBIAS_PLOTS = True
+SKIP_PERSEV_MEASURE_PLOTS = True
+SKIP_BINARY_PERSEVBIAS_PLOTS = True
+SKIP_BOUT_PLOTS = False
+SKIP_WAIT_PLOTS = False
+SKIP_BALL_PLOTS = True
+SKIP_CURVATURE_PLOTS = False
+SKIP_HISTOGRAMS = True
+SKIP_LINE_PLOTS = True
+SKIP_AVG_SPEED_COMP_PLOTS = True
+SKIP_AVG_SPEED_PLOTS = True
+SKIP_PERSEV_QUAD_PLOTS = True
+SKIP_BOUT_PROP_PLOTS = True
+SKIP_HW_PLOT = True
 
 TRODES_SAMPLING_RATE = 30000
 
@@ -131,9 +138,9 @@ def makeAPersevMeasurePlot(measure_name, output_filename="", title="", doStats=T
     home_vals = [sesh.__dict__[measure_name][sesh.home_well_idx_in_allwells]
                  for sesh in sessions_with_all_wells]
     away_vals = [np.nanmean(np.array([sesh.__dict__[measure_name][np.argmax(
-        all_well_idxs == awi)] for awi in sesh.visited_away_wells])) for sesh in sessions_with_all_wells]
+        all_well_names == awi)] for awi in sesh.visited_away_wells])) for sesh in sessions_with_all_wells]
     other_vals = [np.nanmean(np.array([sesh.__dict__[measure_name][np.argmax(
-        all_well_idxs == awi)] for awi in set(all_well_idxs) - set(sesh.visited_away_wells) - set([sesh.home_well])])) for sesh in sessions_with_all_wells]
+        all_well_names == awi)] for awi in set(all_well_names) - set(sesh.visited_away_wells) - set([sesh.home_well])])) for sesh in sessions_with_all_wells]
 
     n = len(sessions_with_all_wells)
     axesNames = ["Well_type", measure_name, "Session_Type"]
@@ -240,7 +247,7 @@ def makeABinaryPersevBiasPlot(measure_name, output_filename="", title=""):
             # print("Warning, session {} does not have visited away wells recorded".format(sesh.name))
             num_missing_away += 1
             continue
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             if wi == sesh.home_well:
                 if sesh.__dict__[measure_name][i] > 0:
                     cnt_home_pos += 1
@@ -368,12 +375,12 @@ makeAScatterPlot([sesh.bt_mean_dist_to_ctrl_home_well for sesh in all_sessions],
 # ===================================
 # Analysis: active exploration vs chilling, dwell times, etc
 # ===================================
-all_well_idxs = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
+all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 for sesh in all_sessions:
     well_idxs = []
     well_dwell_times = []
     well_category = []
-    for i, wi in enumerate(all_well_idxs):
+    for i, wi in enumerate(all_well_names):
         for j in range(len(sesh.probe_well_entry_times[i])):
             well_idxs.append(wi)
             dwell_time = (sesh.probe_well_exit_times[i][j] -
@@ -425,7 +432,7 @@ for sesh in all_sessions:
     well_idxs = []
     well_dwell_times = []
     well_category = []
-    for i, wi in enumerate(all_well_idxs):
+    for i, wi in enumerate(all_well_names):
         for j in range(len(sesh.bt_well_entry_times[i])):
             well_idxs.append(wi)
             dwell_time = (sesh.bt_well_exit_times[i][j] -
@@ -514,6 +521,57 @@ else:
     makeAPersevMeasurePlot("probe_well_num_entries_30sec_ninc")
     makeAPersevMeasurePlot("probe_well_total_dwell_times_30sec_ninc")
     makeAPersevMeasurePlot("probe_well_avg_dwell_times_30sec_ninc")
+
+if SKIP_BOUT_PLOTS:
+    print("Warning skipping exploration bout plots!")
+else:
+    makeAPersevMeasurePlot("probe_bout_count_by_well")
+    makeAPersevMeasurePlot("probe_bout_count_by_well_1min")
+    makeAPersevMeasurePlot("probe_bout_count_by_well_30sec")
+    makeAPersevMeasurePlot("bt_bout_count_by_well")
+
+    makeAPersevMeasurePlot("probe_bout_pct_by_well")
+    makeAPersevMeasurePlot("probe_bout_pct_by_well_1min")
+    makeAPersevMeasurePlot("probe_bout_pct_by_well_30sec")
+    makeAPersevMeasurePlot("bt_bout_pct_by_well")
+
+if SKIP_WAIT_PLOTS:
+    print("Warning skipping exploration wait plots!")
+else:
+    makeAPersevMeasurePlot("probe_wait_count_by_well")
+    makeAPersevMeasurePlot("probe_wait_count_by_well_1min")
+    makeAPersevMeasurePlot("probe_wait_count_by_well_30sec")
+    makeAPersevMeasurePlot("bt_wait_count_by_well")
+
+    makeAPersevMeasurePlot("probe_wait_pct_by_well")
+    makeAPersevMeasurePlot("probe_wait_pct_by_well_1min")
+    makeAPersevMeasurePlot("probe_wait_pct_by_well_30sec")
+    makeAPersevMeasurePlot("bt_wait_pct_by_well")
+
+
+if SKIP_BALL_PLOTS:
+    print("Warning skipping ballisticity by well plots!")
+else:
+    makeAPersevMeasurePlot("probe_well_avg_ballisticity_over_time")
+    makeAPersevMeasurePlot("probe_well_avg_ballisticity_over_visits")
+    makeAPersevMeasurePlot("probe_well_avg_ballisticity_over_time_1min")
+    makeAPersevMeasurePlot("probe_well_avg_ballisticity_over_visits_1min")
+    makeAPersevMeasurePlot("probe_well_avg_ballisticity_over_time_30sec")
+    makeAPersevMeasurePlot("probe_well_avg_ballisticity_over_visits_30sec")
+    makeAPersevMeasurePlot("bt_well_avg_ballisticity_over_time")
+    makeAPersevMeasurePlot("bt_well_avg_ballisticity_over_visits")
+
+if SKIP_CURVATURE_PLOTS:
+    print("Warning skipping curvature by well plots!")
+else:
+    makeAPersevMeasurePlot("probe_well_avg_curvature_over_time")
+    makeAPersevMeasurePlot("probe_well_avg_curvature_over_visits")
+    makeAPersevMeasurePlot("probe_well_avg_curvature_over_time_1min")
+    makeAPersevMeasurePlot("probe_well_avg_curvature_over_visits_1min")
+    makeAPersevMeasurePlot("probe_well_avg_curvature_over_time_30sec")
+    makeAPersevMeasurePlot("probe_well_avg_curvature_over_visits_30sec")
+    makeAPersevMeasurePlot("bt_well_avg_curvature_over_time")
+    makeAPersevMeasurePlot("bt_well_avg_curvature_over_visits")
 
 
 if SKIP_PERSEV_QUAD_PLOTS:
@@ -723,3 +781,146 @@ def avg_speed_plot_separate_conditions(interval, output_filename=""):
 
 avg_speed_plot_separate_conditions(30)
 avg_speed_plot_separate_conditions(60)
+
+for sesh in all_sessions:
+    if SKIP_LINE_PLOTS:
+        print("Warning, skipping line plots")
+        break
+    plt.clf()
+
+    x = sesh.bt_ball_by_dist_to_home_xvals
+    y = sesh.bt_ball_by_dist_to_home
+    tse = sesh.bt_ball_by_dist_to_home_sem
+    # session.probe_ball_by_dist_to_ctrl_home
+    # session.probe_ball_by_dist_to_ctrl_home_sem
+
+    plt.plot(x, y)
+    # plt.fill_between(x, y-tse, y+tse)
+    plt.show()
+
+
+def calcBoutProps(sesh, start, stop):
+    if start <= 3 and stop <= 3:
+        # This version uses 0-1 to symbolize times in task, 2-3 for times in probe
+        # Just calls recursively using actual times
+        if start <= 1:
+            assert start >= 0 and stop <= 1 and stop >= 0
+            xp = [0, 1]
+            fp = [sesh.bt_pos_ts[0], sesh.bt_pos_ts[-1]]
+        else:
+            assert start >= 2 and start <= 3 and stop >= 2 and stop <= 3
+            xp = [2, 3]
+            fp = [sesh.probe_pos_ts[0], sesh.probe_pos_ts[-1]]
+        start_t = np.interp(start, xp, fp)
+        stop_t = np.interp(stop, xp, fp)
+        return calcAvgSpeed(sesh, start_t, stop_t)
+    if start < sesh.probe_pos_ts[0]:
+        tref = sesh.bt_pos_ts[0:-1]
+        start_i = np.searchsorted(tref, start)
+        stop_i = np.searchsorted(tref, stop)
+        cats = sesh.bt_bout_category[start_i:stop_i]
+        c0 = float(np.count_nonzero(cats == 0)) / float(cats.size)
+        c1 = float(np.count_nonzero(cats == 1)) / float(cats.size)
+        c2 = float(np.count_nonzero(cats == 2)) / float(cats.size)
+        return c0, c1, c2
+    else:
+        tref = sesh.probe_pos_ts[0:-1]
+        start_i = np.searchsorted(tref, start)
+        stop_i = np.searchsorted(tref, stop)
+        cats = sesh.probe_bout_category[start_i:stop_i]
+        c0 = float(np.count_nonzero(cats == 0)) / float(cats.size)
+        c1 = float(np.count_nonzero(cats == 1)) / float(cats.size)
+        c2 = float(np.count_nonzero(cats == 2)) / float(cats.size)
+        return c0, c1, c2
+
+
+def boutProportionPlot(interval, given_output_filename=""):
+    if SKIP_BOUT_PROP_PLOTS:
+        print("Warning: skipping bout prop plots")
+        return
+    max_bt_dur = np.max([sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0] for sesh in all_sessions])
+    max_probe_dur = np.max([sesh.probe_pos_ts[-1] - sesh.probe_pos_ts[0] for sesh in all_sessions])
+    istep = interval * TRODES_SAMPLING_RATE
+    bt_num_cats = int(np.floor(max_bt_dur / istep))
+    probe_num_cats = int(np.floor(max_probe_dur / istep))
+
+    all_bt_cats = np.empty((len(all_sessions), bt_num_cats, 3))
+    all_probe_cats = np.empty((len(all_sessions), probe_num_cats, 3))
+    all_bt_cats[:] = np.nan
+    all_probe_cats[:] = np.nan
+
+    for si, sesh in enumerate(all_sessions):
+        bt_cats = np.array([calcBoutProps(sesh, i1, i1+istep)
+                            for i1 in np.arange(sesh.bt_pos_ts[0], sesh.bt_pos_ts[-1]-istep, istep)])
+        probe_cats = np.array([calcBoutProps(sesh, i1, i1+istep)
+                               for i1 in np.arange(sesh.probe_pos_ts[0], sesh.probe_pos_ts[-1]-istep, istep)])
+
+        all_bt_cats[si, 0:bt_cats.shape[0], :] = bt_cats
+        all_probe_cats[si, 0:probe_cats.shape[0], :] = probe_cats
+
+    bt_mvals = np.nanmean(all_bt_cats, axis=0)
+    probe_mvals = np.nanmean(all_probe_cats, axis=0)
+    bt_sems = np.divide(np.nanstd(all_bt_cats, axis=0),
+                        np.sqrt(np.count_nonzero(np.logical_not(np.isnan(all_bt_cats[:, :, 0])), axis=0))[:, None])
+    probe_sems = np.divide(np.nanstd(all_probe_cats, axis=0),
+                           np.sqrt(np.count_nonzero(np.logical_not(np.isnan(all_probe_cats[:, :, 0])), axis=0))[:, None])
+
+    plt.clf()
+    x = np.linspace(interval, interval * bt_num_cats, bt_num_cats)
+    widths = (x[1]-x[0]) * 0.8
+    p1 = plt.bar(x, bt_mvals[:, 0], widths, yerr=bt_sems[:, 0])
+    p2 = plt.bar(x, bt_mvals[:, 1], widths, yerr=bt_sems[:, 1], bottom=bt_mvals[:, 0])
+    p3 = plt.bar(x, bt_mvals[:, 2], widths, yerr=bt_sems[:, 2],
+                 bottom=bt_mvals[:, 0]+bt_mvals[:, 1])
+    plt.title("BT bout props, interval={}".format(interval))
+    plt.xlabel("Time (sec)")
+    plt.ylabel("Proportion in each category")
+    plt.legend((p1[0], p2[0], p3[0]), ('explore', 'rest', 'reward'))
+    if SHOW_OUTPUT_PLOTS:
+        plt.show()
+    if SAVE_OUTPUT_PLOTS or len(given_output_filename) > 0:
+        if len(given_output_filename) == 0:
+            output_filename = os.path.join(output_dir, "bt_bout_proportions_{}".format(interval))
+        else:
+            output_filename = os.path.join(output_dir, given_output_filename + "_bt")
+        plt.savefig(output_filename, dpi=800)
+
+    plt.clf()
+    x = np.linspace(interval, interval * probe_num_cats, probe_num_cats)
+    widths = (x[1]-x[0]) * 0.8
+    p1 = plt.bar(x, probe_mvals[:, 0], widths, yerr=probe_sems[:, 0])
+    p2 = plt.bar(x, probe_mvals[:, 1], widths, yerr=probe_sems[:, 1], bottom=probe_mvals[:, 0])
+    p3 = plt.bar(x, probe_mvals[:, 2], widths, yerr=probe_sems[:, 2],
+                 bottom=probe_mvals[:, 0]+probe_mvals[:, 1])
+    plt.title("probe bout props, interval={}".format(interval))
+    plt.xlabel("Time (sec)")
+    plt.ylabel("Proportion in each category")
+    plt.legend((p1[0], p2[0], p3[0]), ('explore', 'rest', 'reward'))
+    if SHOW_OUTPUT_PLOTS:
+        plt.show()
+    if SAVE_OUTPUT_PLOTS or len(given_output_filename) > 0:
+        if len(given_output_filename) == 0:
+            output_filename = os.path.join(output_dir, "probe_bout_proportions_{}".format(interval))
+        else:
+            output_filename = os.path.join(output_dir, given_output_filename + "_probe")
+        plt.savefig(output_filename, dpi=800)
+
+
+boutProportionPlot(60)
+boutProportionPlot(30)
+boutProportionPlot(15)
+
+if SKIP_HW_PLOT:
+    print("Warning, skipping home well plot")
+else:
+    session_type = [0 if trial_label(sesh) == "SWR" else 1 for sesh in all_sessions]
+    xvals = [sesh.home_x for sesh in all_sessions]
+    yvals = [sesh.home_y for sesh in all_sessions]
+    plt.clf()
+    plt.xlim(0, 1200)
+    plt.ylim(0, 1000)
+    plt.scatter(xvals, yvals, c=session_type, zorder=2)
+    if SHOW_OUTPUT_PLOTS:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(output_dir, "all_home_wells"), dpi=800)

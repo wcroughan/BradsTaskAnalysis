@@ -30,7 +30,7 @@ RUN_THIS_SESSION = "20200608"
 PLOT_WELL_OCCUPANCY = True
 ENFORCE_DIFFERENT_WELL_COLORS = False
 
-all_well_idxs = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
+all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 
 
 def saveOrShow(fname):
@@ -167,16 +167,16 @@ for (seshidx, sesh) in enumerate(alldata.getSessions()):
         make_colors = True
         while make_colors:
             well_colors = np.zeros((48, 4))
-            for i in all_well_idxs:
+            for i in all_well_names:
                 well_colors[i-1, :] = cmap(random.uniform(0, 1))
 
             make_colors = False
 
             if ENFORCE_DIFFERENT_WELL_COLORS:
-                for i in all_well_idxs:
+                for i in all_well_names:
                     neighs = [i-8, i-1, i+8, i+1]
                     for n in neighs:
-                        if n in all_well_idxs and np.all(well_colors[i-1, :] == well_colors[n-1, :]):
+                        if n in all_well_names and np.all(well_colors[i-1, :] == well_colors[n-1, :]):
                             make_colors = True
                             print("gotta remake the colors!")
                             break
@@ -185,7 +185,7 @@ for (seshidx, sesh) in enumerate(alldata.getSessions()):
                         break
 
         plt.clf()
-        for i, wi in enumerate(all_well_idxs):
+        for i, wi in enumerate(all_well_names):
             color = well_colors[wi-1, :]
             for j in range(len(sesh.bt_well_entry_times[i])):
                 i1 = sesh.bt_well_entry_idxs[i][j]
