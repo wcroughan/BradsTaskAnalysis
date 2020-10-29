@@ -49,6 +49,8 @@ class BTSession:
 
         # Well number of home well
         self.home_well = 0
+        self.home_well_idx_in_allwells = 0
+        self.ctrl_home_well_idx_in_allwells = 0
         # Well number of away wells
         self.away_wells = []
         self.num_away_found = 0
