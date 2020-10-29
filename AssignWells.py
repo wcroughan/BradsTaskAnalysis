@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 import random as rd
 import os
 
-RUNS_PER_DAY = 2
-NUM_DAYS = 4
+RUNS_PER_DAY = 1
+NUM_DAYS = 1
 START_WITH_TODAY = True
 if START_WITH_TODAY:
     first_day = datetime.now()
@@ -15,12 +15,13 @@ REST_OF_FILE = "\nThresh: Low\nLast Away: \nLast well: \nITI Stim On: \nProbe St
 
 all_wells = [i + 1 for i in range(48) if not i % 8 in [0, 7]]
 # broken_wells = [2, 4, 6, 7, 18, 20, 42, 29, 31, 39, 37, 47, 27]
-broken_wells = [2, 3, 4, 20, 42, 34]
+# broken_wells = [2, 3, 4, 20, 42, 34]
+broken_wells = [34, 15, 21, 22, 28, 29, 44, 38, 35]
 working_wells = set(all_wells) - set(broken_wells)
 
 thisday = first_day
 
-NUM_AWAY_WELLS_PER_SESSION = 10
+NUM_AWAY_WELLS_PER_SESSION = 9
 
 day_condition_order = [0, 1, 2, 3]
 for di in range(NUM_DAYS):
