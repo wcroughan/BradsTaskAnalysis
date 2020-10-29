@@ -22,13 +22,13 @@ SKIP_SWARM_PLOTS = True
 SKIP_PERSEVBIAS_PLOTS = True
 SKIP_PERSEV_MEASURE_PLOTS = True
 SKIP_BINARY_PERSEVBIAS_PLOTS = True
-SKIP_BOUT_PLOTS = False
-SKIP_WAIT_PLOTS = False
+SKIP_BOUT_PLOTS = True
+SKIP_WAIT_PLOTS = True
 SKIP_BALL_PLOTS = True
-SKIP_CURVATURE_PLOTS = False
+SKIP_CURVATURE_PLOTS = True
 SKIP_HISTOGRAMS = True
 SKIP_LINE_PLOTS = True
-SKIP_AVG_SPEED_COMP_PLOTS = True
+SKIP_AVG_SPEED_COMP_PLOTS = False
 SKIP_AVG_SPEED_PLOTS = True
 SKIP_PERSEV_QUAD_PLOTS = True
 SKIP_BOUT_PROP_PLOTS = True
@@ -781,6 +781,7 @@ def avg_speed_plot_separate_conditions(interval, output_filename=""):
 
 avg_speed_plot_separate_conditions(30)
 avg_speed_plot_separate_conditions(60)
+avg_speed_plot_separate_conditions(300)
 
 for sesh in all_sessions:
     if SKIP_LINE_PLOTS:
