@@ -17,7 +17,7 @@ SHOW_OUTPUT_PLOTS = False
 SAVE_OUTPUT_PLOTS = True
 
 SKIP_BOX_PLOTS = True
-SKIP_SCATTER_PLOTS = True
+SKIP_SCATTER_PLOTS = False
 SKIP_SWARM_PLOTS = True
 SKIP_PERSEVBIAS_PLOTS = True
 SKIP_PERSEV_MEASURE_PLOTS = True
@@ -28,7 +28,7 @@ SKIP_BALL_PLOTS = True
 SKIP_CURVATURE_PLOTS = True
 SKIP_HISTOGRAMS = True
 SKIP_LINE_PLOTS = True
-SKIP_AVG_SPEED_COMP_PLOTS = False
+SKIP_AVG_SPEED_COMP_PLOTS = True
 SKIP_AVG_SPEED_PLOTS = True
 SKIP_PERSEV_QUAD_PLOTS = True
 SKIP_BOUT_PROP_PLOTS = True
@@ -131,7 +131,7 @@ def makeASwarmPlot(xvals, yvals, axesNames, categories, output_filename="", titl
         plt.savefig(output_filename, dpi=800)
 
 
-def makeAPersevMeasurePlot(measure_name, output_filename="", title="", doStats=True):
+def makeAPersevMeasurePlot(measure_name, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None):
     sessions_with_all_wells = list(
         filter(lambda sesh: len(sesh.visited_away_wells) > 0, all_sessions))
 
@@ -148,13 +148,22 @@ def makeAPersevMeasurePlot(measure_name, output_filename="", title="", doStats=T
         away_vals) == len(other_vals) and len(away_vals) == n
     categories = ["home"] * n + ["away"] * n + ["other"] * n
     session_type = [trial_label(sesh) for sesh in sessions_with_all_wells] * 3
+
     yvals = home_vals + away_vals + other_vals
+    if scaleValue is not None:
+        for i in range(len(yvals)):
+            yvals[i] *= scaleValue
+
     s = pd.Series([categories, yvals, session_type], index=axesNames)
     plt.clf()
-    sns.boxplot(x=axesNames[0], y=axesNames[1], data=s, hue="Session_Type", palette="Set3")
+    sns.boxplot(x=axesNames[0], y=axesNames[1], data=s,
+                hue="Session_Type", palette="Set3")
     plt.title(title)
     plt.xlabel(axesNames[0])
-    plt.ylabel(axesNames[1])
+    if yAxisLabel is None:
+        plt.ylabel(axesNames[1])
+    else:
+        plt.ylabel(yAxisLabel)
 
     if doStats:
         anovaModel = ols(
@@ -206,7 +215,8 @@ def makeAQuadrantPersevMeasurePlot(measure_name, output_filename="", title="", d
     yvals = home_vals + other_vals
     s = pd.Series([categories, yvals, session_type], index=axesNames)
     plt.clf()
-    sns.boxplot(x=axesNames[0], y=axesNames[1], data=s, hue="Session_Type", palette="Set3")
+    sns.boxplot(x=axesNames[0], y=axesNames[1], data=s,
+                hue="Session_Type", palette="Set3")
     plt.title(title)
     plt.xlabel(axesNames[0])
     plt.ylabel(axesNames[1])
@@ -371,6 +381,109 @@ makeAScatterPlot([sesh.bt_mean_dist_to_ctrl_home_well for sesh in all_sessions],
                  [sesh.probe_mean_dist_to_ctrl_home_well for sesh in all_sessions],
                  ['BT Mean Dist to ctrl Home', 'Probe Mean Dist to ctrl Home'], tlbls)
 
+makeAScatterPlot([sesh.probe_meanvel_10sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 10sec mean vel', 'probe avg home dwell time 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_30sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 30sec mean vel', 'probe avg home dwell time 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_1min for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 1min mean vel', 'probe avg home dwell time 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_2min for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 2min mean vel', 'probe avg home dwell time 1min'], tlbls)
+
+makeAScatterPlot([sesh.probe_meanvel_moving_10sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 10sec moving mean vel', 'probe avg home dwell time 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_moving_30sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 30sec moving mean vel', 'probe avg home dwell time 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_moving_1min for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 1min moving mean vel', 'probe avg home dwell time 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_moving_2min for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 2min moving mean vel', 'probe avg home dwell time 1min'], tlbls)
+
+makeAScatterPlot([sesh.probe_proptime_explore_10sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 10sec explore proportion', 'probe avg home dwell time 1min'], tlbls)
+makeAScatterPlot([sesh.probe_proptime_explore_30sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 30sec explore proportion', 'probe avg home dwell time 1min'], tlbls)
+makeAScatterPlot([sesh.probe_proptime_explore_1min for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 1min explore proportion', 'probe avg home dwell time 1min'], tlbls)
+makeAScatterPlot([sesh.probe_proptime_explore_2min for sesh in all_sessions],
+                 [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 2min explore proportion', 'probe avg home dwell time 1min'], tlbls)
+
+
+makeAScatterPlot([sesh.probe_meanvel_10sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 10sec mean vel', 'probe avg home curvature 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_30sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 30sec mean vel', 'probe avg home curvature 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_1min for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 1min mean vel', 'probe avg home curvature 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_2min for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 2min mean vel', 'probe avg home curvature 1min'], tlbls)
+
+makeAScatterPlot([sesh.probe_meanvel_moving_10sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 10sec moving mean vel', 'probe avg home curvature 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_moving_30sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 30sec moving mean vel', 'probe avg home curvature 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_moving_1min for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 1min moving mean vel', 'probe avg home curvature 1min'], tlbls)
+makeAScatterPlot([sesh.probe_meanvel_moving_2min for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 2min moving mean vel', 'probe avg home curvature 1min'], tlbls)
+
+
+makeAScatterPlot([sesh.probe_proptime_explore_10sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 10sec explore proportion', 'probe avg home curvature 1min'], tlbls)
+makeAScatterPlot([sesh.probe_proptime_explore_30sec for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 30sec explore proportion', 'probe avg home curvature 1min'], tlbls)
+makeAScatterPlot([sesh.probe_proptime_explore_1min for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 1min explore proportion', 'probe avg home curvature 1min'], tlbls)
+makeAScatterPlot([sesh.probe_proptime_explore_2min for sesh in all_sessions],
+                 [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
+                     for sesh in all_sessions],
+                 ['Probe 2min explore proportion', 'probe avg home curvature 1min'], tlbls)
 
 # ===================================
 # Analysis: active exploration vs chilling, dwell times, etc
@@ -502,8 +615,10 @@ else:
     makeAPersevMeasurePlot("probe_well_total_dwell_times")
     makeAPersevMeasurePlot("probe_well_avg_dwell_times")
     makeAPersevMeasurePlot("probe_well_num_entries_1min")
-    makeAPersevMeasurePlot("probe_well_total_dwell_times_1min")
-    makeAPersevMeasurePlot("probe_well_avg_dwell_times_1min")
+    makeAPersevMeasurePlot("probe_well_total_dwell_times_1min", scaleValue=1.0 /
+                           float(TRODES_SAMPLING_RATE), yAxisLabel="Probe 1st Min Total Dwell Time (sec)")
+    makeAPersevMeasurePlot("probe_well_avg_dwell_times_1min", scaleValue=1.0 /
+                           float(TRODES_SAMPLING_RATE), yAxisLabel="Probe 1st Min Average Dwell Time (sec)")
     makeAPersevMeasurePlot("probe_well_num_entries_30sec")
     makeAPersevMeasurePlot("probe_well_total_dwell_times_30sec")
     makeAPersevMeasurePlot("probe_well_avg_dwell_times_30sec")
@@ -590,7 +705,8 @@ else:
 # ===================================
 # What do dwell times look like?
 # ===================================
-dt_vals = [dt for sesh in all_sessions for dtlist in sesh.probe_dwell_times for dt in dtlist]
+dt_vals = [
+    dt for sesh in all_sessions for dtlist in sesh.probe_dwell_times for dt in dtlist]
 makeAHistogram(dt_vals, categories=["all"] * len(dt_vals), title="dwell times")
 
 # ===================================
@@ -629,8 +745,10 @@ def avg_speed_plot(interval, output_filename=""):
     if SKIP_AVG_SPEED_PLOTS:
         print("Warning: skipping avg speed comp plots")
         return
-    max_bt_dur = np.max([sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0] for sesh in all_sessions])
-    max_probe_dur = np.max([sesh.probe_pos_ts[-1] - sesh.probe_pos_ts[0] for sesh in all_sessions])
+    max_bt_dur = np.max([sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0]
+                         for sesh in all_sessions])
+    max_probe_dur = np.max(
+        [sesh.probe_pos_ts[-1] - sesh.probe_pos_ts[0] for sesh in all_sessions])
     istep = interval * TRODES_SAMPLING_RATE
     bt_num_speeds = int(np.floor(max_bt_dur / istep))
     probe_num_speeds = int(np.floor(max_probe_dur / istep))
@@ -652,12 +770,15 @@ def avg_speed_plot(interval, output_filename=""):
     bt_mvals = np.nanmean(all_bt_speeds, axis=0)
     probe_mvals = np.nanmean(all_probe_speeds, axis=0)
     bt_sems = np.nanstd(all_bt_speeds, axis=0) / \
-        np.sqrt(np.count_nonzero(np.logical_not(np.isnan(all_bt_speeds)), axis=0))
+        np.sqrt(np.count_nonzero(np.logical_not(
+            np.isnan(all_bt_speeds)), axis=0))
     probe_sems = np.nanstd(all_probe_speeds, axis=0) / \
-        np.sqrt(np.count_nonzero(np.logical_not(np.isnan(all_probe_speeds)), axis=0))
+        np.sqrt(np.count_nonzero(np.logical_not(
+            np.isnan(all_probe_speeds)), axis=0))
 
     plt.clf()
-    plt.errorbar(np.linspace(interval, interval * bt_num_speeds, bt_num_speeds), bt_mvals, bt_sems)
+    plt.errorbar(np.linspace(interval, interval * bt_num_speeds,
+                             bt_num_speeds), bt_mvals, bt_sems)
     plt.title("BT Avg speed, interval={}".format(interval))
     plt.xlabel("Time (sec)")
     plt.ylabel("Avg Speed (cm/s)")
@@ -665,7 +786,8 @@ def avg_speed_plot(interval, output_filename=""):
         plt.show()
     if SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
         if len(output_filename) == 0:
-            output_filename = os.path.join(output_dir, "bt_avg_speed_{}".format(interval))
+            output_filename = os.path.join(
+                output_dir, "bt_avg_speed_{}".format(interval))
         else:
             output_filename = os.path.join(output_dir, output_filename + "_bt")
         plt.savefig(output_filename, dpi=800)
@@ -680,9 +802,11 @@ def avg_speed_plot(interval, output_filename=""):
         plt.show()
     if SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
         if len(output_filename) == 0:
-            output_filename = os.path.join(output_dir, "probe_avg_speed_{}".format(interval))
+            output_filename = os.path.join(
+                output_dir, "probe_avg_speed_{}".format(interval))
         else:
-            output_filename = os.path.join(output_dir, output_filename + "_probe")
+            output_filename = os.path.join(
+                output_dir, output_filename + "_probe")
         plt.savefig(output_filename, dpi=800)
 
 
@@ -695,8 +819,10 @@ def avg_speed_plot_separate_conditions(interval, output_filename=""):
     if SKIP_AVG_SPEED_COMP_PLOTS:
         print("Warning: skipping avg speed comp plots")
         return
-    max_bt_dur = np.max([sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0] for sesh in all_sessions])
-    max_probe_dur = np.max([sesh.probe_pos_ts[-1] - sesh.probe_pos_ts[0] for sesh in all_sessions])
+    max_bt_dur = np.max([sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0]
+                         for sesh in all_sessions])
+    max_probe_dur = np.max(
+        [sesh.probe_pos_ts[-1] - sesh.probe_pos_ts[0] for sesh in all_sessions])
     istep = interval * TRODES_SAMPLING_RATE
     bt_num_speeds = int(np.floor(max_bt_dur / istep))
     probe_num_speeds = int(np.floor(max_probe_dur / istep))
@@ -723,10 +849,14 @@ def avg_speed_plot_separate_conditions(interval, output_filename=""):
     # print(all_bt_speeds)
     # print(all_bt_speeds[np.where(session_type == 1), :])
     # print(session_type)
-    bt_mvals_swr = np.nanmean(all_bt_speeds[np.where(session_type == 1), :][0], axis=0)
-    bt_mvals_ctrl = np.nanmean(all_bt_speeds[np.where(session_type == 0), :][0], axis=0)
-    probe_mvals_swr = np.nanmean(all_probe_speeds[np.where(session_type == 1), :][0], axis=0)
-    probe_mvals_ctrl = np.nanmean(all_probe_speeds[np.where(session_type == 0), :][0], axis=0)
+    bt_mvals_swr = np.nanmean(
+        all_bt_speeds[np.where(session_type == 1), :][0], axis=0)
+    bt_mvals_ctrl = np.nanmean(
+        all_bt_speeds[np.where(session_type == 0), :][0], axis=0)
+    probe_mvals_swr = np.nanmean(
+        all_probe_speeds[np.where(session_type == 1), :][0], axis=0)
+    probe_mvals_ctrl = np.nanmean(
+        all_probe_speeds[np.where(session_type == 0), :][0], axis=0)
     bt_sems_swr = np.nanstd(all_bt_speeds[np.where(session_type == 1), :][0], axis=0) / \
         np.sqrt(np.count_nonzero(np.logical_not(
             np.isnan(all_bt_speeds[np.where(session_type == 0), :][0])), axis=0))
@@ -775,7 +905,8 @@ def avg_speed_plot_separate_conditions(interval, output_filename=""):
             output_filename = os.path.join(
                 output_dir, "probe_avg_speed_{}_comparison".format(interval))
         else:
-            output_filename = os.path.join(output_dir, output_filename + "_probe")
+            output_filename = os.path.join(
+                output_dir, output_filename + "_probe")
         plt.savefig(output_filename, dpi=800)
 
 
@@ -814,7 +945,7 @@ def calcBoutProps(sesh, start, stop):
             fp = [sesh.probe_pos_ts[0], sesh.probe_pos_ts[-1]]
         start_t = np.interp(start, xp, fp)
         stop_t = np.interp(stop, xp, fp)
-        return calcAvgSpeed(sesh, start_t, stop_t)
+        return calcBoutProps(sesh, start_t, stop_t)
     if start < sesh.probe_pos_ts[0]:
         tref = sesh.bt_pos_ts[0:-1]
         start_i = np.searchsorted(tref, start)
@@ -839,8 +970,10 @@ def boutProportionPlot(interval, given_output_filename=""):
     if SKIP_BOUT_PROP_PLOTS:
         print("Warning: skipping bout prop plots")
         return
-    max_bt_dur = np.max([sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0] for sesh in all_sessions])
-    max_probe_dur = np.max([sesh.probe_pos_ts[-1] - sesh.probe_pos_ts[0] for sesh in all_sessions])
+    max_bt_dur = np.max([sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0]
+                         for sesh in all_sessions])
+    max_probe_dur = np.max(
+        [sesh.probe_pos_ts[-1] - sesh.probe_pos_ts[0] for sesh in all_sessions])
     istep = interval * TRODES_SAMPLING_RATE
     bt_num_cats = int(np.floor(max_bt_dur / istep))
     probe_num_cats = int(np.floor(max_probe_dur / istep))
@@ -870,7 +1003,8 @@ def boutProportionPlot(interval, given_output_filename=""):
     x = np.linspace(interval, interval * bt_num_cats, bt_num_cats)
     widths = (x[1]-x[0]) * 0.8
     p1 = plt.bar(x, bt_mvals[:, 0], widths, yerr=bt_sems[:, 0])
-    p2 = plt.bar(x, bt_mvals[:, 1], widths, yerr=bt_sems[:, 1], bottom=bt_mvals[:, 0])
+    p2 = plt.bar(x, bt_mvals[:, 1], widths,
+                 yerr=bt_sems[:, 1], bottom=bt_mvals[:, 0])
     p3 = plt.bar(x, bt_mvals[:, 2], widths, yerr=bt_sems[:, 2],
                  bottom=bt_mvals[:, 0]+bt_mvals[:, 1])
     plt.title("BT bout props, interval={}".format(interval))
@@ -881,16 +1015,19 @@ def boutProportionPlot(interval, given_output_filename=""):
         plt.show()
     if SAVE_OUTPUT_PLOTS or len(given_output_filename) > 0:
         if len(given_output_filename) == 0:
-            output_filename = os.path.join(output_dir, "bt_bout_proportions_{}".format(interval))
+            output_filename = os.path.join(
+                output_dir, "bt_bout_proportions_{}".format(interval))
         else:
-            output_filename = os.path.join(output_dir, given_output_filename + "_bt")
+            output_filename = os.path.join(
+                output_dir, given_output_filename + "_bt")
         plt.savefig(output_filename, dpi=800)
 
     plt.clf()
     x = np.linspace(interval, interval * probe_num_cats, probe_num_cats)
     widths = (x[1]-x[0]) * 0.8
     p1 = plt.bar(x, probe_mvals[:, 0], widths, yerr=probe_sems[:, 0])
-    p2 = plt.bar(x, probe_mvals[:, 1], widths, yerr=probe_sems[:, 1], bottom=probe_mvals[:, 0])
+    p2 = plt.bar(x, probe_mvals[:, 1], widths,
+                 yerr=probe_sems[:, 1], bottom=probe_mvals[:, 0])
     p3 = plt.bar(x, probe_mvals[:, 2], widths, yerr=probe_sems[:, 2],
                  bottom=probe_mvals[:, 0]+probe_mvals[:, 1])
     plt.title("probe bout props, interval={}".format(interval))
@@ -901,9 +1038,11 @@ def boutProportionPlot(interval, given_output_filename=""):
         plt.show()
     if SAVE_OUTPUT_PLOTS or len(given_output_filename) > 0:
         if len(given_output_filename) == 0:
-            output_filename = os.path.join(output_dir, "probe_bout_proportions_{}".format(interval))
+            output_filename = os.path.join(
+                output_dir, "probe_bout_proportions_{}".format(interval))
         else:
-            output_filename = os.path.join(output_dir, given_output_filename + "_probe")
+            output_filename = os.path.join(
+                output_dir, given_output_filename + "_probe")
         plt.savefig(output_filename, dpi=800)
 
 
@@ -914,7 +1053,8 @@ boutProportionPlot(15)
 if SKIP_HW_PLOT:
     print("Warning, skipping home well plot")
 else:
-    session_type = [0 if trial_label(sesh) == "SWR" else 1 for sesh in all_sessions]
+    session_type = [0 if trial_label(
+        sesh) == "SWR" else 1 for sesh in all_sessions]
     xvals = [sesh.home_x for sesh in all_sessions]
     yvals = [sesh.home_y for sesh in all_sessions]
     plt.clf()
