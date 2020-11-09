@@ -10,7 +10,7 @@ import random
 import scipy
 from scipy import stats, signal
 from itertools import groupby
-# import MountainViewIO
+import MountainViewIO
 # import InterruptionAnalysis
 
 INSPECT_ALL = False
@@ -73,7 +73,10 @@ TRODES_SAMPLING_RATE = 30000
 SWITCH_WELL_FACTOR = 0.8
 
 # Typical observed amplitude of LFP deflection on stimulation
-DEFLECTION_THRESHOLD = 2000.0
+DEFLECTION_THRESHOLD = 10000.0
+LFP_SAMPLING_RATE = 1500.0
+MIN_ARTIFACT_DISTANCE = int(0.05 * LFP_SAMPLING_RATE)
+
 SAMPLING_RATE = 30000.0  # Rate at which timestamp data is sampled
 # LFP is subsampled. The timestamps give time according to SAMPLING_RATE above
 LFP_SAMPLING_RATE = 1500.0
@@ -127,12 +130,13 @@ DIST_TO_HOME_RESOLUTION = 30
 
 
 def readWellCoordsFile(well_coords_file):
+    # For some reason json saving and loading turns the keys into strings, just going to change that here so it's consistent
     with open(well_coords_file, 'r') as wcf:
         well_coords_map = {}
         csv_reader = csv.reader(wcf)
         for data_row in csv_reader:
             try:
-                well_coords_map[int(data_row[0])] = (
+                well_coords_map[str(int(data_row[0]))] = (
                     int(data_row[1]), int(data_row[2]))
             except Exception as err:
                 if data_row[1] != '':
@@ -228,7 +232,7 @@ def processPosData(position_data):
 
 
 def get_well_coordinates(well_num, well_coords_map):
-    return well_coords_map[well_num]
+    return well_coords_map[str(well_num)]
 
 
 def getMeanDistToWell(xs, ys, wellx, welly, duration=-1, ts=np.array([])):
@@ -472,12 +476,8 @@ if __name__ == "__main__":
             session.iti_dir = session_dir
 
         file_str = os.path.join(data_dir, session_dir, session_dir)
-        # lfp_data = []
+        all_lfp_data = []
         session.bt_lfp_fnames = []
-        for i in range(len(session.ripple_detection_tetrodes)):
-            session.bt_lfp_fnames.append(os.path.join(file_str + ".LFP", session_dir +
-                                                      ".LFP_nt" + session.ripple_detection_tetrodes[i] + "ch1.dat"))
-            # lfp_data.append(MountainViewIO.loadLFP(data_file=session.bt_lfp_fnames[-1]))
 
         position_data = readRawPositionData(
             file_str + '.1.videoPositionTracking')
@@ -638,11 +638,39 @@ if __name__ == "__main__":
         session.home_x, session.home_y = get_well_coordinates(
             session.home_well, session.well_coords_map)
 
+        for i in range(len(session.ripple_detection_tetrodes)):
+            lfpdir = file_str + ".LFP"
+            if not os.path.exists(lfpdir):
+                print(lfpdir, "doesn't exists, gonna try and extract the LFP")
+                syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportLFP -rec " + file_str + ".rec"
+                print(syscmd)
+                os.system(syscmd)
+            session.bt_lfp_fnames.append(os.path.join(file_str + ".LFP", session_dir +
+                                                      ".LFP_nt" + str(session.ripple_detection_tetrodes[i]) + "ch1.dat"))
+            all_lfp_data.append(MountainViewIO.loadLFP(data_file=session.bt_lfp_fnames[-1]))
+
         # ======================================================================
         # ===================================
         # Analyze data
         # ===================================
         # ======================================================================
+
+        # ===================================
+        # LFP
+        # ===================================
+        print(all_lfp_data[0])
+        lfp_data = all_lfp_data[0][1]['voltage']
+        # lfp_data = all_lfp_data[0][1]['voltage']
+
+        # # lfp_deflections = signal.find_peaks(-lfp_data[1]['voltage'], height=DEFLECTION_THRESHOLD,
+        lfp_deflections = signal.find_peaks(-lfp_data, height=DEFLECTION_THRESHOLD,
+                                            distance=MIN_ARTIFACT_DISTANCE)
+        artifacts = lfp_deflections[0]
+
+        plt.clf()
+        plt.plot(lfp_data)
+        plt.scatter(artifacts, lfp_data[artifacts])
+        plt.show()
 
         # ===================================
         # which away wells were visited?
@@ -809,234 +837,235 @@ if __name__ == "__main__":
         # ===================================
         # avg dist to wells
         # ===================================
-        session.bt_mean_dist_to_wells = getMeanDistToWells(
-            session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map)
-        session.bt_mean_dist_to_wells_1min = getMeanDistToWells(
-            session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_mean_dist_to_wells_30sec = getMeanDistToWells(
-            session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_mean_dist_to_home_well = session.bt_mean_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.bt_mean_dist_to_home_well_1min = session.bt_mean_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.bt_mean_dist_to_home_well_30sec = session.bt_mean_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.bt_mean_dist_to_ctrl_home_well = session.bt_mean_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_mean_dist_to_ctrl_home_well_1min = session.bt_mean_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_mean_dist_to_ctrl_home_well_30sec = session.bt_mean_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
 
-        # Just moving times
-        session.bt_mv_mean_dist_to_wells = getMeanDistToWells(
-            session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map)
-        session.bt_mv_mean_dist_to_wells_1min = getMeanDistToWells(
-            session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_mv_mean_dist_to_wells_30sec = getMeanDistToWells(
-            session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_mv_mean_dist_to_home_well = session.bt_mv_mean_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.bt_mv_mean_dist_to_home_well_1min = session.bt_mv_mean_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.bt_mv_mean_dist_to_home_well_30sec = session.bt_mv_mean_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.bt_mv_mean_dist_to_ctrl_home_well = session.bt_mv_mean_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_mv_mean_dist_to_ctrl_home_well_1min = session.bt_mv_mean_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_mv_mean_dist_to_ctrl_home_well_30sec = session.bt_mv_mean_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
+        # session.bt_mean_dist_to_wells = getMeanDistToWells(
+        #     session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map)
+        # session.bt_mean_dist_to_wells_1min = getMeanDistToWells(
+        #     session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_mean_dist_to_wells_30sec = getMeanDistToWells(
+        #     session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_mean_dist_to_home_well = session.bt_mean_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_mean_dist_to_home_well_1min = session.bt_mean_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_mean_dist_to_home_well_30sec = session.bt_mean_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_mean_dist_to_ctrl_home_well = session.bt_mean_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_mean_dist_to_ctrl_home_well_1min = session.bt_mean_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_mean_dist_to_ctrl_home_well_30sec = session.bt_mean_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
 
-        # just still times
-        session.bt_still_mean_dist_to_wells = getMeanDistToWells(
-            session.bt_still_xs, session.bt_still_ys, session.well_coords_map)
-        session.bt_still_mean_dist_to_wells_1min = getMeanDistToWells(
-            session.bt_still_xs, session.bt_still_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_still_mean_dist_to_wells_30sec = getMeanDistToWells(
-            session.bt_still_xs, session.bt_still_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_still_mean_dist_to_home_well = session.bt_still_mean_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.bt_still_mean_dist_to_home_well_1min = session.bt_still_mean_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.bt_still_mean_dist_to_home_well_30sec = session.bt_still_mean_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.bt_still_mean_dist_to_ctrl_home_well = session.bt_still_mean_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_still_mean_dist_to_ctrl_home_well_1min = session.bt_still_mean_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_still_mean_dist_to_ctrl_home_well_30sec = session.bt_still_mean_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
+        # # Just moving times
+        # session.bt_mv_mean_dist_to_wells = getMeanDistToWells(
+        #     session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map)
+        # session.bt_mv_mean_dist_to_wells_1min = getMeanDistToWells(
+        #     session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_mv_mean_dist_to_wells_30sec = getMeanDistToWells(
+        #     session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_mv_mean_dist_to_home_well = session.bt_mv_mean_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_mv_mean_dist_to_home_well_1min = session.bt_mv_mean_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_mv_mean_dist_to_home_well_30sec = session.bt_mv_mean_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_mv_mean_dist_to_ctrl_home_well = session.bt_mv_mean_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_mv_mean_dist_to_ctrl_home_well_1min = session.bt_mv_mean_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_mv_mean_dist_to_ctrl_home_well_30sec = session.bt_mv_mean_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
 
-        # same for probe
-        session.probe_mean_dist_to_wells = getMeanDistToWells(
-            session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map)
-        session.probe_mean_dist_to_wells_1min = getMeanDistToWells(
-            session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_mean_dist_to_wells_30sec = getMeanDistToWells(
-            session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_mean_dist_to_home_well = session.probe_mean_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.probe_mean_dist_to_home_well_1min = session.probe_mean_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.probe_mean_dist_to_home_well_30sec = session.probe_mean_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.probe_mean_dist_to_ctrl_home_well = session.probe_mean_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_mean_dist_to_ctrl_home_well_1min = session.probe_mean_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_mean_dist_to_ctrl_home_well_30sec = session.probe_mean_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
+        # # just still times
+        # session.bt_still_mean_dist_to_wells = getMeanDistToWells(
+        #     session.bt_still_xs, session.bt_still_ys, session.well_coords_map)
+        # session.bt_still_mean_dist_to_wells_1min = getMeanDistToWells(
+        #     session.bt_still_xs, session.bt_still_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_still_mean_dist_to_wells_30sec = getMeanDistToWells(
+        #     session.bt_still_xs, session.bt_still_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_still_mean_dist_to_home_well = session.bt_still_mean_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_still_mean_dist_to_home_well_1min = session.bt_still_mean_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_still_mean_dist_to_home_well_30sec = session.bt_still_mean_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_still_mean_dist_to_ctrl_home_well = session.bt_still_mean_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_still_mean_dist_to_ctrl_home_well_1min = session.bt_still_mean_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_still_mean_dist_to_ctrl_home_well_30sec = session.bt_still_mean_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
 
-        # Just moving times
-        session.probe_mv_mean_dist_to_wells = getMeanDistToWells(
-            session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map)
-        session.probe_mv_mean_dist_to_wells_1min = getMeanDistToWells(
-            session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_mv_mean_dist_to_wells_30sec = getMeanDistToWells(
-            session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_mv_mean_dist_to_home_well = session.probe_mv_mean_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.probe_mv_mean_dist_to_home_well_1min = session.probe_mv_mean_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.probe_mv_mean_dist_to_home_well_30sec = session.probe_mv_mean_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.probe_mv_mean_dist_to_ctrl_home_well = session.probe_mv_mean_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_mv_mean_dist_to_ctrl_home_well_1min = session.probe_mv_mean_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_mv_mean_dist_to_ctrl_home_well_30sec = session.probe_mv_mean_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
+        # # same for probe
+        # session.probe_mean_dist_to_wells = getMeanDistToWells(
+        #     session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map)
+        # session.probe_mean_dist_to_wells_1min = getMeanDistToWells(
+        #     session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_mean_dist_to_wells_30sec = getMeanDistToWells(
+        #     session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_mean_dist_to_home_well = session.probe_mean_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_mean_dist_to_home_well_1min = session.probe_mean_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_mean_dist_to_home_well_30sec = session.probe_mean_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_mean_dist_to_ctrl_home_well = session.probe_mean_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_mean_dist_to_ctrl_home_well_1min = session.probe_mean_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_mean_dist_to_ctrl_home_well_30sec = session.probe_mean_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
 
-        # just still times
-        session.probe_still_mean_dist_to_wells = getMeanDistToWells(
-            session.probe_still_xs, session.probe_still_ys, session.well_coords_map)
-        session.probe_still_mean_dist_to_wells_1min = getMeanDistToWells(
-            session.probe_still_xs, session.probe_still_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_still_mean_dist_to_wells_30sec = getMeanDistToWells(
-            session.probe_still_xs, session.probe_still_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_still_mean_dist_to_home_well = session.probe_still_mean_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.probe_still_mean_dist_to_home_well_1min = session.probe_still_mean_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.probe_still_mean_dist_to_home_well_30sec = session.probe_still_mean_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.probe_still_mean_dist_to_ctrl_home_well = session.probe_still_mean_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_still_mean_dist_to_ctrl_home_well_1min = session.probe_still_mean_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_still_mean_dist_to_ctrl_home_well_30sec = session.probe_still_mean_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
+        # # Just moving times
+        # session.probe_mv_mean_dist_to_wells = getMeanDistToWells(
+        #     session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map)
+        # session.probe_mv_mean_dist_to_wells_1min = getMeanDistToWells(
+        #     session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_mv_mean_dist_to_wells_30sec = getMeanDistToWells(
+        #     session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_mv_mean_dist_to_home_well = session.probe_mv_mean_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_mv_mean_dist_to_home_well_1min = session.probe_mv_mean_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_mv_mean_dist_to_home_well_30sec = session.probe_mv_mean_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_mv_mean_dist_to_ctrl_home_well = session.probe_mv_mean_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_mv_mean_dist_to_ctrl_home_well_1min = session.probe_mv_mean_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_mv_mean_dist_to_ctrl_home_well_30sec = session.probe_mv_mean_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
 
-        # Now all the same but median instead of mean
-        session.bt_median_dist_to_wells = getMedianDistToWells(
-            session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map)
-        session.bt_median_dist_to_wells_1min = getMedianDistToWells(
-            session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_median_dist_to_wells_30sec = getMedianDistToWells(
-            session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_median_dist_to_home_well = session.bt_median_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.bt_median_dist_to_home_well_1min = session.bt_median_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.bt_median_dist_to_home_well_30sec = session.bt_median_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.bt_median_dist_to_ctrl_home_well = session.bt_median_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_median_dist_to_ctrl_home_well_1min = session.bt_median_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_median_dist_to_ctrl_home_well_30sec = session.bt_median_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_mv_median_dist_to_wells = getMedianDistToWells(
-            session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map)
-        session.bt_mv_median_dist_to_wells_1min = getMedianDistToWells(
-            session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_mv_median_dist_to_wells_30sec = getMedianDistToWells(
-            session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_mv_median_dist_to_home_well = session.bt_mv_median_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.bt_mv_median_dist_to_home_well_1min = session.bt_mv_median_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.bt_mv_median_dist_to_home_well_30sec = session.bt_mv_median_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.bt_mv_median_dist_to_ctrl_home_well = session.bt_mv_median_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_mv_median_dist_to_ctrl_home_well_1min = session.bt_mv_median_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_mv_median_dist_to_ctrl_home_well_30sec = session.bt_mv_median_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_still_median_dist_to_wells = getMedianDistToWells(
-            session.bt_still_xs, session.bt_still_ys, session.well_coords_map)
-        session.bt_still_median_dist_to_wells_1min = getMedianDistToWells(
-            session.bt_still_xs, session.bt_still_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_still_median_dist_to_wells_30sec = getMedianDistToWells(
-            session.bt_still_xs, session.bt_still_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
-        session.bt_still_median_dist_to_home_well = session.bt_still_median_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.bt_still_median_dist_to_home_well_1min = session.bt_still_median_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.bt_still_median_dist_to_home_well_30sec = session.bt_still_median_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.bt_still_median_dist_to_ctrl_home_well = session.bt_still_median_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_still_median_dist_to_ctrl_home_well_1min = session.bt_still_median_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_still_median_dist_to_ctrl_home_well_30sec = session.bt_still_median_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_median_dist_to_wells = getMedianDistToWells(
-            session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map)
-        session.probe_median_dist_to_wells_1min = getMedianDistToWells(
-            session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_median_dist_to_wells_30sec = getMedianDistToWells(
-            session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_median_dist_to_home_well = session.probe_median_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.probe_median_dist_to_home_well_1min = session.probe_median_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.probe_median_dist_to_home_well_30sec = session.probe_median_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.probe_median_dist_to_ctrl_home_well = session.probe_median_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_median_dist_to_ctrl_home_well_1min = session.probe_median_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_median_dist_to_ctrl_home_well_30sec = session.probe_median_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_mv_median_dist_to_wells = getMedianDistToWells(
-            session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map)
-        session.probe_mv_median_dist_to_wells_1min = getMedianDistToWells(
-            session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_mv_median_dist_to_wells_30sec = getMedianDistToWells(
-            session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_mv_median_dist_to_home_well = session.probe_mv_median_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.probe_mv_median_dist_to_home_well_1min = session.probe_mv_median_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.probe_mv_median_dist_to_home_well_30sec = session.probe_mv_median_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.probe_mv_median_dist_to_ctrl_home_well = session.probe_mv_median_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_mv_median_dist_to_ctrl_home_well_1min = session.probe_mv_median_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_mv_median_dist_to_ctrl_home_well_30sec = session.probe_mv_median_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_still_median_dist_to_wells = getMedianDistToWells(
-            session.probe_still_xs, session.probe_still_ys, session.well_coords_map)
-        session.probe_still_median_dist_to_wells_1min = getMedianDistToWells(
-            session.probe_still_xs, session.probe_still_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_still_median_dist_to_wells_30sec = getMedianDistToWells(
-            session.probe_still_xs, session.probe_still_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
-        session.probe_still_median_dist_to_home_well = session.probe_still_median_dist_to_wells[
-            session.home_well_idx_in_allwells]
-        session.probe_still_median_dist_to_home_well_1min = session.probe_still_median_dist_to_wells_1min[
-            session.home_well_idx_in_allwells]
-        session.probe_still_median_dist_to_home_well_30sec = session.probe_still_median_dist_to_wells_30sec[
-            session.home_well_idx_in_allwells]
-        session.probe_still_median_dist_to_ctrl_home_well = session.probe_still_median_dist_to_wells[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_still_median_dist_to_ctrl_home_well_1min = session.probe_still_median_dist_to_wells_1min[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_still_median_dist_to_ctrl_home_well_30sec = session.probe_still_median_dist_to_wells_30sec[
-            session.ctrl_home_well_idx_in_allwells]
+        # # just still times
+        # session.probe_still_mean_dist_to_wells = getMeanDistToWells(
+        #     session.probe_still_xs, session.probe_still_ys, session.well_coords_map)
+        # session.probe_still_mean_dist_to_wells_1min = getMeanDistToWells(
+        #     session.probe_still_xs, session.probe_still_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_still_mean_dist_to_wells_30sec = getMeanDistToWells(
+        #     session.probe_still_xs, session.probe_still_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_still_mean_dist_to_home_well = session.probe_still_mean_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_still_mean_dist_to_home_well_1min = session.probe_still_mean_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_still_mean_dist_to_home_well_30sec = session.probe_still_mean_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_still_mean_dist_to_ctrl_home_well = session.probe_still_mean_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_still_mean_dist_to_ctrl_home_well_1min = session.probe_still_mean_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_still_mean_dist_to_ctrl_home_well_30sec = session.probe_still_mean_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
+
+        # # Now all the same but median instead of mean
+        # session.bt_median_dist_to_wells = getMedianDistToWells(
+        #     session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map)
+        # session.bt_median_dist_to_wells_1min = getMedianDistToWells(
+        #     session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_median_dist_to_wells_30sec = getMedianDistToWells(
+        #     session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_median_dist_to_home_well = session.bt_median_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_median_dist_to_home_well_1min = session.bt_median_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_median_dist_to_home_well_30sec = session.bt_median_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_median_dist_to_ctrl_home_well = session.bt_median_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_median_dist_to_ctrl_home_well_1min = session.bt_median_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_median_dist_to_ctrl_home_well_30sec = session.bt_median_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_mv_median_dist_to_wells = getMedianDistToWells(
+        #     session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map)
+        # session.bt_mv_median_dist_to_wells_1min = getMedianDistToWells(
+        #     session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_mv_median_dist_to_wells_30sec = getMedianDistToWells(
+        #     session.bt_mv_xs, session.bt_mv_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_mv_median_dist_to_home_well = session.bt_mv_median_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_mv_median_dist_to_home_well_1min = session.bt_mv_median_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_mv_median_dist_to_home_well_30sec = session.bt_mv_median_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_mv_median_dist_to_ctrl_home_well = session.bt_mv_median_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_mv_median_dist_to_ctrl_home_well_1min = session.bt_mv_median_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_mv_median_dist_to_ctrl_home_well_30sec = session.bt_mv_median_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_still_median_dist_to_wells = getMedianDistToWells(
+        #     session.bt_still_xs, session.bt_still_ys, session.well_coords_map)
+        # session.bt_still_median_dist_to_wells_1min = getMedianDistToWells(
+        #     session.bt_still_xs, session.bt_still_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_still_median_dist_to_wells_30sec = getMedianDistToWells(
+        #     session.bt_still_xs, session.bt_still_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.bt_pos_ts)
+        # session.bt_still_median_dist_to_home_well = session.bt_still_median_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_still_median_dist_to_home_well_1min = session.bt_still_median_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_still_median_dist_to_home_well_30sec = session.bt_still_median_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.bt_still_median_dist_to_ctrl_home_well = session.bt_still_median_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_still_median_dist_to_ctrl_home_well_1min = session.bt_still_median_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.bt_still_median_dist_to_ctrl_home_well_30sec = session.bt_still_median_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_median_dist_to_wells = getMedianDistToWells(
+        #     session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map)
+        # session.probe_median_dist_to_wells_1min = getMedianDistToWells(
+        #     session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_median_dist_to_wells_30sec = getMedianDistToWells(
+        #     session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_median_dist_to_home_well = session.probe_median_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_median_dist_to_home_well_1min = session.probe_median_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_median_dist_to_home_well_30sec = session.probe_median_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_median_dist_to_ctrl_home_well = session.probe_median_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_median_dist_to_ctrl_home_well_1min = session.probe_median_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_median_dist_to_ctrl_home_well_30sec = session.probe_median_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_mv_median_dist_to_wells = getMedianDistToWells(
+        #     session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map)
+        # session.probe_mv_median_dist_to_wells_1min = getMedianDistToWells(
+        #     session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_mv_median_dist_to_wells_30sec = getMedianDistToWells(
+        #     session.probe_mv_xs, session.probe_mv_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_mv_median_dist_to_home_well = session.probe_mv_median_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_mv_median_dist_to_home_well_1min = session.probe_mv_median_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_mv_median_dist_to_home_well_30sec = session.probe_mv_median_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_mv_median_dist_to_ctrl_home_well = session.probe_mv_median_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_mv_median_dist_to_ctrl_home_well_1min = session.probe_mv_median_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_mv_median_dist_to_ctrl_home_well_30sec = session.probe_mv_median_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_still_median_dist_to_wells = getMedianDistToWells(
+        #     session.probe_still_xs, session.probe_still_ys, session.well_coords_map)
+        # session.probe_still_median_dist_to_wells_1min = getMedianDistToWells(
+        #     session.probe_still_xs, session.probe_still_ys, session.well_coords_map, duration=60*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_still_median_dist_to_wells_30sec = getMedianDistToWells(
+        #     session.probe_still_xs, session.probe_still_ys, session.well_coords_map, duration=30*TRODES_SAMPLING_RATE, ts=session.probe_pos_ts)
+        # session.probe_still_median_dist_to_home_well = session.probe_still_median_dist_to_wells[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_still_median_dist_to_home_well_1min = session.probe_still_median_dist_to_wells_1min[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_still_median_dist_to_home_well_30sec = session.probe_still_median_dist_to_wells_30sec[
+        #     session.home_well_idx_in_allwells]
+        # session.probe_still_median_dist_to_ctrl_home_well = session.probe_still_median_dist_to_wells[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_still_median_dist_to_ctrl_home_well_1min = session.probe_still_median_dist_to_wells_1min[
+        #     session.ctrl_home_well_idx_in_allwells]
+        # session.probe_still_median_dist_to_ctrl_home_well_30sec = session.probe_still_median_dist_to_wells_30sec[
+        #     session.ctrl_home_well_idx_in_allwells]
 
         # ===================================
         # Ballisticity of movements
@@ -1109,149 +1138,149 @@ if __name__ == "__main__":
         session.probe_ballisticity = beta
         assert np.sum(np.isnan(session.probe_ballisticity)) == 0
 
-        session.bt_well_ballisticities = []
-        session.bt_well_avg_ballisticity_over_time = []
-        session.bt_well_avg_ballisticity_over_visits = []
-        for i, wi in enumerate(all_well_names):
-            session.bt_well_ballisticities.append([])
-            for ei, (weni, wexi) in enumerate(zip(session.bt_well_entry_idxs[i], session.bt_well_exit_idxs[i])):
-                if wexi > session.bt_ballisticity.size:
-                    continue
-                session.bt_well_ballisticities[i].append(
-                    session.bt_ballisticity[weni:wexi])
+        # session.bt_well_ballisticities = []
+        # session.bt_well_avg_ballisticity_over_time = []
+        # session.bt_well_avg_ballisticity_over_visits = []
+        # for i, wi in enumerate(all_well_names):
+        #     session.bt_well_ballisticities.append([])
+        #     for ei, (weni, wexi) in enumerate(zip(session.bt_well_entry_idxs[i], session.bt_well_exit_idxs[i])):
+        #         if wexi > session.bt_ballisticity.size:
+        #             continue
+        #         session.bt_well_ballisticities[i].append(
+        #             session.bt_ballisticity[weni:wexi])
 
-            session.bt_well_avg_ballisticity_over_time.append(
-                np.mean(np.concatenate(session.bt_well_ballisticities[i])))
-            session.bt_well_avg_ballisticity_over_visits.append(
-                np.mean([np.mean(x) for x in session.bt_well_ballisticities[i]]))
+        #     session.bt_well_avg_ballisticity_over_time.append(
+        #         np.mean(np.concatenate(session.bt_well_ballisticities[i])))
+        #     session.bt_well_avg_ballisticity_over_visits.append(
+        #         np.mean([np.mean(x) for x in session.bt_well_ballisticities[i]]))
 
-        session.probe_well_ballisticities = []
-        session.probe_well_avg_ballisticity_over_time = []
-        session.probe_well_avg_ballisticity_over_visits = []
-        session.probe_well_ballisticities_1min = []
-        session.probe_well_avg_ballisticity_over_time_1min = []
-        session.probe_well_avg_ballisticity_over_visits_1min = []
-        session.probe_well_ballisticities_30sec = []
-        session.probe_well_avg_ballisticity_over_time_30sec = []
-        session.probe_well_avg_ballisticity_over_visits_30sec = []
-        for i, wi in enumerate(all_well_names):
-            session.probe_well_ballisticities.append([])
-            session.probe_well_ballisticities_1min.append([])
-            session.probe_well_ballisticities_30sec.append([])
-            for ei, (weni, wexi) in enumerate(zip(session.probe_well_entry_idxs[i], session.probe_well_exit_idxs[i])):
-                if wexi > session.probe_ballisticity.size:
-                    continue
-                session.probe_well_ballisticities[i].append(
-                    session.probe_ballisticity[weni:wexi])
-                if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
-                    session.probe_well_ballisticities_1min[i].append(
-                        session.probe_ballisticity[weni:wexi])
-                if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
-                    session.probe_well_ballisticities_30sec[i].append(
-                        session.probe_ballisticity[weni:wexi])
+        # session.probe_well_ballisticities = []
+        # session.probe_well_avg_ballisticity_over_time = []
+        # session.probe_well_avg_ballisticity_over_visits = []
+        # session.probe_well_ballisticities_1min = []
+        # session.probe_well_avg_ballisticity_over_time_1min = []
+        # session.probe_well_avg_ballisticity_over_visits_1min = []
+        # session.probe_well_ballisticities_30sec = []
+        # session.probe_well_avg_ballisticity_over_time_30sec = []
+        # session.probe_well_avg_ballisticity_over_visits_30sec = []
+        # for i, wi in enumerate(all_well_names):
+        #     session.probe_well_ballisticities.append([])
+        #     session.probe_well_ballisticities_1min.append([])
+        #     session.probe_well_ballisticities_30sec.append([])
+        #     for ei, (weni, wexi) in enumerate(zip(session.probe_well_entry_idxs[i], session.probe_well_exit_idxs[i])):
+        #         if wexi > session.probe_ballisticity.size:
+        #             continue
+        #         session.probe_well_ballisticities[i].append(
+        #             session.probe_ballisticity[weni:wexi])
+        #         if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+        #             session.probe_well_ballisticities_1min[i].append(
+        #                 session.probe_ballisticity[weni:wexi])
+        #         if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+        #             session.probe_well_ballisticities_30sec[i].append(
+        #                 session.probe_ballisticity[weni:wexi])
 
-            if len(session.probe_well_ballisticities[i]) > 0:
-                session.probe_well_avg_ballisticity_over_time.append(
-                    np.mean(np.concatenate(session.probe_well_ballisticities[i])))
-                session.probe_well_avg_ballisticity_over_visits.append(
-                    np.mean([np.mean(x) for x in session.probe_well_ballisticities[i]]))
-            else:
-                session.probe_well_avg_ballisticity_over_time.append(np.nan)
-                session.probe_well_avg_ballisticity_over_visits.append(np.nan)
+        #     if len(session.probe_well_ballisticities[i]) > 0:
+        #         session.probe_well_avg_ballisticity_over_time.append(
+        #             np.mean(np.concatenate(session.probe_well_ballisticities[i])))
+        #         session.probe_well_avg_ballisticity_over_visits.append(
+        #             np.mean([np.mean(x) for x in session.probe_well_ballisticities[i]]))
+        #     else:
+        #         session.probe_well_avg_ballisticity_over_time.append(np.nan)
+        #         session.probe_well_avg_ballisticity_over_visits.append(np.nan)
 
-            if len(session.probe_well_ballisticities_1min[i]) > 0:
-                session.probe_well_avg_ballisticity_over_time_1min.append(
-                    np.mean(np.concatenate(session.probe_well_ballisticities_1min[i])))
-                session.probe_well_avg_ballisticity_over_visits_1min.append(
-                    np.mean([np.mean(x) for x in session.probe_well_ballisticities_1min[i]]))
-            else:
-                session.probe_well_avg_ballisticity_over_time_1min.append(
-                    np.nan)
-                session.probe_well_avg_ballisticity_over_visits_1min.append(
-                    np.nan)
+        #     if len(session.probe_well_ballisticities_1min[i]) > 0:
+        #         session.probe_well_avg_ballisticity_over_time_1min.append(
+        #             np.mean(np.concatenate(session.probe_well_ballisticities_1min[i])))
+        #         session.probe_well_avg_ballisticity_over_visits_1min.append(
+        #             np.mean([np.mean(x) for x in session.probe_well_ballisticities_1min[i]]))
+        #     else:
+        #         session.probe_well_avg_ballisticity_over_time_1min.append(
+        #             np.nan)
+        #         session.probe_well_avg_ballisticity_over_visits_1min.append(
+        #             np.nan)
 
-            if len(session.probe_well_ballisticities_30sec[i]) > 0:
-                session.probe_well_avg_ballisticity_over_time_30sec.append(
-                    np.mean(np.concatenate(session.probe_well_ballisticities_30sec[i])))
-                session.probe_well_avg_ballisticity_over_visits_30sec.append(
-                    np.mean([np.mean(x) for x in session.probe_well_ballisticities_30sec[i]]))
-            else:
-                session.probe_well_avg_ballisticity_over_time_30sec.append(
-                    np.nan)
-                session.probe_well_avg_ballisticity_over_visits_30sec.append(
-                    np.nan)
+        #     if len(session.probe_well_ballisticities_30sec[i]) > 0:
+        #         session.probe_well_avg_ballisticity_over_time_30sec.append(
+        #             np.mean(np.concatenate(session.probe_well_ballisticities_30sec[i])))
+        #         session.probe_well_avg_ballisticity_over_visits_30sec.append(
+        #             np.mean([np.mean(x) for x in session.probe_well_ballisticities_30sec[i]]))
+        #     else:
+        #         session.probe_well_avg_ballisticity_over_time_30sec.append(
+        #             np.nan)
+        #         session.probe_well_avg_ballisticity_over_visits_30sec.append(
+        #             np.nan)
 
-        # ballisticity as a function of distance to home well
-        hwx, hwy = session.well_coords_map[session.home_well]
-        bt_dist_to_home_well = np.sqrt(np.power(hwx - np.array(session.bt_pos_xs), 2) +
-                                       np.power(hwy - np.array(session.bt_pos_ys), 2))
-        chwx, chwy = session.well_coords_map[session.ctrl_home_well]
-        bt_dist_to_ctrl_home_well = np.sqrt(np.power(chwx - np.array(session.bt_pos_xs), 2) +
-                                            np.power(chwy - np.array(session.bt_pos_ys), 2))
+        # # ballisticity as a function of distance to home well
+        # hwx, hwy = session.well_coords_map[session.home_well]
+        # bt_dist_to_home_well = np.sqrt(np.power(hwx - np.array(session.bt_pos_xs), 2) +
+        #                                np.power(hwy - np.array(session.bt_pos_ys), 2))
+        # chwx, chwy = session.well_coords_map[session.ctrl_home_well]
+        # bt_dist_to_ctrl_home_well = np.sqrt(np.power(chwx - np.array(session.bt_pos_xs), 2) +
+        #                                     np.power(chwy - np.array(session.bt_pos_ys), 2))
 
-        dd = len(session.bt_pos_xs) - session.bt_ballisticity.size
-        ball_padded = np.pad(session.bt_ballisticity, (int(
-            np.floor(float(dd)/2.0)), int(np.ceil(float(dd)/2.0))))
+        # dd = len(session.bt_pos_xs) - session.bt_ballisticity.size
+        # ball_padded = np.pad(session.bt_ballisticity, (int(
+        #     np.floor(float(dd)/2.0)), int(np.ceil(float(dd)/2.0))))
 
-        session.bt_ball_by_dist_to_home_xvals = np.array(
-            range(0, int(np.ceil(np.max(bt_dist_to_home_well))), DIST_TO_HOME_RESOLUTION))
-        session.bt_ball_by_dist_to_home = np.zeros(
-            (len(session.bt_ball_by_dist_to_home_xvals)))
-        session.bt_ball_by_dist_to_ctrl_home = np.zeros(
-            (len(session.bt_ball_by_dist_to_home_xvals)))
-        session.bt_ball_by_dist_to_home_sem = np.zeros(
-            (len(session.bt_ball_by_dist_to_home_xvals)))
-        session.bt_ball_by_dist_to_ctrl_home_sem = np.zeros(
-            (len(session.bt_ball_by_dist_to_home_xvals)))
-        for i, d in enumerate(session.bt_ball_by_dist_to_home_xvals):
-            flag = np.logical_and(bt_dist_to_home_well >= d,
-                                  bt_dist_to_home_well < d + DIST_TO_HOME_RESOLUTION)
-            session.bt_ball_by_dist_to_home[i] = np.nanmean(ball_padded[flag])
-            session.bt_ball_by_dist_to_home_sem[i] = np.nanstd(
-                ball_padded[flag]) / np.sqrt(np.count_nonzero(flag))
+        # session.bt_ball_by_dist_to_home_xvals = np.array(
+        #     range(0, int(np.ceil(np.max(bt_dist_to_home_well))), DIST_TO_HOME_RESOLUTION))
+        # session.bt_ball_by_dist_to_home = np.zeros(
+        #     (len(session.bt_ball_by_dist_to_home_xvals)))
+        # session.bt_ball_by_dist_to_ctrl_home = np.zeros(
+        #     (len(session.bt_ball_by_dist_to_home_xvals)))
+        # session.bt_ball_by_dist_to_home_sem = np.zeros(
+        #     (len(session.bt_ball_by_dist_to_home_xvals)))
+        # session.bt_ball_by_dist_to_ctrl_home_sem = np.zeros(
+        #     (len(session.bt_ball_by_dist_to_home_xvals)))
+        # for i, d in enumerate(session.bt_ball_by_dist_to_home_xvals):
+        #     flag = np.logical_and(bt_dist_to_home_well >= d,
+        #                           bt_dist_to_home_well < d + DIST_TO_HOME_RESOLUTION)
+        #     session.bt_ball_by_dist_to_home[i] = np.nanmean(ball_padded[flag])
+        #     session.bt_ball_by_dist_to_home_sem[i] = np.nanstd(
+        #         ball_padded[flag]) / np.sqrt(np.count_nonzero(flag))
 
-            cflag = np.logical_and(bt_dist_to_ctrl_home_well >= d,
-                                   bt_dist_to_ctrl_home_well < d + DIST_TO_HOME_RESOLUTION)
-            session.bt_ball_by_dist_to_ctrl_home[i] = np.nanmean(
-                ball_padded[cflag])
-            session.bt_ball_by_dist_to_ctrl_home_sem[i] = np.nanstd(
-                ball_padded[cflag]) / np.sqrt(np.count_nonzero(cflag))
+        #     cflag = np.logical_and(bt_dist_to_ctrl_home_well >= d,
+        #                            bt_dist_to_ctrl_home_well < d + DIST_TO_HOME_RESOLUTION)
+        #     session.bt_ball_by_dist_to_ctrl_home[i] = np.nanmean(
+        #         ball_padded[cflag])
+        #     session.bt_ball_by_dist_to_ctrl_home_sem[i] = np.nanstd(
+        #         ball_padded[cflag]) / np.sqrt(np.count_nonzero(cflag))
 
-        hwx, hwy = session.well_coords_map[session.home_well]
-        probe_dist_to_home_well = np.sqrt(np.power(hwx - np.array(session.probe_pos_xs), 2) +
-                                          np.power(hwy - np.array(session.probe_pos_ys), 2))
-        chwx, chwy = session.well_coords_map[session.ctrl_home_well]
-        probe_dist_to_ctrl_home_well = np.sqrt(np.power(chwx - np.array(session.probe_pos_xs), 2) +
-                                               np.power(chwy - np.array(session.probe_pos_ys), 2))
+        # hwx, hwy = session.well_coords_map[session.home_well]
+        # probe_dist_to_home_well = np.sqrt(np.power(hwx - np.array(session.probe_pos_xs), 2) +
+        #                                   np.power(hwy - np.array(session.probe_pos_ys), 2))
+        # chwx, chwy = session.well_coords_map[session.ctrl_home_well]
+        # probe_dist_to_ctrl_home_well = np.sqrt(np.power(chwx - np.array(session.probe_pos_xs), 2) +
+        #                                        np.power(chwy - np.array(session.probe_pos_ys), 2))
 
-        dd = len(session.probe_pos_xs) - session.probe_ballisticity.size
-        ball_padded = np.pad(session.probe_ballisticity, (int(
-            np.floor(float(dd)/2.0)), int(np.ceil(float(dd)/2.0))))
+        # dd = len(session.probe_pos_xs) - session.probe_ballisticity.size
+        # ball_padded = np.pad(session.probe_ballisticity, (int(
+        #     np.floor(float(dd)/2.0)), int(np.ceil(float(dd)/2.0))))
 
-        session.probe_ball_by_dist_to_home_xvals = np.array(
-            range(0, int(np.ceil(np.max(probe_dist_to_home_well))), DIST_TO_HOME_RESOLUTION))
-        session.probe_ball_by_dist_to_home = np.zeros(
-            (len(session.probe_ball_by_dist_to_home_xvals)))
-        session.probe_ball_by_dist_to_ctrl_home = np.zeros(
-            (len(session.probe_ball_by_dist_to_home_xvals)))
-        session.probe_ball_by_dist_to_home_sem = np.zeros(
-            (len(session.probe_ball_by_dist_to_home_xvals)))
-        session.probe_ball_by_dist_to_ctrl_home_sem = np.zeros(
-            (len(session.probe_ball_by_dist_to_home_xvals)))
-        for i, d in enumerate(session.probe_ball_by_dist_to_home_xvals):
-            flag = np.logical_and(probe_dist_to_home_well >= d,
-                                  probe_dist_to_home_well < d + DIST_TO_HOME_RESOLUTION)
-            session.probe_ball_by_dist_to_home[i] = np.nanmean(
-                ball_padded[flag])
-            session.probe_ball_by_dist_to_home_sem[i] = np.nanstd(
-                ball_padded[flag]) / np.sqrt(np.count_nonzero(flag))
+        # session.probe_ball_by_dist_to_home_xvals = np.array(
+        #     range(0, int(np.ceil(np.max(probe_dist_to_home_well))), DIST_TO_HOME_RESOLUTION))
+        # session.probe_ball_by_dist_to_home = np.zeros(
+        #     (len(session.probe_ball_by_dist_to_home_xvals)))
+        # session.probe_ball_by_dist_to_ctrl_home = np.zeros(
+        #     (len(session.probe_ball_by_dist_to_home_xvals)))
+        # session.probe_ball_by_dist_to_home_sem = np.zeros(
+        #     (len(session.probe_ball_by_dist_to_home_xvals)))
+        # session.probe_ball_by_dist_to_ctrl_home_sem = np.zeros(
+        #     (len(session.probe_ball_by_dist_to_home_xvals)))
+        # for i, d in enumerate(session.probe_ball_by_dist_to_home_xvals):
+        #     flag = np.logical_and(probe_dist_to_home_well >= d,
+        #                           probe_dist_to_home_well < d + DIST_TO_HOME_RESOLUTION)
+        #     session.probe_ball_by_dist_to_home[i] = np.nanmean(
+        #         ball_padded[flag])
+        #     session.probe_ball_by_dist_to_home_sem[i] = np.nanstd(
+        #         ball_padded[flag]) / np.sqrt(np.count_nonzero(flag))
 
-            cflag = np.logical_and(probe_dist_to_ctrl_home_well >= d,
-                                   probe_dist_to_ctrl_home_well < d + DIST_TO_HOME_RESOLUTION)
-            session.probe_ball_by_dist_to_ctrl_home[i] = np.nanmean(
-                ball_padded[cflag])
-            session.probe_ball_by_dist_to_ctrl_home_sem[i] = np.nanstd(
-                ball_padded[cflag]) / np.sqrt(np.count_nonzero(cflag))
+        #     cflag = np.logical_and(probe_dist_to_ctrl_home_well >= d,
+        #                            probe_dist_to_ctrl_home_well < d + DIST_TO_HOME_RESOLUTION)
+        #     session.probe_ball_by_dist_to_ctrl_home[i] = np.nanmean(
+        #         ball_padded[cflag])
+        #     session.probe_ball_by_dist_to_ctrl_home_sem[i] = np.nanstd(
+        #         ball_padded[cflag]) / np.sqrt(np.count_nonzero(cflag))
 
         # ===================================
         # Knot-path-curvature as in https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000638
@@ -1484,329 +1513,329 @@ if __name__ == "__main__":
         # ===================================
         # Dwell times
         # ===================================
-        session.bt_dwell_times = []
-        for i, wi in enumerate(all_well_names):
-            session.bt_dwell_times.append(np.array(
-                session.bt_well_exit_times[i]) - np.array(session.bt_well_entry_times[i]))
+        # session.bt_dwell_times = []
+        # for i, wi in enumerate(all_well_names):
+        #     session.bt_dwell_times.append(np.array(
+        #         session.bt_well_exit_times[i]) - np.array(session.bt_well_entry_times[i]))
 
-        session.bt_well_num_entries = []
-        session.bt_well_total_dwell_times = []
-        session.bt_well_avg_dwell_times = []
-        session.bt_well_total_dwell_times_excluding_reward = []
-        session.bt_well_avg_dwell_times_excluding_reward = []
-        for i, wi in enumerate(all_well_names):
-            nume = len(session.bt_well_entry_idxs[i])
-            session.bt_well_num_entries.append(nume)
-            total_dwell_time = np.sum(session.bt_dwell_times[i])
-            session.bt_well_total_dwell_times.append(total_dwell_time)
-            session.bt_well_avg_dwell_times.append(
-                total_dwell_time / float(nume))
+        # session.bt_well_num_entries = []
+        # session.bt_well_total_dwell_times = []
+        # session.bt_well_avg_dwell_times = []
+        # session.bt_well_total_dwell_times_excluding_reward = []
+        # session.bt_well_avg_dwell_times_excluding_reward = []
+        # for i, wi in enumerate(all_well_names):
+        #     nume = len(session.bt_well_entry_idxs[i])
+        #     session.bt_well_num_entries.append(nume)
+        #     total_dwell_time = np.sum(session.bt_dwell_times[i])
+        #     session.bt_well_total_dwell_times.append(total_dwell_time)
+        #     session.bt_well_avg_dwell_times.append(
+        #         total_dwell_time / float(nume))
 
-            total_dwell_time_without_reward = total_dwell_time
-            if wi == session.home_well:
-                if len(session.home_well_find_times) > 0:
-                    # we know which visits were the rewarded ones
-                    for ft, lt in zip(session.home_well_find_times, session.home_well_leave_times):
-                        wt = (ft + lt) / 2.0
-                        found = False
-                        for ent, ext in zip(session.bt_well_entry_times[i], session.bt_well_exit_times[i]):
-                            if wt >= ent and wt <= ext:
-                                total_dwell_time_without_reward -= ext - ent
-                                found = True
-                                break
+        #     total_dwell_time_without_reward = total_dwell_time
+        #     if wi == session.home_well:
+        #         if len(session.home_well_find_times) > 0:
+        #             # we know which visits were the rewarded ones
+        #             for ft, lt in zip(session.home_well_find_times, session.home_well_leave_times):
+        #                 wt = (ft + lt) / 2.0
+        #                 found = False
+        #                 for ent, ext in zip(session.bt_well_entry_times[i], session.bt_well_exit_times[i]):
+        #                     if wt >= ent and wt <= ext:
+        #                         total_dwell_time_without_reward -= ext - ent
+        #                         found = True
+        #                         break
 
-                        if not found:
-                            # print(session.bt_well_entry_times[i], session.bt_well_exit_times[i])
+        #                 if not found:
+        #                     # print(session.bt_well_entry_times[i], session.bt_well_exit_times[i])
 
-                            # raise Exception(
-                            print(
-                                "Couldn't find home find time {} ({}, {}) in session {}".format(wt, ft, lt, session.name))
+        #                     # raise Exception(
+        #                     print(
+        #                         "Couldn't find home find time {} ({}, {}) in session {}".format(wt, ft, lt, session.name))
 
-                else:
-                    # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
-                    dwell_times_sorted = sorted(
-                        session.bt_dwell_times[i], reverse=True)
-                    for i in range(session.num_home_found):
-                        total_dwell_time_without_reward -= dwell_times_sorted[i]
-            elif wi in session.visited_away_wells:
-                if len(session.away_well_find_times) > 0:
-                    # we know which visits were the rewarded ones
-                    for ei, awi in enumerate(session.visited_away_wells):
-                        if awi == wi:
-                            ft = (session.away_well_find_times[ei] +
-                                  session.away_well_leave_times[ei]) / 2.0
-                    found = False
-                    for ent, ext in zip(session.bt_well_entry_times[i], session.bt_well_exit_times[i]):
-                        if ft >= ent and ft <= ext:
-                            total_dwell_time_without_reward -= ext - ent
-                            found = True
-                            break
+        #         else:
+        #             # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
+        #             dwell_times_sorted = sorted(
+        #                 session.bt_dwell_times[i], reverse=True)
+        #             for i in range(session.num_home_found):
+        #                 total_dwell_time_without_reward -= dwell_times_sorted[i]
+        #     elif wi in session.visited_away_wells:
+        #         if len(session.away_well_find_times) > 0:
+        #             # we know which visits were the rewarded ones
+        #             for ei, awi in enumerate(session.visited_away_wells):
+        #                 if awi == wi:
+        #                     ft = (session.away_well_find_times[ei] +
+        #                           session.away_well_leave_times[ei]) / 2.0
+        #             found = False
+        #             for ent, ext in zip(session.bt_well_entry_times[i], session.bt_well_exit_times[i]):
+        #                 if ft >= ent and ft <= ext:
+        #                     total_dwell_time_without_reward -= ext - ent
+        #                     found = True
+        #                     break
 
-                    if not found:
-                        print(
-                            session.bt_well_entry_times[i], session.bt_well_exit_times[i])
-                        raise Exception(
-                            # print(
-                            "Couldn't find away find time {} for well {} in session {}".format(
-                                ft, wi, session.name))
+        #             if not found:
+        #                 print(
+        #                     session.bt_well_entry_times[i], session.bt_well_exit_times[i])
+        #                 raise Exception(
+        #                     # print(
+        #                     "Couldn't find away find time {} for well {} in session {}".format(
+        #                         ft, wi, session.name))
 
-                else:
-                    # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
-                    dwell_times_sorted = sorted(
-                        session.bt_dwell_times[i], reverse=True)
-                    total_dwell_time_without_reward -= dwell_times_sorted[0]
+        #         else:
+        #             # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
+        #             dwell_times_sorted = sorted(
+        #                 session.bt_dwell_times[i], reverse=True)
+        #             total_dwell_time_without_reward -= dwell_times_sorted[0]
 
-            session.bt_well_total_dwell_times_excluding_reward.append(
-                total_dwell_time_without_reward)
-            session.bt_well_avg_dwell_times_excluding_reward.append(
-                total_dwell_time_without_reward / float(nume))
+        #     session.bt_well_total_dwell_times_excluding_reward.append(
+        #         total_dwell_time_without_reward)
+        #     session.bt_well_avg_dwell_times_excluding_reward.append(
+        #         total_dwell_time_without_reward / float(nume))
 
-        session.probe_dwell_times = []
-        session.probe_dwell_times_1min = []
-        session.probe_dwell_times_30sec = []
-        for i, wi in enumerate(all_well_names):
-            session.probe_dwell_times.append(np.array(
-                session.probe_well_exit_times[i]) - np.array(session.probe_well_entry_times[i]))
-            dts_1min = []
-            dts_30sec = []
-            for ent, ext in zip(session.probe_well_entry_times[i], session.probe_well_exit_times[i]):
-                if ext <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
-                    dts_1min.append(ext - ent)
-                if ext <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
-                    dts_30sec.append(ext - ent)
-            session.probe_dwell_times_1min.append(dts_1min)
-            session.probe_dwell_times_30sec.append(dts_30sec)
+        # session.probe_dwell_times = []
+        # session.probe_dwell_times_1min = []
+        # session.probe_dwell_times_30sec = []
+        # for i, wi in enumerate(all_well_names):
+        #     session.probe_dwell_times.append(np.array(
+        #         session.probe_well_exit_times[i]) - np.array(session.probe_well_entry_times[i]))
+        #     dts_1min = []
+        #     dts_30sec = []
+        #     for ent, ext in zip(session.probe_well_entry_times[i], session.probe_well_exit_times[i]):
+        #         if ext <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+        #             dts_1min.append(ext - ent)
+        #         if ext <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+        #             dts_30sec.append(ext - ent)
+        #     session.probe_dwell_times_1min.append(dts_1min)
+        #     session.probe_dwell_times_30sec.append(dts_30sec)
 
-        session.probe_well_num_entries = []
-        session.probe_well_total_dwell_times = []
-        session.probe_well_avg_dwell_times = []
-        session.probe_well_num_entries_1min = []
-        session.probe_well_total_dwell_times_1min = []
-        session.probe_well_avg_dwell_times_1min = []
-        session.probe_well_num_entries_30sec = []
-        session.probe_well_total_dwell_times_30sec = []
-        session.probe_well_avg_dwell_times_30sec = []
-        for i, wi in enumerate(all_well_names):
-            nume = len(session.probe_dwell_times[i])
-            session.probe_well_num_entries.append(nume)
-            total_dwell_time = np.sum(session.probe_dwell_times[i])
-            session.probe_well_total_dwell_times.append(total_dwell_time)
-            session.probe_well_avg_dwell_times.append(
-                total_dwell_time / float(nume))
+        # session.probe_well_num_entries = []
+        # session.probe_well_total_dwell_times = []
+        # session.probe_well_avg_dwell_times = []
+        # session.probe_well_num_entries_1min = []
+        # session.probe_well_total_dwell_times_1min = []
+        # session.probe_well_avg_dwell_times_1min = []
+        # session.probe_well_num_entries_30sec = []
+        # session.probe_well_total_dwell_times_30sec = []
+        # session.probe_well_avg_dwell_times_30sec = []
+        # for i, wi in enumerate(all_well_names):
+        #     nume = len(session.probe_dwell_times[i])
+        #     session.probe_well_num_entries.append(nume)
+        #     total_dwell_time = np.sum(session.probe_dwell_times[i])
+        #     session.probe_well_total_dwell_times.append(total_dwell_time)
+        #     session.probe_well_avg_dwell_times.append(
+        #         total_dwell_time / float(nume))
 
-            nume = len(session.probe_dwell_times_1min[i])
-            session.probe_well_num_entries_1min.append(nume)
-            total_dwell_time = np.sum(session.probe_dwell_times_1min[i])
-            session.probe_well_total_dwell_times_1min.append(total_dwell_time)
-            session.probe_well_avg_dwell_times_1min.append(
-                total_dwell_time / float(nume))
+        #     nume = len(session.probe_dwell_times_1min[i])
+        #     session.probe_well_num_entries_1min.append(nume)
+        #     total_dwell_time = np.sum(session.probe_dwell_times_1min[i])
+        #     session.probe_well_total_dwell_times_1min.append(total_dwell_time)
+        #     session.probe_well_avg_dwell_times_1min.append(
+        #         total_dwell_time / float(nume))
 
-            nume = len(session.probe_dwell_times_30sec[i])
-            session.probe_well_num_entries_30sec.append(nume)
-            total_dwell_time = np.sum(session.probe_dwell_times_30sec[i])
-            session.probe_well_total_dwell_times_30sec.append(total_dwell_time)
-            session.probe_well_avg_dwell_times_30sec.append(
-                total_dwell_time / float(nume))
+        #     nume = len(session.probe_dwell_times_30sec[i])
+        #     session.probe_well_num_entries_30sec.append(nume)
+        #     total_dwell_time = np.sum(session.probe_dwell_times_30sec[i])
+        #     session.probe_well_total_dwell_times_30sec.append(total_dwell_time)
+        #     session.probe_well_avg_dwell_times_30sec.append(
+        #         total_dwell_time / float(nume))
 
-        # Same but with neighbors included
-        session.bt_dwell_times_ninc = []
-        for i, wi in enumerate(all_well_names):
-            session.bt_dwell_times_ninc.append(np.array(
-                session.bt_well_exit_times_ninc[i]) - np.array(session.bt_well_entry_times_ninc[i]))
+        # # Same but with neighbors included
+        # session.bt_dwell_times_ninc = []
+        # for i, wi in enumerate(all_well_names):
+        #     session.bt_dwell_times_ninc.append(np.array(
+        #         session.bt_well_exit_times_ninc[i]) - np.array(session.bt_well_entry_times_ninc[i]))
 
-        session.bt_well_num_entries_ninc = []
-        session.bt_well_total_dwell_times_ninc = []
-        session.bt_well_avg_dwell_times_ninc = []
-        session.bt_well_total_dwell_times_excluding_reward_ninc = []
-        session.bt_well_avg_dwell_times_excluding_reward_ninc = []
-        for i, wi in enumerate(all_well_names):
-            nume = len(session.bt_well_entry_idxs_ninc[i])
-            session.bt_well_num_entries_ninc.append(nume)
-            total_dwell_time = np.sum(session.bt_dwell_times_ninc[i])
-            session.bt_well_total_dwell_times_ninc.append(total_dwell_time)
-            session.bt_well_avg_dwell_times_ninc.append(
-                total_dwell_time / float(nume))
+        # session.bt_well_num_entries_ninc = []
+        # session.bt_well_total_dwell_times_ninc = []
+        # session.bt_well_avg_dwell_times_ninc = []
+        # session.bt_well_total_dwell_times_excluding_reward_ninc = []
+        # session.bt_well_avg_dwell_times_excluding_reward_ninc = []
+        # for i, wi in enumerate(all_well_names):
+        #     nume = len(session.bt_well_entry_idxs_ninc[i])
+        #     session.bt_well_num_entries_ninc.append(nume)
+        #     total_dwell_time = np.sum(session.bt_dwell_times_ninc[i])
+        #     session.bt_well_total_dwell_times_ninc.append(total_dwell_time)
+        #     session.bt_well_avg_dwell_times_ninc.append(
+        #         total_dwell_time / float(nume))
 
-            total_dwell_time_without_reward = total_dwell_time
-            if wi == session.home_well:
-                if len(session.home_well_find_times) > 0:
-                    # we know which visits were the rewarded ones
-                    for ft, lt in zip(session.home_well_find_times, session.home_well_leave_times):
-                        wt = (ft + lt) / 2.0
-                        found = False
-                        for ent, ext in zip(session.bt_well_entry_times_ninc[i], session.bt_well_exit_times_ninc[i]):
-                            if wt >= ent and wt <= ext:
-                                total_dwell_time_without_reward -= ext - ent
-                                found = True
-                                break
+        #     total_dwell_time_without_reward = total_dwell_time
+        #     if wi == session.home_well:
+        #         if len(session.home_well_find_times) > 0:
+        #             # we know which visits were the rewarded ones
+        #             for ft, lt in zip(session.home_well_find_times, session.home_well_leave_times):
+        #                 wt = (ft + lt) / 2.0
+        #                 found = False
+        #                 for ent, ext in zip(session.bt_well_entry_times_ninc[i], session.bt_well_exit_times_ninc[i]):
+        #                     if wt >= ent and wt <= ext:
+        #                         total_dwell_time_without_reward -= ext - ent
+        #                         found = True
+        #                         break
 
-                        if not found:
-                            print(
-                                session.bt_well_entry_times[i], session.bt_well_exit_times[i])
-                            print(session.bt_well_entry_times_ninc[i],
-                                  session.bt_well_exit_times_ninc[i])
+        #                 if not found:
+        #                     print(
+        #                         session.bt_well_entry_times[i], session.bt_well_exit_times[i])
+        #                     print(session.bt_well_entry_times_ninc[i],
+        #                           session.bt_well_exit_times_ninc[i])
 
-                            raise Exception(
-                                # print(
-                                "Couldn't find home find time {} in session {}".format(wt, session.name))
+        #                     raise Exception(
+        #                         # print(
+        #                         "Couldn't find home find time {} in session {}".format(wt, session.name))
 
-                else:
-                    # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
-                    dwell_times_sorted = sorted(
-                        session.bt_dwell_times_ninc[i], reverse=True)
-                    for i in range(session.num_home_found):
-                        total_dwell_time_without_reward -= dwell_times_sorted[i]
-            elif wi in session.visited_away_wells:
-                if len(session.away_well_find_times) > 0:
-                    # we know which visits were the rewarded ones
-                    for ei, awi in enumerate(session.visited_away_wells):
-                        if awi == wi:
-                            ft = (session.away_well_find_times[ei] +
-                                  session.away_well_leave_times[ei]) / 2.0
-                    found = False
-                    for ent, ext in zip(session.bt_well_entry_times_ninc[i], session.bt_well_exit_times_ninc[i]):
-                        if ft >= ent and ft <= ext:
-                            total_dwell_time_without_reward -= ext - ent
-                            found = True
-                            break
+        #         else:
+        #             # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
+        #             dwell_times_sorted = sorted(
+        #                 session.bt_dwell_times_ninc[i], reverse=True)
+        #             for i in range(session.num_home_found):
+        #                 total_dwell_time_without_reward -= dwell_times_sorted[i]
+        #     elif wi in session.visited_away_wells:
+        #         if len(session.away_well_find_times) > 0:
+        #             # we know which visits were the rewarded ones
+        #             for ei, awi in enumerate(session.visited_away_wells):
+        #                 if awi == wi:
+        #                     ft = (session.away_well_find_times[ei] +
+        #                           session.away_well_leave_times[ei]) / 2.0
+        #             found = False
+        #             for ent, ext in zip(session.bt_well_entry_times_ninc[i], session.bt_well_exit_times_ninc[i]):
+        #                 if ft >= ent and ft <= ext:
+        #                     total_dwell_time_without_reward -= ext - ent
+        #                     found = True
+        #                     break
 
-                    if not found:
-                        print(
-                            session.bt_well_entry_times[i], session.bt_well_exit_times[i])
-                        print(session.bt_well_entry_times_ninc[i],
-                              session.bt_well_exit_times_ninc[i])
-                        raise Exception(
-                            # print(
-                            "Couldn't find away find time {} for well {} in session {}".format(
-                                ft, wi, session.name))
+        #             if not found:
+        #                 print(
+        #                     session.bt_well_entry_times[i], session.bt_well_exit_times[i])
+        #                 print(session.bt_well_entry_times_ninc[i],
+        #                       session.bt_well_exit_times_ninc[i])
+        #                 raise Exception(
+        #                     # print(
+        #                     "Couldn't find away find time {} for well {} in session {}".format(
+        #                         ft, wi, session.name))
 
-                else:
-                    # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
-                    dwell_times_sorted = sorted(
-                        session.bt_dwell_times_ninc[i], reverse=True)
-                    total_dwell_time_without_reward -= dwell_times_sorted[0]
+        #         else:
+        #             # we don't know which visits were rewarded, for now assume the longest ones. Will bias us to see less dwell time
+        #             dwell_times_sorted = sorted(
+        #                 session.bt_dwell_times_ninc[i], reverse=True)
+        #             total_dwell_time_without_reward -= dwell_times_sorted[0]
 
-            session.bt_well_total_dwell_times_excluding_reward_ninc.append(
-                total_dwell_time_without_reward)
-            session.bt_well_avg_dwell_times_excluding_reward_ninc.append(
-                total_dwell_time_without_reward / float(nume))
+        #     session.bt_well_total_dwell_times_excluding_reward_ninc.append(
+        #         total_dwell_time_without_reward)
+        #     session.bt_well_avg_dwell_times_excluding_reward_ninc.append(
+        #         total_dwell_time_without_reward / float(nume))
 
-        session.probe_dwell_times_ninc = []
-        session.probe_dwell_times_1min_ninc = []
-        session.probe_dwell_times_30sec_ninc = []
-        for i, wi in enumerate(all_well_names):
-            session.probe_dwell_times_ninc.append(np.array(
-                session.probe_well_exit_times_ninc[i]) - np.array(session.probe_well_entry_times_ninc[i]))
-            dts_1min = []
-            dts_30sec = []
-            for ent, ext in zip(session.probe_well_entry_times_ninc[i], session.probe_well_exit_times_ninc[i]):
-                if ext <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
-                    dts_1min.append(ext - ent)
-                if ext <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
-                    dts_30sec.append(ext - ent)
-            session.probe_dwell_times_1min_ninc.append(dts_1min)
-            session.probe_dwell_times_30sec_ninc.append(dts_30sec)
+        # session.probe_dwell_times_ninc = []
+        # session.probe_dwell_times_1min_ninc = []
+        # session.probe_dwell_times_30sec_ninc = []
+        # for i, wi in enumerate(all_well_names):
+        #     session.probe_dwell_times_ninc.append(np.array(
+        #         session.probe_well_exit_times_ninc[i]) - np.array(session.probe_well_entry_times_ninc[i]))
+        #     dts_1min = []
+        #     dts_30sec = []
+        #     for ent, ext in zip(session.probe_well_entry_times_ninc[i], session.probe_well_exit_times_ninc[i]):
+        #         if ext <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+        #             dts_1min.append(ext - ent)
+        #         if ext <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+        #             dts_30sec.append(ext - ent)
+        #     session.probe_dwell_times_1min_ninc.append(dts_1min)
+        #     session.probe_dwell_times_30sec_ninc.append(dts_30sec)
 
-        session.probe_well_num_entries_ninc = []
-        session.probe_well_total_dwell_times_ninc = []
-        session.probe_well_avg_dwell_times_ninc = []
-        session.probe_well_num_entries_1min_ninc = []
-        session.probe_well_total_dwell_times_1min_ninc = []
-        session.probe_well_avg_dwell_times_1min_ninc = []
-        session.probe_well_num_entries_30sec_ninc = []
-        session.probe_well_total_dwell_times_30sec_ninc = []
-        session.probe_well_avg_dwell_times_30sec_ninc = []
-        for i, wi in enumerate(all_well_names):
-            nume = len(session.probe_dwell_times_ninc[i])
-            session.probe_well_num_entries_ninc.append(nume)
-            total_dwell_time = np.sum(session.probe_dwell_times_ninc[i])
-            session.probe_well_total_dwell_times_ninc.append(total_dwell_time)
-            session.probe_well_avg_dwell_times_ninc.append(
-                total_dwell_time / float(nume))
+        # session.probe_well_num_entries_ninc = []
+        # session.probe_well_total_dwell_times_ninc = []
+        # session.probe_well_avg_dwell_times_ninc = []
+        # session.probe_well_num_entries_1min_ninc = []
+        # session.probe_well_total_dwell_times_1min_ninc = []
+        # session.probe_well_avg_dwell_times_1min_ninc = []
+        # session.probe_well_num_entries_30sec_ninc = []
+        # session.probe_well_total_dwell_times_30sec_ninc = []
+        # session.probe_well_avg_dwell_times_30sec_ninc = []
+        # for i, wi in enumerate(all_well_names):
+        #     nume = len(session.probe_dwell_times_ninc[i])
+        #     session.probe_well_num_entries_ninc.append(nume)
+        #     total_dwell_time = np.sum(session.probe_dwell_times_ninc[i])
+        #     session.probe_well_total_dwell_times_ninc.append(total_dwell_time)
+        #     session.probe_well_avg_dwell_times_ninc.append(
+        #         total_dwell_time / float(nume))
 
-            nume = len(session.probe_dwell_times_1min_ninc[i])
-            session.probe_well_num_entries_1min_ninc.append(nume)
-            total_dwell_time = np.sum(session.probe_dwell_times_1min_ninc[i])
-            session.probe_well_total_dwell_times_1min_ninc.append(
-                total_dwell_time)
-            session.probe_well_avg_dwell_times_1min_ninc.append(
-                total_dwell_time / float(nume))
+        #     nume = len(session.probe_dwell_times_1min_ninc[i])
+        #     session.probe_well_num_entries_1min_ninc.append(nume)
+        #     total_dwell_time = np.sum(session.probe_dwell_times_1min_ninc[i])
+        #     session.probe_well_total_dwell_times_1min_ninc.append(
+        #         total_dwell_time)
+        #     session.probe_well_avg_dwell_times_1min_ninc.append(
+        #         total_dwell_time / float(nume))
 
-            nume = len(session.probe_dwell_times_30sec_ninc[i])
-            session.probe_well_num_entries_30sec_ninc.append(nume)
-            total_dwell_time = np.sum(session.probe_dwell_times_30sec_ninc[i])
-            session.probe_well_total_dwell_times_30sec_ninc.append(
-                total_dwell_time)
-            session.probe_well_avg_dwell_times_30sec_ninc.append(
-                total_dwell_time / float(nume))
+        #     nume = len(session.probe_dwell_times_30sec_ninc[i])
+        #     session.probe_well_num_entries_30sec_ninc.append(nume)
+        #     total_dwell_time = np.sum(session.probe_dwell_times_30sec_ninc[i])
+        #     session.probe_well_total_dwell_times_30sec_ninc.append(
+        #         total_dwell_time)
+        #     session.probe_well_avg_dwell_times_30sec_ninc.append(
+        #         total_dwell_time / float(nume))
 
-        # Same but for quadrants
-        session.bt_quadrant_dwell_times = []
-        for i, wi in enumerate(all_quadrant_idxs):
-            session.bt_quadrant_dwell_times.append(np.array(
-                session.bt_quadrant_exit_times[i]) - np.array(session.bt_quadrant_entry_times[i]))
+        # # Same but for quadrants
+        # session.bt_quadrant_dwell_times = []
+        # for i, wi in enumerate(all_quadrant_idxs):
+        #     session.bt_quadrant_dwell_times.append(np.array(
+        #         session.bt_quadrant_exit_times[i]) - np.array(session.bt_quadrant_entry_times[i]))
 
-        session.bt_quadrant_num_entries = []
-        session.bt_quadrant_total_dwell_times = []
-        session.bt_quadrant_avg_dwell_times = []
-        for i, wi in enumerate(all_quadrant_idxs):
-            nume = len(session.bt_quadrant_entry_idxs[i])
-            session.bt_quadrant_num_entries.append(nume)
-            total_dwell_time = np.sum(session.bt_quadrant_dwell_times[i])
-            session.bt_quadrant_total_dwell_times.append(total_dwell_time)
-            session.bt_quadrant_avg_dwell_times.append(
-                total_dwell_time / float(nume))
+        # session.bt_quadrant_num_entries = []
+        # session.bt_quadrant_total_dwell_times = []
+        # session.bt_quadrant_avg_dwell_times = []
+        # for i, wi in enumerate(all_quadrant_idxs):
+        #     nume = len(session.bt_quadrant_entry_idxs[i])
+        #     session.bt_quadrant_num_entries.append(nume)
+        #     total_dwell_time = np.sum(session.bt_quadrant_dwell_times[i])
+        #     session.bt_quadrant_total_dwell_times.append(total_dwell_time)
+        #     session.bt_quadrant_avg_dwell_times.append(
+        #         total_dwell_time / float(nume))
 
-        session.probe_quadrant_dwell_times = []
-        session.probe_quadrant_dwell_times_1min = []
-        session.probe_quadrant_dwell_times_30sec = []
-        for i, wi in enumerate([0, 1, 2, 3]):
-            session.probe_quadrant_dwell_times.append(np.array(
-                session.probe_quadrant_exit_times[i]) - np.array(session.probe_quadrant_entry_times[i]))
-            dts_1min = []
-            dts_30sec = []
-            for ent, ext in zip(session.probe_quadrant_entry_times[i], session.probe_quadrant_exit_times[i]):
-                if ext <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
-                    dts_1min.append(ext - ent)
-                if ext <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
-                    dts_30sec.append(ext - ent)
-            session.probe_quadrant_dwell_times_1min.append(dts_1min)
-            session.probe_quadrant_dwell_times_30sec.append(dts_30sec)
+        # session.probe_quadrant_dwell_times = []
+        # session.probe_quadrant_dwell_times_1min = []
+        # session.probe_quadrant_dwell_times_30sec = []
+        # for i, wi in enumerate([0, 1, 2, 3]):
+        #     session.probe_quadrant_dwell_times.append(np.array(
+        #         session.probe_quadrant_exit_times[i]) - np.array(session.probe_quadrant_entry_times[i]))
+        #     dts_1min = []
+        #     dts_30sec = []
+        #     for ent, ext in zip(session.probe_quadrant_entry_times[i], session.probe_quadrant_exit_times[i]):
+        #         if ext <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+        #             dts_1min.append(ext - ent)
+        #         if ext <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+        #             dts_30sec.append(ext - ent)
+        #     session.probe_quadrant_dwell_times_1min.append(dts_1min)
+        #     session.probe_quadrant_dwell_times_30sec.append(dts_30sec)
 
-        session.probe_quadrant_num_entries = []
-        session.probe_quadrant_total_dwell_times = []
-        session.probe_quadrant_avg_dwell_times = []
-        session.probe_quadrant_num_entries_1min = []
-        session.probe_quadrant_total_dwell_times_1min = []
-        session.probe_quadrant_avg_dwell_times_1min = []
-        session.probe_quadrant_num_entries_30sec = []
-        session.probe_quadrant_total_dwell_times_30sec = []
-        session.probe_quadrant_avg_dwell_times_30sec = []
-        for i, wi in enumerate([0, 1, 2, 3]):
-            nume = len(session.probe_quadrant_dwell_times[i])
-            session.probe_quadrant_num_entries.append(nume)
-            total_dwell_time = np.sum(session.probe_quadrant_dwell_times[i])
-            session.probe_quadrant_total_dwell_times.append(total_dwell_time)
-            session.probe_quadrant_avg_dwell_times.append(
-                total_dwell_time / float(nume))
+        # session.probe_quadrant_num_entries = []
+        # session.probe_quadrant_total_dwell_times = []
+        # session.probe_quadrant_avg_dwell_times = []
+        # session.probe_quadrant_num_entries_1min = []
+        # session.probe_quadrant_total_dwell_times_1min = []
+        # session.probe_quadrant_avg_dwell_times_1min = []
+        # session.probe_quadrant_num_entries_30sec = []
+        # session.probe_quadrant_total_dwell_times_30sec = []
+        # session.probe_quadrant_avg_dwell_times_30sec = []
+        # for i, wi in enumerate([0, 1, 2, 3]):
+        #     nume = len(session.probe_quadrant_dwell_times[i])
+        #     session.probe_quadrant_num_entries.append(nume)
+        #     total_dwell_time = np.sum(session.probe_quadrant_dwell_times[i])
+        #     session.probe_quadrant_total_dwell_times.append(total_dwell_time)
+        #     session.probe_quadrant_avg_dwell_times.append(
+        #         total_dwell_time / float(nume))
 
-            nume = len(session.probe_quadrant_dwell_times_1min[i])
-            session.probe_quadrant_num_entries_1min.append(nume)
-            total_dwell_time = np.sum(
-                session.probe_quadrant_dwell_times_1min[i])
-            session.probe_quadrant_total_dwell_times_1min.append(
-                total_dwell_time)
-            session.probe_quadrant_avg_dwell_times_1min.append(
-                total_dwell_time / float(nume))
+        #     nume = len(session.probe_quadrant_dwell_times_1min[i])
+        #     session.probe_quadrant_num_entries_1min.append(nume)
+        #     total_dwell_time = np.sum(
+        #         session.probe_quadrant_dwell_times_1min[i])
+        #     session.probe_quadrant_total_dwell_times_1min.append(
+        #         total_dwell_time)
+        #     session.probe_quadrant_avg_dwell_times_1min.append(
+        #         total_dwell_time / float(nume))
 
-            nume = len(session.probe_quadrant_dwell_times_30sec[i])
-            session.probe_quadrant_num_entries_30sec.append(nume)
-            total_dwell_time = np.sum(
-                session.probe_quadrant_dwell_times_30sec[i])
-            session.probe_quadrant_total_dwell_times_30sec.append(
-                total_dwell_time)
-            session.probe_quadrant_avg_dwell_times_30sec.append(
-                total_dwell_time / float(nume))
+        #     nume = len(session.probe_quadrant_dwell_times_30sec[i])
+        #     session.probe_quadrant_num_entries_30sec.append(nume)
+        #     total_dwell_time = np.sum(
+        #         session.probe_quadrant_dwell_times_30sec[i])
+        #     session.probe_quadrant_total_dwell_times_30sec.append(
+        #         total_dwell_time)
+        #     session.probe_quadrant_avg_dwell_times_30sec.append(
+        #         total_dwell_time / float(nume))
 
         # ===================================
         # Latency to well in probe
@@ -1823,66 +1852,66 @@ if __name__ == "__main__":
         # Perseveration bias: How high are perseveration measures for this well compared to the corresponding control well.
         # ===================================
 
-        session.bt_persev_bias_mean_dist_to_well = []
-        session.bt_persev_bias_num_entries_to_well = []
-        session.bt_persev_bias_total_dwell_time = []
-        session.bt_persev_bias_avg_dwell_time = []
-        session.bt_persev_bias_total_dwell_time_excluding_reward = []
-        session.bt_persev_bias_avg_dwell_time_excluding_reward = []
-        session.probe_persev_bias_mean_dist_to_well = []
-        session.probe_persev_bias_num_entries_to_well = []
-        session.probe_persev_bias_total_dwell_time = []
-        session.probe_persev_bias_avg_dwell_time = []
-        session.probe_persev_bias_mean_dist_to_well_1min = []
-        session.probe_persev_bias_num_entries_to_well_1min = []
-        session.probe_persev_bias_total_dwell_time_1min = []
-        session.probe_persev_bias_avg_dwell_time_1min = []
-        session.probe_persev_bias_mean_dist_to_well_30sec = []
-        session.probe_persev_bias_num_entries_to_well_30sec = []
-        session.probe_persev_bias_total_dwell_time_30sec = []
-        session.probe_persev_bias_avg_dwell_time_30sec = []
-        for i, wi in enumerate(all_well_names):
-            cwi = 49 - wi
-            cw_idx = np.argmax(all_well_names == cwi)
-            session.bt_persev_bias_mean_dist_to_well.append(session.bt_mean_dist_to_wells[i] -
-                                                            session.bt_mean_dist_to_wells[cw_idx])
-            session.bt_persev_bias_num_entries_to_well.append(
-                session.bt_well_num_entries[i] - session.bt_well_num_entries[cw_idx])
-            session.bt_persev_bias_total_dwell_time.append(
-                session.bt_well_total_dwell_times[i] - session.bt_well_total_dwell_times[cw_idx])
-            session.bt_persev_bias_avg_dwell_time.append(
-                session.bt_well_avg_dwell_times[i] - session.bt_well_avg_dwell_times[cw_idx])
-            session.bt_persev_bias_total_dwell_time_excluding_reward.append(
-                session.bt_well_total_dwell_times_excluding_reward[i] - session.bt_well_total_dwell_times_excluding_reward[cw_idx])
-            session.bt_persev_bias_avg_dwell_time_excluding_reward.append(
-                session.bt_well_avg_dwell_times_excluding_reward[i] - session.bt_well_avg_dwell_times_excluding_reward[cw_idx])
+        # session.bt_persev_bias_mean_dist_to_well = []
+        # session.bt_persev_bias_num_entries_to_well = []
+        # session.bt_persev_bias_total_dwell_time = []
+        # session.bt_persev_bias_avg_dwell_time = []
+        # session.bt_persev_bias_total_dwell_time_excluding_reward = []
+        # session.bt_persev_bias_avg_dwell_time_excluding_reward = []
+        # session.probe_persev_bias_mean_dist_to_well = []
+        # session.probe_persev_bias_num_entries_to_well = []
+        # session.probe_persev_bias_total_dwell_time = []
+        # session.probe_persev_bias_avg_dwell_time = []
+        # session.probe_persev_bias_mean_dist_to_well_1min = []
+        # session.probe_persev_bias_num_entries_to_well_1min = []
+        # session.probe_persev_bias_total_dwell_time_1min = []
+        # session.probe_persev_bias_avg_dwell_time_1min = []
+        # session.probe_persev_bias_mean_dist_to_well_30sec = []
+        # session.probe_persev_bias_num_entries_to_well_30sec = []
+        # session.probe_persev_bias_total_dwell_time_30sec = []
+        # session.probe_persev_bias_avg_dwell_time_30sec = []
+        # for i, wi in enumerate(all_well_names):
+        #     cwi = 49 - wi
+        #     cw_idx = np.argmax(all_well_names == cwi)
+        #     session.bt_persev_bias_mean_dist_to_well.append(session.bt_mean_dist_to_wells[i] -
+        #                                                     session.bt_mean_dist_to_wells[cw_idx])
+        #     session.bt_persev_bias_num_entries_to_well.append(
+        #         session.bt_well_num_entries[i] - session.bt_well_num_entries[cw_idx])
+        #     session.bt_persev_bias_total_dwell_time.append(
+        #         session.bt_well_total_dwell_times[i] - session.bt_well_total_dwell_times[cw_idx])
+        #     session.bt_persev_bias_avg_dwell_time.append(
+        #         session.bt_well_avg_dwell_times[i] - session.bt_well_avg_dwell_times[cw_idx])
+        #     session.bt_persev_bias_total_dwell_time_excluding_reward.append(
+        #         session.bt_well_total_dwell_times_excluding_reward[i] - session.bt_well_total_dwell_times_excluding_reward[cw_idx])
+        #     session.bt_persev_bias_avg_dwell_time_excluding_reward.append(
+        #         session.bt_well_avg_dwell_times_excluding_reward[i] - session.bt_well_avg_dwell_times_excluding_reward[cw_idx])
 
-            session.probe_persev_bias_mean_dist_to_well.append(session.probe_mean_dist_to_wells[i] -
-                                                               session.probe_mean_dist_to_wells[cw_idx])
-            session.probe_persev_bias_num_entries_to_well.append(
-                session.probe_well_num_entries[i] - session.probe_well_num_entries[cw_idx])
-            session.probe_persev_bias_total_dwell_time.append(
-                session.probe_well_total_dwell_times[i] - session.probe_well_total_dwell_times[cw_idx])
-            session.probe_persev_bias_avg_dwell_time.append(
-                session.probe_well_avg_dwell_times[i] - session.probe_well_avg_dwell_times[cw_idx])
+        #     session.probe_persev_bias_mean_dist_to_well.append(session.probe_mean_dist_to_wells[i] -
+        #                                                        session.probe_mean_dist_to_wells[cw_idx])
+        #     session.probe_persev_bias_num_entries_to_well.append(
+        #         session.probe_well_num_entries[i] - session.probe_well_num_entries[cw_idx])
+        #     session.probe_persev_bias_total_dwell_time.append(
+        #         session.probe_well_total_dwell_times[i] - session.probe_well_total_dwell_times[cw_idx])
+        #     session.probe_persev_bias_avg_dwell_time.append(
+        #         session.probe_well_avg_dwell_times[i] - session.probe_well_avg_dwell_times[cw_idx])
 
-            session.probe_persev_bias_mean_dist_to_well_1min.append(session.probe_mean_dist_to_wells_1min[i] -
-                                                                    session.probe_mean_dist_to_wells_1min[cw_idx])
-            session.probe_persev_bias_num_entries_to_well_1min.append(
-                session.probe_well_num_entries_1min[i] - session.probe_well_num_entries_1min[cw_idx])
-            session.probe_persev_bias_total_dwell_time_1min.append(
-                session.probe_well_total_dwell_times_1min[i] - session.probe_well_total_dwell_times_1min[cw_idx])
-            session.probe_persev_bias_avg_dwell_time_1min.append(
-                session.probe_well_avg_dwell_times_1min[i] - session.probe_well_avg_dwell_times_1min[cw_idx])
+        #     session.probe_persev_bias_mean_dist_to_well_1min.append(session.probe_mean_dist_to_wells_1min[i] -
+        #                                                             session.probe_mean_dist_to_wells_1min[cw_idx])
+        #     session.probe_persev_bias_num_entries_to_well_1min.append(
+        #         session.probe_well_num_entries_1min[i] - session.probe_well_num_entries_1min[cw_idx])
+        #     session.probe_persev_bias_total_dwell_time_1min.append(
+        #         session.probe_well_total_dwell_times_1min[i] - session.probe_well_total_dwell_times_1min[cw_idx])
+        #     session.probe_persev_bias_avg_dwell_time_1min.append(
+        #         session.probe_well_avg_dwell_times_1min[i] - session.probe_well_avg_dwell_times_1min[cw_idx])
 
-            session.probe_persev_bias_mean_dist_to_well_30sec.append(session.probe_mean_dist_to_wells_30sec[i] -
-                                                                     session.probe_mean_dist_to_wells_30sec[cw_idx])
-            session.probe_persev_bias_num_entries_to_well_30sec.append(
-                session.probe_well_num_entries_30sec[i] - session.probe_well_num_entries_30sec[cw_idx])
-            session.probe_persev_bias_total_dwell_time_30sec.append(
-                session.probe_well_total_dwell_times_30sec[i] - session.probe_well_total_dwell_times_30sec[cw_idx])
-            session.probe_persev_bias_avg_dwell_time_30sec.append(
-                session.probe_well_avg_dwell_times_30sec[i] - session.probe_well_avg_dwell_times_30sec[cw_idx])
+        #     session.probe_persev_bias_mean_dist_to_well_30sec.append(session.probe_mean_dist_to_wells_30sec[i] -
+        #                                                              session.probe_mean_dist_to_wells_30sec[cw_idx])
+        #     session.probe_persev_bias_num_entries_to_well_30sec.append(
+        #         session.probe_well_num_entries_30sec[i] - session.probe_well_num_entries_30sec[cw_idx])
+        #     session.probe_persev_bias_total_dwell_time_30sec.append(
+        #         session.probe_well_total_dwell_times_30sec[i] - session.probe_well_total_dwell_times_30sec[cw_idx])
+        #     session.probe_persev_bias_avg_dwell_time_30sec.append(
+        #         session.probe_well_avg_dwell_times_30sec[i] - session.probe_well_avg_dwell_times_30sec[cw_idx])
 
         # ===================================
         # exploration bouts
@@ -1955,27 +1984,27 @@ if __name__ == "__main__":
         session.bt_explore_bout_lens = session.bt_explore_bout_ends - \
             session.bt_explore_bout_starts
 
-        session.bt_num_bouts = len(session.bt_explore_bout_ends)
-        session.bt_bout_count_by_well = np.zeros((np.max(all_well_names)+1))
-        session.bt_wait_count_by_well = np.zeros((np.max(all_well_names)+1))
-        session.bt_num_waits = session.bt_num_bouts - 1
-        last_stop = 0
-        for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
-            wells_visited = getListOfVisitedWells(
-                session.bt_nearest_wells[bst:ben], False)
-            for w in wells_visited:
-                session.bt_bout_count_by_well[w] += 1
+        # session.bt_num_bouts = len(session.bt_explore_bout_ends)
+        # session.bt_bout_count_by_well = np.zeros((np.max(all_well_names)+1))
+        # session.bt_wait_count_by_well = np.zeros((np.max(all_well_names)+1))
+        # session.bt_num_waits = session.bt_num_bouts - 1
+        # last_stop = 0
+        # for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
+        #     wells_visited = getListOfVisitedWells(
+        #         session.bt_nearest_wells[bst:ben], False)
+        #     for w in wells_visited:
+        #         session.bt_bout_count_by_well[w] += 1
 
-            if bst > 0:
-                wells_waited_at = getListOfVisitedWells(
-                    session.bt_nearest_wells[last_stop:bst], False)
-                for w in wells_waited_at:
-                    session.bt_wait_count_by_well[w] += 1
+        #     if bst > 0:
+        #         wells_waited_at = getListOfVisitedWells(
+        #             session.bt_nearest_wells[last_stop:bst], False)
+        #         for w in wells_waited_at:
+        #             session.bt_wait_count_by_well[w] += 1
 
-            last_stop = ben
+        #     last_stop = ben
 
-        session.bt_bout_pct_by_well = session.bt_bout_count_by_well / session.bt_num_bouts
-        session.bt_wait_pct_by_well = session.bt_wait_count_by_well / session.bt_num_waits
+        # session.bt_bout_pct_by_well = session.bt_bout_count_by_well / session.bt_num_bouts
+        # session.bt_wait_pct_by_well = session.bt_wait_count_by_well / session.bt_num_waits
 
         probe_sm_vel = scipy.ndimage.gaussian_filter1d(
             session.probe_vel_cm_s, BOUT_VEL_SM_SIGMA)
@@ -2023,53 +2052,53 @@ if __name__ == "__main__":
         session.probe_explore_bout_lens = session.probe_explore_bout_ends - \
             session.probe_explore_bout_starts
 
-        session.probe_bout_count_by_well = np.zeros((np.max(all_well_names)+1))
-        session.probe_bout_count_by_well_1min = np.zeros(
-            (np.max(all_well_names)+1))
-        session.probe_bout_count_by_well_30sec = np.zeros(
-            (np.max(all_well_names)+1))
-        session.probe_num_bouts = len(session.probe_explore_bout_ends)
-        session.probe_wait_count_by_well = np.zeros((np.max(all_well_names)+1))
-        session.probe_wait_count_by_well_1min = np.zeros(
-            (np.max(all_well_names)+1))
-        session.probe_wait_count_by_well_30sec = np.zeros(
-            (np.max(all_well_names)+1))
-        session.probe_num_waits = session.probe_num_bouts - 1
-        last_stop = 0
-        for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
-            wells_visited = getListOfVisitedWells(
-                session.probe_nearest_wells[bst:ben], False)
-            for w in wells_visited:
-                session.probe_bout_count_by_well[w] += 1
-                if session.probe_pos_ts[bst] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
-                    session.probe_bout_count_by_well_1min[w] += 1
-                if session.probe_pos_ts[bst] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
-                    session.probe_bout_count_by_well_30sec[w] += 1
+        # session.probe_bout_count_by_well = np.zeros((np.max(all_well_names)+1))
+        # session.probe_bout_count_by_well_1min = np.zeros(
+        #     (np.max(all_well_names)+1))
+        # session.probe_bout_count_by_well_30sec = np.zeros(
+        #     (np.max(all_well_names)+1))
+        # session.probe_num_bouts = len(session.probe_explore_bout_ends)
+        # session.probe_wait_count_by_well = np.zeros((np.max(all_well_names)+1))
+        # session.probe_wait_count_by_well_1min = np.zeros(
+        #     (np.max(all_well_names)+1))
+        # session.probe_wait_count_by_well_30sec = np.zeros(
+        #     (np.max(all_well_names)+1))
+        # session.probe_num_waits = session.probe_num_bouts - 1
+        # last_stop = 0
+        # for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
+        #     wells_visited = getListOfVisitedWells(
+        #         session.probe_nearest_wells[bst:ben], False)
+        #     for w in wells_visited:
+        #         session.probe_bout_count_by_well[w] += 1
+        #         if session.probe_pos_ts[bst] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+        #             session.probe_bout_count_by_well_1min[w] += 1
+        #         if session.probe_pos_ts[bst] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+        #             session.probe_bout_count_by_well_30sec[w] += 1
 
-            if bst > 0:
-                wells_waited_at = getListOfVisitedWells(
-                    session.probe_nearest_wells[last_stop:bst], False)
-                for w in wells_waited_at:
-                    session.probe_wait_count_by_well[w] += 1
-                    if session.probe_pos_ts[ben] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
-                        session.probe_wait_count_by_well_1min[w] += 1
-                    if session.probe_pos_ts[ben] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
-                        session.probe_wait_count_by_well_30sec[w] += 1
+        #     if bst > 0:
+        #         wells_waited_at = getListOfVisitedWells(
+        #             session.probe_nearest_wells[last_stop:bst], False)
+        #         for w in wells_waited_at:
+        #             session.probe_wait_count_by_well[w] += 1
+        #             if session.probe_pos_ts[ben] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+        #                 session.probe_wait_count_by_well_1min[w] += 1
+        #             if session.probe_pos_ts[ben] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+        #                 session.probe_wait_count_by_well_30sec[w] += 1
 
-            last_stop = ben
+        #     last_stop = ben
 
-        session.probe_bout_pct_by_well = session.probe_bout_count_by_well / \
-            session.probe_num_bouts
-        session.probe_bout_pct_by_well_1min = session.probe_bout_count_by_well_1min / \
-            session.probe_num_bouts
-        session.probe_bout_pct_by_well_30sec = session.probe_bout_count_by_well_30sec / \
-            session.probe_num_bouts
-        session.probe_wait_pct_by_well = session.probe_wait_count_by_well / \
-            session.probe_num_waits
-        session.probe_wait_pct_by_well_1min = session.probe_wait_count_by_well_1min / \
-            session.probe_num_waits
-        session.probe_wait_pct_by_well_30sec = session.probe_wait_count_by_well_30sec / \
-            session.probe_num_waits
+        # session.probe_bout_pct_by_well = session.probe_bout_count_by_well / \
+        #     session.probe_num_bouts
+        # session.probe_bout_pct_by_well_1min = session.probe_bout_count_by_well_1min / \
+        #     session.probe_num_bouts
+        # session.probe_bout_pct_by_well_30sec = session.probe_bout_count_by_well_30sec / \
+        #     session.probe_num_bouts
+        # session.probe_wait_pct_by_well = session.probe_wait_count_by_well / \
+        #     session.probe_num_waits
+        # session.probe_wait_pct_by_well_1min = session.probe_wait_count_by_well_1min / \
+        #     session.probe_num_waits
+        # session.probe_wait_pct_by_well_30sec = session.probe_wait_count_by_well_30sec / \
+        #     session.probe_num_waits
 
         # add a category at each behavior time point for easy reference later:
         session.bt_bout_category = np.zeros_like(session.bt_pos_xs)
@@ -2101,68 +2130,77 @@ if __name__ == "__main__":
             pidx2 = np.searchsorted(session.probe_pos_ts, wlt)
             session.probe_bout_category[pidx1:pidx2] = 2
 
+        # And a similar thing, but value == 0 for rest/reward, or i when rat is in ith bout (starting at 1)
+        session.bt_bout_label = np.zeros_like(session.bt_pos_xs)
+        for bi, (bst, ben) in enumerate(zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends)):
+            session.bt_bout_label[bst:ben] = bi + 1
+
+        session.probe_bout_label = np.zeros_like(session.probe_pos_xs)
+        for bi, (bst, ben) in enumerate(zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends)):
+            session.probe_bout_label[bst:ben] = bi + 1
+
         # ===================================
         # Behavior characteristics at start of probe
         # ===================================
 
-        i10sec = np.searchsorted(
-            session.probe_pos_ts, session.probe_pos_ts[0] + 10*TRODES_SAMPLING_RATE)
-        vel = session.probe_vel_cm_s[0:i10sec]
-        session.probe_meanvel_10sec = np.mean(vel)
-        if np.all(np.logical_not(session.probe_is_mv[0:i10sec])):
-            session.probe_meanvel_moving_10sec = np.nan
-        else:
-            session.probe_meanvel_moving_10sec = np.mean(
-                vel[session.probe_is_mv[0:i10sec]])
-        cats = session.probe_bout_category[0:i10sec]
-        session.probe_proptime_explore_10sec = float(
-            np.count_nonzero(cats == 0)) / float(cats.size)
-        session.probe_proptime_rest_10sec = float(
-            np.count_nonzero(cats == 1)) / float(cats.size)
-        session.probe_proptime_reward_10sec = float(
-            np.count_nonzero(cats == 2)) / float(cats.size)
+        # i10sec = np.searchsorted(
+        #     session.probe_pos_ts, session.probe_pos_ts[0] + 10*TRODES_SAMPLING_RATE)
+        # vel = session.probe_vel_cm_s[0:i10sec]
+        # session.probe_meanvel_10sec = np.mean(vel)
+        # if np.all(np.logical_not(session.probe_is_mv[0:i10sec])):
+        #     session.probe_meanvel_moving_10sec = np.nan
+        # else:
+        #     session.probe_meanvel_moving_10sec = np.mean(
+        #         vel[session.probe_is_mv[0:i10sec]])
+        # cats = session.probe_bout_category[0:i10sec]
+        # session.probe_proptime_explore_10sec = float(
+        #     np.count_nonzero(cats == 0)) / float(cats.size)
+        # session.probe_proptime_rest_10sec = float(
+        #     np.count_nonzero(cats == 1)) / float(cats.size)
+        # session.probe_proptime_reward_10sec = float(
+        #     np.count_nonzero(cats == 2)) / float(cats.size)
 
-        i30sec = np.searchsorted(
-            session.probe_pos_ts, session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE)
-        vel = session.probe_vel_cm_s[0:i30sec]
-        session.probe_meanvel_30sec = np.mean(vel)
-        session.probe_meanvel_moving_30sec = np.mean(
-            vel[session.probe_is_mv[0:i30sec]])
-        cats = session.probe_bout_category[0:i30sec]
-        session.probe_proptime_explore_30sec = float(
-            np.count_nonzero(cats == 0)) / float(cats.size)
-        session.probe_proptime_rest_30sec = float(
-            np.count_nonzero(cats == 1)) / float(cats.size)
-        session.probe_proptime_reward_30sec = float(
-            np.count_nonzero(cats == 2)) / float(cats.size)
+        # i30sec = np.searchsorted(
+        #     session.probe_pos_ts, session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE)
+        # vel = session.probe_vel_cm_s[0:i30sec]
+        # session.probe_meanvel_30sec = np.mean(vel)
+        # session.probe_meanvel_moving_30sec = np.mean(
+        #     vel[session.probe_is_mv[0:i30sec]])
+        # cats = session.probe_bout_category[0:i30sec]
+        # session.probe_proptime_explore_30sec = float(
+        #     np.count_nonzero(cats == 0)) / float(cats.size)
+        # session.probe_proptime_rest_30sec = float(
+        #     np.count_nonzero(cats == 1)) / float(cats.size)
+        # session.probe_proptime_reward_30sec = float(
+        #     np.count_nonzero(cats == 2)) / float(cats.size)
 
-        i1min = np.searchsorted(
-            session.probe_pos_ts, session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE)
-        vel = session.probe_vel_cm_s[0:i1min]
-        session.probe_meanvel_1min = np.mean(vel)
-        session.probe_meanvel_moving_1min = np.mean(
-            vel[session.probe_is_mv[0:i1min]])
-        cats = session.probe_bout_category[0:i1min]
-        session.probe_proptime_explore_1min = float(
-            np.count_nonzero(cats == 0)) / float(cats.size)
-        session.probe_proptime_rest_1min = float(
-            np.count_nonzero(cats == 1)) / float(cats.size)
-        session.probe_proptime_reward_1min = float(
-            np.count_nonzero(cats == 2)) / float(cats.size)
+        # i1min = np.searchsorted(
+        #     session.probe_pos_ts, session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE)
+        # vel = session.probe_vel_cm_s[0:i1min]
+        # session.probe_meanvel_1min = np.mean(vel)
+        # session.probe_meanvel_moving_1min = np.mean(
+        #     vel[session.probe_is_mv[0:i1min]])
+        # cats = session.probe_bout_category[0:i1min]
+        # session.probe_proptime_explore_1min = float(
+        #     np.count_nonzero(cats == 0)) / float(cats.size)
+        # session.probe_proptime_rest_1min = float(
+        #     np.count_nonzero(cats == 1)) / float(cats.size)
+        # session.probe_proptime_reward_1min = float(
+        #     np.count_nonzero(cats == 2)) / float(cats.size)
 
-        i2min = np.searchsorted(
-            session.probe_pos_ts, session.probe_pos_ts[0] + 120*TRODES_SAMPLING_RATE)
-        vel = session.probe_vel_cm_s[0:i2min]
-        session.probe_meanvel_2min = np.mean(vel)
-        session.probe_meanvel_moving_2min = np.mean(
-            vel[session.probe_is_mv[0:i2min]])
-        cats = session.probe_bout_category[0:i2min]
-        session.probe_proptime_explore_2min = float(
-            np.count_nonzero(cats == 0)) / float(cats.size)
-        session.probe_proptime_rest_2min = float(
-            np.count_nonzero(cats == 1)) / float(cats.size)
-        session.probe_proptime_reward_2min = float(
-            np.count_nonzero(cats == 2)) / float(cats.size)
+        # i2min = np.searchsorted(
+        #     session.probe_pos_ts, session.probe_pos_ts[0] + 120*TRODES_SAMPLING_RATE)
+        # vel = session.probe_vel_cm_s[0:i2min]
+        # session.probe_meanvel_2min = np.mean(vel)
+        # session.probe_meanvel_moving_2min = np.mean(
+        #     vel[session.probe_is_mv[0:i2min]])
+        # cats = session.probe_bout_category[0:i2min]
+        # session.probe_proptime_explore_2min = float(
+        #     np.count_nonzero(cats == 0)) / float(cats.size)
+        # session.probe_proptime_rest_2min = float(
+        #     np.count_nonzero(cats == 1)) / float(cats.size)
+        # session.probe_proptime_reward_2min = float(
+        #     np.count_nonzero(cats == 2)) / float(cats.size)
 
         # ======================================================================
         # TODO
@@ -2199,8 +2237,8 @@ if __name__ == "__main__":
         # ===================================
         if session.date_str in INSPECT_IN_DETAIL or INSPECT_ALL:
             if INSPECT_BOUTS and len(session.away_well_find_times) > 0:
-                print("{} probe bouts, {} bt bouts".format(
-                    session.probe_num_bouts, session.bt_num_bouts))
+                # print("{} probe bouts, {} bt bouts".format(
+                # session.probe_num_bouts, session.bt_num_bouts))
                 x = session.bt_pos_ts[0:-1]
                 y = bt_sm_vel
                 x1 = np.array(x, copy=True)
