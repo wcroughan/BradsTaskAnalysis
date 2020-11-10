@@ -79,7 +79,7 @@ class BTSession:
         self.isDelayedInterruption = False
         self.isNoInterruption = False
         # self.ripple_detection_tetrodes = []
-        self.ripple_detection_tetrodes = [36]
+        self.ripple_detection_tetrodes = [37]
 
         # Rat weight if it was recorded
         self.rat_weight = 0
@@ -118,6 +118,9 @@ class BTSession:
         self.probe_lfp_end_ts = 0
         self.probe_lfp_start_idx = 0
         self.probe_lfp_end_idx = 0
+
+        self.interruption_timestamps = np.array([])
+        self.artifact_timestamps = np.array([])
 
         # ==================================
         # Analyzed data: Brad's task

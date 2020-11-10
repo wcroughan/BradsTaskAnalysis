@@ -1,4 +1,9 @@
+# TODO
+# ANOVA spherical assumption is not met because spread of other < spread of away < spread of home
+#   Need to do correct statistical test
+
 from BTData import *
+import sortednp
 import os
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,24 +21,25 @@ output_dir = '/media/WDC4/martindata/processed_data'
 SHOW_OUTPUT_PLOTS = False
 SAVE_OUTPUT_PLOTS = True
 
-SKIP_BOX_PLOTS = False
+SKIP_BOX_PLOTS = True
 SKIP_SCATTER_PLOTS = False
 SKIP_SWARM_PLOTS = True
 SKIP_PERSEVBIAS_PLOTS = True
 SKIP_PERSEV_MEASURE_PLOTS = True
-SKIP_BINARY_PERSEVBIAS_PLOTS = False
+SKIP_BINARY_PERSEVBIAS_PLOTS = True
 SKIP_BOUT_PLOTS = True
-SKIP_WAIT_PLOTS = False
-SKIP_BALL_PLOTS = False
+SKIP_WAIT_PLOTS = True
+SKIP_BALL_PLOTS = True
 SKIP_CURVATURE_PLOTS = True
-SKIP_HISTOGRAMS = False
-SKIP_LINE_PLOTS = False
-SKIP_AVG_SPEED_COMP_PLOTS = False
-SKIP_AVG_SPEED_PLOTS = False
+SKIP_HISTOGRAMS = True
+SKIP_LINE_PLOTS = True
+SKIP_AVG_SPEED_COMP_PLOTS = True
+SKIP_AVG_SPEED_PLOTS = True
 SKIP_PERSEV_QUAD_PLOTS = True
-SKIP_BOUT_PROP_PLOTS = False
+SKIP_BOUT_PROP_PLOTS = True
 SKIP_HW_PLOT = True
-SKIP_ORDER_PLOTS = True
+SKIP_ORDER_PLOTS = False
+SKIP_RIPPLE_PLACE_PLOTS = True
 
 PRINT_TRIAL_INFO = False
 SKIP_TO_MY_LOU_DARLIN = True
@@ -87,7 +93,7 @@ def makeAScatterPlot(xvals, yvals, axesNames, categories=list(), output_filename
     else:
         ucats = np.array(sorted(list(set(categories))))
         cvals = [np.argmax(c == ucats) for c in categories]
-    plt.scatter(xvals, yvals, c=cvals, zorder=2)
+    plt.scatter(xvals, yvals, c=cvals, zorder=2, s=plt.rcParams['lines.markersize'] ** 2 * 3)
     plt.title(title)
     plt.xlabel(axesNames[0])
     plt.ylabel(axesNames[1])
@@ -366,6 +372,25 @@ if PRINT_TRIAL_INFO:
         print(i, s.name, tlbls[i])
     exit()
 
+# Quick graphs made during lab meeting checking how task behavior and perseveration relate:
+# Todo organize these in somewhere
+if False:
+    makeAScatterPlot([sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     [sesh.total_dwell_time(False, sesh.home_well)
+                      for sesh in all_sessions],
+                     ['Probe avg home dwell time 1min', 'Task total home well dwell time'], tlbls, midline=False)
+    makeAScatterPlot([sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     [sesh.num_well_entries(False, sesh.home_well) for sesh in all_sessions],
+                     ['Probe avg home dwell time 1min', 'Task num home well entries'], tlbls, midline=False)
+    makeAScatterPlot([sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     [len(sesh.bt_pos_ts) for sesh in all_sessions],
+                     ['Probe avg home dwell time 1min', 'Task length'], tlbls, midline=False)
+
+    exit()
+
 if not SKIP_TO_MY_LOU_DARLIN:
     makeABoxPlot([sesh.probe_home_well_entry_times.size for sesh in all_sessions],
                  tlbls, ['Condition', 'NumHomeEntries'], title="Probe num home entries")
@@ -383,15 +408,12 @@ if not SKIP_TO_MY_LOU_DARLIN:
                      [sesh.probe_home_well_entry_times.size for sesh in all_sessions],
                      ['Probe num ctrl home well entries', 'Probe num home well entries'], tlbls, midline=True)
 
-    # makeAScatterPlot([sesh.probe_well_total_dwell_times_1min[sesh.home_well_idx_in_allwells]
     makeAScatterPlot([sesh.total_dwell_time(True, sesh.home_well, [0, 60])
-                      # makeAScatterPlot([sesh.total_dwell_time(True, sesh.home_well)
                       for sesh in all_sessions],
-                     #  [sesh.bt_well_total_dwell_times[sesh.home_well_idx_in_allwells]
                      [sesh.total_dwell_time(False, sesh.home_well)
                          for sesh in all_sessions],
                      ['Probe total home well dwell time', 'Task total home well dwell time'], tlbls, midline=True)
-
+    # makeAScatterPlot([sesh.total_dwell_time(True, sesh.home_well, [0, 60])
     # makeABoxPlot([sesh.probe_mean_dist_to_home_well for sesh in all_sessions],
     makeABoxPlot([sesh.avg_dist_to_home_well(True) for sesh in all_sessions],
                  tlbls, ['Condition', 'MeanDistToHomeWell'], title="Probe Mean Dist to Home")
@@ -423,155 +445,203 @@ if not SKIP_TO_MY_LOU_DARLIN:
                      [sesh.avg_dist_to_well(True, sesh.ctrl_home_well) for sesh in all_sessions],
                      ['BT Mean Dist to ctrl Home', 'Probe Mean Dist to ctrl Home'], tlbls)
 
-    # makeAScatterPlot([sesh.probe_meanvel_10sec for sesh in all_sessions],
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 10]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 10sec mean vel', 'probe avg home dwell time 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_30sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 10]) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 10sec mean vel', 'probe avg home dwell time 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 30]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 30sec mean vel', 'probe avg home dwell time 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_60sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 30]) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 30sec mean vel', 'probe avg home dwell time 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 60]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 60sec mean vel', 'probe avg home dwell time 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_120sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 60]) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 60sec mean vel', 'probe avg home dwell time 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 120]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 120sec mean vel', 'probe avg home dwell time 1min'], tlbls)
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 120]) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 120sec mean vel', 'probe avg home dwell time 90sec'], tlbls)
 
-    # makeAScatterPlot([sesh.probe_meanvel_10sec for sesh in all_sessions],
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 10], onlyMoving=True) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 10sec moving mean vel', 'probe avg home dwell time 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_30sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 10], onlyMoving=True) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     ['Probe 10sec moving mean vel', 'probe avg home dwell time 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 30], onlyMoving=True) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 30sec moving mean vel', 'probe avg home dwell time 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_60sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 30], onlyMoving=True) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     ['Probe 30sec moving mean vel', 'probe avg home dwell time 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 60], onlyMoving=True) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 60sec moving mean vel', 'probe avg home dwell time 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_120sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 60], onlyMoving=True) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     ['Probe 60sec moving mean vel', 'probe avg home dwell time 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 120], onlyMoving=True) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 120sec moving mean vel', 'probe avg home dwell time 1min'], tlbls)
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 120], onlyMoving=True) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     ['Probe 120sec moving mean vel', 'probe avg home dwell time 90sec'], tlbls)
 
-    # makeAScatterPlot([sesh.probe_proptime_explore_10sec for sesh in all_sessions],
     makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 10]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 10sec explore proportion', 'probe avg home dwell time 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_proptime_explore_30sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 10]) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     ['Probe 10sec explore proportion', 'probe avg home dwell time 90sec'], tlbls)
     makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 30]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 30sec explore proportion', 'probe avg home dwell time 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_proptime_explore_60sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 30]) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     ['Probe 30sec explore proportion', 'probe avg home dwell time 90sec'], tlbls)
     makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 60]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 60sec explore proportion', 'probe avg home dwell time 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_proptime_explore_120sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 60]) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     ['Probe 60sec explore proportion', 'probe avg home dwell time 90sec'], tlbls)
     makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 120]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 120sec explore proportion', 'probe avg home dwell time 1min'], tlbls)
+    makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 120]) for sesh in all_sessions],
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     ['Probe 120sec explore proportion', 'probe avg home dwell time 90sec'], tlbls)
 
-    # makeAScatterPlot([sesh.probe_meanvel_10sec for sesh in all_sessions],
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 10]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 10sec mean vel', 'probe avg home curvature 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_30sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 10]) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 10sec mean vel', 'probe avg home curvature 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 30]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 30sec mean vel', 'probe avg home curvature 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_60sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 30]) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 30sec mean vel', 'probe avg home curvature 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 60]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 60sec mean vel', 'probe avg home curvature 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_120sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 60]) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 60sec mean vel', 'probe avg home curvature 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 120]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 120sec mean vel', 'probe avg home curvature 1min'], tlbls)
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 120]) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
+                      for sesh in all_sessions],
+                     ['Probe 120sec mean vel', 'probe avg home curvature 90sec'], tlbls)
 
-    # makeAScatterPlot([sesh.probe_meanvel_10sec for sesh in all_sessions],
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 10], onlyMoving=True) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 10sec moving mean vel', 'probe avg home curvature 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_30sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 10], onlyMoving=True) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 10sec moving mean vel', 'probe avg home curvature 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 30], onlyMoving=True) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 30sec moving mean vel', 'probe avg home curvature 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_60sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 30], onlyMoving=True) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 30sec moving mean vel', 'probe avg home curvature 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 60], onlyMoving=True) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 60sec moving mean vel', 'probe avg home curvature 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_meanvel_120sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 60], onlyMoving=True) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 60sec moving mean vel', 'probe avg home curvature 90sec'], tlbls)
     makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 120], onlyMoving=True) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 120sec moving mean vel', 'probe avg home curvature 1min'], tlbls)
+    makeAScatterPlot([sesh.mean_vel(True, timeInterval=[0, 120], onlyMoving=True) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 120sec moving mean vel', 'probe avg home curvature 90sec'], tlbls)
 
-    # makeAScatterPlot([sesh.probe_proptime_explore_10sec for sesh in all_sessions],
     makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 10]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 10sec explore proportion', 'probe avg home curvature 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_proptime_explore_30sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 10]) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 10sec explore proportion', 'probe avg home curvature 90sec'], tlbls)
     makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 30]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 30sec explore proportion', 'probe avg home curvature 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_proptime_explore_60sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 30]) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 30sec explore proportion', 'probe avg home curvature 90sec'], tlbls)
     makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 60]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 60sec explore proportion', 'probe avg home curvature 1min'], tlbls)
-    # makeAScatterPlot([sesh.probe_proptime_explore_120sec for sesh in all_sessions],
+    makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 60]) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 60sec explore proportion', 'probe avg home curvature 90sec'], tlbls)
     makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 120]) for sesh in all_sessions],
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Probe 120sec explore proportion', 'probe avg home curvature 1min'], tlbls)
+    makeAScatterPlot([sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[0, 120]) for sesh in all_sessions],
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Probe 120sec explore proportion', 'probe avg home curvature 90sec'], tlbls)
 
 
 # ===================================
@@ -758,30 +828,35 @@ else:
         makeAPersevMeasurePlot("probe_avg_dwell_time_30sec",
                                lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, 30]))
 
-    makeAPersevMeasurePlot("bt_num_entries_to_well_ninc",
-                           lambda s, w: s.num_well_entries(False, w, includeNeighbors=True))
-    makeAPersevMeasurePlot("bt_total_dwell_time_ninc",
-                           lambda s, w: s.total_dwell_time(False, w, includeNeighbors=True))
-    makeAPersevMeasurePlot("bt_avg_dwell_time_ninc",
-                           lambda s, w: s.avg_dwell_time(False, w, includeNeighbors=True))
-    makeAPersevMeasurePlot("probe_num_entries_to_well_ninc",
-                           lambda s, w: s.num_well_entries(True, w, includeNeighbors=True))
-    makeAPersevMeasurePlot("probe_total_dwell_time_ninc",
-                           lambda s, w: s.total_dwell_time(True, w, includeNeighbors=True))
-    makeAPersevMeasurePlot("probe_avg_dwell_time_ninc",
-                           lambda s, w: s.avg_dwell_time(True, w, includeNeighbors=True))
-    makeAPersevMeasurePlot("probe_num_entries_to_well_1min_ninc",
-                           lambda s, w: s.num_well_entries(True, w, timeInterval=[0, 60], includeNeighbors=True))
-    makeAPersevMeasurePlot("probe_total_dwell_time_1min_ninc",
-                           lambda s, w: s.total_dwell_time(True, w, timeInterval=[0, 60], includeNeighbors=True))
-    makeAPersevMeasurePlot("probe_avg_dwell_time_1min_ninc",
-                           lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, 60], includeNeighbors=True))
-    makeAPersevMeasurePlot("probe_num_entries_to_well_30sec_ninc",
-                           lambda s, w: s.num_well_entries(True, w, timeInterval=[0, 30], includeNeighbors=True))
-    makeAPersevMeasurePlot("probe_total_dwell_time_30sec_ninc",
-                           lambda s, w: s.total_dwell_time(True, w, timeInterval=[0, 30], includeNeighbors=True))
-    makeAPersevMeasurePlot("probe_avg_dwell_time_30sec_ninc",
-                           lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, 30], includeNeighbors=True))
+        makeAPersevMeasurePlot("bt_num_entries_to_well_ninc",
+                               lambda s, w: s.num_well_entries(False, w, includeNeighbors=True))
+        makeAPersevMeasurePlot("bt_total_dwell_time_ninc",
+                               lambda s, w: s.total_dwell_time(False, w, includeNeighbors=True))
+        makeAPersevMeasurePlot("bt_avg_dwell_time_ninc",
+                               lambda s, w: s.avg_dwell_time(False, w, includeNeighbors=True))
+        makeAPersevMeasurePlot("probe_num_entries_to_well_ninc",
+                               lambda s, w: s.num_well_entries(True, w, includeNeighbors=True))
+        makeAPersevMeasurePlot("probe_total_dwell_time_ninc",
+                               lambda s, w: s.total_dwell_time(True, w, includeNeighbors=True))
+        makeAPersevMeasurePlot("probe_avg_dwell_time_ninc",
+                               lambda s, w: s.avg_dwell_time(True, w, includeNeighbors=True))
+        makeAPersevMeasurePlot("probe_num_entries_to_well_1min_ninc",
+                               lambda s, w: s.num_well_entries(True, w, timeInterval=[0, 60], includeNeighbors=True))
+        makeAPersevMeasurePlot("probe_total_dwell_time_1min_ninc",
+                               lambda s, w: s.total_dwell_time(True, w, timeInterval=[0, 60], includeNeighbors=True))
+        makeAPersevMeasurePlot("probe_avg_dwell_time_1min_ninc",
+                               lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, 60], includeNeighbors=True))
+        makeAPersevMeasurePlot("probe_num_entries_to_well_30sec_ninc",
+                               lambda s, w: s.num_well_entries(True, w, timeInterval=[0, 30], includeNeighbors=True))
+        makeAPersevMeasurePlot("probe_total_dwell_time_30sec_ninc",
+                               lambda s, w: s.total_dwell_time(True, w, timeInterval=[0, 30], includeNeighbors=True))
+        makeAPersevMeasurePlot("probe_avg_dwell_time_30sec_ninc",
+                               lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, 30], includeNeighbors=True))
+
+    makeAPersevMeasurePlot("probe_avg_dwell_time_90sec",
+                           lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, 90]))
+    makeAPersevMeasurePlot("probe_num_entries_to_well_90sec",
+                           lambda s, w: s.num_well_entries(True, w, timeInterval=[0, 90]))
 
 
 if SKIP_BOUT_PLOTS:
@@ -804,6 +879,16 @@ else:
                            lambda s, w: s.pct_bouts_where_well_was_visited(True, w, timeInterval=[0, 30]))
     makeAPersevMeasurePlot("bt_bout_pct_by_well",
                            lambda s, w: s.pct_bouts_where_well_was_visited(False, w))
+
+    num_bouts_1min = [sesh.num_bouts(True, timeInterval=[0, 60]) for sesh in all_sessions]
+    num_bouts_10sec = [sesh.num_bouts(True, timeInterval=[0, 10]) for sesh in all_sessions]
+    makeAHistogram(num_bouts_1min, categories=["all"] * len(num_bouts_1min), title="num bouts 1min")
+    makeAHistogram(num_bouts_10sec, categories=["all"]
+                   * len(num_bouts_10sec), title="num bouts 10sec")
+    makeAPersevMeasurePlot("pct_first_1_bouts",
+                           lambda s, w: s.pct_bouts_where_well_was_visited(True, w, boutsInterval=[0, 1]))
+    makeAPersevMeasurePlot("pct_first_3_bouts",
+                           lambda s, w: s.pct_bouts_where_well_was_visited(True, w, boutsInterval=[0, 3]))
 
 if SKIP_WAIT_PLOTS:
     print("Warning skipping exploration wait plots!")
@@ -836,23 +921,26 @@ else:
 if SKIP_CURVATURE_PLOTS:
     print("Warning skipping curvature by well plots!")
 else:
-    makeAPersevMeasurePlot("probe_well_avg_curvature_over_time",
-                           lambda s, w: s.avg_curvature_at_well(True, w))
-    makeAPersevMeasurePlot("probe_well_avg_curvature_over_visits",
-                           lambda s, w: s.avg_curvature_at_well(True, w, avgTypeFlag=BTSession.AVG_FLAG_OVER_VISITS))
-    makeAPersevMeasurePlot("probe_well_avg_curvature_over_time_1min",
-                           lambda s, w: s.avg_curvature_at_well(True, w, timeInterval=[0, 60]))
-    makeAPersevMeasurePlot("probe_well_avg_curvature_over_visits_1min",
-                           lambda s, w: s.avg_curvature_at_well(True, w, avgTypeFlag=BTSession.AVG_FLAG_OVER_VISITS, timeInterval=[0, 60]))
-    makeAPersevMeasurePlot("probe_well_avg_curvature_over_time_30sec",
-                           lambda s, w: s.avg_curvature_at_well(True, w, timeInterval=[0, 30]))
-    makeAPersevMeasurePlot("probe_well_avg_curvature_over_visits_30sec",
-                           lambda s, w: s.avg_curvature_at_well(True, w, avgTypeFlag=BTSession.AVG_FLAG_OVER_VISITS, timeInterval=[0, 30]))
-    makeAPersevMeasurePlot("bt_well_avg_curvature_over_time",
-                           lambda s, w: s.avg_curvature_at_well(False, w))
-    makeAPersevMeasurePlot("bt_well_avg_curvature_over_visits",
-                           lambda s, w: s.avg_curvature_at_well(False, w, avgTypeFlag=BTSession.AVG_FLAG_OVER_VISITS))
+    if not SKIP_TO_MY_LOU_DARLIN:
+        makeAPersevMeasurePlot("probe_well_avg_curvature_over_time",
+                               lambda s, w: s.avg_curvature_at_well(True, w))
+        makeAPersevMeasurePlot("probe_well_avg_curvature_over_visits",
+                               lambda s, w: s.avg_curvature_at_well(True, w, avgTypeFlag=BTSession.AVG_FLAG_OVER_VISITS))
+        makeAPersevMeasurePlot("probe_well_avg_curvature_over_time_1min",
+                               lambda s, w: s.avg_curvature_at_well(True, w, timeInterval=[0, 60]))
+        makeAPersevMeasurePlot("probe_well_avg_curvature_over_visits_1min",
+                               lambda s, w: s.avg_curvature_at_well(True, w, avgTypeFlag=BTSession.AVG_FLAG_OVER_VISITS, timeInterval=[0, 60]))
+        makeAPersevMeasurePlot("probe_well_avg_curvature_over_time_30sec",
+                               lambda s, w: s.avg_curvature_at_well(True, w, timeInterval=[0, 30]))
+        makeAPersevMeasurePlot("probe_well_avg_curvature_over_visits_30sec",
+                               lambda s, w: s.avg_curvature_at_well(True, w, avgTypeFlag=BTSession.AVG_FLAG_OVER_VISITS, timeInterval=[0, 30]))
+        makeAPersevMeasurePlot("bt_well_avg_curvature_over_time",
+                               lambda s, w: s.avg_curvature_at_well(False, w))
+        makeAPersevMeasurePlot("bt_well_avg_curvature_over_visits",
+                               lambda s, w: s.avg_curvature_at_well(False, w, avgTypeFlag=BTSession.AVG_FLAG_OVER_VISITS))
 
+    makeAPersevMeasurePlot("probe_well_avg_curvature_over_time_90sec",
+                           lambda s, w: s.avg_curvature_at_well(True, w, timeInterval=[0, 90]))
 
 if SKIP_PERSEV_QUAD_PLOTS:
     print("Warning skipping quad plots!")
@@ -1089,6 +1177,7 @@ def avg_speed_plot_separate_conditions(interval, output_filename=""):
 if not SKIP_TO_MY_LOU_DARLIN:
     avg_speed_plot_separate_conditions(30)
     avg_speed_plot_separate_conditions(60)
+    avg_speed_plot_separate_conditions(150)
     avg_speed_plot_separate_conditions(300)
 
 # for sesh in all_sessions:
@@ -1223,10 +1312,9 @@ def boutProportionPlot(interval, given_output_filename=""):
         plt.savefig(output_filename, dpi=800)
 
 
-if not SKIP_TO_MY_LOU_DARLIN:
-    boutProportionPlot(60)
-    boutProportionPlot(30)
-    boutProportionPlot(15)
+boutProportionPlot(60)
+boutProportionPlot(30)
+boutProportionPlot(15)
 
 if SKIP_HW_PLOT:
     print("Warning, skipping home well plot")
@@ -1248,22 +1336,114 @@ if SKIP_ORDER_PLOTS:
     print("Warning, skipping trial order plots")
 else:
     makeAScatterPlot(list(range(len(all_sessions))),
-                     #  [sesh.probe_well_avg_dwell_times_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Session idx', 'Home avg dwell time probe 1min'], tlbls)
-
     makeAScatterPlot(list(range(len(all_sessions))),
-                     #  [sesh.probe_well_avg_curvature_over_time_1min[sesh.home_well_idx_in_allwells]
                      [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 60])
                       for sesh in all_sessions],
                      ['Session idx', 'home avg curvature over time 1min'], tlbls)
 
-num_bouts_1min = [sesh.num_bouts(True, timeInterval=[0, 60]) for sesh in all_sessions]
-num_bouts_10sec = [sesh.num_bouts(True, timeInterval=[0, 10]) for sesh in all_sessions]
-makeAHistogram(num_bouts_1min, categories=["all"] * len(num_bouts_1min), title="num bouts 1min")
-makeAHistogram(num_bouts_10sec, categories=["all"] * len(num_bouts_10sec), title="num bouts 10sec")
-makeAPersevMeasurePlot("pct_first_1_bouts",
-                       lambda s, w: s.pct_bouts_where_well_was_visited(True, w, boutsInterval=[0, 1]))
-makeAPersevMeasurePlot("pct_first_3_bouts",
-                       lambda s, w: s.pct_bouts_where_well_was_visited(True, w, boutsInterval=[0, 3]))
+    makeAScatterPlot(list(range(len(all_sessions))),
+                     [sesh.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[
+                         0, 60]) for sesh in all_sessions],
+                     ['Session idx', 'Probe 60sec explore proportion'], tlbls)
+    makeAScatterPlot(list(range(len(all_sessions))),
+                     [sesh.mean_vel(True, timeInterval=[0, 30])
+                      for sesh in all_sessions],
+                     ['Session idx', 'Probe 30sec mean vel'], tlbls)
+    makeAScatterPlot(list(range(len(all_sessions))),
+                     [sesh.mean_vel(True, timeInterval=[0, 30], onlyMoving=True)
+                      for sesh in all_sessions],
+                     ['Session idx', 'Probe 30sec moving mean vel'], tlbls)
+
+    makeAScatterPlot(list(range(len(all_sessions))),
+                     [sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Session idx', 'Home avg dwell time probe 90sec'], tlbls)
+    makeAScatterPlot(list(range(len(all_sessions))),
+                     [sesh.avg_curvature_at_home_well(True, timeInterval=[0, 90])
+                      for sesh in all_sessions],
+                     ['Session idx', 'home avg curvature over time 90sec'], tlbls)
+
+
+if SKIP_RIPPLE_PLACE_PLOTS:
+    print("Warning, skipping ripple place plots")
+else:
+    ripoutdir = os.path.join(output_dir, 'ripple_place')
+    all_rip_speeds = np.array([])
+    all_speeds = np.array([])
+    for sesh in all_sessions:
+        # print(sesh.home_well_find_pos_idxs)
+        well_find_pos_idxs = np.concatenate(
+            (sesh.home_well_find_pos_idxs, sesh.away_well_find_pos_idxs))
+        well_find_pos_idxs.sort()
+        # print(well_find_pos_idxs)
+
+        posx = np.array(sesh.bt_pos_xs)
+        posy = np.array(sesh.bt_pos_ys)
+        post = np.array(sesh.bt_pos_ts)
+        rip_ts = np.array(sesh.interruption_timestamps)
+
+        if not SKIP_TO_MY_LOU_DARLIN:
+            last_find_idx = 0
+            for wi, next_find_idx in enumerate(well_find_pos_idxs):
+
+                t1 = post[last_find_idx]
+                t2 = post[next_find_idx]
+                rts = rip_ts[np.logical_and(rip_ts >= t1, rip_ts < t2)]
+                rip_idxs = np.searchsorted(post[last_find_idx:next_find_idx], rts)
+
+                plt.clf()
+                plt.plot(posx[last_find_idx:next_find_idx], posy[last_find_idx:next_find_idx])
+                plt.scatter(posx[last_find_idx + rip_idxs],
+                            posy[last_find_idx + rip_idxs], c=[[1, 0, 0, 1]], zorder=32)
+                # print(wi, len(rts), len(rip_ts))
+                # print(t1, t2, rip_ts[0], rip_ts[-1])
+                plt.scatter(posx[last_find_idx], posy[last_find_idx], c=[[0, 1, 0, 1]],
+                            s=plt.rcParams['lines.markersize'] ** 2 * 2, zorder=31)
+                plt.gca().set_xlim(200, 1100)
+                plt.gca().set_ylim(0, 1000)
+
+                if SHOW_OUTPUT_PLOTS:
+                    plt.show()
+                if SAVE_OUTPUT_PLOTS:
+                    output_filename = os.path.join(ripoutdir, sesh.name + "_" + str(wi))
+                    plt.savefig(output_filename, dpi=800)
+
+                last_find_idx = next_find_idx
+
+        # speed
+        rip_idxs = np.searchsorted(post, rip_ts[rip_ts < post[-1]])
+        rip_speeds = sesh.bt_vel_cm_s[rip_idxs]
+        all_rip_speeds = np.concatenate((all_rip_speeds, rip_speeds))
+        all_speeds = np.concatenate((all_speeds, sesh.bt_vel_cm_s))
+
+    plt.clf()
+    # sns.distplot(speeds)
+    # bin_max = max(np.max(all_speeds), np.max(all_rip_speeds))
+    bin_max = 100
+    x, bins, p = plt.hist((all_speeds, all_rip_speeds),
+                          bins=np.arange(0, bin_max, 5), label=['all', 'stim'])
+    plt.legend()
+    # print(x, bins, p)
+    # x, bins, p = plt.hist(all_speeds, bins=np.arange(0, np.max(all_speeds), 5))
+    for item in p[0]:
+        item.set_height(item.get_height()/np.sum(x[0]))
+    for item in p[1]:
+        item.set_height(item.get_height()/np.sum(x[1]))
+    # x, bins, p = plt.hist(all_rip_speeds, bins=np.arange(0, np.max(all_rip_speeds), 5))
+    # for item in p:
+        # item.set_height(item.get_height()/sum(x))
+    prop_txt = str(np.count_nonzero(all_rip_speeds < 5) / np.size(all_rip_speeds))
+    plt.text(1, 1, prop_txt, horizontalalignment='right',
+             verticalalignment='top', transform=plt.gca().transAxes)
+    plt.gca().set_ylim((0, 0.5))
+    if SHOW_OUTPUT_PLOTS:
+        plt.show()
+    if SAVE_OUTPUT_PLOTS:
+        output_filename = os.path.join(output_dir, "all_speeds_at_interruption")
+        plt.savefig(output_filename, dpi=800)
+
+    # distance to home well
+    # in exploration bout?

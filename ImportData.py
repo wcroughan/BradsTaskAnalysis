@@ -11,6 +11,7 @@ import scipy
 from scipy import stats, signal
 from itertools import groupby
 import MountainViewIO
+from scipy.ndimage.filters import gaussian_filter
 # import InterruptionAnalysis
 
 INSPECT_ALL = False
@@ -73,7 +74,8 @@ TRODES_SAMPLING_RATE = 30000
 SWITCH_WELL_FACTOR = 0.8
 
 # Typical observed amplitude of LFP deflection on stimulation
-DEFLECTION_THRESHOLD = 10000.0
+DEFLECTION_THRESHOLD_HI = 10000.0
+DEFLECTION_THRESHOLD_LO = 2000.0
 LFP_SAMPLING_RATE = 1500.0
 MIN_ARTIFACT_DISTANCE = int(0.05 * LFP_SAMPLING_RATE)
 
@@ -84,6 +86,11 @@ LFP_SAMPLING_RATE = 1500.0
 MIN_ARTIFACT_PERIOD = int(0.1 * LFP_SAMPLING_RATE)
 # Typical duration of a Sharp-Wave Ripple
 ACCEPTED_RIPPLE_LENGTH = int(0.2 * LFP_SAMPLING_RATE)
+RIPPLE_FILTER_BAND = [150, 250]
+RIPPLE_FILTER_ORDER = 4
+SKIP_TPTS_FORWARD = int(0.075 * LFP_SAMPLING_RATE)
+# SKIP_TPTS_BACKWARD = int(0.005 * LFP_SAMPLING_RATE)
+SKIP_TPTS_BACKWARD = int(0.02 * LFP_SAMPLING_RATE)
 
 # constants for exploration bout analysis
 # raise Exception("try longer sigmas here")
@@ -316,6 +323,67 @@ def getNearestWell(xs, ys, well_coords, well_idxs=all_well_names):
     #     print("nearest_well", nearest_well)
 
     return well_idxs[nearest_well]
+
+
+def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_deflections=None):
+    """
+    Get ripple power in LFP
+    """
+
+    lfp_data_copy = lfp_data.copy()
+
+    if lfp_deflections is None:
+        if omit_artifacts:
+            raise Exception("this hasn't been updated")
+            # Remove all the artifacts in the raw ripple amplitude data
+            deflection_metrics = signal.find_peaks(np.abs(np.diff(lfp_data,
+                                                                  prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO,
+                                                   distance=MIN_ARTIFACT_DISTANCE)
+            lfp_deflections = deflection_metrics[0]
+
+    # After this preprocessing, clean up the data if needed.
+    if lfp_deflections is not None:
+        for artifact_idx in range(len(lfp_deflections)):
+            cleanup_start = max(0, lfp_deflections[artifact_idx] - SKIP_TPTS_BACKWARD)
+            cleanup_finish = min(len(lfp_data)-1, lfp_deflections[artifact_idx] +
+                                 SKIP_TPTS_FORWARD)
+            lfp_data_copy[cleanup_start:cleanup_finish] = np.nan
+
+    nyq_freq = LFP_SAMPLING_RATE * 0.5
+    lo_cutoff = RIPPLE_FILTER_BAND[0]/nyq_freq
+    hi_cutoff = RIPPLE_FILTER_BAND[1]/nyq_freq
+    pl, ph = signal.butter(RIPPLE_FILTER_ORDER, [lo_cutoff, hi_cutoff], btype='band')
+    if causal_smoothing:
+        ripple_amplitude = signal.lfilter(pl, ph, lfp_data_copy)
+    else:
+        ripple_amplitude = signal.filtfilt(pl, ph, lfp_data_copy)
+
+    # Smooth this data and get ripple power
+    # smoothing_window_length = RIPPLE_POWER_SMOOTHING_WINDOW * LFP_SAMPLING_RATE
+    # smoothing_weights = np.ones(int(smoothing_window_length))/smoothing_window_length
+    # ripple_power = np.convolve(np.abs(ripple_amplitude), smoothing_weights, mode='same')
+
+    # Use a Gaussian kernel for filtering - Make the Kernel Causal bu keeping only one half of the values
+    smoothing_window_length = 10
+    if causal_smoothing:
+        # In order to no have NaN values affect the filter output, create a copy with the artifacts
+        ripple_amplitude_copy = ripple_amplitude.copy()
+
+        half_smoothing_signal = \
+            np.exp(-np.square(np.linspace(0, -4*smoothing_window_length, 4 *
+                                          smoothing_window_length))/(2*smoothing_window_length * smoothing_window_length))
+        smoothing_signal = np.concatenate(
+            (np.zeros_like(half_smoothing_signal), half_smoothing_signal), axis=0)
+        ripple_power = signal.convolve(np.abs(ripple_amplitude_copy),
+                                       smoothing_signal, mode='same') / np.sum(smoothing_signal)
+        ripple_power[np.isnan(ripple_amplitude)] = np.nan
+    else:
+        ripple_power = gaussian_filter(np.abs(ripple_amplitude), smoothing_window_length)
+
+    # Get the mean/standard deviation for ripple power and adjust for those
+    mean_ripple_power = np.nanmean(ripple_power)
+    std_ripple_power = np.nanstd(ripple_power)
+    return (ripple_power-mean_ripple_power)/std_ripple_power, lfp_deflections
 
 
 if __name__ == "__main__" and TEST_NEAREST_WELL:
@@ -638,6 +706,14 @@ if __name__ == "__main__":
         session.home_x, session.home_y = get_well_coordinates(
             session.home_well, session.well_coords_map)
 
+        # for i in range(len(session.ripple_detection_tetrodes)):
+        #     spkdir = file_str + ".spikes"
+        #     if not os.path.exists(spkdir):
+        #         print(spkdir, "doesn't exists, gonna try and extract the spikes")
+        #         syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportspikes -rec " + file_str + ".rec"
+        #         print(syscmd)
+        #         os.system(syscmd)
+
         for i in range(len(session.ripple_detection_tetrodes)):
             lfpdir = file_str + ".LFP"
             if not os.path.exists(lfpdir):
@@ -658,19 +734,66 @@ if __name__ == "__main__":
         # ===================================
         # LFP
         # ===================================
-        print(all_lfp_data[0])
         lfp_data = all_lfp_data[0][1]['voltage']
-        # lfp_data = all_lfp_data[0][1]['voltage']
+        lfp_timestamps = all_lfp_data[0][0]['time']
 
-        # # lfp_deflections = signal.find_peaks(-lfp_data[1]['voltage'], height=DEFLECTION_THRESHOLD,
-        lfp_deflections = signal.find_peaks(-lfp_data, height=DEFLECTION_THRESHOLD,
+        lfp_deflections = signal.find_peaks(-lfp_data, height=DEFLECTION_THRESHOLD_HI,
                                             distance=MIN_ARTIFACT_DISTANCE)
-        artifacts = lfp_deflections[0]
+        interruption_idxs = lfp_deflections[0]
+        session.interruption_timestamps = lfp_timestamps[interruption_idxs]
 
-        plt.clf()
-        plt.plot(lfp_data)
-        plt.scatter(artifacts, lfp_data[artifacts])
-        plt.show()
+        lfp_deflections = signal.find_peaks(np.abs(
+            np.diff(lfp_data, prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO, distance=MIN_ARTIFACT_DISTANCE)
+        lfp_artifact_idxs = lfp_deflections[0]
+        session.artifact_timestamps = lfp_timestamps[lfp_artifact_idxs]
+
+        # ripple_power = get_ripple_power(lfp_data, omit_artifacts=True,
+        #                                 causal_smoothing=False, lfp_deflections=lfp_artifact_idxs)
+
+        # ripple_power = ripple_power[0]
+        # # ripple_power /= np.nanmax(ripple_power)
+        # # ripple_power *= np.nanmax(lfp_data)
+
+        # lfp_diff = np.diff(lfp_data, prepend=lfp_data[0])
+
+        # plt.clf()
+        # plt.plot(lfp_timestamps, lfp_data)
+        # # # # plt.plot(lfp_timestamps, np.abs(lfp_diff))
+        # # # plt.plot(lfp_timestamps, ripple_power)
+        # plt.scatter(lfp_timestamps[lfp_artifact_idxs],
+        #             # #             # np.abs(lfp_diff[lfp_artifact_idxs]), c=[[1, 0, 0, 1]], zorder=30)
+        #             lfp_data[lfp_artifact_idxs], c=[[1, 0, 0, 1]], zorder=30)
+
+        # if session.isDelayedInterruption:
+        #     type_txt = 'Delayed'
+        # elif session.isNoInterruption:
+        #     type_txt = 'None'
+        # elif session.isRippleInterruption:
+        #     type_txt = 'Ripple'
+        # else:
+        #     type_txt = 'unknown'
+        #     print("unknown session type")
+        # plt.text(1, 1, type_txt, horizontalalignment='right',
+        #          verticalalignment='top', transform=plt.gca().transAxes)
+        # plt.show()
+
+        # ARP_SZ = int(0.3 * float(LFP_SAMPLING_RATE))
+        # aligned_rip_power = np.empty((len(interruption_idxs), ARP_SZ))
+        # for ai, a in enumerate(interruption_idxs):
+        #     aligned_rip_power[ai, :] = ripple_power[a - ARP_SZ:a]
+
+        # avg_arp = np.nanmean(aligned_rip_power, axis=0)
+
+        # xvals = np.linspace(-300, 0, ARP_SZ)
+        # # plt.clf()
+        # # plt.plot(xvals, avg_arp)
+        # # plt.text(1, 1, type_txt, horizontalalignment='right',
+        # #          verticalalignment='top', transform=plt.gca().transAxes)
+        # # plt.text(1, 0.9, str(len(all_lfp_data)), horizontalalignment='right',
+        # #          verticalalignment='top', transform=plt.gca().transAxes)
+        # # plt.show()
+
+        # continue
 
         # ===================================
         # which away wells were visited?
@@ -697,6 +820,15 @@ if __name__ == "__main__":
             session.home_well_leave_times = well_visit_times[::2, 1]
             session.away_well_find_times = well_visit_times[1::2, 0]
             session.away_well_leave_times = well_visit_times[1::2, 1]
+
+            session.home_well_find_pos_idxs = np.searchsorted(
+                session.bt_pos_ts, session.home_well_find_times)
+            session.home_well_leave_pos_idxs = np.searchsorted(
+                session.bt_pos_ts, session.home_well_leave_times)
+            session.away_well_find_pos_idxs = np.searchsorted(
+                session.bt_pos_ts, session.away_well_find_times)
+            session.away_well_leave_pos_idxs = np.searchsorted(
+                session.bt_pos_ts, session.away_well_leave_times)
 
             if len(session.home_well_leave_times) == len(session.away_well_find_times):
                 session.away_well_latencies = np.array(session.away_well_find_times) - \
