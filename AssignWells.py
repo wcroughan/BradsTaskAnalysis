@@ -16,7 +16,8 @@ REST_OF_FILE = "\nThresh: Low\nLast Away: \nLast well: \nITI Stim On: \nProbe St
 all_wells = [i + 1 for i in range(48) if not i % 8 in [0, 7]]
 # broken_wells = [2, 4, 6, 7, 18, 20, 42, 29, 31, 39, 37, 47, 27]
 # broken_wells = [2, 3, 4, 20, 42, 34]
-broken_wells = [34, 15, 21, 22, 28, 29, 44, 38, 35]
+# broken_wells = [34, 15, 21, 22, 28, 29, 44, 38, 35]
+broken_wells = [34, 22, 35]
 working_wells = set(all_wells) - set(broken_wells)
 
 thisday = first_day
