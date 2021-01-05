@@ -1,6 +1,7 @@
 from BTData import *
 import os
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpat
 import random
 
 data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
@@ -17,18 +18,21 @@ VEL_THRESH = 10  # cm/s
 PIXELS_PER_CM = 5.0
 TRODES_SAMPLING_RATE = 30000
 
-RUN_JUST_ONE_SESSION = True
+RUN_JUST_ONE_SESSION = False
 SAVE_OUTPUT_FIGS = True
 SHOW_OUTPUT_FIGS = False
-PLOT_FULL_BEHAVIOR_PATH = True
+PLOT_FULL_BEHAVIOR_PATH = False
+PLOT_FULL_BEHAVIOR_PATH_COMBO = True
 PLOT_RUNNING_VS_STILL = False
 PLOT_NEAR_HOME_VS_DISTANT = False
 PLOT_HOME_AWAY_LATENCIES = False
+PLOT_WELL_OCCUPANCY = False
+ENFORCE_DIFFERENT_WELL_COLORS = False
+PLOT_EACH_WELL_PATH = False
+PLOT_COMBINED_WELL_PATH = False
 
 RUN_THIS_SESSION = "20200608"
 
-PLOT_WELL_OCCUPANCY = True
-ENFORCE_DIFFERENT_WELL_COLORS = False
 
 all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 
@@ -83,6 +87,36 @@ for (seshidx, sesh) in enumerate(alldata.getSessions()):
         plt.scatter(sesh.probe_pos_xs[i2], sesh.probe_pos_ys[i2], color='red', zorder=2)
         plt.grid('on')
         saveOrShow(output_fname_probe_30sec)
+
+    if PLOT_FULL_BEHAVIOR_PATH_COMBO:
+        output_fname_combo = os.path.join(output_dir, sesh.name + "_combo.png")
+        plt.clf()
+        fig = plt.gcf()
+        fig.set_size_inches(9, 3)
+        plt.subplot(131)
+        plt.xlim(0, 1200)
+        plt.ylim(0, 1000)
+        plt.scatter(sesh.home_x, sesh.home_y, color='green', zorder=2)
+        plt.plot(sesh.bt_pos_xs, sesh.bt_pos_ys, zorder=0)
+        plt.grid('on')
+        plt.subplot(132)
+        plt.xlim(0, 1200)
+        plt.ylim(0, 1000)
+        plt.scatter(sesh.home_x, sesh.home_y, color='green', zorder=2)
+        plt.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, zorder=0)
+        plt.grid('on')
+        plt.subplot(133)
+        plt.xlim(0, 1200)
+        plt.ylim(0, 1000)
+        plt.scatter(sesh.home_x, sesh.home_y, color='green', zorder=2)
+        t1 = sesh.probe_pos_ts[0]
+        t2 = t1 + 60 * 30000
+        i1 = np.searchsorted(sesh.probe_pos_ts, t1)
+        i2 = np.searchsorted(sesh.probe_pos_ts, t2)
+        plt.plot(sesh.probe_pos_xs[i1:i2], sesh.probe_pos_ys[i1:i2], zorder=0)
+        plt.scatter(sesh.probe_pos_xs[i2], sesh.probe_pos_ys[i2], color='red', zorder=2)
+        plt.grid('on')
+        saveOrShow(output_fname_combo)
 
     if PLOT_RUNNING_VS_STILL:
         plt.clf()
@@ -145,7 +179,7 @@ for (seshidx, sesh) in enumerate(alldata.getSessions()):
 
         lh = np.array(sesh.home_well_latencies) / 30000.0
         la = np.array(sesh.away_well_latencies) / 30000.0
-        print(lh, la)
+        # print(lh, la)
         addpad = False
         if len(lh) > len(la):
             addpad = True
@@ -158,6 +192,9 @@ for (seshidx, sesh) in enumerate(alldata.getSessions()):
             all_colors.pop()
         xvals = list(range(len(all_latencies)))
         plt.bar(xvals, all_latencies, color=all_colors)
+        plt.ylabel('Latency (s)')
+        plt.legend(handles=[mpat.Patch(color='red', label='home'),
+                            mpat.Patch(color='cyan', label='away')])
 
         output_fname = os.path.join(output_dir, sesh.name + "_home_away_latencies.png")
         saveOrShow(output_fname)
@@ -198,4 +235,80 @@ for (seshidx, sesh) in enumerate(alldata.getSessions()):
                         wi, len(sesh.bt_well_entry_idxs[i]), len(sesh.bt_well_exit_idxs[i])))
 
         output_fname = os.path.join(output_dir, sesh.name + "_well_occupancy.png")
+        saveOrShow(output_fname)
+
+    if PLOT_EACH_WELL_PATH:
+        for pi, hwi in enumerate(sesh.home_well_find_pos_idxs):
+            if pi == 0:
+                i1 = 0
+            else:
+                i1 = sesh.away_well_leave_pos_idxs[pi-1]
+            i2 = hwi
+
+            plt.clf()
+            plt.plot(sesh.bt_pos_xs[i1:i2], sesh.bt_pos_ys[i1:i2])
+            plt.scatter(sesh.home_x, sesh.home_y, color='green', zorder=2)
+            plt.xlim(0, 1200)
+            plt.ylim(0, 1000)
+
+            output_fname = os.path.join(
+                output_dir, 'each_well', sesh.name + "_bt_" + str(pi+1) + "H" + ".png")
+            saveOrShow(output_fname)
+
+        for pi, hwi in enumerate(sesh.away_well_find_pos_idxs):
+            i1 = sesh.home_well_leave_pos_idxs[pi]
+            i2 = hwi
+            awx, awy = sesh.get_well_coordinates(sesh.away_wells[pi])
+
+            plt.clf()
+            plt.plot(sesh.bt_pos_xs[i1:i2], sesh.bt_pos_ys[i1:i2])
+            plt.scatter(awx, awy, color='green', zorder=2)
+            plt.xlim(0, 1200)
+            plt.ylim(0, 1000)
+
+            output_fname = os.path.join(
+                output_dir, 'each_well', sesh.name + "_bt_" + str(pi+1) + "W" + ".png")
+            saveOrShow(output_fname)
+
+    if PLOT_COMBINED_WELL_PATH:
+        plt.clf()
+        fig = plt.gcf()
+        fig.set_size_inches(11, 3)
+        for pi, hwi in enumerate(sesh.home_well_find_pos_idxs):
+            plt.subplot(2, len(sesh.home_well_find_pos_idxs), pi+1)
+            if pi == 0:
+                i1 = 0
+            else:
+                i1 = sesh.away_well_leave_pos_idxs[pi-1]
+            i2 = hwi
+
+            plt.plot(sesh.bt_pos_xs[i1:i2], sesh.bt_pos_ys[i1:i2])
+            plt.scatter(sesh.home_x, sesh.home_y, color='green', zorder=2)
+            plt.xlim(0, 1200)
+            plt.ylim(0, 1000)
+            plt.tick_params(axis='both', which='both', bottom=False, top=False, labelbottom=False,
+                            left=False, right=False, labelleft=False)
+
+            if pi == 0:
+                plt.ylabel('Home')
+
+            if len(sesh.away_well_find_pos_idxs) > pi:
+                plt.subplot(2, len(sesh.home_well_find_pos_idxs),
+                            pi+1 + len(sesh.home_well_find_pos_idxs))
+                i1 = sesh.home_well_leave_pos_idxs[pi]
+                i2 = sesh.away_well_find_pos_idxs[pi]
+                awx, awy = sesh.get_well_coordinates(sesh.away_wells[pi])
+
+                plt.plot(sesh.bt_pos_xs[i1:i2], sesh.bt_pos_ys[i1:i2])
+                plt.scatter(awx, awy, color='green', zorder=2)
+                plt.xlim(0, 1200)
+                plt.ylim(0, 1000)
+                plt.tick_params(axis='both', which='both', bottom=False,
+                                top=False, labelbottom=False,
+                                left=False, right=False, labelleft=False)
+                if pi == 0:
+                    plt.ylabel('Away')
+
+        output_fname = os.path.join(
+            output_dir, 'each_well', sesh.name + "_bt_all.png")
         saveOrShow(output_fname)

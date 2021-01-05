@@ -21,6 +21,8 @@ class BTSession:
 
     all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 
+    PIXELS_PER_CM = 5.0
+
     def __init__(self):
         # ==================================
         # Info about the session
@@ -128,6 +130,7 @@ class BTSession:
         self.home_well_find_times = []
         self.home_well_find_pos_idxs = []
         self.home_well_leave_times = []
+        self.home_well_leave_pos_idxs = []
         self.home_well_latencies = []
         self.home_well_displacements = []
         self.home_well_distances = []
@@ -135,6 +138,7 @@ class BTSession:
         self.away_well_find_times = []
         self.away_well_find_pos_idxs = []
         self.away_well_leave_times = []
+        self.away_well_leave_pos_idxs = []
         self.away_well_latencies = []
         self.away_well_displacements = []
         self.away_well_distances = []
@@ -258,6 +262,7 @@ class BTSession:
     def avg_dist_to_well(self, inProbe, wellName, timeInterval=None, moveFlag=None, avgFunc=np.nanmean):
         """
         timeInterval is in seconds, where 0 == start of probe or task (as specified in inProbe flag)
+        return units: cm
         """
 
         if moveFlag is None:
@@ -302,12 +307,18 @@ class BTSession:
 
         dist_to_well = np.sqrt(np.power(wx - np.array(xs), 2) +
                                np.power(wy - np.array(ys), 2))
-        return avgFunc(dist_to_well)
+        return avgFunc(dist_to_well / self.PIXELS_PER_CM)
 
     def avg_dist_to_home_well(self, inProbe, timeInterval=None, moveFlag=None, avgFunc=np.nanmean):
+        """
+        return units: cm
+        """
         return self.avg_dist_to_well(inProbe, self.home_well, timeInterval=timeInterval, moveFlag=moveFlag, avgFunc=avgFunc)
 
     def entry_exit_times(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False, returnIdxs=False, includeEdgeOverlap=True):
+        """
+        return units: trodes timestamps, unless returnIdxs==True
+        """
         # wellName == "QX" ==> look at quadrant X instead of a well
         if isinstance(wellName, str) and wellName[0] == 'Q':
             isQuad = True
@@ -501,13 +512,16 @@ class BTSession:
         return self.avg_curvature_at_well(inProbe, self.home_well, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag, avgFunc=avgFunc, includeNeighbors=includeNeighbors)
 
     def dwell_times(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
+        """
+        return units: trodes timestamps
+        """
         ents, exts = self.entry_exit_times(
             inProbe, wellName, timeInterval=timeInterval, includeNeighbors=includeNeighbors, excludeReward=excludeReward, returnIdxs=False)
 
         return np.array(exts) - np.array(ents)
 
     def num_well_entries(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
-        ents, exts = self.entry_exit_times(
+        ents, _ = self.entry_exit_times(
             inProbe, wellName, timeInterval=None, includeNeighbors=includeNeighbors, excludeReward=excludeReward, returnIdxs=False)
 
         if inProbe:
@@ -525,10 +539,16 @@ class BTSession:
         return ents.size
 
     def total_dwell_time(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
-        return np.sum(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors))
+        """
+        return units: seconds
+        """
+        return np.sum(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors) / TRODES_SAMPLING_RATE)
 
     def avg_dwell_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False, includeNeighbors=False):
-        return avgFunc(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors))
+        """
+        return units: seconds
+        """
+        return avgFunc(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors) / TRODES_SAMPLING_RATE)
 
     def num_bouts(self, inProbe, timeInterval=None):
         if inProbe:
@@ -598,6 +618,9 @@ class BTSession:
         return float(np.count_nonzero(cats == boutState)) / float(cats.size)
 
     def mean_vel(self, inProbe, onlyMoving=False, timeInterval=None):
+        """
+        return units: cm/s
+        """
         if inProbe:
             vel = self.probe_vel_cm_s
             ts = self.probe_pos_ts
@@ -622,3 +645,87 @@ class BTSession:
 
     def ctrl_well_for_well(self, wellName):
         return 49 - wellName
+
+    def path_optimality(self, inProbe, timeInterval=None, wellName=None):
+        if timeInterval is None and wellName is None:
+            raise Exception("Gimme a time interval or a well name plz")
+
+        if timeInterval is not None:
+            raise Exception("Unimplemented")
+
+        if inProbe:
+            xs = self.probe_pos_xs
+            ys = self.probe_pos_ys
+        else:
+            xs = self.bt_pos_xs
+            ys = self.bt_pos_ys
+
+        ei = self.entry_exit_times(inProbe, wellName, returnIdxs=True)[0][0]
+        displacement_x = xs[ei] - xs[0]
+        displacement_y = ys[ei] - ys[0]
+        displacement = np.sqrt(displacement_x*displacement_x + displacement_y*displacement_y)
+
+        dx = np.diff(xs[0:ei])
+        dy = np.diff(ys[0:ei])
+        distance = np.sum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
+
+        return distance / displacement
+
+    def total_time_near_well(self, inProbe, wellName, radius=None, timeInterval=None, moveFlag=None):
+        """
+        timeInterval is in seconds, where 0 == start of probe or task (as specified in inProbe flag)
+        radius is in cm
+        return units: trode timestamps
+        """
+
+        if radius is None:
+            # TODO just count total time in well by entry exit times
+            raise Exception("Unimplemented")
+
+        if moveFlag is None:
+            moveFlag = BTSession.MOVE_FLAG_ALL
+
+        wx, wy = self.get_well_coordinates(wellName)
+
+        if inProbe:
+            ts = np.array(self.probe_pos_ts)
+            if moveFlag == self.MOVE_FLAG_MOVING:
+                xs = np.array(self.probe_mv_xs)
+                ys = np.array(self.probe_mv_ys)
+            elif moveFlag == self.MOVE_FLAG_STILL:
+                xs = np.array(self.probe_still_xs)
+                ys = np.array(self.probe_still_ys)
+            else:
+                assert moveFlag == BTSession.MOVE_FLAG_ALL
+                xs = np.array(self.probe_pos_xs)
+                ys = np.array(self.probe_pos_ys)
+        else:
+            ts = np.array(self.bt_pos_ts)
+            if moveFlag == self.MOVE_FLAG_MOVING:
+                xs = np.array(self.bt_mv_xs)
+                ys = np.array(self.bt_mv_ys)
+            if moveFlag == self.MOVE_FLAG_STILL:
+                xs = np.array(self.bt_still_xs)
+                ys = np.array(self.bt_still_ys)
+            else:
+                assert moveFlag == BTSession.MOVE_FLAG_ALL
+                xs = np.array(self.bt_pos_xs)
+                ys = np.array(self.bt_pos_ys)
+
+        # Note nan values are ignored. This is intentional, so caller
+        # can just consider some time points by making all other values nan
+        # If timeInterval is None, use all times points. Otherwise, take only timeInterval in seconds
+        if timeInterval is not None:
+            assert xs.shape == ts.shape
+            dur_idx = np.searchsorted(ts, np.array(
+                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
+            xs = xs[dur_idx[0]:dur_idx[1]]
+            ys = ys[dur_idx[0]:dur_idx[1]]
+            ts = ts[dur_idx[0]:dur_idx[1]]
+
+        dist_to_well = np.sqrt(np.power(wx - np.array(xs), 2) +
+                               np.power(wy - np.array(ys), 2)) / self.PIXELS_PER_CM
+
+        count_point = dist_to_well < radius
+        tdiff = np.diff(ts, prepend=ts[0])
+        return np.sum(tdiff[count_point])
