@@ -9,7 +9,7 @@ if START_WITH_TODAY:
     first_day = datetime.now()
 else:
     raise Exception
-output_dir = "./"
+output_dir = "./behavior_notes/B2/"
 
 REST_OF_FILE = "\nThresh: Low\nLast Away: \nLast well: \nITI Stim On: \nProbe Stim On: \nWeight: \n"
 

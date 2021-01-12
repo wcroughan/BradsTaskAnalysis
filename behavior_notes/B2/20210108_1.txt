@@ -1,0 +1,7 @@
+Task: Train 2A
+Home: 19
+Aways: 10 18 14 11 29 23 27 47 36
+Found: 10 18 11 14 29 27 47 36
+Condition: None
+Weight: 530
+Finished in ~17mins
