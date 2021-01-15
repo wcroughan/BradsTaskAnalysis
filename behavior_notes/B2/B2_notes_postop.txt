@@ -1,0 +1,94 @@
+12/30/2020
+Had some issues with referencing in Trodes 2 but those seem to be resolved
+
+Currently trying to see spike channels, but tons of 60hz noise
+- Maybe ground screw and wire aren't well connected?
+- Referencing to a channel seems to help some, but doesn't get rid of enough noise that I could see spikes
+- Noise seems to come and go randomly, on average 1 min on 1 min off
+-- By off I mean low noise, still present
+
+12/31/2020
+Tried wrapping aluminum foil around drive (see google photos), grounded and not grounded. No effect.
+Tried touching ground connection with copper wire that was connected to MCU ground (see recordings labeled groundtest). No effect.
+Messaged Spikegadgets about glitch in workspace. Use 32ch_182 config file from now on.
+Behaviorally he's great, can rear pretty well already!
+Weirdly covering the HDMI cable and commutator in aluminum foil seems to cut down on noise! How has spike gadgets not run into this problem!?
+
+1/2/2021
+David came and we debugged some stuff. Audio helps a lot ... need to get on that. Could clearly hear the noise pop up whenever I tweaked the ground wire (and not when I tweaked any tetrode wires)
+lowered the tetrodes a bunch (4 turns on most of them, see notes) and that lowered the noise and between large noise bursts the signal looked great with ripples and a cell! At the end the headstage just fell off.
+I put him under iso and resoldered the ground wire. Unfortunately I destroyed tetrode 3 in the process. I also reconnected the headstage. Now not seeing any noise, and looks like we can get ripples on both hemispheres (saw on 8 this morning, and 4 after this procedure).
+Broken channels: tet 2 ch 1, tet 7 ch 1
+    tet7 is broken in EIB, tet 2 likely due to breaking the wire during procedure or adjusting
+
+1/3/2021
+Maybe a cell on tet 3 so maybe that one wasn't destroyed? There's a cell on it so maybe that's actually the best one right now? Or they're all too deep  hah, gonna wait one more day and then tomorrow turn some up and some down.
+
+1/4/2021
+Well now a different pair of channels looks broken .... tet7ch2 and tet3ch1
+OK no tet2ch1 is intermittently looking broken and looking OK ... probably shouldn't use it.
+...I wonder if the ground wire is touching the pins intermittently and messing up the signal?
+
+1/5/2021
+Consistently/slowly gaining weight. Will start up training again tomorrow
+Fuuuu ... had the wrong channel map. Now corrected, should exclude t3c2, t6c1, and t7c1. Also t7 actually was in the cell layer then I turned a whole turn down ... now bringing it back up but damn hope I didn't lose it!
+
+1/6/2021
+
+1/7/2021
+Left tetrodes where they are.
+Ran the quadrant training (one well per quadrant, refilled when found another) with wells: 13 20 39 42
+He did great, drank a bunch. Will move onto next training phase tomorrow
+
+1/8/2021
+Weirdly have pulled back a bunch on 7 without losing the cells ... Gonna let everything sit again and see if things change. Maybe tomorrow can resume turning.
+Testing stim today. Hooked up wires OK. Checked output with just a resistor from stim box and it looks fine. It might be low on battery. The stim waveform is a triangle shape as opposed to a square wave. At first was two squares in the same direction before charging it at all. Should charge overnight and check again tomorrow.
+60Hz noise appeared on unfiltered with stim plugged in, but LFP (which is referenced unlike raw) looks OK. Definitely more false positives from activelink though at low detection threshold. But at high threshold they all look like good ripples on tet 7 still.
+Around 6 mins mark starting ripple triggered stim. A few trains but not crazy. Behavior seems unaffected. Currently at 41.2uA
+Oh wow a flurry of ripples right after I turned it off (but also sadly stopped recording). Another rebound phenomenon?
+LED works. Black on drive connects to striped cable which connects to black arduino cable which goes to arduino GND. Other one currently plugge dinto 3.3V but should work at 5V but haven't tried.
+AGHAHGUIDSGHSD One of the tetrodes caught on the stim cable. I think 6 but not sure. Lots at least 2 channels, maybe all 4.
+
+
+1/11/2021
+Ran hooked up for the first time. Overall went well. Had to shorten the stim and LED wires around minute 6 because he could reach them. Taped so should be good in the future. Very few wells found because was distracted by pulleys, but that should get better over time. Lots of 60Hz noise on the track, will have to think about how to deal with that. The ripples still looked fine by eye though. Pulleys worked ok, but stim wire got trapped under wheels at one point.
+Was going to run again but 60Hz was bad enough that ripples were constantly being detected. Figured out in sleep box afterwards that 60Hz shows up whenever the stim wire is hooked up. Doesn't depend on LED. Probably because the wires go up along ceiling and back down and also go right next to MCU power supply. Tomorrow will start by wrapping that whole wire in shielding and trying to get a better route for it. Might also be worth throwing that extra mesh material around the whole environment if there's enough. Maybe doesn't even have to completely surround, just if there's some on all sides and it's all connected.
+Last night I turned the lights off at 745. This morning turned them on at 845. Tonight turning them off again at 730. Leaving wells full for tomorrow first session.
+
+01/12/2021
+Lights on at 840
+First channel on 6 is broken, luckily others look fine
+Really weird effect happening. Can look at recording around 2pm. Strong ripples after turning off stim around mins 10-20. Then stim back on and they stop within a minute. Back off and they start up slowly. Same again: on/stop, off/start slowly. By around 26mins in they're up and accelerating again. Could be an NREM thing? Or just can't read them when it's on for some reason?
+At 27:40 from start of recording turned on. They went away immediately. Turned back off at 28:10. Took about 30secs for them to start up again. Around 31mins getting really big ripples again. So I don't think it's just ability to read them because of this time course.
+back on: 43:45. I think it wakes him up when I turn it on. Off at 56:20...immediately started hearing faint ripples again!
+74:50 back on. 3 detected ripples and then silence until turned back off at 89mins
+^All this turning on and off is using the output switch on the SIU. SIU is still at 40uA.
+
+01/13/2021
+Able to see ripples today with stim turned on! Changes made since yesterday:
+    moved GND connection to red output instead of black
+    changed polarity select to red instead of black
+Still seems like maybe fewer of them ... Going to record a bunch of data oscillating between output on and off and see what happens.
+Times below are absolute timestamps (not time since started recording like yesterday)
+On: ?
+Off: 13:15
+On: 19:15
+Off: 24:45
+On: 32:00
+Off: 37:30
+
+1/14/2021
+Noise is worst when polarity on black and ground hooked to red, or when stim wire is connected on drive but disconnected near SIU. Trying again for a bit with ground connected to black and polarity on red
+On: 20:24:25
+Off: 10:25:56
+Actually looking way better now. Shorter cable and different lead connected to ground. Seeing big ripples on 7, some on 6 too. 6 Seems to have less noise as well.
+20:26:56 disconnected stim wire at HS end
+Tested single pulse around 20:29:00
+Again at 20:29:30
+Failed run. First there was a bunch of noise, so unreliable detection. Then data transfer stopped. Shoving the HS into the EIB didn't solve, but unplugging and plugging micro HDMI at commutator fixed. Then though I decided to reset the stats and accidentally triggered a few seconds of rapid fire stimulation. Instead of debugging as the rat kept running around, I turned off stim and took him out.
+Ordered HDMI extenders that should be here by tomorrow night. If those don't solve this, may have to lower the whole pulley system so can put commutator directly on instead of hanging down. Alternatively, the rat harness just barely fits him ...
+Back in sleep box, noise was still present when stim hooked up. Then 5 mins later tried again and noise was gone. Then while streaming with stim hooked up noise randomly started again ~20mins later. I didn't touch anything. UGH!
+
+1/15/2021
+Put two dabs of superglue to keep the headstage and EIB together
+
