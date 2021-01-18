@@ -90,5 +90,18 @@ Ordered HDMI extenders that should be here by tomorrow night. If those don't sol
 Back in sleep box, noise was still present when stim hooked up. Then 5 mins later tried again and noise was gone. Then while streaming with stim hooked up noise randomly started again ~20mins later. I didn't touch anything. UGH!
 
 1/15/2021
+Headstage came off. I put it back on but may have broken some channels.
 Put two dabs of superglue to keep the headstage and EIB together
 
+1/16/2021
+Yep, these channels are now broken:
+t2ch1,2; t3ch1; t7ch1
+
+1/17/2021
+OK I've shielded the shit out of this stim wire. Some steps to try tomorrow with rat:
+1. Wire as is, attached from above
+2. Bring down commutator, avoid having wires near ceiling
+3. Disconnect from SIU and attach leads together through a resistor, attach ground to either side
+4. Remove long stim wire, attach SIU directly to attahments right above commutator
+5. Literally just SIU cables into headstage cables.
+6. If 5 good, 4 bad, same length cables that don't go through commutator
