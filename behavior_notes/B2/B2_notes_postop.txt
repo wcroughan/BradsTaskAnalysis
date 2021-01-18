@@ -105,3 +105,7 @@ OK I've shielded the shit out of this stim wire. Some steps to try tomorrow with
 4. Remove long stim wire, attach SIU directly to attahments right above commutator
 5. Literally just SIU cables into headstage cables.
 6. If 5 good, 4 bad, same length cables that don't go through commutator
+
+1/18/2021
+Welp....turns out on the 14th I switched the LED and stim cables when I shortened those wires, so I now have a lesioned VHC. I still have solid ripples on 2 and 3 and one great interneuron on 2
+
