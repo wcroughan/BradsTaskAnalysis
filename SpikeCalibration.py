@@ -1,19 +1,33 @@
+import readTrodesExtractedDataFile3
+from scipy.ndimage.morphology import binary_dilation
+from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Qt5Agg')
 
-import readTrodesExtractedDataFile3
 
 mkfigs = np.zeros((100, ))
 # mkfigs[1] = True
-# mkfigs[2] = True
-mkfigs[3] = True
+mkfigs[2] = True
+# mkfigs[3] = True
+# mkfigs[4] = True
+# mkfigs[5] = True
+# mkfigs[7] = True
+mkfigs[9] = True
 
 DOWN_DEFLECT_NOISE_THRESH = -5000
 NOISE_BWD_EXCLUDE_SECS = 1
 NOISE_FWD_EXCLUDE_SECS = 1
 
 UP_DEFLECT_STIM_THRESH = 12000
-SPK_BIN_SZ = 1
+UP_DEFLECT_STIM_PROMINENCE = 10000
+SPK_BIN_SZ_MS = 50
+PSTH_MARGIN_MS = 500
+PSTH_MARGIN_SECS = float(PSTH_MARGIN_MS) / 1000.0
+SPK_BIN_SZ_SECS = float(SPK_BIN_SZ_MS) / 1000.0
+
+LFP_HZ = 1500
 
 
 data_file = "/home/wcroughan/data/20210108_162804/20210108_162804.spikes/20210108_162804.spikes_nt7.dat"
@@ -22,7 +36,7 @@ spike_data = spike_data_dict['data']
 features = np.zeros((spike_data.size, 3))
 # features = np.zeros((spike_data.size, 4))
 
-if np.any(mkfigs[0:3]):
+if np.any(mkfigs[0:3]) or np.any(mkfigs[8:]):
     next_pct = spike_data.size / 100
 
     for si, spike in enumerate(spike_data):
@@ -66,7 +80,9 @@ if np.any(mkfigs[0:3]):
         plt.ylim(0, 2500)
         plt.show()
 
-    c1spks = features[np.logical_and(features[:, 1] > 1100, features[:, 2] < 1000), :]
+    c1spks_idxs = np.logical_and(features[:, 1] > 1100, features[:, 2] < 1000)
+    c1spks = features[c1spks_idxs, :]
+    c1ts = spike_data['time'][c1spks_idxs]
     if mkfigs[2]:
         plt.subplot(311)
         plt.scatter(c1spks[:, 0], c1spks[:, 1], marker=".", s=0.5)
@@ -85,6 +101,7 @@ if np.any(mkfigs[0:3]):
 lfp_data_file = "/home/wcroughan/data/20210108_162804/20210108_162804.LFP/20210108_162804.LFP_nt7ch1.dat"
 lfp_data_dict = readTrodesExtractedDataFile3.readTrodesExtractedDataFile(lfp_data_file)
 lfp_data = lfp_data_dict['data']
+lfp_data = lfp_data.astype(float)
 
 lfp_ts_file = "/home/wcroughan/data/20210108_162804/20210108_162804.LFP/20210108_162804.timestamps.dat"
 lfp_ts_dict = readTrodesExtractedDataFile3.readTrodesExtractedDataFile(lfp_ts_file)
@@ -93,4 +110,92 @@ lfp_ts = lfp_ts_dict['data']
 if mkfigs[3]:
     print(lfp_ts)
     plt.plot(lfp_ts.astype(float) / 30000, lfp_data)
+    plt.show()
+
+if mkfigs[4]:
+    LFP_HZ = 4
+    NOISE_BWD_EXCLUDE_SECS = 0.5
+    NOISE_FWD_EXCLUDE_SECS = 2
+    lfp_data = np.sin(np.linspace(0, 2*np.pi, num=100))
+    DOWN_DEFLECT_NOISE_THRESH = -0.9
+
+is_noise = lfp_data < DOWN_DEFLECT_NOISE_THRESH
+NOISE_BWD_EXCLUDE_FRAMES = int(NOISE_BWD_EXCLUDE_SECS * LFP_HZ)
+NOISE_FWD_EXCLUDE_FRAMES = int(NOISE_FWD_EXCLUDE_SECS * LFP_HZ)
+STRSZHLF = max(NOISE_BWD_EXCLUDE_FRAMES, NOISE_FWD_EXCLUDE_FRAMES)
+dilstr = np.zeros((STRSZHLF * 2))
+dilstr[STRSZHLF-NOISE_BWD_EXCLUDE_FRAMES:STRSZHLF+NOISE_FWD_EXCLUDE_FRAMES] = 1
+noise_mask = binary_dilation(is_noise, structure=dilstr).astype(bool)
+
+if mkfigs[4]:
+    plt.subplot(121)
+    plt.plot(dilstr)
+    plt.subplot(122)
+    plt.plot(is_noise)
+    plt.plot(noise_mask.astype(int))
+    plt.show()
+
+    exit()
+
+if mkfigs[5]:
+    ts = lfp_ts.astype(float) / 30000
+    plt.plot(ts, lfp_data)
+    plt.plot(ts, noise_mask.astype(float) * -np.max(lfp_data))
+    plt.scatter(ts[is_noise], lfp_data[is_noise], c="#ff7f0e")
+    plt.show()
+
+peaks, props = signal.find_peaks(lfp_data, height=UP_DEFLECT_STIM_THRESH,
+                                 prominence=UP_DEFLECT_STIM_PROMINENCE)
+
+if mkfigs[6]:
+    ts = lfp_ts.astype(float) / 30000
+    plt.plot(ts, lfp_data)
+    plt.scatter(ts[peaks], props['peak_heights'], c="#ff7f0e")
+    plt.show()
+
+stim_artifact_bool = np.logical_not(noise_mask[peaks])
+peak_heights = props['peak_heights']
+stimpeaks = peaks[stim_artifact_bool]
+stimpeak_heights = peak_heights[stim_artifact_bool]
+
+if mkfigs[7]:
+    ts = lfp_ts.astype(float) / 30000
+    plt.plot(ts, lfp_data)
+    plt.scatter(ts[stimpeaks], stimpeak_heights, c="#ff7f0e")
+    plt.show()
+
+if mkfigs[8]:
+    ts = lfp_ts.astype(float) / 30000
+    plt.plot(ts, lfp_data)
+    plt.scatter(c1ts.astype(float) / 30000, np.ones_like(c1ts), c="#ff7f0e")
+    plt.show()
+
+NUM_PSTH_BINS = int(PSTH_MARGIN_MS / SPK_BIN_SZ_MS)
+psth = np.zeros((stimpeaks.size, 2*NUM_PSTH_BINS))
+spike_times = c1ts.astype(float) / 30000
+stim_times = lfp_ts[stimpeaks].astype(float) / 30000
+
+NUM_LFP_PSTH_BINS = int(PSTH_MARGIN_SECS * LFP_HZ)
+lfp_psth = np.zeros((stimpeaks.size, 2*NUM_LFP_PSTH_BINS))
+for si, (st, stidx) in enumerate(zip(stim_times, stimpeaks)):
+    bins = np.linspace(st - PSTH_MARGIN_SECS, st + PSTH_MARGIN_SECS, num=2*NUM_PSTH_BINS+1)
+    h, b = np.histogram(spike_times, bins=bins)
+    psth[si, :] = h
+
+    lfp_psth[si, :] = lfp_data[stidx-NUM_LFP_PSTH_BINS:stidx+NUM_LFP_PSTH_BINS]
+
+avg_fr_psth = np.mean(psth, axis=0)
+std_fr_psth = np.std(psth, axis=0)
+avg_lfp_psth = np.mean(lfp_psth, axis=0)
+std_lfp_psth = np.std(lfp_psth, axis=0)
+if mkfigs[9]:
+    x1 = np.linspace(-PSTH_MARGIN_SECS, PSTH_MARGIN_SECS, NUM_PSTH_BINS*2)
+    x2 = np.linspace(-PSTH_MARGIN_SECS, PSTH_MARGIN_SECS, NUM_LFP_PSTH_BINS*2)
+    y1 = avg_fr_psth - np.min(avg_fr_psth)
+    y2 = avg_lfp_psth - np.min(avg_lfp_psth)
+    y1 = y1 / np.max(y1)
+    y2 = y2 / np.max(y2)
+
+    plt.plot(x1, y1)
+    plt.plot(x2, y2)
     plt.show()
