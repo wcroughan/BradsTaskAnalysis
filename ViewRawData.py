@@ -8,9 +8,8 @@ import readTrodesExtractedDataFile3
 from MDAParse import parseMDAFile
 
 mkfigs = np.zeros((100, ))
-# mkfigs[4] = True
-mkfigs[4] = True
-# mkfigs[3] = True
+# mkfigs[0] = True
+mkfigs[6] = True
 OFFSET_FROM_REC_START = False
 
 output_dir = '/home/wcroughan/data/B2/figs/'
@@ -38,8 +37,8 @@ else:
 
 if mkfigs[6]:
     plt.plot(lfp_ts_mins, lfp_data.astype(float))
-    fname = "raw.png"
-    plt.savefig(os.path.join(output_dir, fname), dpi=800)
+    # fname = "raw.png"
+    # plt.savefig(os.path.join(output_dir, fname), dpi=800)
     plt.show()
     exit()
 
@@ -48,14 +47,16 @@ if mkfigs[6]:
 # tstart = 2600 / 60
 # tend = 2700 / 60
 # turned back off
-tstart = 56
-tend = 58
+tstart = 6
+tend = 10
 t1 = np.searchsorted(lfp_ts_mins, tstart)
 t2 = np.searchsorted(lfp_ts_mins, tend)
 lfpshort = lfp_data[t1:t2].astype(float)
 lfp_tshort = lfp_ts_mins[t1:t2]
 
 if mkfigs[0]:
+    fname = "raw_short.png"
+    plt.savefig(os.path.join(output_dir, fname), dpi=800)
     plt.plot(lfp_tshort, lfpshort)
     plt.show()
 
@@ -63,9 +64,13 @@ if mkfigs[2]:
     fs = 1500
     f, t, Sxx = signal.spectrogram(lfpshort, fs)
     # print(f)
-    vmin = np.percentile(Sxx, 10)
-    vmax = np.percentile(Sxx, 98)
+    # vmin = np.percentile(Sxx, 10)
+    # vmax = np.percentile(Sxx, 98)
+    vmin = 0
+    vmax = 200
     plt.pcolormesh(t, f, Sxx, shading='gouraud', vmin=vmin, vmax=vmax)
+    fname = "raw.png"
+    plt.savefig(os.path.join(output_dir, fname), dpi=800)
     plt.show()
     exit()
 
@@ -93,6 +98,8 @@ if mkfigs[4] or mkfigs[5]:
     # off_times_mins = [28, 56, 89]
     # off_times_secs = [10, 20, 0]
 
+    # on_times_mins = [19, 32]
+    # on_times_secs = [15, 0]
     on_times_mins = [19, 32]
     on_times_secs = [15, 0]
     off_times_mins = [13, 24, 37]

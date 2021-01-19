@@ -17,12 +17,12 @@ import seaborn as sns
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
 
-data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
+data_filename = "/media/WDC1/martindata/bradtask/martin_bradtask.dat"
 alldata = BTData()
 alldata.loadFromFile(data_filename)
 all_sessions = alldata.getSessions()
 
-output_dir = '/media/WDC4/martindata/processed_data'
+output_dir = '/media/WDC1/martindata/processed_data'
 
 SHOW_OUTPUT_PLOTS = False
 SAVE_OUTPUT_PLOTS = True
@@ -223,6 +223,11 @@ def makeAPersevMeasurePlot(measure_name, datafunc, output_filename="", title="",
                  for sesh in sessions_with_all_wells]
     other_vals = [np.nanmean(np.array([datafunc(sesh, ow) for ow in set(
         all_well_names) - set(sesh.visited_away_wells) - set([sesh.home_well])])) for sesh in sessions_with_all_wells]
+
+    ll = [trial_label(sesh) for sesh in sessions_with_all_wells]
+    print([e for i, e in enumerate(home_vals) if ll[i] == "CTRL"])
+    # print(away_vals)
+    # print(other_vals)
 
     # home_vals = [sesh.__dict__[measure_name][sesh.home_well_idx_in_allwells]
     #  for sesh in sessions_with_all_wells]
@@ -1623,7 +1628,7 @@ else:
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[60, 120]))
     makeAPersevMeasurePlot("probe_num_entries_120_180s",
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[120, 180]))
-    makeAPersevMeasurePlot("probe_num_entries_180_120s",
+    makeAPersevMeasurePlot("probe_num_entries_180_240s",
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[180, 240]))
     makeAPersevMeasurePlot("probe_num_entries_240_300s",
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[240, 300]))
