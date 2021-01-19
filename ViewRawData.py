@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import signal
@@ -7,11 +8,12 @@ import readTrodesExtractedDataFile3
 from MDAParse import parseMDAFile
 
 mkfigs = np.zeros((100, ))
-# mkfigs[0] = True
-mkfigs[6] = True
+# mkfigs[4] = True
+mkfigs[4] = True
 # mkfigs[3] = True
 OFFSET_FROM_REC_START = False
 
+output_dir = '/home/wcroughan/data/B2/figs/'
 
 # data_file = "/home/wcroughan/data/20210108_162804/20210108_162804.spikes/20210108_162804.spikes_nt7.dat"
 # spike_data_dict = readTrodesExtractedDataFile3.readTrodesExtractedDataFile(data_file)
@@ -35,8 +37,11 @@ else:
     lfp_ts_mins = lfp_ts.astype(float) / 30000 / 60
 
 if mkfigs[6]:
-    plt.plot(lfp_ts_mins * 60, lfp_data.astype(float))
+    plt.plot(lfp_ts_mins, lfp_data.astype(float))
+    fname = "raw.png"
+    plt.savefig(os.path.join(output_dir, fname), dpi=800)
     plt.show()
+    exit()
 
 
 # turned on
@@ -129,6 +134,9 @@ if mkfigs[4] or mkfigs[5]:
             print("color range: {}-{}".format(vmin, vmax))
             plt.pcolormesh(t, f, s, shading='gouraud', vmin=vmin, vmax=vmax)
             plt.title("on #{}".format(ti))
+            plt.plot([120, 120], [0, np.max(f)], c="#ff0000")
+            fname = "spec_on_{}.png".format(ti)
+            plt.savefig(os.path.join(output_dir, fname), dpi=800)
             plt.show()
 
     off_p1 = np.array([])
@@ -163,6 +171,9 @@ if mkfigs[4] or mkfigs[5]:
             print("color range: {}-{}".format(vmin, vmax))
             plt.pcolormesh(t, f, s, shading='gouraud', vmin=vmin, vmax=vmax)
             plt.title("off #{}".format(ti))
+            plt.plot([120, 120], [0, np.max(f)], c="#ff0000")
+            fname = "spec_off_{}.png".format(ti)
+            plt.savefig(os.path.join(output_dir, fname), dpi=800)
             plt.show()
 
     if mkfigs[4]:
@@ -170,37 +181,41 @@ if mkfigs[4] or mkfigs[5]:
         px = np.linspace(-PSTH_WINDOW, PSTH_WINDOW, nt, endpoint=False)
         plt.subplot(221)
         plt.plot(px, on_p1.T)
-        plt.title("stim on, {}-{}".format(frange_1l, frange_1u))
+        plt.title("stim on, {}-{}Hz".format(frange_1l, frange_1u))
         basemax = np.max(
             np.hstack((on_p1[:, (nt // 5):(2*nt // 5)], on_p1[:, (3*nt // 5):(4*nt // 5)])))
         plt.ylim((0, basemax))
         plt.subplot(222)
         plt.plot(px, off_p1.T)
-        plt.title("stim off, {}-{}".format(frange_1l, frange_1u))
+        plt.title("stim off, {}-{}Hz".format(frange_1l, frange_1u))
         # basemax = np.percentile(
         # np.hstack((off_p1[:, (nt // 5):(2*nt // 5)], off_p1[:, (3*nt // 5):(4*nt // 5)])), 99)
         plt.ylim((0, basemax))
         plt.subplot(223)
         plt.plot(px, on_p2.T)
-        plt.title("stim on, {}-{}".format(frange_2l, frange_2u))
+        plt.title("stim on, {}-{}Hz".format(frange_2l, frange_2u))
         basemax = np.max(
             np.hstack((on_p2[:, (nt // 5):(2*nt // 5)], on_p2[:, (3*nt // 5):(4*nt // 5)])))
-        plt.ylim((0, basemax))
+        plt.ylim((0, basemax / 2.0))
         plt.subplot(224)
         plt.plot(px, off_p2.T)
-        plt.title("stim off, {}-{}".format(frange_2l, frange_2u))
+        plt.title("stim off, {}-{}Hz".format(frange_2l, frange_2u))
         # basemax = np.percentile(
         # np.hstack((off_p2[:, (nt // 5):(2*nt // 5)], off_p2[:, (3*nt // 5):(4*nt // 5)])), 99)
-        plt.ylim((0, basemax))
+        plt.ylim((0, basemax / 2.0))
+        fname = "powers.png"
+        plt.savefig(os.path.join(output_dir, fname), dpi=800)
         plt.show()
         exit()
 
 
-raw_data_file = "/media/WDC5/20210112_135933/20210112_135933.mda/20210112_135933.nt7.mda"
+# raw_data_file = "/media/WDC5/20210112_135933/20210112_135933.mda/20210112_135933.nt7.mda"
+raw_data_file = "/home/wcroughan/data/20210113_143855/20210113_143855.nt7.mda"
 raw_data = parseMDAFile(raw_data_file)
 print("Got raw data with shape {}".format(raw_data.shape))
 
-raw_ts_file = "/media/WDC5/20210112_135933/20210112_135933.mda/20210112_135933.timestamps.mda"
+# raw_ts_file = "/media/WDC5/20210112_135933/20210112_135933.mda/20210112_135933.timestamps.mda"
+raw_ts_file = "/home/wcroughan/data/20210113_143855/20210113_143855.timestamps.mda"
 raw_ts = parseMDAFile(raw_ts_file)
 ts_mins = (raw_ts - raw_ts[0]).astype(float) / 30000 / 60
 
