@@ -109,3 +109,50 @@ OK I've shielded the shit out of this stim wire. Some steps to try tomorrow with
 1/18/2021
 Welp....turns out on the 14th I switched the LED and stim cables when I shortened those wires, so I now have a lesioned VHC. I still have solid ripples on 2 and 3 and one great interneuron on 2
 
+1/19/2021
+So just gonna use this rat to try and debug the ground noise and weird lack of ripples when SIU output is on.
+Got the huge ground noise figured out, and now with no ground wire attached to the SIU outputs! There's a lot of interference around the desk with all the power lines and apparently the tiny bit of unshielded cable running from the SIU was enough to pick that up strongly. Now with super-duper shielding on most of the cable and the SIU moved away from the desk it looks great. Can even see ripples with the output turned on :D.
+Recording with this new setup, stim hooked up but leaving off LED leads for now. Didn't see noise coming from them earlier, but will have to test. Also no input hooked up to SIU.
+At 1min recorded, turning output switch to on.
+OK there was a weird noise burst (static on ground from me or maybe something from rat moving). Turned off after a couple seconds. Turned on again at 1:20 recorded to get a good clean start.
+Some key takeaways:
+- If the shielding isn't grounded it doesn't work at all. Can be grounded at either end
+- Just the tiny bit of unshielded wire on desk was giving lots of noise, even when disconnected from SIU. Wire elsewhere seems fine, so just a desk issue. Likely main culprit is the SIU charger, in addition to everything else.
+Some really solid ripples around 3:20 recorded... with output on!
+Still having some issues with HDMI cable connectivity. Should test the holder thing tomorrow.
+For tomorrow:
+- Try out HDMI stabilizer
+- Run on track, see if noise bad when using pulleys
+- Interrupt some ripples in sleep box, record just to see what happens
+- Email David and update him.
+
+1/20/2021
+Current wiring configuration:
+Rat - connA - HDMI,stim,LED w/o shielding - commutator - stim/LED w/o shielding - connB - stim/LED with shielding - branchC
+stim: branchC - connD - stim w/o shielding for ~1ft on environment next to rat cage - SIU output terminals (no ground attached, polarity on red)
+LED: branchC - connD - LED w/o shielding - arduino on desk
+stim_signal: arduino on desk - unshielded cables - SIU input terminals
+reset_signal: SIU black input terminal - unshielded cable - MCU digital in
+Recording today with all connections hooked up except connB, where both connections are disconnected. Shielding is grounded next to connB. SIU power on, output off
+Seeing small ripples on 3, same cell on 2.
+Some big ripples around 10mins
+Around 11mins hooked up LED at connB
+Still seeing ripples
+Around 17:55 big burst of noise a I plugged in stim at connB
+Still clear ripples
+Around 19:00 tested single arduino pulse output. Could see signal on Din2 channel, no artifact b/c output at SIU is off.
+At 19:55 turned on SIU output switch.
+Signal looks ok, big ripples at 20:30. Will leave in this configuration for ~10 mins before moving on.
+27:30 - 27:50 moved the SIU back onto the desk. Seeing same 60Hz noise as before.
+~28:30, hooked up MCU gnd to black output terminal on SIU. This cuts down on the 60Hz noise a lot and I'm still seeing ripples.
+Noisier but still plenty of ripples around 31 mins.
+32:00 turned output to off. Ripples unaffected.
+32:30 polarity switched to black, output still off, still have ripples.
+33:00 output on. Some ripples at first but rate seems to have decreased. Oh wait I think it's just REM.
+OK still some big ripples ~41:00 and onward
+~44:00 the SIU is back on the environment, output disconnected from ground again.
+44:36 switched polarity back to red
+~45:00 tested single pulse
+46:11 enabling ripple triggered pulse
+56:38 turned off output switch on SIU
+
