@@ -1,7 +1,7 @@
 # TODO
 # ANOVA spherical assumption is not met because spread of other < spread of away < spread of home
 #   Need to do correct statistical test
-# Look at behavior within each minute of the probe
+# Reversal measure: how often visited wells ABC vs ABA when A is home or etc
 #
 # Comparisons to do:
 # dwell time during tasks excluding reward
