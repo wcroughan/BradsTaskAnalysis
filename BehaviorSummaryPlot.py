@@ -6,6 +6,8 @@
 # Comparisons to do:
 # dwell time during tasks excluding reward
 # num home checks excluding reward (maybe over time? Some way to account for probably increasing checks over course of run?)
+#
+# Model start of probe as [pause] -> run -> search. Isolate search parth, draw all paths cetered around home, color by start->finish of search path
 
 
 from BTData import *
