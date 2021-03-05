@@ -12,6 +12,7 @@ from scipy import stats, signal
 from itertools import groupby
 import MountainViewIO
 from scipy.ndimage.filters import gaussian_filter
+from datetime import datetime
 # import InterruptionAnalysis
 
 INSPECT_ALL = False
@@ -29,7 +30,7 @@ SHOW_CURVATURE_VIDEO = False
 
 TEST_NEAREST_WELL = False
 
-data_dir = '/media/WDC4/martindata/bradtask/'
+data_dir = '/media/WDC1/martindata/bradtask/'
 all_data_dirs = sorted(os.listdir(data_dir), key=lambda s: (
     s.split('_')[0], s.split('_')[1]))
 behavior_notes_dir = os.path.join(data_dir, 'behavior_notes')
@@ -42,8 +43,8 @@ excluded_dates += ["20200526"]
 excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
 
 animal_name = 'Martin'
-output_dir = '/media/WDC4/martindata/bradtask/'
-fig_output_dir = '/media/WDC4/martindata/processed_data'
+output_dir = '/media/WDC1/martindata/bradtask/'
+fig_output_dir = '/media/WDC1/martindata/processed_data'
 out_filename = "martin_bradtask.dat"
 
 if os.path.exists(os.path.join(output_dir, out_filename)):
@@ -483,6 +484,8 @@ if __name__ == "__main__":
     # Filter to just relevant directories
     # ===================================
     filtered_data_dirs = []
+    prevSessionDirs = []
+    prevSession = None
     for session_idx, session_dir in enumerate(all_data_dirs):
         if session_dir == "behavior_notes" or "numpy_objs" in session_dir:
             continue
@@ -498,14 +501,17 @@ if __name__ == "__main__":
             continue
 
         date_str = dir_split[0][-8:]
-        if date_str in excluded_dates:
-            print("skipping, excluded date")
-            continue
 
         if RUN_JUST_SPECIFIED and date_str not in SPECIFIED_DAYS:
             continue
 
+        if date_str in excluded_dates:
+            print("skipping, excluded date")
+            prevSession = session_dir
+            continue
+
         filtered_data_dirs.append(session_dir)
+        prevSessionDirs.append(prevSession)
 
     print("\n".join(filtered_data_dirs))
 
@@ -520,9 +526,17 @@ if __name__ == "__main__":
 
         dir_split = session_dir.split('_')
         date_str = dir_split[0][-8:]
+        time_str = dir_split[1]
         session_name_pfx = dir_split[0][0:-8]
         session.date_str = date_str
         session.name = session_dir
+        session.time_str = time_str
+        s = "{}_{}".format(date_str, time_str)
+        print(s)
+        session.date = datetime.strptime(s, "%Y%m%d_%H%M%S")
+        print(session.date)
+
+        session.prevSessionDir = prevSessionDirs[session_idx]
 
         # check for files that belong to this date
         session.bt_dir = session_dir
@@ -595,6 +609,21 @@ if __name__ == "__main__":
         if "".join(os.path.basename(info_file).split(".")[0:-1]) in excluded_sessions:
             print(session_dir, " excluded session, skipping")
             continue
+
+        prevsession_dir = prevSessionDirs[session_idx]
+        prevdir_split = prevsession_dir.split('_')
+        prevdate_str = prevdir_split[0][-8:]
+        prevSessionInfoFile = os.path.join(behavior_notes_dir, prevdate_str + ".txt")
+        if not os.path.exists(prevSessionInfoFile):
+            # Switched numbering scheme once started doing multiple sessions a day
+            seshs_on_this_day = sorted(
+                list(filter(lambda seshdir: session.date_str + "_" in seshdir, filtered_data_dirs)))
+            num_on_this_day = len(seshs_on_this_day)
+            for i in range(num_on_this_day):
+                if seshs_on_this_day[i] == prevsession_dir:
+                    sesh_idx_within_day = i
+            prevSessionInfoFile = os.path.join(behavior_notes_dir, prevdate_str + "_" +
+                                               str(sesh_idx_within_day+1) + ".txt")
 
         try:
             with open(info_file, 'r') as f:
@@ -696,6 +725,77 @@ if __name__ == "__main__":
         except Exception as err:
             print(info_file)
             raise err
+
+        try:
+            with open(prevSessionInfoFile, 'r') as f:
+                session.prevSessionInfoParsed = True
+                lines = f.readlines()
+                for line in lines:
+                    lineparts = line.split(":")
+                    if len(lineparts) != 2:
+                        continue
+
+                    field_name = lineparts[0]
+                    field_val = lineparts[1]
+
+                    if field_name.lower() == "home":
+                        session.prevSessionHome = int(field_val)
+                    elif field_name.lower() == "aways":
+                        session.prevSessionAways = [int(w)
+                                                    for w in field_val.strip().split(' ')]
+                    elif field_name.lower() == "condition":
+                        type_in = field_val
+                        if 'Ripple' in type_in or 'Interruption' in type_in:
+                            session.prevSessionIsRippleInterruption = True
+                        elif 'None' in type_in:
+                            session.prevSessionIsNoInterruption = True
+                        elif 'Delayed' in type_in:
+                            session.prevSessionIsDelayedInterruption = True
+                        else:
+                            print("Couldn't recognize Condition {} in file {}".format(
+                                type_in, prevSessionInfoFile))
+                    elif field_name.lower() == "thresh":
+                        if "Low" in field_val:
+                            session.prevSession_ripple_detection_threshold = 2.5
+                        elif "High" in field_val:
+                            session.prevSession_ripple_detection_threshold = 4
+                        else:
+                            session.prevSession_ripple_detection_threshold = float(
+                                field_val)
+                    elif field_name.lower() == "last away":
+                        session.prevSession_last_away_well = float(field_val)
+                        # print(field_val)
+                    elif field_name.lower() == "last well":
+                        ended_on = field_val
+                        if 'H' in field_val:
+                            session.prevSession_ended_on_home = True
+                        elif 'A' in field_val:
+                            session.prevSession_ended_on_home = False
+                        else:
+                            print("Couldn't recognize last well {} in file {}".format(
+                                field_val, prevSessionInfoFile))
+                    elif field_name.lower() == "iti stim on":
+                        if 'Y' in field_val:
+                            session.prevSession_ITI_stim_on = True
+                        elif 'N' in field_val:
+                            session.prevSession_ITI_stim_on = False
+                        else:
+                            print("Couldn't recognize ITI Stim condition {} in file {}".format(
+                                field_val, prevSessionInfoFile))
+                    elif field_name.lower() == "probe stim on":
+                        if 'Y' in field_val:
+                            session.prevSession_probe_stim_on = True
+                        elif 'N' in field_val:
+                            session.prevSession_probe_stim_on = False
+                        else:
+                            print("Couldn't recognize Probe Stim condition {} in file {}".format(
+                                field_val, prevSessionInfoFile))
+                    else:
+                        pass
+
+        except FileNotFoundError as err:
+            session.prevSessionInfoParsed = False
+            print("Couldn't read from prev session info file " + prevSessionInfoFile)
 
         if session.home_well == 0:
             print("Home well not listed in notes file, skipping")

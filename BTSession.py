@@ -29,6 +29,7 @@ class BTSession:
         # ==================================
         # The previous session chronologically, if one exists
         self.prevSession = None
+        self.prevSessionDir = None
         # The next session chronologically, if one exists
         self.nextSession = None
         # date object representing the day of this recording
@@ -36,6 +37,8 @@ class BTSession:
 
         # Just the date part of session filename (i.e. "20200112")
         self.date_str = ""
+        # Just the time part of session filename (i.e. "140259")
+        self.time_str = ""
         # Data string in general. May modify in future by appending "S1" for first session if doing multiple in one day
         self.name = ""
         # name of raw data folder in which brad's task part of session was recorded
@@ -315,10 +318,13 @@ class BTSession:
         """
         return self.avg_dist_to_well(inProbe, self.home_well, timeInterval=timeInterval, moveFlag=moveFlag, avgFunc=avgFunc)
 
-    def entry_exit_times(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False, returnIdxs=False, includeEdgeOverlap=True):
+    def entry_exit_times(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False, returnIdxs=False, includeEdgeOverlap=True, subtractT0=False):
         """
         return units: trodes timestamps, unless returnIdxs==True
         """
+        if subtractT0:
+            raise Exception("Unimplemented")
+
         # wellName == "QX" ==> look at quadrant X instead of a well
         if isinstance(wellName, str) and wellName[0] == 'Q':
             isQuad = True
@@ -398,7 +404,6 @@ class BTSession:
 
                     ents = np.delete(ents, todel)
                     exts = np.delete(exts, todel)
-                    break
 
             elif wellName in self.visited_away_wells:
                 if len(self.away_well_find_times) == 0:
@@ -544,11 +549,16 @@ class BTSession:
         """
         return np.sum(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors) / TRODES_SAMPLING_RATE)
 
-    def avg_dwell_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False, includeNeighbors=False):
+    def avg_dwell_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False, includeNeighbors=False, emptyVal=None):
         """
         return units: seconds
         """
-        return avgFunc(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors) / TRODES_SAMPLING_RATE)
+        ret = self.dwell_times(inProbe, wellName, timeInterval=timeInterval,
+                               excludeReward=excludeReward, includeNeighbors=includeNeighbors)
+        if emptyVal is not None and len(ret) == 0:
+            return emptyVal
+        else:
+            return avgFunc(ret / TRODES_SAMPLING_RATE)
 
     def num_bouts(self, inProbe, timeInterval=None):
         if inProbe:
@@ -729,3 +739,26 @@ class BTSession:
         count_point = dist_to_well < radius
         tdiff = np.diff(ts, prepend=ts[0])
         return np.sum(tdiff[count_point])
+
+    def getDelayFromSession(self, prevsession, returnDateTimeDelta=False):
+        """
+        units: seconds (or dattimedelta if returnDateTimeDelta set to true)
+        positive results indicates the session passed as an argument occured before this one
+        """
+        # res = "this ({}) to other ({}) = {}".format(
+        # self.date_str, prevsession.date_str, self.date-prevsession.date)
+        # return res
+        return (self.date - prevsession.date).total_seconds()
+
+    def getLatencyToWell(self, inProbe, wellName, returnIdxs=False):
+        """
+        units are trodes timestamps or idxs
+        """
+        res = self.entry_exit_times(inProbe, wellName, returnIdxs=returnIdxs)[0][0]
+        if not returnIdxs:
+            if inProbe:
+                res -= self.probe_pos_ts[0]
+            else:
+                res -= self.bt_pos_ts[0]
+
+        return res
