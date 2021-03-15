@@ -748,7 +748,11 @@ class BTSession:
         # res = "this ({}) to other ({}) = {}".format(
         # self.date_str, prevsession.date_str, self.date-prevsession.date)
         # return res
-        return (self.date - prevsession.date).total_seconds()
+        res = self.date - prevsession.date
+        if returnDateTimeDelta:
+            return res
+        else:
+            return res.total_seconds()
 
     def getLatencyToWell(self, inProbe, wellName, returnIdxs=False):
         """

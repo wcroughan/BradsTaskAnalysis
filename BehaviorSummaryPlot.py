@@ -8,6 +8,8 @@
 # num home checks excluding reward (maybe over time? Some way to account for probably increasing checks over course of run?)
 #
 # Model start of probe as [pause] -> run -> search. Isolate search parth, draw all paths cetered around home, color by start->finish of search path
+#
+# Familiarity: Look at how occupancy map (just searching? all?) relates to probe occupancy map (same)
 
 
 from BTData import *
@@ -19,6 +21,8 @@ import seaborn as sns
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
 from matplotlib.lines import Line2D
+from scipy.stats import pearsonr
+
 
 data_filename = "/media/WDC1/martindata/bradtask/martin_bradtask.dat"
 alldata = BTData()
@@ -54,8 +58,9 @@ SKIP_EVERY_MINUTE_PLOTS = True
 SKIP_PREV_SESSION_PLOTS = True
 SKIP_PSEUDOPROBE_PLOTS = True
 SKIP_BASIC_BEHAVIOR_COMPARISON = True
-SKIP_CONSECUTIVE_SESSION_PLOTS = False
+SKIP_CONSECUTIVE_SESSION_PLOTS = True
 SKIP_PSEUDOPROBE_PATH_PLOTS = True
+SKIP_OCCUPANCY_PLOTS = False
 
 PRINT_TRIAL_INFO = False
 SKIP_TO_MY_LOU_DARLIN = True
@@ -114,25 +119,36 @@ def makeABoxPlot(yvals, categories, axesNames, output_filename="", title="", doS
         plt.savefig(output_filename, dpi=800)
 
 
-def makeAScatterPlot(xvals, yvals, axesNames, categories=list(), output_filename="", title="", midline=False, makeLegend=False):
+def makeAScatterPlot(xvals, yvals, axesNames, categories=list(), output_filename="", title="", midline=False, makeLegend=False, ax=plt, bigDots=True):
     if SKIP_SCATTER_PLOTS:
         print("Warning, skipping scatter plots!")
         return
 
-    plt.clf()
+    if ax == plt:
+        ax.clf()
     if len(categories) == 0:
         cvals = np.ones_like(xvals)
         ucats = list()
     else:
         ucats = np.array(sorted(list(set(categories))))
         cvals = [np.argmax(c == ucats) for c in categories]
-    plt.scatter(xvals, yvals, c=cvals, zorder=2, s=plt.rcParams['lines.markersize'] ** 2 * 3)
-    plt.title(title)
-    plt.xlabel(axesNames[0])
-    plt.ylabel(axesNames[1])
+
+    if bigDots:
+        sz = plt.rcParams['lines.markersize'] ** 2 * 3
+    else:
+        sz = plt.rcParams['lines.markersize'] ** 2
+    ax.scatter(xvals, yvals, c=cvals, zorder=2, s=sz)
+    if ax == plt:
+        ax.title(title)
+        ax.xlabel(axesNames[0])
+        ax.ylabel(axesNames[1])
+    else:
+        ax.set_title(title)
+        ax.set_xlabel(axesNames[0])
+        ax.set_ylabel(axesNames[1])
     if midline:
         mval = max(max(xvals), max(yvals))
-        plt.plot([0, mval], [0, mval], color='black', zorder=1)
+        ax.plot([0, mval], [0, mval], color='black', zorder=1)
 
     if makeLegend:
         legend_elements = []
@@ -146,10 +162,14 @@ def makeAScatterPlot(xvals, yvals, axesNames, categories=list(), output_filename
             # Line2D([0], [0], marker='o', color=cs[i], label=cat,
             # markerfacecolor='g', markersize=15)
 
-        plt.legend(handles=legend_elements, loc='upper right')
+        ax.legend(handles=legend_elements, loc='upper right')
 
     for cat in ucats:
         print(cat, "n = ", sum([i == cat for i in categories]))
+
+    if ax != plt:
+        return
+
     if SHOW_OUTPUT_PLOTS:
         plt.show()
     if SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
@@ -654,7 +674,7 @@ else:
                      "Just clean psuedoprobe Optimality to prev home well", "Dwell time at prev home well (sec)"], filt_lbls, makeLegend=True)
 
 
-def makeAPathPlot(session, inProbe, title, fname, idxInterval=None):
+def makeAPathPlot(session, inProbe, title, fname, idxInterval=None, postProcess=None, ax=None):
     if inProbe:
         xvals = session.probe_pos_xs
         yvals = session.probe_pos_ys
@@ -666,21 +686,150 @@ def makeAPathPlot(session, inProbe, title, fname, idxInterval=None):
         xvals = xvals[idxInterval[0]:idxInterval[1]]
         yvals = yvals[idxInterval[0]:idxInterval[1]]
 
-    plt.clf()
-    plt.plot(xvals, yvals)
-    plt.grid('on')
-    plt.xlim(0, 1200)
-    plt.ylim(0, 1000)
-    plt.title(title)
+    if ax is None:
+        ax = plt
+
+    ax.clf()
+    ax.plot(xvals, yvals)
+    ax.grid('on')
+    ax.xlim(0, 1200)
+    ax.ylim(0, 1000)
+    ax.title(title)
+
+    if postProcess is not None:
+        postProcess(ax)
+
     saveOrShow(fname)
+
+
+def pseudoprobePostProcess(s1, s2, ax):
+    frame_rate = 15  # ...approximately at least
+    tmarkInterval = 2 * frame_rate
+
+    new_home_idx = s2.home_well_find_pos_idxs[0]
+    old_home_idx = s2.getLatencyToWell(False, s1.home_well, returnIdxs=True)
+
+    tmarkIdxs = np.concatenate(
+        (np.arange(0, old_home_idx, tmarkInterval), np.array([old_home_idx])))
+    tmarkTimes = np.array(s2.bt_pos_ts)[tmarkIdxs] - s2.bt_pos_ts[0]
+    tmarkXs = np.array(s2.bt_pos_xs)[tmarkIdxs]
+    tmarkYs = np.array(s2.bt_pos_ys)[tmarkIdxs]
+
+    for ((x, y), t) in zip(zip(tmarkXs, tmarkYs), tmarkTimes):
+        ax.text(x, y, str(float(int(t / TRODES_SAMPLING_RATE * 10)) / 10))
+
+    if old_home_idx < new_home_idx:
+        ax.plot(s2.bt_pos_xs[old_home_idx:new_home_idx],
+                s2.bt_pos_ys[old_home_idx:new_home_idx], color='grey')
+
+    ax.scatter(s2.bt_pos_xs[old_home_idx], s2.bt_pos_ys[old_home_idx], c='green')
+    ax.scatter(s2.bt_pos_xs[new_home_idx], s2.bt_pos_ys[new_home_idx], c='red')
+
+    ax.text(0, 50, "Dwell time: {}".format(round(firstDwellTimeAtWell(s2, s1.home_well), 2)))
+    ax.text(600, 50, "Latency: {}".format(
+        round(s2.getLatencyToWell(False, s1.home_well) / TRODES_SAMPLING_RATE, 2)))
 
 
 if SKIP_PSEUDOPROBE_PATH_PLOTS:
     print("Warning: skipping pseudoprobe path plots")
 else:
     for si, (s1, s2) in enumerate(zip(all_sessions[:-1], all_sessions[1:])):
-        makeAPathPlot(s2, False,  "{} ({})".format(s2.name, s2.getDelayFromSession(s1, returnDateTimeDelta=True)),
-                      s1.name + "_pseudoprobe_path", idxInterval=[0, s2.getLatencyToWell(False, s1.home_well, returnIdxs=True)],)
+        title = "{} ({})".format(s2.name, s2.getDelayFromSession(s1, returnDateTimeDelta=True))
+        fname = s1.name + "_pseudoprobe_path"
+        i2 = s2.getLatencyToWell(False, s1.home_well, returnIdxs=True)
+        makeAPathPlot(s2, False,  title, fname, idxInterval=[
+                      0, i2], postProcess=lambda ax: pseudoprobePostProcess(s1, s2, ax))
+
+
+def wellGridX(wellName):
+    return (wellName - 2) % 8
+
+
+def wellGridY(wellName):
+    return wellName // 8
+
+
+def makeAWellColorGrid(data, quadrants=False, ax=None, fname=None):
+    if ax is None:
+        ax = plt
+
+    if quadrants:
+        gridRes = 2
+    else:
+        gridRes = 6
+
+    if callable(data):
+        vals = np.zeros((gridRes, gridRes))
+        if quadrants:
+            vals[0, 0] = data(0)
+            vals[0, 1] = data(1)
+            vals[1, 0] = data(2)
+            vals[1, 1] = data(3)
+        else:
+            for w in all_well_names:
+                vals[wellGridX(w), wellGridY(w)] = data(w)
+    else:
+        vals = data
+        if np.shape(vals)[0] != gridRes:
+            raise Exception("data size mismatch")
+
+    ax.imshow(vals, origin='lower', extent=(0, gridRes, 0, gridRes))
+    ax.set_xticks(np.arange(gridRes))
+    ax.set_yticks(np.arange(gridRes))
+    ax.grid(which='major')
+    ax.tick_params(axis='both', which='both', bottom=False,
+                   top=False, left=False, labelleft=False, labelbottom=False)
+
+    if fname is not None:
+        saveOrShow(fname)
+
+    return vals
+
+
+def makeAnOccupancyPlot(session):
+    plt.clf()
+    _, axs = plt.subplots(2, 4)
+
+    vAll = makeAWellColorGrid(lambda w: session.total_dwell_time(False, w), ax=axs[0, 0])
+    axs[0, 0].set_title("Full task", {'fontsize': 10})
+
+    vNoRew = makeAWellColorGrid(lambda w: session.total_dwell_time(
+        False, w, excludeReward=True), ax=axs[0, 1])
+    axs[0, 1].set_title("No reward", {'fontsize': 10})
+
+    vRew = makeAWellColorGrid(vAll - vNoRew, ax=axs[0, 2])
+    axs[0, 2].set_title("Just reward", {'fontsize': 10})
+
+    vProbe = makeAWellColorGrid(lambda w: session.total_dwell_time(
+        True, w, timeInterval=[0, 90]), ax=axs[0, 3])
+    axs[0, 3].set_title("Probe (90sec)", {'fontsize': 10})
+
+    makeAScatterPlot(vAll.reshape(-1), vProbe.reshape(-1),
+                     ["Full task", "Probe"], ax=axs[1, 0], bigDots=False)
+    makeAScatterPlot(vNoRew.reshape(-1), vProbe.reshape(-1),
+                     ["No reward", "Probe"], ax=axs[1, 1], bigDots=False)
+    makeAScatterPlot(vRew.reshape(-1), vProbe.reshape(-1),
+                     ["Just reward", "Probe"], ax=axs[1, 2], bigDots=False)
+
+    axs[1, 3].axis('off')
+
+    saveOrShow("occupancy_{}".format(session.name))
+
+    return vAll, vNoRew, vRew, vProbe
+
+
+if SKIP_OCCUPANCY_PLOTS:
+    print("Warning: skipping occupancy plots")
+else:
+    occupancyRs = np.zeros((len(all_sessions), 1))
+    rewardRs = np.zeros((len(all_sessions), 1))
+    for si, sesh in enumerate(all_sessions):
+        vAll, vNoRew, vRew, vProbe = makeAnOccupancyPlot(sesh)
+        occupancyRs[si], _ = pearsonr(vProbe.reshape(-1), vAll.reshape(-1))
+        rewardRs[si], _ = pearsonr(vProbe.reshape(-1), vRew.reshape(-1))
+
+    makeAScatterPlot(occupancyRs, rewardRs, [
+                     "Occupancy r", "Reward r"], categories=tlbls, output_filename="occupancy_vs_reward", midline=True, makeLegend=True)
 
 
 def makeAPseudoprobePlot(datafunc, duration, interval, fname, cumulative=True, jitter=True):
