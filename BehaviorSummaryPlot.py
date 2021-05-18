@@ -9,7 +9,7 @@
 #
 # Model start of probe as [pause] -> run -> search. Isolate search parth, draw all paths cetered around home, color by start->finish of search path
 #
-# Familiarity: Look at how occupancy map (just searching? all?) relates to probe occupancy map (same)
+# Familiarity: For occupancy maps, use a GLM instead
 
 
 from BTData import *
@@ -21,7 +21,8 @@ import seaborn as sns
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
 from matplotlib.lines import Line2D
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, ttest_ind_from_stats
+import statsmodels.api as sm
 
 
 data_filename = "/media/WDC1/martindata/bradtask/martin_bradtask.dat"
@@ -61,6 +62,7 @@ SKIP_BASIC_BEHAVIOR_COMPARISON = True
 SKIP_CONSECUTIVE_SESSION_PLOTS = True
 SKIP_PSEUDOPROBE_PATH_PLOTS = True
 SKIP_OCCUPANCY_PLOTS = False
+SKIP_WELL_COLOR_GRIDS = False
 
 PRINT_TRIAL_INFO = False
 SKIP_TO_MY_LOU_DARLIN = True
@@ -750,30 +752,16 @@ def wellGridY(wellName):
 
 
 def makeAWellColorGrid(data, quadrants=False, ax=None, fname=None):
+    if SKIP_WELL_COLOR_GRIDS:
+        print("Warning, skipping well color grids")
+        return
+
     if ax is None:
         ax = plt
 
-    if quadrants:
-        gridRes = 2
-    else:
-        gridRes = 6
+    gridRes = data.shape[0]
 
-    if callable(data):
-        vals = np.zeros((gridRes, gridRes))
-        if quadrants:
-            vals[0, 0] = data(0)
-            vals[0, 1] = data(1)
-            vals[1, 0] = data(2)
-            vals[1, 1] = data(3)
-        else:
-            for w in all_well_names:
-                vals[wellGridX(w), wellGridY(w)] = data(w)
-    else:
-        vals = data
-        if np.shape(vals)[0] != gridRes:
-            raise Exception("data size mismatch")
-
-    ax.imshow(vals, origin='lower', extent=(0, gridRes, 0, gridRes))
+    ax.imshow(data, origin='lower', extent=(0, gridRes, 0, gridRes))
     ax.set_xticks(np.arange(gridRes))
     ax.set_yticks(np.arange(gridRes))
     ax.grid(which='major')
@@ -783,6 +771,23 @@ def makeAWellColorGrid(data, quadrants=False, ax=None, fname=None):
     if fname is not None:
         saveOrShow(fname)
 
+
+def wellGridVals(datafunc, quadrants=False):
+    if quadrants:
+        gridRes = 2
+    else:
+        gridRes = 6
+
+    vals = np.zeros((gridRes, gridRes))
+    if quadrants:
+        vals[0, 0] = datafunc(0)
+        vals[0, 1] = datafunc(1)
+        vals[1, 0] = datafunc(2)
+        vals[1, 1] = datafunc(3)
+    else:
+        for w in all_well_names:
+            vals[wellGridX(w), wellGridY(w)] = datafunc(w)
+
     return vals
 
 
@@ -790,18 +795,22 @@ def makeAnOccupancyPlot(session):
     plt.clf()
     _, axs = plt.subplots(2, 4)
 
-    vAll = makeAWellColorGrid(lambda w: session.total_dwell_time(False, w), ax=axs[0, 0])
+    vAll = wellGridVals(lambda w: session.total_dwell_time(False, w))
+    makeAWellColorGrid(vAll, ax=axs[0, 0])
     axs[0, 0].set_title("Full task", {'fontsize': 10})
 
-    vNoRew = makeAWellColorGrid(lambda w: session.total_dwell_time(
-        False, w, excludeReward=True), ax=axs[0, 1])
+    vNoRew = wellGridVals(lambda w: session.total_dwell_time(
+        False, w, excludeReward=True))
+    makeAWellColorGrid(vNoRew, ax=axs[0, 1])
     axs[0, 1].set_title("No reward", {'fontsize': 10})
 
-    vRew = makeAWellColorGrid(vAll - vNoRew, ax=axs[0, 2])
+    vRew = vAll - vNoRew
+    makeAWellColorGrid(vRew, ax=axs[0, 2])
     axs[0, 2].set_title("Just reward", {'fontsize': 10})
 
-    vProbe = makeAWellColorGrid(lambda w: session.total_dwell_time(
-        True, w, timeInterval=[0, 90]), ax=axs[0, 3])
+    vProbe = wellGridVals(lambda w: session.total_dwell_time(
+        True, w, timeInterval=[0, 90]))
+    makeAWellColorGrid(vProbe, ax=axs[0, 3])
     axs[0, 3].set_title("Probe (90sec)", {'fontsize': 10})
 
     makeAScatterPlot(vAll.reshape(-1), vProbe.reshape(-1),
@@ -811,6 +820,10 @@ def makeAnOccupancyPlot(session):
     makeAScatterPlot(vRew.reshape(-1), vProbe.reshape(-1),
                      ["Just reward", "Probe"], ax=axs[1, 2], bigDots=False)
 
+    axs[1, 1].set_ylabel("")
+    axs[1, 2].set_ylabel("")
+    axs[1, 1].set_yticks([])
+    axs[1, 2].set_yticks([])
     axs[1, 3].axis('off')
 
     saveOrShow("occupancy_{}".format(session.name))
@@ -822,14 +835,81 @@ if SKIP_OCCUPANCY_PLOTS:
     print("Warning: skipping occupancy plots")
 else:
     occupancyRs = np.zeros((len(all_sessions), 1))
+    # cumOccupancyRs = np.zeros((len(all_sessions), 1))
     rewardRs = np.zeros((len(all_sessions), 1))
+    # cumTask = np.zeros((6, 6))
+    # cumAll = np.zeros((6, 6))
+
+    nw = len(all_well_names)
+    ns = len(all_sessions)
+    X = np.ones((ns * nw, 3))
+    Y = np.zeros((ns * nw, 1))
+    X_SWR = np.zeros((0, 3))
+    Y_SWR = np.zeros((0, 1))
+    X_CTL = np.zeros((0, 3))
+    Y_CTL = np.zeros((0, 1))
     for si, sesh in enumerate(all_sessions):
         vAll, vNoRew, vRew, vProbe = makeAnOccupancyPlot(sesh)
         occupancyRs[si], _ = pearsonr(vProbe.reshape(-1), vAll.reshape(-1))
         rewardRs[si], _ = pearsonr(vProbe.reshape(-1), vRew.reshape(-1))
 
+        X[si*nw:si*nw+nw, 1] = vAll.reshape(-1)
+        # X[si*nw:si*nw+nw, 2] = vNoRew.reshape(-1)
+        X[si*nw:si*nw+nw, 2] = vRew.reshape(-1)
+        Y[si*nw:si*nw+nw] = vProbe.reshape((nw, 1))
+
+        if tlbls[si] == "SWR":
+            x21 = np.ones((nw, 1))
+            x22 = vAll.reshape((nw, 1))
+            x23 = vRew.reshape((nw, 1))
+            x2 = np.hstack((x21, x22, x23))
+            X_SWR = np.vstack((X_SWR, x2))
+            Y_SWR = np.vstack((Y_SWR, vProbe.reshape((nw, 1))))
+            print("SWR adding")
+        if tlbls[si] == "CTRL":
+            x21 = np.ones((nw, 1))
+            x22 = vAll.reshape((nw, 1))
+            x23 = vRew.reshape((nw, 1))
+            x2 = np.hstack((x21, x22, x23))
+            X_CTL = np.vstack((X_CTL, x2))
+            Y_CTL = np.vstack((Y_CTL, vProbe.reshape((nw, 1))))
+            print("CTRL adding")
+
+        # cumTask += vAll
+        # cumAll += vAll
+        # cumOccupancyRs[si], _ = pearsonr(vProbe.reshape(-1), cumAll.reshape(-1))
+        # cumAll += wellGridVals(lambda w: sesh.total_dwell_time(True, w))
+
     makeAScatterPlot(occupancyRs, rewardRs, [
                      "Occupancy r", "Reward r"], categories=tlbls, output_filename="occupancy_vs_reward", midline=True, makeLegend=True)
+
+    # makeAScatterPlot(list(np.arange(0, len(all_sessions))),
+    #                  cumOccupancyRs,
+    #                  ['Session idx', 'Cumulative Occupancy vs probe r'], tlbls, midline=False)
+
+    glm_model = sm.GLM(Y, X, family=sm.families.Gamma())
+    glm_res = glm_model.fit()
+    print("=============================== FULL MODEL")
+    print(glm_res.summary())
+
+    glm_model = sm.GLM(Y_SWR, X_SWR, family=sm.families.Gamma())
+    glm_res_swr = glm_model.fit()
+    print("=============================== SWR MODEL")
+    print(glm_res_swr.summary())
+
+    glm_model = sm.GLM(Y_CTL, X_CTL, family=sm.families.Gamma())
+    glm_res_ctl = glm_model.fit()
+    print("=============================== CTRL MODEL")
+    print(glm_res_ctl.summary())
+
+    xp = np.array([0, 0.2, 1, 1.2, 2, 2.2])
+    yp = np.hstack((glm_res.params[1:3], glm_res_swr.params[1:3], glm_res_ctl.params[1:3]))
+    err = np.hstack((glm_res.bse[1:3], glm_res_swr.bse[1:3], glm_res_ctl.bse[1:3]))
+    print(xp, yp)
+    plt.clf()
+    plt.errorbar(xp, yp, yerr=err, fmt='o')
+    saveOrShow("Occupancy GLM")
+    print("Groups on X axis: general model, swr, ctl. Within group: all occ coeff, just reward coeff. Bars are std err")
 
 
 def makeAPseudoprobePlot(datafunc, duration, interval, fname, cumulative=True, jitter=True):
