@@ -1,3 +1,4 @@
+import os
 import readTrodesExtractedDataFile3
 from scipy.ndimage.morphology import binary_dilation
 from scipy import signal
@@ -9,7 +10,7 @@ matplotlib.use('Qt5Agg')
 
 mkfigs = np.zeros((100, ))
 # mkfigs[1] = True
-mkfigs[2] = True
+# mkfigs[2] = True
 # mkfigs[3] = True
 # mkfigs[4] = True
 # mkfigs[5] = True
@@ -29,6 +30,7 @@ SPK_BIN_SZ_SECS = float(SPK_BIN_SZ_MS) / 1000.0
 
 LFP_HZ = 1500
 
+output_dir = '/home/wcroughan/data/B2/figs/'
 
 data_file = "/home/wcroughan/data/20210108_162804/20210108_162804.spikes/20210108_162804.spikes_nt7.dat"
 spike_data_dict = readTrodesExtractedDataFile3.readTrodesExtractedDataFile(data_file)
@@ -198,4 +200,6 @@ if mkfigs[9]:
 
     plt.plot(x1, y1)
     plt.plot(x2, y2)
+    fname = "fr_psth.png"
+    plt.savefig(os.path.join(output_dir, fname), dpi=800)
     plt.show()
