@@ -7,6 +7,15 @@ name = "pypi"
 numpy = "*"
 matplotlib = "*"
 scipy = "*"
+pyqt5 = "*"
+pandas = "*"
+seaborn = "*"
+pylint = "*"
+autopep8 = "*"
+sortednp = "*"
+statsmodels = "*"
+mountainlab-pytools = "*"
+sklearn = "*"
 
 [dev-packages]
 

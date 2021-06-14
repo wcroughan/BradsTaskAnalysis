@@ -5,6 +5,7 @@ import numpy as np
 import os
 from functools import reduce
 from BTSession import BTSession
+from datetime import datetime
 
 NP_KEY_PFX = '__numpy_ref__'
 NP_LIST_KEY_PFX = '__numpy_list_ref__'
@@ -35,7 +36,9 @@ class BTData:
                     load_dict = json.loads(line[:-1])
 
                     self.allSessions[-1].__dict__ = self.processAndLoadDict(load_dict, np_dir)
-                    self.allSessions[-1].date = pd.to_datetime(self.allSessions[-1].date_str)
+                    # self.allSessions[-1].date = pd.to_datetime(self.allSessions[-1].date_str)
+                    self.allSessions[-1].date = datetime.strptime("{}_{}".format(
+                        self.allSessions[-1].date_str, self.allSessions[-1].time_str), "%Y%m%d_%H%M%S")
                 else:
                     print("File parse error!")
                     return -2

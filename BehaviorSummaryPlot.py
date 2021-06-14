@@ -1,11 +1,15 @@
 # TODO
 # ANOVA spherical assumption is not met because spread of other < spread of away < spread of home
 #   Need to do correct statistical test
-# Look at behavior within each minute of the probe
+# Reversal measure: how often visited wells ABC vs ABA when A is home or etc
 #
 # Comparisons to do:
 # dwell time during tasks excluding reward
 # num home checks excluding reward (maybe over time? Some way to account for probably increasing checks over course of run?)
+#
+# Model start of probe as [pause] -> run -> search. Isolate search parth, draw all paths cetered around home, color by start->finish of search path
+#
+# Familiarity: For occupancy maps, use a GLM instead
 
 
 from BTData import *
@@ -16,19 +20,23 @@ import pandas as pd
 import seaborn as sns
 from statsmodels.formula.api import ols
 from statsmodels.stats.anova import anova_lm
+from matplotlib.lines import Line2D
+from scipy.stats import pearsonr, ttest_ind_from_stats
+import statsmodels.api as sm
 
-data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
+
+data_filename = "/media/WDC1/martindata/bradtask/martin_bradtask.dat"
 alldata = BTData()
 alldata.loadFromFile(data_filename)
 all_sessions = alldata.getSessions()
 
-output_dir = '/media/WDC4/martindata/processed_data'
+output_dir = '/media/WDC1/martindata/processed_data'
 
 SHOW_OUTPUT_PLOTS = False
 SAVE_OUTPUT_PLOTS = True
 
 SKIP_BOX_PLOTS = False
-SKIP_SCATTER_PLOTS = True
+SKIP_SCATTER_PLOTS = False
 SKIP_SWARM_PLOTS = True
 SKIP_PERSEVBIAS_PLOTS = True
 SKIP_PERSEV_MEASURE_PLOTS = False
@@ -47,7 +55,14 @@ SKIP_BOUT_PROP_PLOTS = True
 SKIP_HW_PLOT = True
 SKIP_ORDER_PLOTS = True
 SKIP_RIPPLE_PLACE_PLOTS = True
-SKIP_EVERY_MINUTE_PLOTS = False
+SKIP_EVERY_MINUTE_PLOTS = True
+SKIP_PREV_SESSION_PLOTS = True
+SKIP_PSEUDOPROBE_PLOTS = True
+SKIP_BASIC_BEHAVIOR_COMPARISON = True
+SKIP_CONSECUTIVE_SESSION_PLOTS = True
+SKIP_PSEUDOPROBE_PATH_PLOTS = True
+SKIP_OCCUPANCY_PLOTS = False
+SKIP_WELL_COLOR_GRIDS = False
 
 PRINT_TRIAL_INFO = False
 SKIP_TO_MY_LOU_DARLIN = True
@@ -73,6 +88,7 @@ def makeABoxPlot(yvals, categories, axesNames, output_filename="", title="", doS
     plt.clf()
     print(s)
     sns.boxplot(x=axesNames[0], y=axesNames[1], data=s, palette="Set3")
+    sns.swarmplot(x=axesNames[0], y=axesNames[1], data=s, color="0.25")
     plt.title(title)
     plt.xlabel(axesNames[0])
     plt.ylabel(axesNames[1])
@@ -105,28 +121,57 @@ def makeABoxPlot(yvals, categories, axesNames, output_filename="", title="", doS
         plt.savefig(output_filename, dpi=800)
 
 
-def makeAScatterPlot(xvals, yvals, axesNames, categories=list(), output_filename="", title="", midline=False):
+def makeAScatterPlot(xvals, yvals, axesNames, categories=list(), output_filename="", title="", midline=False, makeLegend=False, ax=plt, bigDots=True):
     if SKIP_SCATTER_PLOTS:
         print("Warning, skipping scatter plots!")
         return
 
-    plt.clf()
+    if ax == plt:
+        ax.clf()
     if len(categories) == 0:
         cvals = np.ones_like(xvals)
         ucats = list()
     else:
         ucats = np.array(sorted(list(set(categories))))
         cvals = [np.argmax(c == ucats) for c in categories]
-    plt.scatter(xvals, yvals, c=cvals, zorder=2, s=plt.rcParams['lines.markersize'] ** 2 * 3)
-    plt.title(title)
-    plt.xlabel(axesNames[0])
-    plt.ylabel(axesNames[1])
+
+    if bigDots:
+        sz = plt.rcParams['lines.markersize'] ** 2 * 3
+    else:
+        sz = plt.rcParams['lines.markersize'] ** 2
+    ax.scatter(xvals, yvals, c=cvals, zorder=2, s=sz)
+    if ax == plt:
+        ax.title(title)
+        ax.xlabel(axesNames[0])
+        ax.ylabel(axesNames[1])
+    else:
+        ax.set_title(title)
+        ax.set_xlabel(axesNames[0])
+        ax.set_ylabel(axesNames[1])
     if midline:
         mval = max(max(xvals), max(yvals))
-        plt.plot([0, mval], [0, mval], color='black', zorder=1)
+        ax.plot([0, mval], [0, mval], color='black', zorder=1)
+
+    if makeLegend:
+        legend_elements = []
+        if len(ucats) > 0:
+            cs = np.linspace(0, 1, len(ucats))
+            # print(cs)
+        for i, cat in enumerate(ucats):
+            c = plt.get_cmap()(cs[i])
+            # print(cs, i, cs[i], c)
+            legend_elements.append(Line2D([0], [0], marker='o', color=c, label=cat))
+            # Line2D([0], [0], marker='o', color=cs[i], label=cat,
+            # markerfacecolor='g', markersize=15)
+
+        ax.legend(handles=legend_elements, loc='upper right')
 
     for cat in ucats:
         print(cat, "n = ", sum([i == cat for i in categories]))
+
+    if ax != plt:
+        return
+
     if SHOW_OUTPUT_PLOTS:
         plt.show()
     if SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
@@ -223,6 +268,11 @@ def makeAPersevMeasurePlot(measure_name, datafunc, output_filename="", title="",
                  for sesh in sessions_with_all_wells]
     other_vals = [np.nanmean(np.array([datafunc(sesh, ow) for ow in set(
         all_well_names) - set(sesh.visited_away_wells) - set([sesh.home_well])])) for sesh in sessions_with_all_wells]
+
+    ll = [trial_label(sesh) for sesh in sessions_with_all_wells]
+    print([e for i, e in enumerate(home_vals) if ll[i] == "CTRL"])
+    # print(away_vals)
+    # print(other_vals)
 
     # home_vals = [sesh.__dict__[measure_name][sesh.home_well_idx_in_allwells]
     #  for sesh in sessions_with_all_wells]
@@ -442,6 +492,495 @@ if PRINT_TRIAL_INFO:
         print(i, s.name, tlbls[i])
     exit()
 
+
+def makeAPlotOverDays(datafunc, labels, fname, plotPast=False):
+    sessions_with_all_wells = list(
+        filter(lambda sesh: len(sesh.visited_away_wells) > 0, all_sessions))
+    # print("Considering {} out of {} sessions that have all away wells listed".format(
+    # len(sessions_with_all_wells), len(all_sessions)))
+
+    plt.clf()
+    for si, sesh in enumerate(sessions_with_all_wells):
+        hw = sesh.home_well
+        if labels[si] == "SWR":
+            color = "orange"
+        else:
+            color = "blue"
+
+        if plotPast:
+            i1 = 0
+        else:
+            i1 = si
+
+        x = np.arange(i1, len(sessions_with_all_wells))
+        y = [datafunc(s, hw) for s in sessions_with_all_wells[i1:]]
+        plt.plot(x, y, c=color)
+        plt.scatter(si, datafunc(sesh, hw), c=color)
+
+    away_vals = [np.array([datafunc(s, aw) for aw in s.visited_away_wells])
+                 for s in sessions_with_all_wells]
+    other_vals = [np.array([datafunc(s, ow) for ow in set(
+        all_well_names) - set(s.visited_away_wells) - set([s.home_well])]) for s in sessions_with_all_wells]
+    away_means = [np.nanmean(v) for v in away_vals]
+    other_means = [np.nanmean(v) for v in other_vals]
+    away_std = [np.nanstd(v) for v in away_vals]
+    other_std = [np.nanstd(v) for v in other_vals]
+
+    for si in range(len(sessions_with_all_wells)):
+        a1 = away_means[si] - away_std[si]
+        a2 = away_means[si] + away_std[si]
+        o1 = other_means[si] - other_std[si]
+        o2 = other_means[si] + other_std[si]
+        plt.plot([si + 0.15, si + 0.15], [a1, a2], c="black")
+        plt.plot([si + 0.3, si + 0.3], [o1, o2], c="grey")
+
+    saveOrShow(fname)
+
+
+if SKIP_PREV_SESSION_PLOTS:
+    print("Warning: Skipping prev session plots")
+else:
+    if not SKIP_TO_MY_LOU_DARLIN:
+        sessions_with_prev = [sesh for sesh in all_sessions if sesh.prevSessionInfoParsed]
+        tlbls_wprev = [trial_label(sesh) for sesh in sessions_with_prev]
+        makeABoxPlot([sesh.avg_dwell_time(True, sesh.prevSessionHome, timeInterval=[0, 30]) for sesh in sessions_with_prev],
+                     tlbls_wprev, ['Condition', 'probe_avg_dwell_time_30sec_prevsession_home'])
+        makeABoxPlot([sesh.avg_dwell_time(True, sesh.prevSessionHome, timeInterval=[0, 300]) for sesh in sessions_with_prev],
+                     tlbls_wprev, ['Condition', 'probe_avg_dwell_time_300sec_prevsession_home'])
+        makeABoxPlot([sesh.avg_dwell_time(True, sesh.prevSessionHome, timeInterval=[0, 90]) for sesh in sessions_with_prev],
+                     tlbls_wprev, ['Condition', 'probe_avg_dwell_time_90sec_prevsession_home'])
+
+    makeAPlotOverDays(lambda s, w: s.avg_dwell_time(True, w, timeInterval=[
+                      0, 90], emptyVal=0), tlbls, "avg_dwell_over_days", plotPast=False)
+    makeAPlotOverDays(lambda s, w: s.avg_dwell_time(True, w, timeInterval=[
+                      0, 90], emptyVal=0), tlbls, "avg_dwell_over_days_with_prev", plotPast=True)
+    makeAPlotOverDays(lambda s, w: s.avg_dwell_time(False, w, excludeReward=True,
+                                                    emptyVal=0), tlbls, "task_avg_dwell_over_days", plotPast=False)
+    makeAPlotOverDays(lambda s, w: s.avg_dwell_time(False, w, excludeReward=True,
+                                                    emptyVal=0), tlbls, "task_avg_dwell_over_days_with_prev", plotPast=True)
+    makeAPlotOverDays(lambda s, w: s.avg_dwell_time(False, w, excludeReward=True, timeInterval=[0, 5*60],
+                                                    emptyVal=0), tlbls, "task_avg_dwell_over_days_5mins", plotPast=False)
+    makeAPlotOverDays(lambda s, w: s.avg_dwell_time(False, w, excludeReward=True, timeInterval=[0, 5*60],
+                                                    emptyVal=0), tlbls, "task_avg_dwell_over_days_with_prev_5mins", plotPast=True)
+    makeAPlotOverDays(lambda s, w: s.avg_dwell_time(False, w, excludeReward=True, timeInterval=[0, 90],
+                                                    emptyVal=0), tlbls, "task_avg_dwell_over_days_90secs", plotPast=False)
+
+
+def makeAConsecutiveSessionPlot(datafunc, pair_lbls, fname, pair_delays=None):
+    colors = ["orange", "blue", "green", "black"]
+    all_lbls = sorted(set(pair_lbls))
+    print("Key: {}".format(list(zip(colors, all_lbls))))
+    pair_color = []
+    for lbl in pair_lbls:
+        for i in range(len(all_lbls)):
+            if all_lbls[i] == lbl:
+                # print(li, i)
+                pair_color.append(colors[i])
+                break
+
+    plt.clf()
+    xvals = np.arange(len(pair_lbls)) + 1
+    yvals = [datafunc(s[0], s[1]) for s in zip(all_sessions[:-1], all_sessions[1:])]
+    plt.scatter(xvals, yvals, c=pair_color)
+    saveOrShow(fname + "_by_session_idx")
+
+    if pair_delays is not None:
+        pair_delays = np.array(pair_delays)
+        pair_delays -= np.min(pair_delays)
+        pair_delays /= np.max(pair_delays)
+        s = pd.Series([pair_lbls, yvals, pair_delays], index=["label", "yval", "delay"])
+    else:
+        s = pd.Series([pair_lbls, yvals], index=["label", "yval"])
+
+    plt.clf()
+    print(s)
+    sns.boxplot(x="label", y="yval", data=s, palette="Set3")
+    if pair_delays is not None:
+        sns.swarmplot(x="label", y="yval", data=s, hue="delay", palette="ch:s=.25,rot=-.25")
+    else:
+        sns.swarmplot(x="label", y="yval", data=s, color="0.25")
+    saveOrShow(fname + "_grouped")
+
+
+def firstDwellTimeAtWell(sesh, well):
+    ees = sesh.entry_exit_times(False, well)
+    ents = ees[0]
+    exts = ees[1]
+    return (exts[0] - ents[0]) / TRODES_SAMPLING_RATE
+
+
+if SKIP_CONSECUTIVE_SESSION_PLOTS:
+    print("Warning: skipping consecutive session plots")
+else:
+    # print("\n".join(list(map(lambda s: "{}".format(s.date), all_sessions))))
+    # print("\n".join(list(map(lambda s: str(s[1].getDelayFromSession(
+    # s[0])), zip(all_sessions[:-1], all_sessions[1:])))))
+    allDelays = list(map(lambda s: s[1].getDelayFromSession(s[0]),
+                         zip(all_sessions[:-1], all_sessions[1:])))
+
+    consecutive_lbls = list(map(lambda s: s[0]+"_"+s[1], zip(tlbls[:-1], tlbls[1:])))
+
+    lat_to_ph = list(map(lambda s: s[1].getLatencyToWell(False, s[0].home_well) /
+                         TRODES_SAMPLING_RATE, zip(all_sessions[:-1], all_sessions[1:])))
+    opt_to_ph = list(map(lambda s: s[1].path_optimality(False, wellName=s[0].home_well),
+                         zip(all_sessions[:-1], all_sessions[1:])))
+    del_bw_ses = list(map(lambda x: x / 60.0 / 60.0, allDelays))
+    dwell_at_ph = list(map(lambda s: firstDwellTimeAtWell(s[1], s[0].home_well), zip(
+        all_sessions[:-1], all_sessions[1:])))
+    if not SKIP_TO_MY_LOU_DARLIN:
+        makeAConsecutiveSessionPlot(lambda s1, s2: s2.getLatencyToWell(False, s1.home_well) / TRODES_SAMPLING_RATE,
+                                    consecutive_lbls, "latency_to_prev_home_withdelay", pair_delays=allDelays)
+        makeAConsecutiveSessionPlot(lambda s1, s2: s2.path_optimality(
+            False, wellName=s1.home_well), consecutive_lbls, "optimality_to_prev_home_withdelay", pair_delays=allDelays)
+        makeAConsecutiveSessionPlot(lambda s1, s2: s2.getDelayFromSession(s1),
+                                    consecutive_lbls, "Delay between sessions")
+        makeAConsecutiveSessionPlot(lambda s1, s2: firstDwellTimeAtWell(
+            s2, s1.home_well), consecutive_lbls, "first_dwell_time_at_prev_home_withdelay", pair_delays=allDelays)
+
+        makeAConsecutiveSessionPlot(lambda s1, s2: s2.getLatencyToWell(False, s1.home_well) / TRODES_SAMPLING_RATE,
+                                    consecutive_lbls, "latency_to_prev_home")
+        makeAConsecutiveSessionPlot(lambda s1, s2: s2.path_optimality(
+            False, wellName=s1.home_well), consecutive_lbls, "optimality_to_prev_home")
+        makeAConsecutiveSessionPlot(lambda s1, s2: firstDwellTimeAtWell(
+            s2, s1.home_well), consecutive_lbls, "first_dwell_time_at_prev_home")
+
+        makeAScatterPlot(del_bw_ses, lat_to_ph,
+                         ["Delay between sessions (hr)", "Latency to prev home well (sec)"], consecutive_lbls, makeLegend=True)
+        makeAScatterPlot(del_bw_ses, dwell_at_ph,
+                         ["Delay between sessions (hr)", "Dwell time at prev home well (sec)"], consecutive_lbls, makeLegend=True)
+        makeAScatterPlot(del_bw_ses, opt_to_ph,
+                         ["Delay between sessions (hr)", "Optimality to prev home well"], consecutive_lbls, makeLegend=True)
+        makeAScatterPlot(lat_to_ph, dwell_at_ph,
+                         ["Latency to prev home well (sec)", "Dwell time at prev home well (sec)"], consecutive_lbls, makeLegend=True)
+        makeAScatterPlot(opt_to_ph, dwell_at_ph,
+                         ["Optimality to prev home well", "Dwell time at prev home well (sec)"], consecutive_lbls, makeLegend=True)
+
+    newhome = np.array(list(map(lambda s: s[1].home_well_find_times[0] - s[1].bt_pos_ts[0],
+                                zip(all_sessions[:-1], all_sessions[1:]))))
+    oldhome = np.array(list(map(lambda s: s[1].getLatencyToWell(False, s[0].home_well),
+                                zip(all_sessions[:-1], all_sessions[1:]))))
+    foundOldHomeBeforeNew = newhome > oldhome
+
+    filt_lbls = [consecutive_lbls[i]
+                 for i in range(len(consecutive_lbls)) if foundOldHomeBeforeNew[i]]
+
+    makeAScatterPlot(np.array(del_bw_ses)[foundOldHomeBeforeNew], np.array(lat_to_ph)[foundOldHomeBeforeNew],   [
+                     "Just clean psuedoprobe Delay between sessions (hr)", "Latency to prev home well (sec)"], filt_lbls, makeLegend=True)
+    makeAScatterPlot(np.array(del_bw_ses)[foundOldHomeBeforeNew], np.array(dwell_at_ph)[foundOldHomeBeforeNew], [
+                     "Just clean psuedoprobe Delay between sessions (hr)", "Dwell time at prev home well (sec)"], filt_lbls, makeLegend=True)
+    makeAScatterPlot(np.array(del_bw_ses)[foundOldHomeBeforeNew], np.array(opt_to_ph)[foundOldHomeBeforeNew],   [
+                     "Just clean psuedoprobe Delay between sessions (hr)", "Optimality to prev home well"], filt_lbls, makeLegend=True)
+    makeAScatterPlot(np.array(lat_to_ph)[foundOldHomeBeforeNew], np.array(dwell_at_ph)[foundOldHomeBeforeNew],  [
+                     "Just clean psuedoprobe Latency to prev home well (sec)", "Dwell time at prev home well (sec)"], filt_lbls, makeLegend=True)
+    makeAScatterPlot(np.array(opt_to_ph)[foundOldHomeBeforeNew], np.array(dwell_at_ph)[foundOldHomeBeforeNew],  [
+                     "Just clean psuedoprobe Optimality to prev home well", "Dwell time at prev home well (sec)"], filt_lbls, makeLegend=True)
+
+
+def makeAPathPlot(session, inProbe, title, fname, idxInterval=None, postProcess=None, ax=None):
+    if inProbe:
+        xvals = session.probe_pos_xs
+        yvals = session.probe_pos_ys
+    else:
+        xvals = session.bt_pos_xs
+        yvals = session.bt_pos_ys
+
+    if idxInterval is not None:
+        xvals = xvals[idxInterval[0]:idxInterval[1]]
+        yvals = yvals[idxInterval[0]:idxInterval[1]]
+
+    if ax is None:
+        ax = plt
+
+    ax.clf()
+    ax.plot(xvals, yvals)
+    ax.grid('on')
+    ax.xlim(0, 1200)
+    ax.ylim(0, 1000)
+    ax.title(title)
+
+    if postProcess is not None:
+        postProcess(ax)
+
+    saveOrShow(fname)
+
+
+def pseudoprobePostProcess(s1, s2, ax):
+    frame_rate = 15  # ...approximately at least
+    tmarkInterval = 2 * frame_rate
+
+    new_home_idx = s2.home_well_find_pos_idxs[0]
+    old_home_idx = s2.getLatencyToWell(False, s1.home_well, returnIdxs=True)
+
+    tmarkIdxs = np.concatenate(
+        (np.arange(0, old_home_idx, tmarkInterval), np.array([old_home_idx])))
+    tmarkTimes = np.array(s2.bt_pos_ts)[tmarkIdxs] - s2.bt_pos_ts[0]
+    tmarkXs = np.array(s2.bt_pos_xs)[tmarkIdxs]
+    tmarkYs = np.array(s2.bt_pos_ys)[tmarkIdxs]
+
+    for ((x, y), t) in zip(zip(tmarkXs, tmarkYs), tmarkTimes):
+        ax.text(x, y, str(float(int(t / TRODES_SAMPLING_RATE * 10)) / 10))
+
+    if old_home_idx < new_home_idx:
+        ax.plot(s2.bt_pos_xs[old_home_idx:new_home_idx],
+                s2.bt_pos_ys[old_home_idx:new_home_idx], color='grey')
+
+    ax.scatter(s2.bt_pos_xs[old_home_idx], s2.bt_pos_ys[old_home_idx], c='green')
+    ax.scatter(s2.bt_pos_xs[new_home_idx], s2.bt_pos_ys[new_home_idx], c='red')
+
+    ax.text(0, 50, "Dwell time: {}".format(round(firstDwellTimeAtWell(s2, s1.home_well), 2)))
+    ax.text(600, 50, "Latency: {}".format(
+        round(s2.getLatencyToWell(False, s1.home_well) / TRODES_SAMPLING_RATE, 2)))
+
+
+if SKIP_PSEUDOPROBE_PATH_PLOTS:
+    print("Warning: skipping pseudoprobe path plots")
+else:
+    for si, (s1, s2) in enumerate(zip(all_sessions[:-1], all_sessions[1:])):
+        title = "{} ({})".format(s2.name, s2.getDelayFromSession(s1, returnDateTimeDelta=True))
+        fname = s1.name + "_pseudoprobe_path"
+        i2 = s2.getLatencyToWell(False, s1.home_well, returnIdxs=True)
+        makeAPathPlot(s2, False,  title, fname, idxInterval=[
+                      0, i2], postProcess=lambda ax: pseudoprobePostProcess(s1, s2, ax))
+
+
+def wellGridX(wellName):
+    return (wellName - 2) % 8
+
+
+def wellGridY(wellName):
+    return wellName // 8
+
+
+def makeAWellColorGrid(data, quadrants=False, ax=None, fname=None):
+    if SKIP_WELL_COLOR_GRIDS:
+        print("Warning, skipping well color grids")
+        return
+
+    if ax is None:
+        ax = plt
+
+    gridRes = data.shape[0]
+
+    ax.imshow(data, origin='lower', extent=(0, gridRes, 0, gridRes))
+    ax.set_xticks(np.arange(gridRes))
+    ax.set_yticks(np.arange(gridRes))
+    ax.grid(which='major')
+    ax.tick_params(axis='both', which='both', bottom=False,
+                   top=False, left=False, labelleft=False, labelbottom=False)
+
+    if fname is not None:
+        saveOrShow(fname)
+
+
+def wellGridVals(datafunc, quadrants=False):
+    if quadrants:
+        gridRes = 2
+    else:
+        gridRes = 6
+
+    vals = np.zeros((gridRes, gridRes))
+    if quadrants:
+        vals[0, 0] = datafunc(0)
+        vals[0, 1] = datafunc(1)
+        vals[1, 0] = datafunc(2)
+        vals[1, 1] = datafunc(3)
+    else:
+        for w in all_well_names:
+            vals[wellGridX(w), wellGridY(w)] = datafunc(w)
+
+    return vals
+
+
+def makeAnOccupancyPlot(session):
+    plt.clf()
+    _, axs = plt.subplots(2, 4)
+
+    vAll = wellGridVals(lambda w: session.total_dwell_time(False, w))
+    makeAWellColorGrid(vAll, ax=axs[0, 0])
+    axs[0, 0].set_title("Full task", {'fontsize': 10})
+
+    vNoRew = wellGridVals(lambda w: session.total_dwell_time(
+        False, w, excludeReward=True))
+    makeAWellColorGrid(vNoRew, ax=axs[0, 1])
+    axs[0, 1].set_title("No reward", {'fontsize': 10})
+
+    vRew = vAll - vNoRew
+    makeAWellColorGrid(vRew, ax=axs[0, 2])
+    axs[0, 2].set_title("Just reward", {'fontsize': 10})
+
+    vProbe = wellGridVals(lambda w: session.total_dwell_time(
+        True, w, timeInterval=[0, 90]))
+    makeAWellColorGrid(vProbe, ax=axs[0, 3])
+    axs[0, 3].set_title("Probe (90sec)", {'fontsize': 10})
+
+    makeAScatterPlot(vAll.reshape(-1), vProbe.reshape(-1),
+                     ["Full task", "Probe"], ax=axs[1, 0], bigDots=False)
+    makeAScatterPlot(vNoRew.reshape(-1), vProbe.reshape(-1),
+                     ["No reward", "Probe"], ax=axs[1, 1], bigDots=False)
+    makeAScatterPlot(vRew.reshape(-1), vProbe.reshape(-1),
+                     ["Just reward", "Probe"], ax=axs[1, 2], bigDots=False)
+
+    axs[1, 1].set_ylabel("")
+    axs[1, 2].set_ylabel("")
+    axs[1, 1].set_yticks([])
+    axs[1, 2].set_yticks([])
+    axs[1, 3].axis('off')
+
+    saveOrShow("occupancy_{}".format(session.name))
+
+    return vAll, vNoRew, vRew, vProbe
+
+
+if SKIP_OCCUPANCY_PLOTS:
+    print("Warning: skipping occupancy plots")
+else:
+    occupancyRs = np.zeros((len(all_sessions), 1))
+    # cumOccupancyRs = np.zeros((len(all_sessions), 1))
+    rewardRs = np.zeros((len(all_sessions), 1))
+    # cumTask = np.zeros((6, 6))
+    # cumAll = np.zeros((6, 6))
+
+    nw = len(all_well_names)
+    ns = len(all_sessions)
+    X = np.ones((ns * nw, 3))
+    Y = np.zeros((ns * nw, 1))
+    X_SWR = np.zeros((0, 3))
+    Y_SWR = np.zeros((0, 1))
+    X_CTL = np.zeros((0, 3))
+    Y_CTL = np.zeros((0, 1))
+    for si, sesh in enumerate(all_sessions):
+        vAll, vNoRew, vRew, vProbe = makeAnOccupancyPlot(sesh)
+        occupancyRs[si], _ = pearsonr(vProbe.reshape(-1), vAll.reshape(-1))
+        rewardRs[si], _ = pearsonr(vProbe.reshape(-1), vRew.reshape(-1))
+
+        X[si*nw:si*nw+nw, 1] = vAll.reshape(-1)
+        # X[si*nw:si*nw+nw, 2] = vNoRew.reshape(-1)
+        X[si*nw:si*nw+nw, 2] = vRew.reshape(-1)
+        Y[si*nw:si*nw+nw] = vProbe.reshape((nw, 1))
+
+        if tlbls[si] == "SWR":
+            x21 = np.ones((nw, 1))
+            x22 = vAll.reshape((nw, 1))
+            x23 = vRew.reshape((nw, 1))
+            x2 = np.hstack((x21, x22, x23))
+            X_SWR = np.vstack((X_SWR, x2))
+            Y_SWR = np.vstack((Y_SWR, vProbe.reshape((nw, 1))))
+            print("SWR adding")
+        if tlbls[si] == "CTRL":
+            x21 = np.ones((nw, 1))
+            x22 = vAll.reshape((nw, 1))
+            x23 = vRew.reshape((nw, 1))
+            x2 = np.hstack((x21, x22, x23))
+            X_CTL = np.vstack((X_CTL, x2))
+            Y_CTL = np.vstack((Y_CTL, vProbe.reshape((nw, 1))))
+            print("CTRL adding")
+
+        # cumTask += vAll
+        # cumAll += vAll
+        # cumOccupancyRs[si], _ = pearsonr(vProbe.reshape(-1), cumAll.reshape(-1))
+        # cumAll += wellGridVals(lambda w: sesh.total_dwell_time(True, w))
+
+    makeAScatterPlot(occupancyRs, rewardRs, [
+                     "Occupancy r", "Reward r"], categories=tlbls, output_filename="occupancy_vs_reward", midline=True, makeLegend=True)
+
+    # makeAScatterPlot(list(np.arange(0, len(all_sessions))),
+    #                  cumOccupancyRs,
+    #                  ['Session idx', 'Cumulative Occupancy vs probe r'], tlbls, midline=False)
+
+    glm_model = sm.GLM(Y, X, family=sm.families.Gamma())
+    glm_res = glm_model.fit()
+    print("=============================== FULL MODEL")
+    print(glm_res.summary())
+
+    glm_model = sm.GLM(Y_SWR, X_SWR, family=sm.families.Gamma())
+    glm_res_swr = glm_model.fit()
+    print("=============================== SWR MODEL")
+    print(glm_res_swr.summary())
+
+    glm_model = sm.GLM(Y_CTL, X_CTL, family=sm.families.Gamma())
+    glm_res_ctl = glm_model.fit()
+    print("=============================== CTRL MODEL")
+    print(glm_res_ctl.summary())
+
+    xp = np.array([0, 0.2, 1, 1.2, 2, 2.2])
+    yp = np.hstack((glm_res.params[1:3], glm_res_swr.params[1:3], glm_res_ctl.params[1:3]))
+    err = np.hstack((glm_res.bse[1:3], glm_res_swr.bse[1:3], glm_res_ctl.bse[1:3]))
+    print(xp, yp)
+    plt.clf()
+    plt.errorbar(xp, yp, yerr=err, fmt='o')
+    saveOrShow("Occupancy GLM")
+    print("Groups on X axis: general model, swr, ctl. Within group: all occ coeff, just reward coeff. Bars are std err")
+
+
+def makeAPseudoprobePlot(datafunc, duration, interval, fname, cumulative=True, jitter=True):
+    """
+    datafunc(s1(prev), s2(current), t(interval)) ==> v(scalar)
+    """
+    vals = np.zeros((len(all_sessions)-1, int(duration/interval)))
+    dual_label = []
+    for si, sesh in enumerate(all_sessions):
+        if si == 0:
+            continue
+
+        vals[si-1, :] = np.array([datafunc(all_sessions[si-1], sesh, [t1, t1+interval])
+                                  for t1 in np.arange(0, duration, interval)])
+        dual_label.append(tlbls[si-1] + "_" + tlbls[si])
+
+    if cumulative:
+        vals = np.cumsum(vals, axis=1)
+
+    if jitter:
+        noise = np.random.uniform(low=-0.2, high=0.2, size=vals.shape)
+        # print(np.std(noise))
+        vals = vals + noise
+
+    colors = ["orange", "blue", "green", "black"]
+    all_lbls = sorted(set(dual_label))
+    print("Key: {}".format(list(zip(colors, all_lbls))))
+    sesh_color = []
+    for li, lbl in enumerate(dual_label):
+        for i in range(len(all_lbls)):
+            if all_lbls[i] == lbl:
+                # print(li, i)
+                sesh_color.append(colors[i])
+                break
+
+    plt.clf()
+    for i in range(len(dual_label)):
+        plt.plot(np.arange(0, duration, interval), vals[i, :], c=sesh_color[i])
+
+    saveOrShow(fname)
+
+
+if SKIP_PSEUDOPROBE_PLOTS:
+    print("Warning skipping pseudoprobe plots")
+else:
+    makeAPseudoprobePlot(lambda s1, s2, t: s2.num_well_entries(
+        False, s1.home_well, timeInterval=t), 120, 15, "pseudo_numentries_15sec")
+    makeAPseudoprobePlot(lambda s1, s2, t: s2.num_well_entries(
+        False, s1.home_well, timeInterval=t), 15*60, 60, "pseudo_numentries_60sec")
+    makeAPseudoprobePlot(lambda s1, s2, t: s2.total_dwell_time(
+        False, s1.home_well, timeInterval=t, excludeReward=True), 120, 15, "pseudo_total_dwell_15sec")
+    makeAPseudoprobePlot(lambda s1, s2, t: s2.total_dwell_time(
+        False, s1.home_well, timeInterval=t, excludeReward=True), 15*60, 60, "pseudo_total_dwell_60sec")
+    makeAPseudoprobePlot(lambda s1, s2, t: s2.total_dwell_time(
+        False, s1.home_well, timeInterval=t, excludeReward=False), 120, 15, "pseudo_total_dwell_15sec_withreward")
+    makeAPseudoprobePlot(lambda s1, s2, t: s2.total_dwell_time(
+        False, s1.home_well, timeInterval=t, excludeReward=False), 15*60, 60, "pseudo_total_dwell_60sec_withreward")
+    makeAPseudoprobePlot(lambda s1, s2, t: s2.num_well_entries(
+        False, s1.home_well, timeInterval=t), 15*60, 1, "pseudo_numentries_continuous", jitter=False)
+    makeAPseudoprobePlot(lambda s1, s2, t: s2.total_dwell_time(
+        False, s1.home_well, timeInterval=t, excludeReward=True), 15*60, 1, "pseudo_total_dwell_continuous", jitter=False)
+    makeAPseudoprobePlot(lambda s1, s2, t: s2.total_dwell_time(
+        False, s1.home_well, timeInterval=t, excludeReward=False), 15*60, 1, "pseudo_total_dwell_continuous_withreward", jitter=False)
+
+if SKIP_BASIC_BEHAVIOR_COMPARISON:
+    print("Warning skipping basic behavior comparison plots")
+else:
+    makeAScatterPlot(list(np.arange(0, len(all_sessions))),
+                     [sesh.num_well_entries(False, sesh.home_well, excludeReward=False) - sesh.num_well_entries(
+                         False, sesh.home_well, excludeReward=True) for sesh in all_sessions],
+                     ['Session idx', 'Num home rewards'], tlbls, midline=False)
 
 # Quick graphs made during lab meeting checking how task behavior and perseveration relate:
 # Todo organize these in somewhere
@@ -1623,7 +2162,7 @@ else:
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[60, 120]))
     makeAPersevMeasurePlot("probe_num_entries_120_180s",
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[120, 180]))
-    makeAPersevMeasurePlot("probe_num_entries_180_120s",
+    makeAPersevMeasurePlot("probe_num_entries_180_240s",
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[180, 240]))
     makeAPersevMeasurePlot("probe_num_entries_240_300s",
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[240, 300]))
