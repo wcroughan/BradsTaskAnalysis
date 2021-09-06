@@ -1,7 +1,7 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QApplication, QLabel, QPushButton, QStyle, QHBoxLayout, QListWidget, QAction, QMainWindow, QSizePolicy, QFileDialog, QInputDialog, QListWidgetItem
-from PyQt5.QtCore import QDir, QUrl
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QApplication, QLabel, QPushButton, QStyle, QHBoxLayout, QListWidget, QAction, QMainWindow, QSizePolicy, QFileDialog, QInputDialog, QListWidgetItem, QGraphicsView, QGraphicsScene
+from PyQt5.QtCore import QDir, QUrl, QPointF, QSizeF
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer
-from PyQt5.QtMultimediaWidgets import QVideoWidget
+from PyQt5.QtMultimediaWidgets import QVideoWidget, QGraphicsVideoItem
 import sys
 import ffms2
 import numpy as np
@@ -27,16 +27,34 @@ class CMWidget(QMainWindow):
         self.SPEED_CHANGE_FACTOR = 1.25
         self.JUMP_DIST = 5000  # ms
         self.deletedItem = None
+        self.videoFileName = None
+
+        self.preTrialLightOffMark = None
+        self.trialStartMark = None
+        self.trialStopMark = None
+        self.probeStartMark = None
+        self.probeStopMark = None
+        self.postProbeLightOnMark = None
 
         self.initUI()
         self.initMediaPlayer()
 
-        self.loadVideoFromFilename("/home/wcroughan/glasses_data/facial_recog/outvid2.mp4")
+        # self.loadVideoFromFilename("/home/wcroughan/glasses_data/facial_recog/outvid2.mp4")
+        # self.loadVideoFromFilename()
+        self.openVideo()
 
     def initUI(self):
         self.setWindowTitle("Camera Marker")
 
-        self.videoWidget = QVideoWidget()
+        self.scene = QGraphicsScene()
+        # self.videoWidget = QVideoWidget()
+        self.videoWidget = QGraphicsVideoItem()
+        self.videoWidget.setOffset(QPointF(-600, -400))
+        self.videoWidget.setSize(QSizeF(2000, 1000))
+        self.scene.addItem(self.videoWidget)
+        # self.scene.setSceneRect(0, 0, 1400, 1400)
+
+        self.videoParent = QGraphicsView(self.scene)
 
         menuBar = self.menuBar()
         fileMenu = menuBar.addMenu("File")
@@ -202,13 +220,43 @@ class CMWidget(QMainWindow):
         regionListLayout.addWidget(self.regionListWidget)
         regionListLayout.addLayout(regionListButtonsLayout)
 
+        self.setMetaLabelMarkButton = QPushButton("Set Meta Label")
+        self.setMetaLabelMarkButton.clicked.connect(self.setMetaLabelMark)
+        ac = QAction('Set Meta Label Mark', self)
+        ac.setShortcut('2')
+        ac.triggered.connect(self.setMetaLabelMark)
+        regionsMenu.addAction(ac)
+
+        self.preTrialLightOffMarkLabel = QLabel(str(self.preTrialLightOffMark))
+        self.trialStartMarkLabel = QLabel(str(self.trialStartMark))
+        self.trialStopMarkLabel = QLabel(str(self.trialStopMark))
+        self.probeStartMarkLabel = QLabel(str(self.probeStartMark))
+        self.probeStopMarkLabel = QLabel(str(self.probeStopMark))
+        self.postProbeLightOnMarkLabel = QLabel(str(self.postProbeLightOnMark))
+
+        metaLabelsLayout = QHBoxLayout()
+        metaLabelsLayout.addWidget(QLabel("Pretrial light off:"))
+        metaLabelsLayout.addWidget(self.preTrialLightOffMarkLabel)
+        metaLabelsLayout.addWidget(QLabel("Trial start"))
+        metaLabelsLayout.addWidget(self.trialStartMarkLabel)
+        metaLabelsLayout.addWidget(QLabel("Trial stop"))
+        metaLabelsLayout.addWidget(self.trialStopMarkLabel)
+        metaLabelsLayout.addWidget(QLabel("Probe start"))
+        metaLabelsLayout.addWidget(self.probeStartMarkLabel)
+        metaLabelsLayout.addWidget(QLabel("Probe stop"))
+        metaLabelsLayout.addWidget(self.probeStopMarkLabel)
+        metaLabelsLayout.addWidget(QLabel("Postprobe light on:"))
+        metaLabelsLayout.addWidget(self.postProbeLightOnMarkLabel)
+        metaLabelsLayout.addWidget(self.setMetaLabelMarkButton)
+
         self.statusLabel = QLabel("yo")
         self.statusLabel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
 
         layout = QVBoxLayout()
-        layout.addWidget(self.videoWidget)
+        layout.addWidget(self.videoParent)
         layout.addLayout(controlLayout)
         layout.addLayout(regionListLayout)
+        layout.addLayout(metaLabelsLayout)
         layout.addWidget(self.statusLabel)
 
         wid = QWidget(self)
@@ -250,6 +298,8 @@ class CMWidget(QMainWindow):
         # print("Times:{}".format(ffmsvid.track.timecodes))
         self.frameTimes = np.array(ffmsvid.track.timecodes)
 
+        self.videoFileName = fileName
+
     def exitCall(self):
         sys.exit(0)
 
@@ -284,6 +334,41 @@ class CMWidget(QMainWindow):
     def setStopMark(self):
         self.stopMark = self.mediaPlayer.position()
         self.statusLabel.setText("Stop Mark set to {}".format(self.stopMark))
+
+    def setMetaLabelMark(self):
+        option, ok = QInputDialog.getInt(
+            self, "Which mark are you making", "1 - pretrial light on\n2 - trial start\n3 - trial end\n4 - probe start\n5 - probe end\n6 - post probe light on")
+        if ok:
+            if option == 1:
+                self.preTrialLightOffMark = self.mediaPlayer.position()
+                self.statusLabel.setText(
+                    "pre trial light off mark set to {}".format(self.preTrialLightOffMark))
+                self.preTrialLightOffMarkLabel.setText(str(self.preTrialLightOffMark))
+            elif option == 2:
+                self.trialStartMark = self.mediaPlayer.position()
+                self.statusLabel.setText(
+                    "trial start mark set to {}".format(self.trialStartMark))
+                self.trialStartMarkLabel.setText(str(self.trialStartMark))
+            elif option == 3:
+                self.trialStopMark = self.mediaPlayer.position()
+                self.statusLabel.setText(
+                    "trial Stop mark set to {}".format(self.trialStopMark))
+                self.trialStopMarkLabel.setText(str(self.trialStopMark))
+            elif option == 4:
+                self.probeStartMark = self.mediaPlayer.position()
+                self.statusLabel.setText(
+                    "probe start mark set to {}".format(self.probeStartMark))
+                self.probeStartMarkLabel.setText(str(self.probeStartMark))
+            elif option == 5:
+                self.probeStopMark = self.mediaPlayer.position()
+                self.statusLabel.setText(
+                    "probe Stop mark set to {}".format(self.probeStopMark))
+                self.probeStopMarkLabel.setText(str(self.probeStopMark))
+            elif option == 6:
+                self.postProbeLightOnMark = self.mediaPlayer.position()
+                self.statusLabel.setText(
+                    "probe Stop mark set to {}".format(self.postProbeLightOnMark))
+                self.postProbeLightOnMarkLabel.setText(str(self.postProbeLightOnMark))
 
     def jumpToStartMark(self):
         if self.startMark is not None:
@@ -362,7 +447,8 @@ class CMWidget(QMainWindow):
 
     def exportRegions(self):
         fnfilt = "rgs(*.rgs)"
-        fileName, _ = QFileDialog.getSaveFileName(self, "Save Regions", QDir.homePath(), fnfilt)
+        defaultFileName = self.videoFileName + ".rgs"
+        fileName, _ = QFileDialog.getSaveFileName(self, "Save Regions", defaultFileName, fnfilt)
 
         if fileName != '':
             if not fileName.endswith(".rgs"):
@@ -373,23 +459,43 @@ class CMWidget(QMainWindow):
         it = [self.regionListWidget.item(r) for r in range(self.regionListWidget.count())]
         with open(fileName, 'w') as csvfile:
             w = csv.writer(csvfile)
+            w.writerow([self.preTrialLightOffMark, self.trialStartMark, self.trialStopMark])
+            w.writerow([self.probeStartMark, self.probeStopMark, self.postProbeLightOnMark])
             for i in it:
                 w.writerow([i.start, i.stop, i.well])
 
     def importRegions(self):
         fnfilt = "rgs(*.rgs)"
-        fileName, _ = QFileDialog.getOpenFileName(self, "Open Regions", QDir.homePath(), fnfilt)
+        if self.videoFileName is not None:
+            defaultFileName = self.videoFileName + ".rgs"
+        else:
+            defaultFileName = QDir.homePath()
+        fileName, _ = QFileDialog.getOpenFileName(self, "Open Regions", defaultFileName, fnfilt)
 
         if fileName != '':
             self.loadRegionsFromFilename(fileName)
 
     def loadRegionsFromFilename(self, fileName):
         with open(fileName, 'r') as csvfile:
-            r = csv.reader(csvfile)
+            reader = csv.reader(csvfile)
+            r = list(reader)
 
             self.regionListWidget.clear()
 
-            for i in r:
+            self.preTrialLightOffMark = r[0][0]
+            self.trialStartMark = r[0][1]
+            self.trialStopMark = r[0][2]
+            self.probeStartMark = r[1][0]
+            self.probeStopMark = r[1][1]
+            self.postProbeLightOnMark = r[1][2]
+            self.preTrialLightOffMarkLabel.setText(str(self.preTrialLightOffMark))
+            self.trialStartMarkLabel.setText(str(self.trialStartMark))
+            self.trialStopMarkLabel.setText(str(self.trialStopMark))
+            self.probeStartMarkLabel.setText(str(self.probeStartMark))
+            self.probeStopMarkLabel.setText(str(self.probeStopMark))
+            self.postProbeLightOnMarkLabel.setText(str(self.postProbeLightOnMark))
+
+            for i in r[2:]:
                 self.regionListWidget.addItem(CMRegionListItem(int(i[0]), int(i[1]), int(i[2])))
 
 

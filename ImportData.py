@@ -1067,6 +1067,30 @@ if __name__ == "__main__":
             session.ctrl_home_well_idx_in_allwells]
 
         # ===================================
+        # Sniff times marked by hand from USB camera (Not available for Martin)
+        # ===================================
+
+        sniffTimesFile = file_str + '.rgs'
+        if not os.path.exists(sniffTimesFile):
+            print("Please save your sniff regions file to {}".format(sniffTimesFile))
+        else:
+            streader = csv.reader(sniffTimesFile)
+            sniffData = list(streader)
+
+            session.well_sniff_times_entry = [[] for _ in all_well_names]
+
+            session.sniff_pre_trial_light_off = sniffData[0][0]
+            session.sniff_trial_start = sniffData[0][1]
+            session.sniff_trial_stop = sniffData[0][2]
+            session.sniff_probe_start = sniffData[1][0]
+            session.sniff_probe_stop = sniffData[1][1]
+            session.sniff_post_probe_light_on = sniffData[1][2]
+
+            for i in sniffData[2:]:
+                session.well_sniff_times_entry[well_name_to_idx[int(i[2])]].append(int(i[0]))
+                session.well_sniff_times_exit[well_name_to_idx[int(i[2])]].append(int(i[1]))
+
+        # ===================================
         # Ballisticity of movements
         # ===================================
 
