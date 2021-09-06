@@ -17,7 +17,7 @@ class CMRegionListItem(QListWidgetItem):
         self.well = well
 
     def __lt__(self, other):
-        return self.start < other.start
+        return self.start > other.start
 
 
 class CMWidget(QMainWindow):
@@ -25,7 +25,7 @@ class CMWidget(QMainWindow):
         QMainWindow.__init__(self)
 
         self.SPEED_CHANGE_FACTOR = 1.25
-        self.JUMP_DIST = 5000  # ms
+        self.JUMP_DIST = 1000  # ms
         self.deletedItem = None
         self.videoFileName = None
 
@@ -49,8 +49,8 @@ class CMWidget(QMainWindow):
         self.scene = QGraphicsScene()
         # self.videoWidget = QVideoWidget()
         self.videoWidget = QGraphicsVideoItem()
-        self.videoWidget.setOffset(QPointF(-600, -400))
-        self.videoWidget.setSize(QSizeF(2000, 1000))
+        self.videoWidget.setOffset(QPointF(-1200, -800))
+        self.videoWidget.setSize(QSizeF(4000, 2000))
         self.scene.addItem(self.videoWidget)
         # self.scene.setSceneRect(0, 0, 1400, 1400)
 

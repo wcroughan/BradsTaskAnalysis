@@ -30,22 +30,30 @@ SHOW_CURVATURE_VIDEO = False
 
 TEST_NEAREST_WELL = False
 
-data_dir = '/media/WDC1/martindata/bradtask/'
+animal_name = 'Martin'
+
+if animal_name == "Martin":
+    data_dir = '/media/WDC1/martindata/bradtask/'
+    output_dir = '/media/WDC1/martindata/bradtask/'
+    fig_output_dir = '/media/WDC1/martindata/processed_data'
+    out_filename = "martin_bradtask.dat"
+
+    excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
+    excluded_dates += ["20200531",  "20200603", "20200602",
+                       "20200606", "20200605", "20200601"]
+    excluded_dates += ["20200526"]
+    excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
+
+elif animal_name == "B12":
+    data_dir = "/media/TOSHIBA EXT1/B12/bradtasksessions/"
+    output_dir = "/media/TOSHIBA EXT1/B12/processed_data/"
+    fig_output_dir = "/media/TOSHIBA EXT1/B12/processed_data/"
+    out_filename = "B12_bradtask.dat"
+
+
 all_data_dirs = sorted(os.listdir(data_dir), key=lambda s: (
     s.split('_')[0], s.split('_')[1]))
 behavior_notes_dir = os.path.join(data_dir, 'behavior_notes')
-
-excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
-excluded_dates += ["20200531",  "20200603", "20200602",
-                   "20200606", "20200605", "20200601"]
-excluded_dates += ["20200526"]
-
-excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
-
-animal_name = 'Martin'
-output_dir = '/media/WDC1/martindata/bradtask/'
-fig_output_dir = '/media/WDC1/martindata/processed_data'
-out_filename = "martin_bradtask.dat"
 
 if os.path.exists(os.path.join(output_dir, out_filename)):
     # confirm = input("Output file exists already. Overwrite? (y/n):")
@@ -818,7 +826,8 @@ if __name__ == "__main__":
             lfpdir = file_str + ".LFP"
             if not os.path.exists(lfpdir):
                 print(lfpdir, "doesn't exists, gonna try and extract the LFP")
-                syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportLFP -rec " + file_str + ".rec"
+                # syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportLFP -rec " + file_str + ".rec"
+                syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + file_str + ".rec"
                 print(syscmd)
                 os.system(syscmd)
             session.bt_lfp_fnames.append(os.path.join(file_str + ".LFP", session_dir +
