@@ -39,7 +39,7 @@ SKIP_BOX_PLOTS = False
 SKIP_SCATTER_PLOTS = False
 SKIP_SWARM_PLOTS = True
 SKIP_PERSEVBIAS_PLOTS = True
-SKIP_PERSEV_MEASURE_PLOTS = False
+SKIP_PERSEV_MEASURE_PLOTS = True
 SKIP_PERSEV_BOX_PLOTS = True
 SKIP_BINARY_PERSEVBIAS_PLOTS = True
 SKIP_BOUT_PLOTS = True
@@ -61,8 +61,9 @@ SKIP_PSEUDOPROBE_PLOTS = True
 SKIP_BASIC_BEHAVIOR_COMPARISON = True
 SKIP_CONSECUTIVE_SESSION_PLOTS = True
 SKIP_PSEUDOPROBE_PATH_PLOTS = True
-SKIP_OCCUPANCY_PLOTS = False
-SKIP_WELL_COLOR_GRIDS = False
+SKIP_OCCUPANCY_PLOTS = True
+SKIP_WELL_COLOR_GRIDS = True
+SKIP_SNIFF_TIMES = False
 
 PRINT_TRIAL_INFO = False
 SKIP_TO_MY_LOU_DARLIN = True
@@ -2166,3 +2167,8 @@ else:
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[180, 240]))
     makeAPersevMeasurePlot("probe_num_entries_240_300s",
                            lambda s, w: s.num_well_entries(True, w, timeInterval=[240, 300]))
+
+if SKIP_SNIFF_TIMES:
+    print("Warning, skipping sniff time plots")
+else:
+    makeAPersevMeasurePlot("probe_num_sniffs_full", lambda s, w: s.num_well_sniffs(True, w))

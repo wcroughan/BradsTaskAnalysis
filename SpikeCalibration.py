@@ -13,18 +13,18 @@ mkfigs = np.ones((100, ))
 # mkfigs[1] = True
 # mkfigs[2] = True
 # mkfigs[3] = True
-mkfigs[0] = False
-mkfigs[1] = False
-mkfigs[2] = False
-mkfigs[3] = False
-mkfigs[4] = False
-mkfigs[5] = False
-# mkfigs[6] = False
-mkfigs[7] = False
-# mkfigs[7] = True
-# mkfigs[9] = True
+mkfigs[0] = False  # waveforms
+mkfigs[1] = False  # spike peak amp scatter
+mkfigs[2] = False  # spike feats just cluster
+mkfigs[3] = False  # all LFP
+mkfigs[4] = False  # Old test, don't use
+mkfigs[5] = False  # LFP with noise marked
+mkfigs[6] = False  # LFP with peaks marked
+mkfigs[7] = False  # peaks marked with noise peaks excluded
+# mkfigs[8] = False # LFP with clustered spikes marked
+# mkfigs[9] = False # final PSTH fig
 
-DOWN_DEFLECT_NOISE_THRESH = -20000
+DOWN_DEFLECT_NOISE_THRESH = -40000
 NOISE_BWD_EXCLUDE_SECS = 1
 NOISE_FWD_EXCLUDE_SECS = 1
 
@@ -37,10 +37,13 @@ SPK_BIN_SZ_SECS = float(SPK_BIN_SZ_MS) / 1000.0
 
 LFP_HZ = 1500
 
-output_dir = '/home/wcroughan/data/B2/figs/'
+# output_dir = '/home/wcroughan/data/B2/figs/'
+output_dir = "/media/TOSHIBA EXT/B12/figs"
 
 # data_file = "/home/wcroughan/data/20210108_162804/20210108_162804.spikes/20210108_162804.spikes_nt7.dat"
-data_file = "/media/WDC2/B8/20210517_180358/20210517_180358.spikes/20210517_180358.spikes_nt2.dat"
+# data_file = "/media/WDC2/B8/20210517_180358/20210517_180358.spikes/20210517_180358.spikes_nt2.dat"
+data_file = "/media/TOSHIBA EXT/B12/20210901_152223/20210901_152223.spikes/20210901_152223.spikes_nt7.dat"
+# data_file = "/media/TOSHIBA EXT/B12/20210901_152223/20210901_152223.spikes/20210901_152223.spikes_nt5.dat"
 spike_data_dict = readTrodesExtractedDataFile3.readTrodesExtractedDataFile(data_file)
 spike_data = spike_data_dict['data']
 # features = np.zeros((spike_data.size, 3))
@@ -104,7 +107,9 @@ if np.any(mkfigs[0:3]) or np.any(mkfigs[8:]):
         plt.show()
 
     # c1spks_idxs = np.logical_and(features[:, 1] > 1100, features[:, 2] < 1000)
-    c1spks_idxs = features[:, 3] < features[:, 1] - 500
+    # c1spks_idxs = features[:, 3] < features[:, 1] - 500
+    c1spks_idxs = np.logical_and(np.logical_and(np.logical_and(
+        features[:, 1] > 575, features[:, 2] < 11.0/14.0*features[:, 1] + 785.0/7.0), features[:, 2] > 400), features[:, 1] < 1100)
     c1spks = features[c1spks_idxs, :]
     c1ts = spike_data['time'][c1spks_idxs]
     if mkfigs[2]:
@@ -135,13 +140,16 @@ if np.any(mkfigs[0:3]) or np.any(mkfigs[8:]):
         plt.show()
 
 # lfp_data_file = "/home/wcroughan/data/20210108_162804/20210108_162804.LFP/20210108_162804.LFP_nt7ch1.dat"
-lfp_data_file = "/media/WDC2/B8/20210517_180358/20210517_180358.LFP/20210517_180358.LFP_nt2ch2.dat"
+# lfp_data_file = "/media/WDC2/B8/20210517_180358/20210517_180358.LFP/20210517_180358.LFP_nt2ch2.dat"
+lfp_data_file = "/media/TOSHIBA EXT/B12/20210901_152223/20210901_152223.LFP/20210901_152223.LFP_nt7ch2.dat"
+# lfp_data_file = "/media/TOSHIBA EXT/B12/20210901_152223/20210901_152223.LFP/20210901_152223.LFP_nt5ch2.dat"
 lfp_data_dict = readTrodesExtractedDataFile3.readTrodesExtractedDataFile(lfp_data_file)
 lfp_data = lfp_data_dict['data']
 lfp_data = lfp_data.astype(float)
 
 # lfp_ts_file = "/home/wcroughan/data/20210108_162804/20210108_162804.LFP/20210108_162804.timestamps.dat"
-lfp_ts_file = "/media/WDC2/B8/20210517_180358/20210517_180358.LFP/20210517_180358.timestamps.dat"
+# lfp_ts_file = "/media/WDC2/B8/20210517_180358/20210517_180358.LFP/20210517_180358.timestamps.dat"
+lfp_ts_file = "/media/TOSHIBA EXT/B12/20210901_152223/20210901_152223.LFP/20210901_152223.timestamps.dat"
 lfp_ts_dict = readTrodesExtractedDataFile3.readTrodesExtractedDataFile(lfp_ts_file)
 lfp_ts = lfp_ts_dict['data']
 
@@ -211,8 +219,8 @@ if mkfigs[7]:
 
 if mkfigs[8]:
     ts = lfp_ts.astype(float) / 30000
-    plt.plot(ts, lfp_data)
-    plt.scatter(c1ts.astype(float) / 30000, np.ones_like(c1ts), c="#ff7f0e")
+    plt.plot(ts, lfp_data, zorder=1)
+    plt.scatter(c1ts.astype(float) / 30000, np.ones_like(c1ts), c="#ff7f0e", zorder=2)
     plt.show()
 
 NUM_PSTH_BINS = int(PSTH_MARGIN_MS / SPK_BIN_SZ_MS)

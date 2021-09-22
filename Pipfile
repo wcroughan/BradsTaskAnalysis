@@ -16,6 +16,7 @@ sortednp = "*"
 statsmodels = "*"
 mountainlab-pytools = "*"
 sklearn = "*"
+ffms2 = "*"
 
 [dev-packages]
 
