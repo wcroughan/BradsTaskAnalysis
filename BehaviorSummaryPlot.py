@@ -27,7 +27,7 @@ import statsmodels.api as sm
 
 # animal_name = 'B12_goodpos'
 # animal_name = 'B12'
-animal_name = 'B12_no19'
+animal_name = 'B12_highthresh'
 
 if animal_name == "Martin":
     data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
@@ -45,6 +45,13 @@ elif animal_name == "B12_goodpos":
     data_filename = "/media/WDC7/B12/processed_data/B12_goodpos_bradtask.dat"
     output_dir = "/media/WDC7/B12/processed_data/behavior_figures/goodpos/"
 
+elif animal_name == "B12_highthresh":
+    data_filename = "/media/WDC7/B12/processed_data/B12_highthresh_bradtask.dat"
+    output_dir = "/media/WDC7/B12/processed_data/behavior_figures/highthresh/"
+
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
 
 alldata = BTData()
 alldata.loadFromFile(data_filename)
@@ -58,8 +65,8 @@ SKIP_BOX_PLOTS = False
 SKIP_SCATTER_PLOTS = False
 SKIP_SWARM_PLOTS = True
 SKIP_PERSEVBIAS_PLOTS = True
-SKIP_PERSEV_MEASURE_PLOTS = False
-SKIP_PERSEV_BOX_PLOTS = False
+SKIP_PERSEV_MEASURE_PLOTS = True
+SKIP_PERSEV_BOX_PLOTS = True
 SKIP_BINARY_PERSEVBIAS_PLOTS = True
 SKIP_BOUT_PLOTS = True
 SKIP_WAIT_PLOTS = True
@@ -72,7 +79,7 @@ SKIP_AVG_SPEED_PLOTS = True
 SKIP_PERSEV_QUAD_PLOTS = True
 SKIP_BOUT_PROP_PLOTS = True
 SKIP_HW_PLOT = True
-SKIP_ORDER_PLOTS = False
+SKIP_ORDER_PLOTS = True
 SKIP_RIPPLE_PLACE_PLOTS = True
 SKIP_EVERY_MINUTE_PLOTS = True
 SKIP_PREV_SESSION_PLOTS = True
@@ -2222,13 +2229,19 @@ else:
     makeAPersevMeasurePlot("probe_total_sniff_time_90sec", lambda s,
                            w: s.total_sniff_time(True, w, timeInterval=[0, 90]))
 
-    makeAPersevMeasurePlot("bt_num_sniffs_full", lambda s,
-                           w: s.num_sniffs(False, w, excludeReward=True))
+    # makeAPersevMeasurePlot("bt_num_sniffs_full", lambda s,
+    #    w: s.num_sniffs(False, w, excludeReward=True))
 
     makeABoxPlot([sum([len(v) for v in sesh.probe_well_sniff_times_entry]) for sesh in all_sessions],
                  tlbls, ['Condition', 'num_probe_sniffs'], title="Probe_num_sniffs")
-    makeABoxPlot([sum([len(v) for v in sesh.bt_well_sniff_times_entry]) for sesh in all_sessions],
-                 tlbls, ['Condition', 'num_task_sniffs'], title="Task_num_sniffs")
+    # makeABoxPlot([sum([len(v) for v in sesh.bt_well_sniff_times_entry]) for sesh in all_sessions],
+    #  tlbls, ['Condition', 'num_task_sniffs'], title="Task_num_sniffs")
+
+    makeABoxPlot([sum([sesh.total_sniff_time(True, w) for w in all_well_names]) for sesh in all_sessions],
+                 tlbls, ['Condition', 'total_sniff_time'], title="Probe_total_sniff_time_allwells")
+    makeABoxPlot([(sesh.total_sniff_time(True, sesh.home_well) / sum([sesh.total_sniff_time(True, w) for w in all_well_names])) for sesh in all_sessions],
+                 tlbls, ['Condition', 'frac_sniff_at_home'], title="Probe_frac_sniff_at_home")
+
 
 if SKIP_SNIFF_WITH_POS_PLOTS:
     print("warning: skipping sniff plus pos plots")
