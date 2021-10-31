@@ -83,8 +83,8 @@ class BTSession:
         self.isRippleInterruption = False
         self.isDelayedInterruption = False
         self.isNoInterruption = False
-        # self.ripple_detection_tetrodes = []
-        self.ripple_detection_tetrodes = [37]
+        self.ripple_detection_tetrodes = []
+        # self.ripple_detection_tetrodes = [37]
 
         # Rat weight if it was recorded
         self.rat_weight = 0
@@ -258,6 +258,20 @@ class BTSession:
         self.probe_explore_bout_lens = []
         self.probe_bout_category = np.array([])
         self.probe_bout_label = np.array([])
+
+        self.well_sniff_times_entry = []
+        self.well_sniff_times_exit = []
+        self.bt_well_sniff_times_entry = []
+        self.bt_well_sniff_times_exit = []
+        self.probe_well_sniff_times_entry = []
+        self.probe_well_sniff_times_exit = []
+
+        self.sniff_pre_trial_light_off = None
+        self.sniff_trial_start = None
+        self.sniff_trial_stop = None
+        self.sniff_probe_start = None
+        self.sniff_probe_stop = None
+        self.sniff_post_probe_light_on = None
 
     def get_well_coordinates(self, wellName):
         return self.well_coords_map[str(wellName)]
@@ -466,6 +480,101 @@ class BTSession:
 
         return ents, exts
 
+    def sniff_entry_exit_times(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeEdgeOverlap=True, subtractT0=False):
+        """
+        return units: milliseconds
+        """
+        if subtractT0 or excludeReward:
+            raise Exception("Unimplemented")
+
+        wellIdx = np.argmax(self.all_well_names == wellName)
+
+        if inProbe:
+            ents = np.array(self.probe_well_sniff_times_entry[wellIdx])
+            exts = np.array(self.probe_well_sniff_times_exit[wellIdx])
+        else:
+            ents = np.array(self.bt_well_sniff_times_entry[wellIdx])
+            exts = np.array(self.bt_well_sniff_times_exit[wellIdx])
+
+        if excludeReward:
+            if wellName == self.home_well:
+                if len(self.home_well_find_times) == 0:
+                    # don't know when reward was delivered
+                    raise Exception("missing home well find times")
+
+                for ft, lt in zip(self.home_well_find_times, self.home_well_leave_times):
+                    wt = (ft + lt) / 2.0
+                    found = False
+                    todel = -1
+                    for ei, (ent, ext) in enumerate(zip(ents, exts)):
+                        if wt >= ent and wt <= ext:
+                            found = True
+                            todel = ei
+                            break
+
+                    if not found:
+                        raise Exception("couldn't find home well find time")
+
+                    ents = np.delete(ents, todel)
+                    exts = np.delete(exts, todel)
+
+            elif wellName in self.visited_away_wells:
+                if len(self.away_well_find_times) == 0:
+                    # don't know when rward was deliveered
+                    raise Exception("missing away well find times")
+
+                found = False
+                for ei, awi in enumerate(self.visited_away_wells):
+                    if awi == wellName:
+                        wt = (self.away_well_find_times[ei] + self.away_well_leave_times[ei]) / 2.0
+                        found = True
+                        break
+
+                if not found:
+                    raise Exception("can't find this away well find time")
+
+                found = False
+                todel = -1
+                for ei, (ent, ext) in enumerate(zip(ents, exts)):
+                    if wt >= ent and wt <= ext:
+                        found = True
+                        todel = ei
+                        break
+
+                if not found:
+                    raise Exception("can't find this away well find time")
+
+                ents = np.delete(ents, todel)
+                exts = np.delete(exts, todel)
+
+        if timeInterval is not None:
+            if inProbe:
+                mint = self.sniff_probe_start + timeInterval[0] * 1000
+                maxt = self.sniff_probe_start + timeInterval[1] * 1000
+            else:
+                mint = self.sniff_bt_start + timeInterval[0] * 1000
+                maxt = self.sniff_bt_start + timeInterval[1] * 1000
+
+            keepflag = np.logical_and(np.array(ents) < maxt, np.array(exts) > mint)
+            ents = ents[keepflag]
+            exts = exts[keepflag]
+            if len(ents) > 0:
+                if ents[0] < mint:
+                    if includeEdgeOverlap:
+                        ents[0] = mint
+                    else:
+                        ents = np.delete(ents, 0)
+                        exts = np.delete(exts, 0)
+            if len(ents) > 0:
+                if exts[-1] > maxt:
+                    if includeEdgeOverlap:
+                        exts[-1] = maxt
+                    else:
+                        ents = np.delete(ents, -1)
+                        exts = np.delete(exts, -1)
+
+        return ents, exts
+
     def avg_continuous_measure_at_well(self, inProbe, wellName, yvals,
                                        timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, excludeReward=False, includeNeighbors=False):
         if avgTypeFlag is None:
@@ -556,9 +665,53 @@ class BTSession:
         ret = self.dwell_times(inProbe, wellName, timeInterval=timeInterval,
                                excludeReward=excludeReward, includeNeighbors=includeNeighbors)
         if emptyVal is not None and len(ret) == 0:
+            # print("returning emptyval for well {}".format(wellName))
             return emptyVal
         else:
+            # print("ret is {} for well {}".format(ret, wellName))
             return avgFunc(ret / TRODES_SAMPLING_RATE)
+
+    def num_sniffs(self, inProbe, wellName, timeInterval=None, excludeReward=False):
+        # Just for now, hacking in excluded rewards
+        ents, _ = self.sniff_entry_exit_times(
+            inProbe, wellName, timeInterval=timeInterval)
+        # inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward)
+
+        ret = ents.size
+
+        if excludeReward and not inProbe:
+            if wellName == self.home_well:
+                ret -= self.num_home_found
+            elif wellName in self.visited_away_wells:
+                ret -= 1
+
+        return ret
+
+    def sniff_times(self, inProbe, wellName, timeInterval=None, excludeReward=False):
+        """
+        return units: milliseconds
+        """
+        ents, exts = self.sniff_entry_exit_times(
+            inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward)
+
+        return exts - ents
+
+    def avg_sniff_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False, emptyVal=None):
+        """
+        return units: seconds
+        """
+        ret = self.sniff_times(inProbe, wellName, timeInterval=timeInterval,
+                               excludeReward=excludeReward)
+        if emptyVal is not None and len(ret) == 0:
+            return emptyVal
+        else:
+            return avgFunc(ret / 1000.0)
+
+    def total_sniff_time(self, inProbe, wellName, timeInterval=None, excludeReward=False):
+        """
+        return units: seconds
+        """
+        return np.sum(self.sniff_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward) / 1000.0)
 
     def num_bouts(self, inProbe, timeInterval=None):
         if inProbe:

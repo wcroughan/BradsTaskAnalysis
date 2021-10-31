@@ -27,10 +27,12 @@ SPECIFIED_DAYS = ["20200604"]
 INSPECT_BOUTS = True
 SAVE_DONT_SHOW = True
 SHOW_CURVATURE_VIDEO = False
+SKIP_LFP = False
+SKIP_PREV_SESSION = True
 
 TEST_NEAREST_WELL = False
 
-animal_name = 'Martin'
+animal_name = 'B12_highthresh'
 
 if animal_name == "Martin":
     data_dir = '/media/WDC1/martindata/bradtask/'
@@ -43,12 +45,53 @@ if animal_name == "Martin":
                        "20200606", "20200605", "20200601"]
     excluded_dates += ["20200526"]
     excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
+    minimum_date = None
+
+    DEFAULT_RIP_DET_TET = 37
 
 elif animal_name == "B12":
-    data_dir = "/media/TOSHIBA EXT1/B12/bradtasksessions/"
-    output_dir = "/media/TOSHIBA EXT1/B12/processed_data/"
-    fig_output_dir = "/media/TOSHIBA EXT1/B12/processed_data/"
+    data_dir = "/media/WDC7/B12/bradtasksessions/"
+    output_dir = "/media/WDC7/B12/processed_data/"
+    fig_output_dir = "/media/WDC7/B12/processed_data/"
     out_filename = "B12_bradtask.dat"
+
+    excluded_dates = []
+    minimum_date = None
+    excluded_sessions = []
+    DEFAULT_RIP_DET_TET = 7
+
+elif animal_name == "B12_goodpos":
+    data_dir = "/media/WDC7/B12/bradtasksessions/"
+    output_dir = "/media/WDC7/B12/processed_data/"
+    fig_output_dir = "/media/WDC7/B12/processed_data/"
+    out_filename = "B12_goodpos_bradtask.dat"
+
+    excluded_dates = ["20210816", "20210817", "20210818", "20210819"]
+    minimum_date = None
+    excluded_sessions = []
+    DEFAULT_RIP_DET_TET = 7
+
+elif animal_name == "B12_no19":
+    data_dir = "/media/WDC7/B12/bradtasksessions/"
+    output_dir = "/media/WDC7/B12/processed_data/"
+    fig_output_dir = "/media/WDC7/B12/processed_data/"
+    out_filename = "B12_no19_bradtask.dat"
+
+    excluded_dates = ["20210819"]
+    minimum_date = None
+    excluded_sessions = []
+    DEFAULT_RIP_DET_TET = 7
+
+elif animal_name == "B12_highthresh":
+    data_dir = "/media/WDC7/B12/bradtasksessions/"
+    output_dir = "/media/WDC7/B12/processed_data/"
+    fig_output_dir = "/media/WDC7/B12/processed_data/"
+    out_filename = "B12_highthresh_bradtask.dat"
+
+    excluded_dates = []
+    minimum_date = "20210916"
+    excluded_sessions = ["20210917_1", "20210923_1", "20211004_1", "20211006_1"]
+    DEFAULT_RIP_DET_TET = 8
 
 
 all_data_dirs = sorted(os.listdir(data_dir), key=lambda s: (
@@ -518,6 +561,11 @@ if __name__ == "__main__":
             prevSession = session_dir
             continue
 
+        if minimum_date is not None and date_str < minimum_date:
+            print("skipping date {}, is before minimum date {}".format(date_str, minimum_date))
+            prevSession = session_dir
+            continue
+
         filtered_data_dirs.append(session_dir)
         prevSessionDirs.append(prevSession)
 
@@ -571,33 +619,38 @@ if __name__ == "__main__":
 
         position_data = readRawPositionData(
             file_str + '.1.videoPositionTracking')
-        if session.separate_probe_file:
-            probe_file_str = os.path.join(
-                session.probe_dir, os.path.basename(session.probe_dir))
-            bt_time_clips = readClipData(file_str + '.1.clips')[0]
-            probe_time_clips = readClipData(probe_file_str + '.1.clips')[0]
+        if position_data == 0:
+            print("Warning: skipping position data")
+            session.hasPositionData = False
         else:
-            time_clips = readClipData(file_str + '.1.clips')
-            bt_time_clips = time_clips[0]
-            probe_time_clips = time_clips[1]
+            session.hasPositionData = True
+            if session.separate_probe_file:
+                probe_file_str = os.path.join(
+                    session.probe_dir, os.path.basename(session.probe_dir))
+                bt_time_clips = readClipData(file_str + '.1.clips')[0]
+                probe_time_clips = readClipData(probe_file_str + '.1.clips')[0]
+            else:
+                time_clips = readClipData(file_str + '.1.clips')
+                bt_time_clips = time_clips[0]
+                probe_time_clips = time_clips[1]
 
-        xs, ys, ts = processPosData(position_data)
-        bt_start_idx = np.searchsorted(ts, bt_time_clips[0])
-        bt_end_idx = np.searchsorted(ts, bt_time_clips[1])
-        session.bt_pos_xs = xs[bt_start_idx:bt_end_idx]
-        session.bt_pos_ys = ys[bt_start_idx:bt_end_idx]
-        session.bt_pos_ts = ts[bt_start_idx:bt_end_idx]
-
-        if session.separate_probe_file:
-            position_data = readRawPositionData(
-                probe_file_str + '.1.videoPositionTracking')
             xs, ys, ts = processPosData(position_data)
+            bt_start_idx = np.searchsorted(ts, bt_time_clips[0])
+            bt_end_idx = np.searchsorted(ts, bt_time_clips[1])
+            session.bt_pos_xs = xs[bt_start_idx:bt_end_idx]
+            session.bt_pos_ys = ys[bt_start_idx:bt_end_idx]
+            session.bt_pos_ts = ts[bt_start_idx:bt_end_idx]
 
-        probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
-        probe_end_idx = np.searchsorted(ts, probe_time_clips[1])
-        session.probe_pos_xs = xs[probe_start_idx:probe_end_idx]
-        session.probe_pos_ys = ys[probe_start_idx:probe_end_idx]
-        session.probe_pos_ts = ts[probe_start_idx:probe_end_idx]
+            if session.separate_probe_file:
+                position_data = readRawPositionData(
+                    probe_file_str + '.1.videoPositionTracking')
+                xs, ys, ts = processPosData(position_data)
+
+            probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
+            probe_end_idx = np.searchsorted(ts, probe_time_clips[1])
+            session.probe_pos_xs = xs[probe_start_idx:probe_end_idx]
+            session.probe_pos_ys = ys[probe_start_idx:probe_end_idx]
+            session.probe_pos_ts = ts[probe_start_idx:probe_end_idx]
 
         # ===================================
         # Get flags and info from info file
@@ -619,19 +672,22 @@ if __name__ == "__main__":
             continue
 
         prevsession_dir = prevSessionDirs[session_idx]
-        prevdir_split = prevsession_dir.split('_')
-        prevdate_str = prevdir_split[0][-8:]
-        prevSessionInfoFile = os.path.join(behavior_notes_dir, prevdate_str + ".txt")
-        if not os.path.exists(prevSessionInfoFile):
-            # Switched numbering scheme once started doing multiple sessions a day
-            seshs_on_this_day = sorted(
-                list(filter(lambda seshdir: session.date_str + "_" in seshdir, filtered_data_dirs)))
-            num_on_this_day = len(seshs_on_this_day)
-            for i in range(num_on_this_day):
-                if seshs_on_this_day[i] == prevsession_dir:
-                    sesh_idx_within_day = i
-            prevSessionInfoFile = os.path.join(behavior_notes_dir, prevdate_str + "_" +
-                                               str(sesh_idx_within_day+1) + ".txt")
+        if prevsession_dir is None or SKIP_PREV_SESSION:
+            prevSessionInfoFile = None
+        else:
+            prevdir_split = prevsession_dir.split('_')
+            prevdate_str = prevdir_split[0][-8:]
+            prevSessionInfoFile = os.path.join(behavior_notes_dir, prevdate_str + ".txt")
+            if not os.path.exists(prevSessionInfoFile):
+                # Switched numbering scheme once started doing multiple sessions a day
+                seshs_on_this_day = sorted(
+                    list(filter(lambda seshdir: session.date_str + "_" in seshdir, filtered_data_dirs)))
+                num_on_this_day = len(seshs_on_this_day)
+                for i in range(num_on_this_day):
+                    if seshs_on_this_day[i] == prevsession_dir:
+                        sesh_idx_within_day = i
+                prevSessionInfoFile = os.path.join(behavior_notes_dir, prevdate_str + "_" +
+                                                   str(sesh_idx_within_day+1) + ".txt")
 
         try:
             with open(info_file, 'r') as f:
@@ -654,12 +710,12 @@ if __name__ == "__main__":
                         # print(field_name, field_val)
                         # print(session.away_wells)
                     elif field_name.lower() == "condition":
-                        type_in = field_val
-                        if 'Ripple' in type_in or 'Interruption' in type_in:
+                        type_in = field_val.lower()
+                        if 'ripple' in type_in or 'interruption' in type_in:
                             session.isRippleInterruption = True
-                        elif 'None' in type_in:
+                        elif 'none' in type_in:
                             session.isNoInterruption = True
-                        elif 'Delayed' in type_in:
+                        elif 'delay' in type_in:
                             session.isDelayedInterruption = True
                         else:
                             print("Couldn't recognize Condition {} in file {}".format(
@@ -674,6 +730,9 @@ if __name__ == "__main__":
                                 field_val)
                     elif field_name.lower() == "last away":
                         session.last_away_well = float(field_val)
+                        # print(field_val)
+                    elif field_name.lower() == "reference":
+                        session.ripple_detection_tetrodes = [int(field_val)]
                         # print(field_val)
                     elif field_name.lower() == "last well":
                         ended_on = field_val
@@ -734,82 +793,89 @@ if __name__ == "__main__":
             print(info_file)
             raise err
 
-        try:
-            with open(prevSessionInfoFile, 'r') as f:
-                session.prevSessionInfoParsed = True
-                lines = f.readlines()
-                for line in lines:
-                    lineparts = line.split(":")
-                    if len(lineparts) != 2:
-                        continue
+        if prevSessionInfoFile is not None:
+            try:
+                with open(prevSessionInfoFile, 'r') as f:
+                    session.prevSessionInfoParsed = True
+                    lines = f.readlines()
+                    for line in lines:
+                        lineparts = line.split(":")
+                        if len(lineparts) != 2:
+                            continue
 
-                    field_name = lineparts[0]
-                    field_val = lineparts[1]
+                        field_name = lineparts[0]
+                        field_val = lineparts[1]
 
-                    if field_name.lower() == "home":
-                        session.prevSessionHome = int(field_val)
-                    elif field_name.lower() == "aways":
-                        session.prevSessionAways = [int(w)
-                                                    for w in field_val.strip().split(' ')]
-                    elif field_name.lower() == "condition":
-                        type_in = field_val
-                        if 'Ripple' in type_in or 'Interruption' in type_in:
-                            session.prevSessionIsRippleInterruption = True
-                        elif 'None' in type_in:
-                            session.prevSessionIsNoInterruption = True
-                        elif 'Delayed' in type_in:
-                            session.prevSessionIsDelayedInterruption = True
+                        if field_name.lower() == "home":
+                            session.prevSessionHome = int(field_val)
+                        elif field_name.lower() == "aways":
+                            session.prevSessionAways = [int(w)
+                                                        for w in field_val.strip().split(' ')]
+                        elif field_name.lower() == "condition":
+                            type_in = field_val
+                            if 'Ripple' in type_in or 'Interruption' in type_in:
+                                session.prevSessionIsRippleInterruption = True
+                            elif 'None' in type_in:
+                                session.prevSessionIsNoInterruption = True
+                            elif 'Delay' in type_in:
+                                session.prevSessionIsDelayedInterruption = True
+                            else:
+                                print("Couldn't recognize Condition {} in file {}".format(
+                                    type_in, prevSessionInfoFile))
+                        elif field_name.lower() == "thresh":
+                            if "Low" in field_val:
+                                session.prevSession_ripple_detection_threshold = 2.5
+                            elif "High" in field_val:
+                                session.prevSession_ripple_detection_threshold = 4
+                            else:
+                                session.prevSession_ripple_detection_threshold = float(
+                                    field_val)
+                        elif field_name.lower() == "last away":
+                            session.prevSession_last_away_well = float(field_val)
+                            # print(field_val)
+                        elif field_name.lower() == "last well":
+                            ended_on = field_val
+                            if 'H' in field_val:
+                                session.prevSession_ended_on_home = True
+                            elif 'A' in field_val:
+                                session.prevSession_ended_on_home = False
+                            else:
+                                print("Couldn't recognize last well {} in file {}".format(
+                                    field_val, prevSessionInfoFile))
+                        elif field_name.lower() == "iti stim on":
+                            if 'Y' in field_val:
+                                session.prevSession_ITI_stim_on = True
+                            elif 'N' in field_val:
+                                session.prevSession_ITI_stim_on = False
+                            else:
+                                print("Couldn't recognize ITI Stim condition {} in file {}".format(
+                                    field_val, prevSessionInfoFile))
+                        elif field_name.lower() == "probe stim on":
+                            if 'Y' in field_val:
+                                session.prevSession_probe_stim_on = True
+                            elif 'N' in field_val:
+                                session.prevSession_probe_stim_on = False
+                            else:
+                                print("Couldn't recognize Probe Stim condition {} in file {}".format(
+                                    field_val, prevSessionInfoFile))
                         else:
-                            print("Couldn't recognize Condition {} in file {}".format(
-                                type_in, prevSessionInfoFile))
-                    elif field_name.lower() == "thresh":
-                        if "Low" in field_val:
-                            session.prevSession_ripple_detection_threshold = 2.5
-                        elif "High" in field_val:
-                            session.prevSession_ripple_detection_threshold = 4
-                        else:
-                            session.prevSession_ripple_detection_threshold = float(
-                                field_val)
-                    elif field_name.lower() == "last away":
-                        session.prevSession_last_away_well = float(field_val)
-                        # print(field_val)
-                    elif field_name.lower() == "last well":
-                        ended_on = field_val
-                        if 'H' in field_val:
-                            session.prevSession_ended_on_home = True
-                        elif 'A' in field_val:
-                            session.prevSession_ended_on_home = False
-                        else:
-                            print("Couldn't recognize last well {} in file {}".format(
-                                field_val, prevSessionInfoFile))
-                    elif field_name.lower() == "iti stim on":
-                        if 'Y' in field_val:
-                            session.prevSession_ITI_stim_on = True
-                        elif 'N' in field_val:
-                            session.prevSession_ITI_stim_on = False
-                        else:
-                            print("Couldn't recognize ITI Stim condition {} in file {}".format(
-                                field_val, prevSessionInfoFile))
-                    elif field_name.lower() == "probe stim on":
-                        if 'Y' in field_val:
-                            session.prevSession_probe_stim_on = True
-                        elif 'N' in field_val:
-                            session.prevSession_probe_stim_on = False
-                        else:
-                            print("Couldn't recognize Probe Stim condition {} in file {}".format(
-                                field_val, prevSessionInfoFile))
-                    else:
-                        pass
+                            pass
 
-        except FileNotFoundError as err:
+            except FileNotFoundError as err:
+                session.prevSessionInfoParsed = False
+                print("Couldn't read from prev session info file " + prevSessionInfoFile)
+
+        else:
             session.prevSessionInfoParsed = False
-            print("Couldn't read from prev session info file " + prevSessionInfoFile)
 
         if session.home_well == 0:
             print("Home well not listed in notes file, skipping")
             continue
 
         well_coords_file_name = file_str + '.1.wellLocations.csv'
+        if not os.path.exists(well_coords_file_name):
+            well_coords_file_name = os.path.join(data_dir, 'well_locations.csv')
+            print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
         session.well_coords_map = readWellCoordsFile(well_coords_file_name)
         session.home_x, session.home_y = get_well_coordinates(
             session.home_well, session.well_coords_map)
@@ -822,6 +888,9 @@ if __name__ == "__main__":
         #         print(syscmd)
         #         os.system(syscmd)
 
+        if len(session.ripple_detection_tetrodes) == 0:
+            session.ripple_detection_tetrodes = [DEFAULT_RIP_DET_TET]
+
         for i in range(len(session.ripple_detection_tetrodes)):
             lfpdir = file_str + ".LFP"
             if not os.path.exists(lfpdir):
@@ -830,8 +899,12 @@ if __name__ == "__main__":
                 syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + file_str + ".rec"
                 print(syscmd)
                 os.system(syscmd)
-            session.bt_lfp_fnames.append(os.path.join(file_str + ".LFP", session_dir +
-                                                      ".LFP_nt" + str(session.ripple_detection_tetrodes[i]) + "ch1.dat"))
+
+            gl = lfpdir + "/" + session_dir + ".LFP_nt" + \
+                str(session.ripple_detection_tetrodes[i]) + "ch*.dat"
+            lfpfilelist = glob.glob(gl)
+            lfpfilename = lfpfilelist[0]
+            session.bt_lfp_fnames.append(lfpfilename)
             all_lfp_data.append(MountainViewIO.loadLFP(data_file=session.bt_lfp_fnames[-1]))
 
         # ======================================================================
@@ -843,18 +916,19 @@ if __name__ == "__main__":
         # ===================================
         # LFP
         # ===================================
-        lfp_data = all_lfp_data[0][1]['voltage']
-        lfp_timestamps = all_lfp_data[0][0]['time']
+        if not SKIP_LFP:
+            lfp_data = all_lfp_data[0][1]['voltage']
+            lfp_timestamps = all_lfp_data[0][0]['time']
 
-        lfp_deflections = signal.find_peaks(-lfp_data, height=DEFLECTION_THRESHOLD_HI,
-                                            distance=MIN_ARTIFACT_DISTANCE)
-        interruption_idxs = lfp_deflections[0]
-        session.interruption_timestamps = lfp_timestamps[interruption_idxs]
+            lfp_deflections = signal.find_peaks(-lfp_data, height=DEFLECTION_THRESHOLD_HI,
+                                                distance=MIN_ARTIFACT_DISTANCE)
+            interruption_idxs = lfp_deflections[0]
+            session.interruption_timestamps = lfp_timestamps[interruption_idxs]
 
-        lfp_deflections = signal.find_peaks(np.abs(
-            np.diff(lfp_data, prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO, distance=MIN_ARTIFACT_DISTANCE)
-        lfp_artifact_idxs = lfp_deflections[0]
-        session.artifact_timestamps = lfp_timestamps[lfp_artifact_idxs]
+            lfp_deflections = signal.find_peaks(np.abs(
+                np.diff(lfp_data, prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO, distance=MIN_ARTIFACT_DISTANCE)
+            lfp_artifact_idxs = lfp_deflections[0]
+            session.artifact_timestamps = lfp_timestamps[lfp_artifact_idxs]
 
         # ripple_power = get_ripple_power(lfp_data, omit_artifacts=True,
         #                                 causal_smoothing=False, lfp_deflections=lfp_artifact_idxs)
@@ -952,620 +1026,651 @@ if __name__ == "__main__":
                     np.append([session.bt_pos_ts[0]],
                               session.away_well_leave_times)
 
-        # ===================================
-        # separating movement time from still time
-        # ===================================
-        bt_vel = np.sqrt(np.power(np.diff(session.bt_pos_xs), 2) +
-                         np.power(np.diff(session.bt_pos_ys), 2))
-        session.bt_vel_cm_s = np.divide(bt_vel, np.diff(session.bt_pos_ts) /
-                                        TRODES_SAMPLING_RATE) / PIXELS_PER_CM
-        bt_is_mv = session.bt_vel_cm_s > VEL_THRESH
-        bt_is_mv = np.append(bt_is_mv, np.array(bt_is_mv[-1]))
-        session.bt_is_mv = bt_is_mv
-        session.bt_mv_xs = np.array(session.bt_pos_xs)
-        session.bt_mv_xs[np.logical_not(bt_is_mv)] = np.nan
-        session.bt_still_xs = np.array(session.bt_pos_xs)
-        session.bt_still_xs[bt_is_mv] = np.nan
-        session.bt_mv_ys = np.array(session.bt_pos_ys)
-        session.bt_mv_ys[np.logical_not(bt_is_mv)] = np.nan
-        session.bt_still_ys = np.array(session.bt_pos_ys)
-        session.bt_still_ys[bt_is_mv] = np.nan
+        if session.hasPositionData:
+            # ===================================
+            # separating movement time from still time
+            # ===================================
+            bt_vel = np.sqrt(np.power(np.diff(session.bt_pos_xs), 2) +
+                             np.power(np.diff(session.bt_pos_ys), 2))
+            session.bt_vel_cm_s = np.divide(bt_vel, np.diff(session.bt_pos_ts) /
+                                            TRODES_SAMPLING_RATE) / PIXELS_PER_CM
+            bt_is_mv = session.bt_vel_cm_s > VEL_THRESH
+            bt_is_mv = np.append(bt_is_mv, np.array(bt_is_mv[-1]))
+            session.bt_is_mv = bt_is_mv
+            session.bt_mv_xs = np.array(session.bt_pos_xs)
+            session.bt_mv_xs[np.logical_not(bt_is_mv)] = np.nan
+            session.bt_still_xs = np.array(session.bt_pos_xs)
+            session.bt_still_xs[bt_is_mv] = np.nan
+            session.bt_mv_ys = np.array(session.bt_pos_ys)
+            session.bt_mv_ys[np.logical_not(bt_is_mv)] = np.nan
+            session.bt_still_ys = np.array(session.bt_pos_ys)
+            session.bt_still_ys[bt_is_mv] = np.nan
 
-        probe_vel = np.sqrt(np.power(np.diff(session.probe_pos_xs), 2) +
-                            np.power(np.diff(session.probe_pos_ys), 2))
-        session.probe_vel_cm_s = np.divide(probe_vel, np.diff(session.probe_pos_ts) /
-                                           TRODES_SAMPLING_RATE) / PIXELS_PER_CM
-        probe_is_mv = session.probe_vel_cm_s > VEL_THRESH
-        probe_is_mv = np.append(probe_is_mv, np.array(probe_is_mv[-1]))
-        session.probe_is_mv = probe_is_mv
-        session.probe_mv_xs = np.array(session.probe_pos_xs)
-        session.probe_mv_xs[np.logical_not(probe_is_mv)] = np.nan
-        session.probe_still_xs = np.array(session.probe_pos_xs)
-        session.probe_still_xs[probe_is_mv] = np.nan
-        session.probe_mv_ys = np.array(session.probe_pos_ys)
-        session.probe_mv_ys[np.logical_not(probe_is_mv)] = np.nan
-        session.probe_still_ys = np.array(session.probe_pos_ys)
-        session.probe_still_ys[probe_is_mv] = np.nan
+            probe_vel = np.sqrt(np.power(np.diff(session.probe_pos_xs), 2) +
+                                np.power(np.diff(session.probe_pos_ys), 2))
+            session.probe_vel_cm_s = np.divide(probe_vel, np.diff(session.probe_pos_ts) /
+                                               TRODES_SAMPLING_RATE) / PIXELS_PER_CM
+            probe_is_mv = session.probe_vel_cm_s > VEL_THRESH
+            probe_is_mv = np.append(probe_is_mv, np.array(probe_is_mv[-1]))
+            session.probe_is_mv = probe_is_mv
+            session.probe_mv_xs = np.array(session.probe_pos_xs)
+            session.probe_mv_xs[np.logical_not(probe_is_mv)] = np.nan
+            session.probe_still_xs = np.array(session.probe_pos_xs)
+            session.probe_still_xs[probe_is_mv] = np.nan
+            session.probe_mv_ys = np.array(session.probe_pos_ys)
+            session.probe_mv_ys[np.logical_not(probe_is_mv)] = np.nan
+            session.probe_still_ys = np.array(session.probe_pos_ys)
+            session.probe_still_ys[probe_is_mv] = np.nan
 
-        # ===================================
-        # Perseveration measures
-        # ===================================
-        session.ctrl_home_well = 49 - session.home_well
-        session.ctrl_home_x, session.ctrl_home_y = get_well_coordinates(
-            session.ctrl_home_well, session.well_coords_map)
+            # ===================================
+            # Perseveration measures
+            # ===================================
+            session.ctrl_home_well = 49 - session.home_well
+            session.ctrl_home_x, session.ctrl_home_y = get_well_coordinates(
+                session.ctrl_home_well, session.well_coords_map)
 
-        # ===================================
-        # Well and quadrant entry and exit times
-        # ===================================
-        session.bt_nearest_wells = getNearestWell(
-            session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map)
+            # ===================================
+            # Well and quadrant entry and exit times
+            # ===================================
+            session.bt_nearest_wells = getNearestWell(
+                session.bt_pos_xs, session.bt_pos_ys, session.well_coords_map)
 
-        session.bt_quadrants = np.array(
-            [quadrantOfWell(wi) for wi in session.bt_nearest_wells])
-        session.home_quadrant = quadrantOfWell(session.home_well)
+            session.bt_quadrants = np.array(
+                [quadrantOfWell(wi) for wi in session.bt_nearest_wells])
+            session.home_quadrant = quadrantOfWell(session.home_well)
 
-        session.bt_well_entry_idxs, session.bt_well_exit_idxs, \
-            session.bt_well_entry_times, session.bt_well_exit_times = \
-            getWellEntryAndExitTimes(
-                session.bt_nearest_wells, session.bt_pos_ts)
+            session.bt_well_entry_idxs, session.bt_well_exit_idxs, \
+                session.bt_well_entry_times, session.bt_well_exit_times = \
+                getWellEntryAndExitTimes(
+                    session.bt_nearest_wells, session.bt_pos_ts)
 
-        # ninc stands for neighbors included
-        session.bt_well_entry_idxs_ninc, session.bt_well_exit_idxs_ninc, \
-            session.bt_well_entry_times_ninc, session.bt_well_exit_times_ninc = \
-            getWellEntryAndExitTimes(
-                session.bt_nearest_wells, session.bt_pos_ts, include_neighbors=True)
+            # ninc stands for neighbors included
+            session.bt_well_entry_idxs_ninc, session.bt_well_exit_idxs_ninc, \
+                session.bt_well_entry_times_ninc, session.bt_well_exit_times_ninc = \
+                getWellEntryAndExitTimes(
+                    session.bt_nearest_wells, session.bt_pos_ts, include_neighbors=True)
 
-        session.bt_quadrant_entry_idxs, session.bt_quadrant_exit_idxs, \
-            session.bt_quadrant_entry_times, session.bt_quadrant_exit_times = \
-            getWellEntryAndExitTimes(
-                session.bt_quadrants, session.bt_pos_ts, well_idxs=[0, 1, 2, 3])
+            session.bt_quadrant_entry_idxs, session.bt_quadrant_exit_idxs, \
+                session.bt_quadrant_entry_times, session.bt_quadrant_exit_times = \
+                getWellEntryAndExitTimes(
+                    session.bt_quadrants, session.bt_pos_ts, well_idxs=[0, 1, 2, 3])
 
-        for i in range(len(all_well_names)):
-            # print("well {} had {} entries, {} exits".format(
-            #     all_well_names[i], len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
-            assert len(session.bt_well_entry_times[i]) == len(
-                session.bt_well_exit_times[i])
+            for i in range(len(all_well_names)):
+                # print("well {} had {} entries, {} exits".format(
+                #     all_well_names[i], len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
+                assert len(session.bt_well_entry_times[i]) == len(
+                    session.bt_well_exit_times[i])
 
-        session.home_well_idx_in_allwells = np.argmax(
-            all_well_names == session.home_well)
-        session.ctrl_home_well_idx_in_allwells = np.argmax(
-            all_well_names == session.ctrl_home_well)
+            session.home_well_idx_in_allwells = np.argmax(
+                all_well_names == session.home_well)
+            session.ctrl_home_well_idx_in_allwells = np.argmax(
+                all_well_names == session.ctrl_home_well)
 
-        session.bt_home_well_entry_times = session.bt_well_entry_times[
-            session.home_well_idx_in_allwells]
-        session.bt_home_well_exit_times = session.bt_well_exit_times[
-            session.home_well_idx_in_allwells]
+            session.bt_home_well_entry_times = session.bt_well_entry_times[
+                session.home_well_idx_in_allwells]
+            session.bt_home_well_exit_times = session.bt_well_exit_times[
+                session.home_well_idx_in_allwells]
 
-        session.bt_ctrl_home_well_entry_times = session.bt_well_entry_times[
-            session.ctrl_home_well_idx_in_allwells]
-        session.bt_ctrl_home_well_exit_times = session.bt_well_exit_times[
-            session.ctrl_home_well_idx_in_allwells]
+            session.bt_ctrl_home_well_entry_times = session.bt_well_entry_times[
+                session.ctrl_home_well_idx_in_allwells]
+            session.bt_ctrl_home_well_exit_times = session.bt_well_exit_times[
+                session.ctrl_home_well_idx_in_allwells]
 
-        # same for during probe
-        session.probe_nearest_wells = getNearestWell(
-            session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map)
+            # same for during probe
+            session.probe_nearest_wells = getNearestWell(
+                session.probe_pos_xs, session.probe_pos_ys, session.well_coords_map)
 
-        session.probe_well_entry_idxs, session.probe_well_exit_idxs, \
-            session.probe_well_entry_times, session.probe_well_exit_times = getWellEntryAndExitTimes(
-                session.probe_nearest_wells, session.probe_pos_ts)
+            session.probe_well_entry_idxs, session.probe_well_exit_idxs, \
+                session.probe_well_entry_times, session.probe_well_exit_times = getWellEntryAndExitTimes(
+                    session.probe_nearest_wells, session.probe_pos_ts)
 
-        session.probe_well_entry_idxs_ninc, session.probe_well_exit_idxs_ninc, \
-            session.probe_well_entry_times_ninc, session.probe_well_exit_times_ninc = getWellEntryAndExitTimes(
-                session.probe_nearest_wells, session.probe_pos_ts, include_neighbors=True)
+            session.probe_well_entry_idxs_ninc, session.probe_well_exit_idxs_ninc, \
+                session.probe_well_entry_times_ninc, session.probe_well_exit_times_ninc = getWellEntryAndExitTimes(
+                    session.probe_nearest_wells, session.probe_pos_ts, include_neighbors=True)
 
-        session.probe_quadrants = np.array(
-            [quadrantOfWell(wi) for wi in session.probe_nearest_wells])
+            session.probe_quadrants = np.array(
+                [quadrantOfWell(wi) for wi in session.probe_nearest_wells])
 
-        session.probe_quadrant_entry_idxs, session.probe_quadrant_exit_idxs, \
-            session.probe_quadrant_entry_times, session.probe_quadrant_exit_times = getWellEntryAndExitTimes(
-                session.probe_quadrants, session.probe_pos_ts, well_idxs=[0, 1, 2, 3])
+            session.probe_quadrant_entry_idxs, session.probe_quadrant_exit_idxs, \
+                session.probe_quadrant_entry_times, session.probe_quadrant_exit_times = getWellEntryAndExitTimes(
+                    session.probe_quadrants, session.probe_pos_ts, well_idxs=[0, 1, 2, 3])
 
-        for i in range(len(all_well_names)):
-            # print(i, len(session.probe_well_entry_times[i]), len(session.probe_well_exit_times[i]))
-            assert len(session.probe_well_entry_times[i]) == len(
-                session.probe_well_exit_times[i])
+            for i in range(len(all_well_names)):
+                # print(i, len(session.probe_well_entry_times[i]), len(session.probe_well_exit_times[i]))
+                assert len(session.probe_well_entry_times[i]) == len(
+                    session.probe_well_exit_times[i])
 
-        session.probe_home_well_entry_times = session.probe_well_entry_times[
-            session.home_well_idx_in_allwells]
-        session.probe_home_well_exit_times = session.probe_well_exit_times[
-            session.home_well_idx_in_allwells]
+            session.probe_home_well_entry_times = session.probe_well_entry_times[
+                session.home_well_idx_in_allwells]
+            session.probe_home_well_exit_times = session.probe_well_exit_times[
+                session.home_well_idx_in_allwells]
 
-        session.probe_ctrl_home_well_entry_times = session.probe_well_entry_times[
-            session.ctrl_home_well_idx_in_allwells]
-        session.probe_ctrl_home_well_exit_times = session.probe_well_exit_times[
-            session.ctrl_home_well_idx_in_allwells]
+            session.probe_ctrl_home_well_entry_times = session.probe_well_entry_times[
+                session.ctrl_home_well_idx_in_allwells]
+            session.probe_ctrl_home_well_exit_times = session.probe_well_exit_times[
+                session.ctrl_home_well_idx_in_allwells]
 
         # ===================================
         # Sniff times marked by hand from USB camera (Not available for Martin)
         # ===================================
 
-        sniffTimesFile = file_str + '.rgs'
+        gl = data_dir + session_dir + '/*.rgs'
+        print(gl)
+        dir_list = glob.glob(gl)
+        sniffTimesFile = dir_list[0]
+        if len(dir_list) > 1:
+            print("Warning, multiple rgs files found: {}".format(dir_list))
+
         if not os.path.exists(sniffTimesFile):
-            print("Please save your sniff regions file to {}".format(sniffTimesFile))
+            raise Exception("Couldn't find rgs file")
         else:
-            streader = csv.reader(sniffTimesFile)
-            sniffData = list(streader)
+            print("getting rgs from {}".format(sniffTimesFile))
+            with open(sniffTimesFile, 'r') as stf:
+                streader = csv.reader(stf)
+                sniffData = [v for v in streader]
 
-            session.well_sniff_times_entry = [[] for _ in all_well_names]
+                session.well_sniff_times_entry = [[] for _ in all_well_names]
+                session.well_sniff_times_exit = [[] for _ in all_well_names]
+                session.bt_well_sniff_times_entry = [[] for _ in all_well_names]
+                session.bt_well_sniff_times_exit = [[] for _ in all_well_names]
+                session.probe_well_sniff_times_entry = [[] for _ in all_well_names]
+                session.probe_well_sniff_times_exit = [[] for _ in all_well_names]
 
-            session.sniff_pre_trial_light_off = sniffData[0][0]
-            session.sniff_trial_start = sniffData[0][1]
-            session.sniff_trial_stop = sniffData[0][2]
-            session.sniff_probe_start = sniffData[1][0]
-            session.sniff_probe_stop = sniffData[1][1]
-            session.sniff_post_probe_light_on = sniffData[1][2]
+                session.sniff_pre_trial_light_off = int(sniffData[0][0])
+                session.sniff_trial_start = int(sniffData[0][1])
+                session.sniff_trial_stop = int(sniffData[0][2])
+                session.sniff_probe_start = int(sniffData[1][0])
+                session.sniff_probe_stop = int(sniffData[1][1])
+                session.sniff_post_probe_light_on = int(sniffData[1][2])
 
-            for i in sniffData[2:]:
-                session.well_sniff_times_entry[well_name_to_idx[int(i[2])]].append(int(i[0]))
-                session.well_sniff_times_exit[well_name_to_idx[int(i[2])]].append(int(i[1]))
+                for i in sniffData[2:]:
+                    w = int(well_name_to_idx[int(i[2])])
+                    entry_time = int(i[0])
+                    exit_time = int(i[1])
+                    session.well_sniff_times_entry[w].append(entry_time)
+                    session.well_sniff_times_exit[w].append(exit_time)
 
-        # ===================================
-        # Ballisticity of movements
-        # ===================================
+                    if exit_time < entry_time:
+                        print("mismatched interval: {} - {}".format(entry_time, exit_time))
+                        assert False
+                    if exit_time < session.sniff_trial_stop:
+                        session.bt_well_sniff_times_entry[w].append(entry_time)
+                        session.bt_well_sniff_times_exit[w].append(exit_time)
+                    else:
+                        session.probe_well_sniff_times_entry[w].append(entry_time)
+                        session.probe_well_sniff_times_exit[w].append(exit_time)
 
-        furthest_interval = max(BALL_TIME_INTERVALS)
-        assert np.all(np.diff(np.array(BALL_TIME_INTERVALS)) > 0)
-        assert BALL_TIME_INTERVALS[0] > 0
+        if session.hasPositionData:
+            # ===================================
+            # Ballisticity of movements
+            # ===================================
+            furthest_interval = max(BALL_TIME_INTERVALS)
+            assert np.all(np.diff(np.array(BALL_TIME_INTERVALS)) > 0)
+            assert BALL_TIME_INTERVALS[0] > 0
 
-        # idx is (time, interval len, dimension)
-        d1 = len(session.bt_pos_ts) - furthest_interval
-        delta = np.empty((d1, furthest_interval, 2))
-        delta[:] = np.nan
-        dx = np.diff(session.bt_pos_xs)
-        dy = np.diff(session.bt_pos_ys)
-        delta[:, 0, 0] = dx[0:d1]
-        delta[:, 0, 1] = dy[0:d1]
+            # idx is (time, interval len, dimension)
+            d1 = len(session.bt_pos_ts) - furthest_interval
+            delta = np.empty((d1, furthest_interval, 2))
+            delta[:] = np.nan
+            dx = np.diff(session.bt_pos_xs)
+            dy = np.diff(session.bt_pos_ys)
+            delta[:, 0, 0] = dx[0:d1]
+            delta[:, 0, 1] = dy[0:d1]
 
-        for i in range(1, furthest_interval):
-            delta[:, i, 0] = delta[:, i-1, 0] + dx[i:i+d1]
-            delta[:, i, 1] = delta[:, i-1, 1] + dy[i:i+d1]
+            for i in range(1, furthest_interval):
+                delta[:, i, 0] = delta[:, i-1, 0] + dx[i:i+d1]
+                delta[:, i, 1] = delta[:, i-1, 1] + dy[i:i+d1]
 
-        displacement = np.sqrt(np.sum(np.square(delta), axis=2))
-        last_displacement = displacement[:, -1]
-        session.bt_ball_displacement = last_displacement
+            displacement = np.sqrt(np.sum(np.square(delta), axis=2))
+            last_displacement = displacement[:, -1]
+            session.bt_ball_displacement = last_displacement
 
-        x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
-        y = np.log(displacement)
-        assert np.all(np.logical_or(
-            np.logical_not(np.isnan(y)), displacement == 0))
-        y[y == -np.inf] = np.nan
-        np.nan_to_num(y, copy=False, nan=np.nanmin(y))
+            x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
+            y = np.log(displacement)
+            assert np.all(np.logical_or(
+                np.logical_not(np.isnan(y)), displacement == 0))
+            y[y == -np.inf] = np.nan
+            np.nan_to_num(y, copy=False, nan=np.nanmin(y))
 
-        x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
-        y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
-        def m(arg): return np.mean(arg, axis=1)
-        # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
-        beta = m(y*x)/m(np.power(x, 2))
-        session.bt_ballisticity = beta
-        assert np.sum(np.isnan(session.bt_ballisticity)) == 0
+            x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
+            y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
+            def m(arg): return np.mean(arg, axis=1)
+            # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
+            beta = m(y*x)/m(np.power(x, 2))
+            session.bt_ballisticity = beta
+            assert np.sum(np.isnan(session.bt_ballisticity)) == 0
 
-        # idx is (time, interval len, dimension)
-        d1 = len(session.probe_pos_ts) - furthest_interval
-        delta = np.empty((d1, furthest_interval, 2))
-        delta[:] = np.nan
-        dx = np.diff(session.probe_pos_xs)
-        dy = np.diff(session.probe_pos_ys)
-        delta[:, 0, 0] = dx[0:d1]
-        delta[:, 0, 1] = dy[0:d1]
+            # idx is (time, interval len, dimension)
+            d1 = len(session.probe_pos_ts) - furthest_interval
+            delta = np.empty((d1, furthest_interval, 2))
+            delta[:] = np.nan
+            dx = np.diff(session.probe_pos_xs)
+            dy = np.diff(session.probe_pos_ys)
+            delta[:, 0, 0] = dx[0:d1]
+            delta[:, 0, 1] = dy[0:d1]
 
-        for i in range(1, furthest_interval):
-            delta[:, i, 0] = delta[:, i-1, 0] + dx[i:i+d1]
-            delta[:, i, 1] = delta[:, i-1, 1] + dy[i:i+d1]
+            for i in range(1, furthest_interval):
+                delta[:, i, 0] = delta[:, i-1, 0] + dx[i:i+d1]
+                delta[:, i, 1] = delta[:, i-1, 1] + dy[i:i+d1]
 
-        displacement = np.sqrt(np.sum(np.square(delta), axis=2))
-        last_displacement = displacement[:, -1]
-        session.probe_ball_displacement = last_displacement
+            displacement = np.sqrt(np.sum(np.square(delta), axis=2))
+            last_displacement = displacement[:, -1]
+            session.probe_ball_displacement = last_displacement
 
-        x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
-        y = np.log(displacement)
-        assert np.all(np.logical_or(
-            np.logical_not(np.isnan(y)), displacement == 0))
-        y[y == -np.inf] = np.nan
-        np.nan_to_num(y, copy=False, nan=np.nanmin(y))
+            x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
+            y = np.log(displacement)
+            assert np.all(np.logical_or(
+                np.logical_not(np.isnan(y)), displacement == 0))
+            y[y == -np.inf] = np.nan
+            np.nan_to_num(y, copy=False, nan=np.nanmin(y))
 
-        x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
-        y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
-        # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
-        beta = m(y*x)/m(np.power(x, 2))
-        session.probe_ballisticity = beta
-        assert np.sum(np.isnan(session.probe_ballisticity)) == 0
+            x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
+            y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
+            # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
+            beta = m(y*x)/m(np.power(x, 2))
+            session.probe_ballisticity = beta
+            assert np.sum(np.isnan(session.probe_ballisticity)) == 0
 
-        # ===================================
-        # Knot-path-curvature as in https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000638
-        # ===================================
+            # ===================================
+            # Knot-path-curvature as in https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000638
+            # ===================================
 
-        dx = np.diff(session.bt_pos_xs)
-        dy = np.diff(session.bt_pos_ys)
-
-        if SHOW_CURVATURE_VIDEO:
-            cmap = plt.cm.get_cmap('coolwarm')
-            fig = plt.figure()
-            plt.ion()
-
-        session.bt_curvature = np.empty((dx.size+1))
-        session.bt_curvature_i1 = np.empty((dx.size+1))
-        session.bt_curvature_i2 = np.empty((dx.size+1))
-        session.bt_curvature_dxf = np.empty((dx.size+1))
-        session.bt_curvature_dyf = np.empty((dx.size+1))
-        session.bt_curvature_dxb = np.empty((dx.size+1))
-        session.bt_curvature_dyb = np.empty((dx.size+1))
-        for pi in range(dx.size+1):
-            x0 = session.bt_pos_xs[pi]
-            y0 = session.bt_pos_ys[pi]
-            ii = pi
-            dxf = 0.0
-            dyf = 0.0
-            while ii < dx.size:
-                dxf += dx[ii]
-                dyf += dy[ii]
-                magf = dxf * dxf + dyf * dyf
-                if magf >= KNOT_H_POS * KNOT_H_POS:
-                    break
-                ii += 1
-            if ii == dx.size:
-                session.bt_curvature[pi] = np.nan
-                session.bt_curvature_i1[pi] = np.nan
-                session.bt_curvature_i2[pi] = np.nan
-                session.bt_curvature_dxf[pi] = np.nan
-                session.bt_curvature_dyf[pi] = np.nan
-                session.bt_curvature_dxb[pi] = np.nan
-                session.bt_curvature_dyb[pi] = np.nan
-                continue
-            i2 = ii
-
-            ii = pi - 1
-            dxb = 0.0
-            dyb = 0.0
-            while ii >= 0:
-                dxb += dx[ii]
-                dyb += dy[ii]
-                magb = dxb * dxb + dyb * dyb
-                if magb >= KNOT_H_POS * KNOT_H_POS:
-                    break
-                ii -= 1
-            if ii == -1:
-                session.bt_curvature[pi] = np.nan
-                session.bt_curvature_i1[pi] = np.nan
-                session.bt_curvature_i2[pi] = np.nan
-                session.bt_curvature_dxf[pi] = np.nan
-                session.bt_curvature_dyf[pi] = np.nan
-                session.bt_curvature_dxb[pi] = np.nan
-                session.bt_curvature_dyb[pi] = np.nan
-                continue
-            i1 = ii
-
-            uxf = dxf / np.sqrt(magf)
-            uyf = dyf / np.sqrt(magf)
-            uxb = dxb / np.sqrt(magb)
-            uyb = dyb / np.sqrt(magb)
-            dotprod = uxf * uxb + uyf * uyb
-            session.bt_curvature[pi] = np.arccos(dotprod)
-
-            session.bt_curvature_i1[pi] = i1
-            session.bt_curvature_i2[pi] = i2
-            session.bt_curvature_dxf[pi] = dxf
-            session.bt_curvature_dyf[pi] = dyf
-            session.bt_curvature_dxb[pi] = dxb
-            session.bt_curvature_dyb[pi] = dyb
+            dx = np.diff(session.bt_pos_xs)
+            dy = np.diff(session.bt_pos_ys)
 
             if SHOW_CURVATURE_VIDEO:
-                plt.clf()
-                plt.xlim(0, 1200)
-                plt.ylim(0, 1000)
-                plt.plot(session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2])
-                c = np.array(
-                    cmap(session.bt_curvature[pi] / 3.15)).reshape(1, -1)
-                plt.scatter(session.bt_pos_xs[pi], session.bt_pos_ys[pi], c=c)
-                plt.show()
-                plt.pause(0.01)
+                cmap = plt.cm.get_cmap('coolwarm')
+                fig = plt.figure()
+                plt.ion()
 
-        dx = np.diff(session.probe_pos_xs)
-        dy = np.diff(session.probe_pos_ys)
-
-        session.probe_curvature = np.empty((dx.size+1))
-        session.probe_curvature_i1 = np.empty((dx.size+1))
-        session.probe_curvature_i2 = np.empty((dx.size+1))
-        session.probe_curvature_dxf = np.empty((dx.size+1))
-        session.probe_curvature_dyf = np.empty((dx.size+1))
-        session.probe_curvature_dxb = np.empty((dx.size+1))
-        session.probe_curvature_dyb = np.empty((dx.size+1))
-        for pi in range(dx.size+1):
-            x0 = session.probe_pos_xs[pi]
-            y0 = session.probe_pos_ys[pi]
-            ii = pi
-            dxf = 0.0
-            dyf = 0.0
-            while ii < dx.size:
-                dxf += dx[ii]
-                dyf += dy[ii]
-                magf = np.sqrt(dxf * dxf + dyf * dyf)
-                if magf >= KNOT_H_POS:
-                    break
-                ii += 1
-            if ii == dx.size:
-                session.probe_curvature[pi] = np.nan
-                session.probe_curvature_i1[pi] = np.nan
-                session.probe_curvature_i2[pi] = np.nan
-                session.probe_curvature_dxf[pi] = np.nan
-                session.probe_curvature_dyf[pi] = np.nan
-                session.probe_curvature_dxb[pi] = np.nan
-                session.probe_curvature_dyb[pi] = np.nan
-                continue
-            i2 = ii
-
-            ii = pi - 1
-            dxb = 0.0
-            dyb = 0.0
-            while ii >= 0:
-                dxb += dx[ii]
-                dyb += dy[ii]
-                magb = np.sqrt(dxb * dxb + dyb * dyb)
-                if magb >= KNOT_H_POS:
-                    break
-                ii -= 1
-            if ii == -1:
-                session.probe_curvature[pi] = np.nan
-                session.probe_curvature_i1[pi] = np.nan
-                session.probe_curvature_i2[pi] = np.nan
-                session.probe_curvature_dxf[pi] = np.nan
-                session.probe_curvature_dyf[pi] = np.nan
-                session.probe_curvature_dxb[pi] = np.nan
-                session.probe_curvature_dyb[pi] = np.nan
-                continue
-            i1 = ii
-
-            uxf = dxf / magf
-            uyf = dyf / magf
-            uxb = dxb / magb
-            uyb = dyb / magb
-            dotprod = uxf * uxb + uyf * uyb
-            session.probe_curvature[pi] = np.arccos(dotprod)
-
-            session.probe_curvature_i1[pi] = i1
-            session.probe_curvature_i2[pi] = i2
-            session.probe_curvature_dxf[pi] = dxf
-            session.probe_curvature_dyf[pi] = dyf
-            session.probe_curvature_dxb[pi] = dxb
-            session.probe_curvature_dyb[pi] = dyb
-
-        session.bt_well_curvatures = []
-        session.bt_well_avg_curvature_over_time = []
-        session.bt_well_avg_curvature_over_visits = []
-        for i, wi in enumerate(all_well_names):
-            session.bt_well_curvatures.append([])
-            for ei, (weni, wexi) in enumerate(zip(session.bt_well_entry_idxs[i], session.bt_well_exit_idxs[i])):
-                if wexi > session.bt_curvature.size:
+            session.bt_curvature = np.empty((dx.size+1))
+            session.bt_curvature_i1 = np.empty((dx.size+1))
+            session.bt_curvature_i2 = np.empty((dx.size+1))
+            session.bt_curvature_dxf = np.empty((dx.size+1))
+            session.bt_curvature_dyf = np.empty((dx.size+1))
+            session.bt_curvature_dxb = np.empty((dx.size+1))
+            session.bt_curvature_dyb = np.empty((dx.size+1))
+            for pi in range(dx.size+1):
+                x0 = session.bt_pos_xs[pi]
+                y0 = session.bt_pos_ys[pi]
+                ii = pi
+                dxf = 0.0
+                dyf = 0.0
+                while ii < dx.size:
+                    dxf += dx[ii]
+                    dyf += dy[ii]
+                    magf = dxf * dxf + dyf * dyf
+                    if magf >= KNOT_H_POS * KNOT_H_POS:
+                        break
+                    ii += 1
+                if ii == dx.size:
+                    session.bt_curvature[pi] = np.nan
+                    session.bt_curvature_i1[pi] = np.nan
+                    session.bt_curvature_i2[pi] = np.nan
+                    session.bt_curvature_dxf[pi] = np.nan
+                    session.bt_curvature_dyf[pi] = np.nan
+                    session.bt_curvature_dxb[pi] = np.nan
+                    session.bt_curvature_dyb[pi] = np.nan
                     continue
-                session.bt_well_curvatures[i].append(
-                    session.bt_curvature[weni:wexi])
+                i2 = ii
 
-            session.bt_well_avg_curvature_over_time.append(
-                np.mean(np.concatenate(session.bt_well_curvatures[i])))
-            session.bt_well_avg_curvature_over_visits.append(
-                np.mean([np.mean(x) for x in session.bt_well_curvatures[i]]))
-
-        session.probe_well_curvatures = []
-        session.probe_well_avg_curvature_over_time = []
-        session.probe_well_avg_curvature_over_visits = []
-        session.probe_well_curvatures_1min = []
-        session.probe_well_avg_curvature_over_time_1min = []
-        session.probe_well_avg_curvature_over_visits_1min = []
-        session.probe_well_curvatures_30sec = []
-        session.probe_well_avg_curvature_over_time_30sec = []
-        session.probe_well_avg_curvature_over_visits_30sec = []
-        for i, wi in enumerate(all_well_names):
-            session.probe_well_curvatures.append([])
-            session.probe_well_curvatures_1min.append([])
-            session.probe_well_curvatures_30sec.append([])
-            for ei, (weni, wexi) in enumerate(zip(session.probe_well_entry_idxs[i], session.probe_well_exit_idxs[i])):
-                if wexi > session.probe_curvature.size:
+                ii = pi - 1
+                dxb = 0.0
+                dyb = 0.0
+                while ii >= 0:
+                    dxb += dx[ii]
+                    dyb += dy[ii]
+                    magb = dxb * dxb + dyb * dyb
+                    if magb >= KNOT_H_POS * KNOT_H_POS:
+                        break
+                    ii -= 1
+                if ii == -1:
+                    session.bt_curvature[pi] = np.nan
+                    session.bt_curvature_i1[pi] = np.nan
+                    session.bt_curvature_i2[pi] = np.nan
+                    session.bt_curvature_dxf[pi] = np.nan
+                    session.bt_curvature_dyf[pi] = np.nan
+                    session.bt_curvature_dxb[pi] = np.nan
+                    session.bt_curvature_dyb[pi] = np.nan
                     continue
-                session.probe_well_curvatures[i].append(
-                    session.probe_curvature[weni:wexi])
-                if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
-                    session.probe_well_curvatures_1min[i].append(
+                i1 = ii
+
+                uxf = dxf / np.sqrt(magf)
+                uyf = dyf / np.sqrt(magf)
+                uxb = dxb / np.sqrt(magb)
+                uyb = dyb / np.sqrt(magb)
+                dotprod = uxf * uxb + uyf * uyb
+                session.bt_curvature[pi] = np.arccos(dotprod)
+
+                session.bt_curvature_i1[pi] = i1
+                session.bt_curvature_i2[pi] = i2
+                session.bt_curvature_dxf[pi] = dxf
+                session.bt_curvature_dyf[pi] = dyf
+                session.bt_curvature_dxb[pi] = dxb
+                session.bt_curvature_dyb[pi] = dyb
+
+                if SHOW_CURVATURE_VIDEO:
+                    plt.clf()
+                    plt.xlim(0, 1200)
+                    plt.ylim(0, 1000)
+                    plt.plot(session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2])
+                    c = np.array(
+                        cmap(session.bt_curvature[pi] / 3.15)).reshape(1, -1)
+                    plt.scatter(session.bt_pos_xs[pi], session.bt_pos_ys[pi], c=c)
+                    plt.show()
+                    plt.pause(0.01)
+
+            dx = np.diff(session.probe_pos_xs)
+            dy = np.diff(session.probe_pos_ys)
+
+            session.probe_curvature = np.empty((dx.size+1))
+            session.probe_curvature_i1 = np.empty((dx.size+1))
+            session.probe_curvature_i2 = np.empty((dx.size+1))
+            session.probe_curvature_dxf = np.empty((dx.size+1))
+            session.probe_curvature_dyf = np.empty((dx.size+1))
+            session.probe_curvature_dxb = np.empty((dx.size+1))
+            session.probe_curvature_dyb = np.empty((dx.size+1))
+            for pi in range(dx.size+1):
+                x0 = session.probe_pos_xs[pi]
+                y0 = session.probe_pos_ys[pi]
+                ii = pi
+                dxf = 0.0
+                dyf = 0.0
+                while ii < dx.size:
+                    dxf += dx[ii]
+                    dyf += dy[ii]
+                    magf = np.sqrt(dxf * dxf + dyf * dyf)
+                    if magf >= KNOT_H_POS:
+                        break
+                    ii += 1
+                if ii == dx.size:
+                    session.probe_curvature[pi] = np.nan
+                    session.probe_curvature_i1[pi] = np.nan
+                    session.probe_curvature_i2[pi] = np.nan
+                    session.probe_curvature_dxf[pi] = np.nan
+                    session.probe_curvature_dyf[pi] = np.nan
+                    session.probe_curvature_dxb[pi] = np.nan
+                    session.probe_curvature_dyb[pi] = np.nan
+                    continue
+                i2 = ii
+
+                ii = pi - 1
+                dxb = 0.0
+                dyb = 0.0
+                while ii >= 0:
+                    dxb += dx[ii]
+                    dyb += dy[ii]
+                    magb = np.sqrt(dxb * dxb + dyb * dyb)
+                    if magb >= KNOT_H_POS:
+                        break
+                    ii -= 1
+                if ii == -1:
+                    session.probe_curvature[pi] = np.nan
+                    session.probe_curvature_i1[pi] = np.nan
+                    session.probe_curvature_i2[pi] = np.nan
+                    session.probe_curvature_dxf[pi] = np.nan
+                    session.probe_curvature_dyf[pi] = np.nan
+                    session.probe_curvature_dxb[pi] = np.nan
+                    session.probe_curvature_dyb[pi] = np.nan
+                    continue
+                i1 = ii
+
+                uxf = dxf / magf
+                uyf = dyf / magf
+                uxb = dxb / magb
+                uyb = dyb / magb
+                dotprod = uxf * uxb + uyf * uyb
+                session.probe_curvature[pi] = np.arccos(dotprod)
+
+                session.probe_curvature_i1[pi] = i1
+                session.probe_curvature_i2[pi] = i2
+                session.probe_curvature_dxf[pi] = dxf
+                session.probe_curvature_dyf[pi] = dyf
+                session.probe_curvature_dxb[pi] = dxb
+                session.probe_curvature_dyb[pi] = dyb
+
+            session.bt_well_curvatures = []
+            session.bt_well_avg_curvature_over_time = []
+            session.bt_well_avg_curvature_over_visits = []
+            for i, wi in enumerate(all_well_names):
+                session.bt_well_curvatures.append([])
+                for ei, (weni, wexi) in enumerate(zip(session.bt_well_entry_idxs[i], session.bt_well_exit_idxs[i])):
+                    if wexi > session.bt_curvature.size:
+                        continue
+                    session.bt_well_curvatures[i].append(
+                        session.bt_curvature[weni:wexi])
+
+                if len(session.bt_well_curvatures[i]) > 0:
+                    session.bt_well_avg_curvature_over_time.append(
+                        np.mean(np.concatenate(session.bt_well_curvatures[i])))
+                    session.bt_well_avg_curvature_over_visits.append(
+                        np.mean([np.mean(x) for x in session.bt_well_curvatures[i]]))
+                else:
+                    session.bt_well_avg_curvature_over_time.append(np.nan)
+                    session.bt_well_avg_curvature_over_visits.append(np.nan)
+
+            session.probe_well_curvatures = []
+            session.probe_well_avg_curvature_over_time = []
+            session.probe_well_avg_curvature_over_visits = []
+            session.probe_well_curvatures_1min = []
+            session.probe_well_avg_curvature_over_time_1min = []
+            session.probe_well_avg_curvature_over_visits_1min = []
+            session.probe_well_curvatures_30sec = []
+            session.probe_well_avg_curvature_over_time_30sec = []
+            session.probe_well_avg_curvature_over_visits_30sec = []
+            for i, wi in enumerate(all_well_names):
+                session.probe_well_curvatures.append([])
+                session.probe_well_curvatures_1min.append([])
+                session.probe_well_curvatures_30sec.append([])
+                for ei, (weni, wexi) in enumerate(zip(session.probe_well_entry_idxs[i], session.probe_well_exit_idxs[i])):
+                    if wexi > session.probe_curvature.size:
+                        continue
+                    session.probe_well_curvatures[i].append(
                         session.probe_curvature[weni:wexi])
-                if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
-                    session.probe_well_curvatures_30sec[i].append(
-                        session.probe_curvature[weni:wexi])
+                    if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+                        session.probe_well_curvatures_1min[i].append(
+                            session.probe_curvature[weni:wexi])
+                    if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+                        session.probe_well_curvatures_30sec[i].append(
+                            session.probe_curvature[weni:wexi])
 
-            if len(session.probe_well_curvatures[i]) > 0:
-                session.probe_well_avg_curvature_over_time.append(
-                    np.mean(np.concatenate(session.probe_well_curvatures[i])))
-                session.probe_well_avg_curvature_over_visits.append(
-                    np.mean([np.mean(x) for x in session.probe_well_curvatures[i]]))
-            else:
-                session.probe_well_avg_curvature_over_time.append(np.nan)
-                session.probe_well_avg_curvature_over_visits.append(np.nan)
+                if len(session.probe_well_curvatures[i]) > 0:
+                    session.probe_well_avg_curvature_over_time.append(
+                        np.mean(np.concatenate(session.probe_well_curvatures[i])))
+                    session.probe_well_avg_curvature_over_visits.append(
+                        np.mean([np.mean(x) for x in session.probe_well_curvatures[i]]))
+                else:
+                    session.probe_well_avg_curvature_over_time.append(np.nan)
+                    session.probe_well_avg_curvature_over_visits.append(np.nan)
 
-            if len(session.probe_well_curvatures_1min[i]) > 0:
-                session.probe_well_avg_curvature_over_time_1min.append(
-                    np.mean(np.concatenate(session.probe_well_curvatures_1min[i])))
-                session.probe_well_avg_curvature_over_visits_1min.append(
-                    np.mean([np.mean(x) for x in session.probe_well_curvatures_1min[i]]))
-            else:
-                session.probe_well_avg_curvature_over_time_1min.append(np.nan)
-                session.probe_well_avg_curvature_over_visits_1min.append(
-                    np.nan)
+                if len(session.probe_well_curvatures_1min[i]) > 0:
+                    session.probe_well_avg_curvature_over_time_1min.append(
+                        np.mean(np.concatenate(session.probe_well_curvatures_1min[i])))
+                    session.probe_well_avg_curvature_over_visits_1min.append(
+                        np.mean([np.mean(x) for x in session.probe_well_curvatures_1min[i]]))
+                else:
+                    session.probe_well_avg_curvature_over_time_1min.append(np.nan)
+                    session.probe_well_avg_curvature_over_visits_1min.append(
+                        np.nan)
 
-            if len(session.probe_well_curvatures_30sec[i]) > 0:
-                session.probe_well_avg_curvature_over_time_30sec.append(
-                    np.mean(np.concatenate(session.probe_well_curvatures_30sec[i])))
-                session.probe_well_avg_curvature_over_visits_30sec.append(
-                    np.mean([np.mean(x) for x in session.probe_well_curvatures_30sec[i]]))
-            else:
-                session.probe_well_avg_curvature_over_time_30sec.append(np.nan)
-                session.probe_well_avg_curvature_over_visits_30sec.append(
-                    np.nan)
+                if len(session.probe_well_curvatures_30sec[i]) > 0:
+                    session.probe_well_avg_curvature_over_time_30sec.append(
+                        np.mean(np.concatenate(session.probe_well_curvatures_30sec[i])))
+                    session.probe_well_avg_curvature_over_visits_30sec.append(
+                        np.mean([np.mean(x) for x in session.probe_well_curvatures_30sec[i]]))
+                else:
+                    session.probe_well_avg_curvature_over_time_30sec.append(np.nan)
+                    session.probe_well_avg_curvature_over_visits_30sec.append(
+                        np.nan)
 
-        # ===================================
-        # Latency to well in probe
-        # ===================================
+            # ===================================
+            # Latency to well in probe
+            # ===================================
 
-        session.probe_latency_to_well = []
-        for i, wi in enumerate(all_well_names):
-            if len(session.probe_well_entry_times[i]) == 0:
-                session.probe_latency_to_well.append(np.nan)
-            else:
-                session.probe_latency_to_well.append(
-                    session.probe_well_entry_times[0])
+            session.probe_latency_to_well = []
+            for i, wi in enumerate(all_well_names):
+                if len(session.probe_well_entry_times[i]) == 0:
+                    session.probe_latency_to_well.append(np.nan)
+                else:
+                    session.probe_latency_to_well.append(
+                        session.probe_well_entry_times[0])
 
-        # ===================================
-        # exploration bouts
-        # ===================================
+            # ===================================
+            # exploration bouts
+            # ===================================
 
-        POS_FRAME_RATE = stats.mode(
-            np.diff(session.bt_pos_ts))[0] / float(TRODES_SAMPLING_RATE)
-        BOUT_VEL_SM_SIGMA = BOUT_VEL_SM_SIGMA_SECS / POS_FRAME_RATE
-        MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS = 1.0
-        MIN_PAUSE_TIME_FRAMES = int(
-            MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS / POS_FRAME_RATE)
-        MIN_EXPLORE_TIME_FRAMES = int(MIN_EXPLORE_TIME_SECS / POS_FRAME_RATE)
+            POS_FRAME_RATE = stats.mode(
+                np.diff(session.bt_pos_ts))[0] / float(TRODES_SAMPLING_RATE)
+            BOUT_VEL_SM_SIGMA = BOUT_VEL_SM_SIGMA_SECS / POS_FRAME_RATE
+            MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS = 1.0
+            MIN_PAUSE_TIME_FRAMES = int(
+                MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS / POS_FRAME_RATE)
+            MIN_EXPLORE_TIME_FRAMES = int(MIN_EXPLORE_TIME_SECS / POS_FRAME_RATE)
 
-        bt_sm_vel = scipy.ndimage.gaussian_filter1d(
-            session.bt_vel_cm_s, BOUT_VEL_SM_SIGMA)
-        session.bt_sm_vel = bt_sm_vel
+            bt_sm_vel = scipy.ndimage.gaussian_filter1d(
+                session.bt_vel_cm_s, BOUT_VEL_SM_SIGMA)
+            session.bt_sm_vel = bt_sm_vel
 
-        bt_is_explore_local = bt_sm_vel > PAUSE_MAX_SPEED_CM_S
-        dil_filt = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
-        in_pause_bout = np.logical_not(signal.convolve(
-            bt_is_explore_local.astype(int), dil_filt, mode='same').astype(bool))
-        # now just undo dilation to get flags
-        session.bt_is_in_pause = signal.convolve(
-            in_pause_bout.astype(int), dil_filt, mode='same').astype(bool)
-        session.bt_is_in_explore = np.logical_not(session.bt_is_in_pause)
+            bt_is_explore_local = bt_sm_vel > PAUSE_MAX_SPEED_CM_S
+            dil_filt = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
+            in_pause_bout = np.logical_not(signal.convolve(
+                bt_is_explore_local.astype(int), dil_filt, mode='same').astype(bool))
+            # now just undo dilation to get flags
+            session.bt_is_in_pause = signal.convolve(
+                in_pause_bout.astype(int), dil_filt, mode='same').astype(bool)
+            session.bt_is_in_explore = np.logical_not(session.bt_is_in_pause)
 
-        # explicitly adjust flags at reward consumption times
-        for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
-            pidx1 = np.searchsorted(session.bt_pos_ts[0:-1], wft)
-            pidx2 = np.searchsorted(session.bt_pos_ts[0:-1], wlt)
-            session.bt_is_in_pause[pidx1:pidx2] = True
-            session.bt_is_in_explore[pidx1:pidx2] = False
+            # explicitly adjust flags at reward consumption times
+            for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
+                pidx1 = np.searchsorted(session.bt_pos_ts[0:-1], wft)
+                pidx2 = np.searchsorted(session.bt_pos_ts[0:-1], wlt)
+                session.bt_is_in_pause[pidx1:pidx2] = True
+                session.bt_is_in_explore[pidx1:pidx2] = False
 
-        for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
-            pidx1 = np.searchsorted(session.bt_pos_ts[0:-1], wft)
-            pidx2 = np.searchsorted(session.bt_pos_ts[0:-1], wlt)
-            session.bt_is_in_pause[pidx1:pidx2] = True
-            session.bt_is_in_explore[pidx1:pidx2] = False
+            for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
+                pidx1 = np.searchsorted(session.bt_pos_ts[0:-1], wft)
+                pidx2 = np.searchsorted(session.bt_pos_ts[0:-1], wlt)
+                session.bt_is_in_pause[pidx1:pidx2] = True
+                session.bt_is_in_explore[pidx1:pidx2] = False
 
-        assert np.sum(np.isnan(session.bt_is_in_pause)) == 0
-        assert np.sum(np.isnan(session.bt_is_in_explore)) == 0
-        assert np.all(np.logical_or(
-            session.bt_is_in_pause, session.bt_is_in_explore))
-        assert not np.any(np.logical_and(
-            session.bt_is_in_pause, session.bt_is_in_explore))
+            assert np.sum(np.isnan(session.bt_is_in_pause)) == 0
+            assert np.sum(np.isnan(session.bt_is_in_explore)) == 0
+            assert np.all(np.logical_or(
+                session.bt_is_in_pause, session.bt_is_in_explore))
+            assert not np.any(np.logical_and(
+                session.bt_is_in_pause, session.bt_is_in_explore))
 
-        start_explores = np.where(
-            np.diff(session.bt_is_in_explore.astype(int)) == 1)[0] + 1
-        if session.bt_is_in_explore[0]:
-            start_explores = np.insert(start_explores, 0, 0)
+            start_explores = np.where(
+                np.diff(session.bt_is_in_explore.astype(int)) == 1)[0] + 1
+            if session.bt_is_in_explore[0]:
+                start_explores = np.insert(start_explores, 0, 0)
 
-        stop_explores = np.where(
-            np.diff(session.bt_is_in_explore.astype(int)) == -1)[0] + 1
-        if session.bt_is_in_explore[-1]:
-            stop_explores = np.append(
-                stop_explores, len(session.bt_is_in_explore))
+            stop_explores = np.where(
+                np.diff(session.bt_is_in_explore.astype(int)) == -1)[0] + 1
+            if session.bt_is_in_explore[-1]:
+                stop_explores = np.append(
+                    stop_explores, len(session.bt_is_in_explore))
 
-        bout_len_frames = stop_explores - start_explores
+            bout_len_frames = stop_explores - start_explores
 
-        long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
-        bout_num_wells_visited = np.zeros((len(start_explores)))
-        for i, (bst, ben) in enumerate(zip(start_explores, stop_explores)):
-            bout_num_wells_visited[i] = len(
-                getListOfVisitedWells(session.bt_nearest_wells[bst:ben], True))
-            # bout_num_wells_visited[i] = len(set(session.bt_nearest_wells[bst:ben]))
-        enough_wells = bout_num_wells_visited >= MIN_EXPLORE_NUM_WELLS
+            long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
+            bout_num_wells_visited = np.zeros((len(start_explores)))
+            for i, (bst, ben) in enumerate(zip(start_explores, stop_explores)):
+                bout_num_wells_visited[i] = len(
+                    getListOfVisitedWells(session.bt_nearest_wells[bst:ben], True))
+                # bout_num_wells_visited[i] = len(set(session.bt_nearest_wells[bst:ben]))
+            enough_wells = bout_num_wells_visited >= MIN_EXPLORE_NUM_WELLS
 
-        keep_bout = np.logical_and(long_enough, enough_wells)
-        session.bt_explore_bout_starts = start_explores[keep_bout]
-        session.bt_explore_bout_ends = stop_explores[keep_bout]
-        session.bt_explore_bout_lens = session.bt_explore_bout_ends - \
-            session.bt_explore_bout_starts
+            keep_bout = np.logical_and(long_enough, enough_wells)
+            session.bt_explore_bout_starts = start_explores[keep_bout]
+            session.bt_explore_bout_ends = stop_explores[keep_bout]
+            session.bt_explore_bout_lens = session.bt_explore_bout_ends - \
+                session.bt_explore_bout_starts
 
-        probe_sm_vel = scipy.ndimage.gaussian_filter1d(
-            session.probe_vel_cm_s, BOUT_VEL_SM_SIGMA)
-        session.probe_sm_vel = probe_sm_vel
+            probe_sm_vel = scipy.ndimage.gaussian_filter1d(
+                session.probe_vel_cm_s, BOUT_VEL_SM_SIGMA)
+            session.probe_sm_vel = probe_sm_vel
 
-        probe_is_explore_local = probe_sm_vel > PAUSE_MAX_SPEED_CM_S
-        dil_filt = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
-        in_pause_bout = np.logical_not(signal.convolve(
-            probe_is_explore_local.astype(int), dil_filt, mode='same').astype(bool))
-        # now just undo dilation to get flags
-        session.probe_is_in_pause = signal.convolve(
-            in_pause_bout.astype(int), dil_filt, mode='same').astype(bool)
-        session.probe_is_in_explore = np.logical_not(session.probe_is_in_pause)
+            probe_is_explore_local = probe_sm_vel > PAUSE_MAX_SPEED_CM_S
+            dil_filt = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
+            in_pause_bout = np.logical_not(signal.convolve(
+                probe_is_explore_local.astype(int), dil_filt, mode='same').astype(bool))
+            # now just undo dilation to get flags
+            session.probe_is_in_pause = signal.convolve(
+                in_pause_bout.astype(int), dil_filt, mode='same').astype(bool)
+            session.probe_is_in_explore = np.logical_not(session.probe_is_in_pause)
 
-        assert np.sum(np.isnan(session.probe_is_in_pause)) == 0
-        assert np.sum(np.isnan(session.probe_is_in_explore)) == 0
-        assert np.all(np.logical_or(session.probe_is_in_pause,
-                                    session.probe_is_in_explore))
-        assert not np.any(np.logical_and(
-            session.probe_is_in_pause, session.probe_is_in_explore))
+            assert np.sum(np.isnan(session.probe_is_in_pause)) == 0
+            assert np.sum(np.isnan(session.probe_is_in_explore)) == 0
+            assert np.all(np.logical_or(session.probe_is_in_pause,
+                                        session.probe_is_in_explore))
+            assert not np.any(np.logical_and(
+                session.probe_is_in_pause, session.probe_is_in_explore))
 
-        start_explores = np.where(
-            np.diff(session.probe_is_in_explore.astype(int)) == 1)[0] + 1
-        if session.probe_is_in_explore[0]:
-            start_explores = np.insert(start_explores, 0, 0)
+            start_explores = np.where(
+                np.diff(session.probe_is_in_explore.astype(int)) == 1)[0] + 1
+            if session.probe_is_in_explore[0]:
+                start_explores = np.insert(start_explores, 0, 0)
 
-        stop_explores = np.where(
-            np.diff(session.probe_is_in_explore.astype(int)) == -1)[0] + 1
-        if session.probe_is_in_explore[-1]:
-            stop_explores = np.append(
-                stop_explores, len(session.probe_is_in_explore))
+            stop_explores = np.where(
+                np.diff(session.probe_is_in_explore.astype(int)) == -1)[0] + 1
+            if session.probe_is_in_explore[-1]:
+                stop_explores = np.append(
+                    stop_explores, len(session.probe_is_in_explore))
 
-        bout_len_frames = stop_explores - start_explores
+            bout_len_frames = stop_explores - start_explores
 
-        long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
-        bout_num_wells_visited = np.zeros((len(start_explores)))
-        for i, (bst, ben) in enumerate(zip(start_explores, stop_explores)):
-            bout_num_wells_visited[i] = len(
-                getListOfVisitedWells(session.probe_nearest_wells[bst:ben], True))
-        enough_wells = bout_num_wells_visited >= MIN_EXPLORE_NUM_WELLS
+            long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
+            bout_num_wells_visited = np.zeros((len(start_explores)))
+            for i, (bst, ben) in enumerate(zip(start_explores, stop_explores)):
+                bout_num_wells_visited[i] = len(
+                    getListOfVisitedWells(session.probe_nearest_wells[bst:ben], True))
+            enough_wells = bout_num_wells_visited >= MIN_EXPLORE_NUM_WELLS
 
-        keep_bout = np.logical_and(long_enough, enough_wells)
-        session.probe_explore_bout_starts = start_explores[keep_bout]
-        session.probe_explore_bout_ends = stop_explores[keep_bout]
-        session.probe_explore_bout_lens = session.probe_explore_bout_ends - \
-            session.probe_explore_bout_starts
+            keep_bout = np.logical_and(long_enough, enough_wells)
+            session.probe_explore_bout_starts = start_explores[keep_bout]
+            session.probe_explore_bout_ends = stop_explores[keep_bout]
+            session.probe_explore_bout_lens = session.probe_explore_bout_ends - \
+                session.probe_explore_bout_starts
 
-        # add a category at each behavior time point for easy reference later:
-        session.bt_bout_category = np.zeros_like(session.bt_pos_xs)
-        last_stop = 0
-        for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
-            session.bt_bout_category[last_stop:bst] = 1
-            last_stop = ben
-        session.bt_bout_category[last_stop:] = 1
-        for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
-            pidx1 = np.searchsorted(session.bt_pos_ts, wft)
-            pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
-            session.bt_bout_category[pidx1:pidx2] = 2
-        for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
-            pidx1 = np.searchsorted(session.bt_pos_ts, wft)
-            pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
-            session.bt_bout_category[pidx1:pidx2] = 2
-        session.probe_bout_category = np.zeros_like(session.probe_pos_xs)
-        last_stop = 0
-        for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
-            session.probe_bout_category[last_stop:bst] = 1
-            last_stop = ben
-        session.probe_bout_category[last_stop:] = 1
-        for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
-            pidx1 = np.searchsorted(session.probe_pos_ts, wft)
-            pidx2 = np.searchsorted(session.probe_pos_ts, wlt)
-            session.probe_bout_category[pidx1:pidx2] = 2
-        for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
-            pidx1 = np.searchsorted(session.probe_pos_ts, wft)
-            pidx2 = np.searchsorted(session.probe_pos_ts, wlt)
-            session.probe_bout_category[pidx1:pidx2] = 2
+            # add a category at each behavior time point for easy reference later:
+            session.bt_bout_category = np.zeros_like(session.bt_pos_xs)
+            last_stop = 0
+            for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
+                session.bt_bout_category[last_stop:bst] = 1
+                last_stop = ben
+            session.bt_bout_category[last_stop:] = 1
+            for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
+                pidx1 = np.searchsorted(session.bt_pos_ts, wft)
+                pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
+                session.bt_bout_category[pidx1:pidx2] = 2
+            for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
+                pidx1 = np.searchsorted(session.bt_pos_ts, wft)
+                pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
+                session.bt_bout_category[pidx1:pidx2] = 2
+            session.probe_bout_category = np.zeros_like(session.probe_pos_xs)
+            last_stop = 0
+            for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
+                session.probe_bout_category[last_stop:bst] = 1
+                last_stop = ben
+            session.probe_bout_category[last_stop:] = 1
+            for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
+                pidx1 = np.searchsorted(session.probe_pos_ts, wft)
+                pidx2 = np.searchsorted(session.probe_pos_ts, wlt)
+                session.probe_bout_category[pidx1:pidx2] = 2
+            for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
+                pidx1 = np.searchsorted(session.probe_pos_ts, wft)
+                pidx2 = np.searchsorted(session.probe_pos_ts, wlt)
+                session.probe_bout_category[pidx1:pidx2] = 2
 
-        # And a similar thing, but value == 0 for rest/reward, or i when rat is in ith bout (starting at 1)
-        session.bt_bout_label = np.zeros_like(session.bt_pos_xs)
-        for bi, (bst, ben) in enumerate(zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends)):
-            session.bt_bout_label[bst:ben] = bi + 1
+            # And a similar thing, but value == 0 for rest/reward, or i when rat is in ith bout (starting at 1)
+            session.bt_bout_label = np.zeros_like(session.bt_pos_xs)
+            for bi, (bst, ben) in enumerate(zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends)):
+                session.bt_bout_label[bst:ben] = bi + 1
 
-        session.probe_bout_label = np.zeros_like(session.probe_pos_xs)
-        for bi, (bst, ben) in enumerate(zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends)):
-            session.probe_bout_label[bst:ben] = bi + 1
+            session.probe_bout_label = np.zeros_like(session.probe_pos_xs)
+            for bi, (bst, ben) in enumerate(zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends)):
+                session.probe_bout_label[bst:ben] = bi + 1
 
         # ======================================================================
         # TODO

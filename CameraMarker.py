@@ -225,6 +225,11 @@ class CMWidget(QMainWindow):
         ac = QAction('Set Meta Label Mark', self)
         ac.setShortcut('2')
         ac.triggered.connect(self.setMetaLabelMark)
+
+        regionsMenu.addAction(ac)
+        ac = QAction('Jump to Meta Label Mark', self)
+        ac.setShortcut('j')
+        ac.triggered.connect(self.jumpToMetaLabelMark)
         regionsMenu.addAction(ac)
 
         self.preTrialLightOffMarkLabel = QLabel(str(self.preTrialLightOffMark))
@@ -300,14 +305,18 @@ class CMWidget(QMainWindow):
 
         self.videoFileName = fileName
 
+        self.setWindowTitle("Camera Marker - {}".format(fileName))
+
     def exitCall(self):
         sys.exit(0)
 
     def play(self):
         if self.mediaPlayer.state() == QMediaPlayer.PlayingState:
             self.mediaPlayer.pause()
+            self.statusLabel.setText("Pausing")
         else:
             self.mediaPlayer.play()
+            self.statusLabel.setText("Playing")
 
     def speedUp(self):
         self.mediaPlayer.setPlaybackRate(self.mediaPlayer.playbackRate() * 1.25)
@@ -337,7 +346,7 @@ class CMWidget(QMainWindow):
 
     def setMetaLabelMark(self):
         option, ok = QInputDialog.getInt(
-            self, "Which mark are you making", "1 - pretrial light on\n2 - trial start\n3 - trial end\n4 - probe start\n5 - probe end\n6 - post probe light on")
+            self, "Which mark are you making", "1 - pretrial light off\n2 - trial start\n3 - trial end\n4 - probe start\n5 - probe end\n6 - post probe light on")
         if ok:
             if option == 1:
                 self.preTrialLightOffMark = self.mediaPlayer.position()
@@ -369,6 +378,49 @@ class CMWidget(QMainWindow):
                 self.statusLabel.setText(
                     "probe Stop mark set to {}".format(self.postProbeLightOnMark))
                 self.postProbeLightOnMarkLabel.setText(str(self.postProbeLightOnMark))
+
+    def jumpToMetaLabelMark(self):
+        option, ok = QInputDialog.getInt(
+            self, "Which mark are you jumping to", "1 - pretrial light off\n2 - trial start\n3 - trial end\n4 - probe start\n5 - probe end\n6 - post probe light on")
+        if ok:
+            if option == 1:
+                if self.preTrialLightOffMark is not None:
+                    self.statusLabel.setText(
+                        "Jumping to mark at {}".format(self.preTrialLightOffMark))
+                    self.mediaPlayer.setPosition(self.preTrialLightOffMark)
+                else:
+                    self.statusLabel.setText("no mark to jump to")
+            elif option == 2:
+                if self.trialStartMark is not None:
+                    self.statusLabel.setText("Jumping to mark at {}".format(self.trialStartMark))
+                    self.mediaPlayer.setPosition(self.trialStartMark)
+                else:
+                    self.statusLabel.setText("no mark to jump to")
+            elif option == 3:
+                if self.trialStopMark is not None:
+                    self.statusLabel.setText("Jumping to mark at {}".format(self.trialStopMark))
+                    self.mediaPlayer.setPosition(self.trialStopMark)
+                else:
+                    self.statusLabel.setText("no mark to jump to")
+            elif option == 4:
+                if self.probeStartMark is not None:
+                    self.statusLabel.setText("Jumping to mark at {}".format(self.probeStartMark))
+                    self.mediaPlayer.setPosition(self.probeStartMark)
+                else:
+                    self.statusLabel.setText("no mark to jump to")
+            elif option == 5:
+                if self.probeStopMark is not None:
+                    self.statusLabel.setText("Jumping to mark at {}".format(self.probeStopMark))
+                    self.mediaPlayer.setPosition(self.probeStopMark)
+                else:
+                    self.statusLabel.setText("no mark to jump to")
+            elif option == 6:
+                if self.postProbeLightOnMark is not None:
+                    self.statusLabel.setText(
+                        "Jumping to mark at {}".format(self.postProbeLightOnMark))
+                    self.mediaPlayer.setPosition(self.postProbeLightOnMark)
+                else:
+                    self.statusLabel.setText("no mark to jump to")
 
     def jumpToStartMark(self):
         if self.startMark is not None:
@@ -446,6 +498,14 @@ class CMWidget(QMainWindow):
         print("handleMediaError {}".format(er))
 
     def exportRegions(self):
+        it = reversed([self.regionListWidget.item(r) for r in range(self.regionListWidget.count())])
+        lastStop = -1
+        for i in it:
+            if i.stop <= i.start or i.start <= lastStop:
+                print("error in interval: {} - {}. Cancelling save".format(i.start, i.stop))
+                return
+            lastStop = i.stop
+
         fnfilt = "rgs(*.rgs)"
         defaultFileName = self.videoFileName + ".rgs"
         fileName, _ = QFileDialog.getSaveFileName(self, "Save Regions", defaultFileName, fnfilt)
@@ -456,7 +516,7 @@ class CMWidget(QMainWindow):
             self.saveRegionsFromFilename(fileName)
 
     def saveRegionsFromFilename(self, fileName):
-        it = [self.regionListWidget.item(r) for r in range(self.regionListWidget.count())]
+        it = reversed([self.regionListWidget.item(r) for r in range(self.regionListWidget.count())])
         with open(fileName, 'w') as csvfile:
             w = csv.writer(csvfile)
             w.writerow([self.preTrialLightOffMark, self.trialStartMark, self.trialStopMark])
@@ -478,7 +538,7 @@ class CMWidget(QMainWindow):
     def loadRegionsFromFilename(self, fileName):
         with open(fileName, 'r') as csvfile:
             reader = csv.reader(csvfile)
-            r = list(reader)
+            r = [[int(v) if len(v) > 0 else None for v in l] for l in list(reader)]
 
             self.regionListWidget.clear()
 

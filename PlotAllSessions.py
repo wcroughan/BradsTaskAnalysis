@@ -4,11 +4,20 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpat
 import random
 
-data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
+
+animal_name = 'B12'
+
+if animal_name == "Martin":
+    data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
+    output_dir = '/media/WDC4/martindata/processed_data/behavior_figures/'
+
+elif animal_name == "B12":
+    data_filename = "/media/WDC7/B12/processed_data/B12_bradtask.dat"
+    output_dir = "/media/WDC7/B12/processed_data/behavior_figures/"
+
 alldata = BTData()
 alldata.loadFromFile(data_filename)
 
-output_dir = '/media/WDC4/martindata/processed_data/behavior_figures/'
 
 X_START = 280
 X_FINISH = 1175
@@ -21,7 +30,7 @@ TRODES_SAMPLING_RATE = 30000
 RUN_JUST_ONE_SESSION = False
 SAVE_OUTPUT_FIGS = True
 SHOW_OUTPUT_FIGS = False
-PLOT_FULL_BEHAVIOR_PATH = False
+PLOT_FULL_BEHAVIOR_PATH = True
 PLOT_FULL_BEHAVIOR_PATH_COMBO = True
 PLOT_RUNNING_VS_STILL = False
 PLOT_NEAR_HOME_VS_DISTANT = False
