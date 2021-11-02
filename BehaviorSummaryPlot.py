@@ -27,7 +27,8 @@ import statsmodels.api as sm
 
 # animal_name = 'B12_goodpos'
 # animal_name = 'B12'
-animal_name = 'B12_highthresh'
+# animal_name = 'B12_highthresh'
+animal_name = 'B12_blur'
 
 if animal_name == "Martin":
     data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
@@ -49,9 +50,16 @@ elif animal_name == "B12_highthresh":
     data_filename = "/media/WDC7/B12/processed_data/B12_highthresh_bradtask.dat"
     output_dir = "/media/WDC7/B12/processed_data/behavior_figures/highthresh/"
 
+elif animal_name == "B12_converted":
+    data_filename = "/media/WDC6/B12/conversion/B12_conversion.dat"
+    output_dir = "/media/WDC6/B12/conversion/behavior_figures/"
+
+elif animal_name == "B12_blur":
+    data_filename = "/media/WDC6/B12/conversion/B12_conversion_blur.dat"
+    output_dir = "/media/WDC6/B12/conversion/behavior_figures/blur/"
+
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
-
 
 alldata = BTData()
 alldata.loadFromFile(data_filename)
@@ -89,8 +97,10 @@ SKIP_CONSECUTIVE_SESSION_PLOTS = True
 SKIP_PSEUDOPROBE_PATH_PLOTS = True
 SKIP_OCCUPANCY_PLOTS = True
 SKIP_WELL_COLOR_GRIDS = True
-SKIP_SNIFF_TIMES = False
+SKIP_SNIFF_TIMES = True
 SKIP_SNIFF_WITH_POS_PLOTS = True
+SKIP_TOP_HALF_PLOTS = True
+SKIP_CONVERSION_PLOTS = False
 
 PRINT_TRIAL_INFO = False
 SKIP_TO_MY_LOU_DARLIN = True
@@ -290,6 +300,9 @@ def makeASwarmPlot(xvals, yvals, axesNames, categories, output_filename="", titl
 def makeAPersevMeasurePlot(measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None):
     sessions_with_all_wells = list(
         filter(lambda sesh: len(sesh.visited_away_wells) > 0, all_sessions))
+
+    sessions_with_all_wells = [
+        sesh for sesh in sessions_with_all_wells if sesh.date_str != "20211004"]
 
     home_vals = [datafunc(sesh, sesh.home_well)
                  for sesh in sessions_with_all_wells]
@@ -2213,7 +2226,16 @@ if SKIP_SNIFF_TIMES:
 else:
     makeAPersevMeasurePlot("probe_num_sniffs_full", lambda s, w: s.num_sniffs(True, w))
     makeAPersevMeasurePlot("probe_avg_sniff_time_full", lambda s, w: s.avg_sniff_time(True, w))
+    makeAPersevMeasurePlot("probe_median_sniff_time_full", lambda s,
+                           w: s.avg_sniff_time(True, w, avgFunc=np.nanmedian))
     makeAPersevMeasurePlot("probe_total_sniff_time_full", lambda s, w: s.total_sniff_time(True, w))
+
+    makeAPersevMeasurePlot("probe_avg_sniff_time_full_capped", lambda s,
+                           w: min(s.avg_sniff_time(True, w), 10))
+    makeAPersevMeasurePlot("probe_median_sniff_time_full_capped", lambda s,
+                           w: min(s.avg_sniff_time(True, w, avgFunc=np.nanmedian), 10))
+    makeAPersevMeasurePlot("probe_total_sniff_time_full_capped", lambda s,
+                           w: min(s.total_sniff_time(True, w), 10))
 
     makeAPersevMeasurePlot("probe_num_sniffs_30sec", lambda s,
                            w: s.num_sniffs(True, w, timeInterval=[0, 30]))
@@ -2250,3 +2272,40 @@ else:
                            w: s.num_sniffs(True, w) / (1.0 + s.num_well_entries(True, w)))
     makeAPersevMeasurePlot("probe_sniffs_per_pass_ninc", lambda s,
                            w: s.num_sniffs(True, w) / (1.0 + s.num_well_entries(True, w, includeNeighbors=True)))
+
+if SKIP_TOP_HALF_PLOTS:
+    print("Skipping plots using just top half of pos")
+else:
+    sessions_in_top_half = [sesh for sesh in all_sessions if sesh.home_well > 32]
+    tlbls_th = [trial_label(sesh) for sesh in sessions_in_top_half]
+    print("\n".join([sesh.date_str for sesh in sessions_in_top_half]))
+    makeABoxPlot([sesh.avg_dwell_time(True, sesh.home_well) for sesh in sessions_in_top_half],
+                 tlbls_th, ['Condition', 'probe_avg_home_dwell_time_top_half'])
+    makeABoxPlot([sesh.total_dwell_time(True, sesh.home_well) for sesh in sessions_in_top_half],
+                 tlbls_th, ['Condition', 'probe_total_home_dwell_time_top_half'])
+    makeABoxPlot([sesh.num_well_entries(True, sesh.home_well) for sesh in sessions_in_top_half],
+                 tlbls_th, ['Condition', 'probe_num_home_well_entries_top_half'])
+
+if SKIP_CONVERSION_PLOTS:
+    print("Skipping conversion plots")
+else:
+    sessions_with_converted_wells = [sesh for sesh in all_sessions if sesh.date_str != "20211004"]
+    tlbls_converted = [trial_label(sesh) for sesh in sessions_with_converted_wells]
+    y = [sesh.total_converted_dwell_time(True, sesh.home_well)
+         for sesh in sessions_with_converted_wells]
+    outl = np.argmax(y)
+    ynoout = y[0:outl] + y[outl+1:]
+    lblnoout = tlbls_converted[0:outl] + tlbls_converted[outl+1:]
+    makeABoxPlot(ynoout, lblnoout, ['Condition', 'probe_converted_total_dwell_nooutlier'])
+    makeABoxPlot(y, tlbls_converted, ['Condition', 'probe_converted_total_dwell'])
+    print(sessions_with_converted_wells[outl].name)
+
+    makeAPersevMeasurePlot("probe_conv_total", lambda s,
+                           w: s.total_converted_dwell_time(True, w))
+    makeAPersevMeasurePlot("probe_conv_total_capped", lambda s,
+                           w: min(20, s.total_converted_dwell_time(True, w)))
+
+    makeAPersevMeasurePlot("probe_conv_total_bias", lambda s,
+                           w: s.total_converted_dwell_time(True, w) - s.total_converted_dwell_time(True, s.ctrl_well_for_well(w)))
+    makeAPersevMeasurePlot("probe_conv_total_capped_bias", lambda s,
+                           w: min(20, s.total_converted_dwell_time(True, w)) - min(20, s.total_converted_dwell_time(True, s.ctrl_well_for_well(w))))

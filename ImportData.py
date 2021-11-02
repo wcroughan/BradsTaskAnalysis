@@ -90,7 +90,7 @@ elif animal_name == "B12_highthresh":
 
     excluded_dates = []
     minimum_date = "20210916"
-    excluded_sessions = ["20210917_1", "20210923_1", "20211004_1", "20211006_1"]
+    excluded_sessions = ["20210917_1", "20210923_1", "20211004_1", "20211005_2", "20211006_1"]
     DEFAULT_RIP_DET_TET = 8
 
 
@@ -617,6 +617,23 @@ if __name__ == "__main__":
         all_lfp_data = []
         session.bt_lfp_fnames = []
 
+        # check if this session is excluded
+        info_file = os.path.join(behavior_notes_dir, date_str + ".txt")
+        if not os.path.exists(info_file):
+            # Switched numbering scheme once started doing multiple sessions a day
+            seshs_on_this_day = sorted(
+                list(filter(lambda seshdir: session.date_str + "_" in seshdir, filtered_data_dirs)))
+            num_on_this_day = len(seshs_on_this_day)
+            for i in range(num_on_this_day):
+                if seshs_on_this_day[i] == session_dir:
+                    sesh_idx_within_day = i
+            info_file = os.path.join(behavior_notes_dir, date_str + "_" +
+                                     str(sesh_idx_within_day+1) + ".txt")
+
+        if "".join(os.path.basename(info_file).split(".")[0:-1]) in excluded_sessions:
+            print(session_dir, " excluded session, skipping")
+            continue
+
         position_data = readRawPositionData(
             file_str + '.1.videoPositionTracking')
         if position_data == 0:
@@ -624,6 +641,7 @@ if __name__ == "__main__":
             session.hasPositionData = False
         else:
             session.hasPositionData = True
+
             if session.separate_probe_file:
                 probe_file_str = os.path.join(
                     session.probe_dir, os.path.basename(session.probe_dir))
@@ -652,24 +670,21 @@ if __name__ == "__main__":
             session.probe_pos_ys = ys[probe_start_idx:probe_end_idx]
             session.probe_pos_ts = ts[probe_start_idx:probe_end_idx]
 
+            if np.nanmax(session.probe_pos_ys) < 550 and np.nanmax(session.probe_pos_ys) > 400:
+                print("Position data just covers top of the environment")
+                session.positionOnlyTop = True
+            else:
+                print("min max")
+                print(np.nanmin(session.probe_pos_ys))
+                print(np.nanmax(session.probe_pos_ys))
+                plt.plot(session.bt_pos_xs, session.bt_pos_ys)
+                plt.show()
+                plt.plot(session.probe_pos_xs, session.probe_pos_ys)
+                plt.show()
+
         # ===================================
         # Get flags and info from info file
         # ===================================
-        info_file = os.path.join(behavior_notes_dir, date_str + ".txt")
-        if not os.path.exists(info_file):
-            # Switched numbering scheme once started doing multiple sessions a day
-            seshs_on_this_day = sorted(
-                list(filter(lambda seshdir: session.date_str + "_" in seshdir, filtered_data_dirs)))
-            num_on_this_day = len(seshs_on_this_day)
-            for i in range(num_on_this_day):
-                if seshs_on_this_day[i] == session_dir:
-                    sesh_idx_within_day = i
-            info_file = os.path.join(behavior_notes_dir, date_str + "_" +
-                                     str(sesh_idx_within_day+1) + ".txt")
-
-        if "".join(os.path.basename(info_file).split(".")[0:-1]) in excluded_sessions:
-            print(session_dir, " excluded session, skipping")
-            continue
 
         prevsession_dir = prevSessionDirs[session_idx]
         if prevsession_dir is None or SKIP_PREV_SESSION:
@@ -1035,7 +1050,8 @@ if __name__ == "__main__":
             session.bt_vel_cm_s = np.divide(bt_vel, np.diff(session.bt_pos_ts) /
                                             TRODES_SAMPLING_RATE) / PIXELS_PER_CM
             bt_is_mv = session.bt_vel_cm_s > VEL_THRESH
-            bt_is_mv = np.append(bt_is_mv, np.array(bt_is_mv[-1]))
+            if len(bt_is_mv) > 0:
+                bt_is_mv = np.append(bt_is_mv, np.array(bt_is_mv[-1]))
             session.bt_is_mv = bt_is_mv
             session.bt_mv_xs = np.array(session.bt_pos_xs)
             session.bt_mv_xs[np.logical_not(bt_is_mv)] = np.nan
@@ -1051,7 +1067,8 @@ if __name__ == "__main__":
             session.probe_vel_cm_s = np.divide(probe_vel, np.diff(session.probe_pos_ts) /
                                                TRODES_SAMPLING_RATE) / PIXELS_PER_CM
             probe_is_mv = session.probe_vel_cm_s > VEL_THRESH
-            probe_is_mv = np.append(probe_is_mv, np.array(probe_is_mv[-1]))
+            if len(probe_is_mv) > 0:
+                probe_is_mv = np.append(probe_is_mv, np.array(probe_is_mv[-1]))
             session.probe_is_mv = probe_is_mv
             session.probe_mv_xs = np.array(session.probe_pos_xs)
             session.probe_mv_xs[np.logical_not(probe_is_mv)] = np.nan
@@ -1155,17 +1172,16 @@ if __name__ == "__main__":
         # ===================================
 
         gl = data_dir + session_dir + '/*.rgs'
-        print(gl)
         dir_list = glob.glob(gl)
-        sniffTimesFile = dir_list[0]
+        session.sniffTimesFile = dir_list[0]
         if len(dir_list) > 1:
             print("Warning, multiple rgs files found: {}".format(dir_list))
 
-        if not os.path.exists(sniffTimesFile):
+        if not os.path.exists(session.sniffTimesFile):
             raise Exception("Couldn't find rgs file")
         else:
-            print("getting rgs from {}".format(sniffTimesFile))
-            with open(sniffTimesFile, 'r') as stf:
+            print("getting rgs from {}".format(session.sniffTimesFile))
+            with open(session.sniffTimesFile, 'r') as stf:
                 streader = csv.reader(stf)
                 sniffData = [v for v in streader]
 

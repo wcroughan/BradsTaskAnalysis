@@ -1,4 +1,5 @@
 import numpy as np
+import scipy
 TRODES_SAMPLING_RATE = 30000
 
 
@@ -657,6 +658,17 @@ class BTSession:
         return units: seconds
         """
         return np.sum(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors) / TRODES_SAMPLING_RATE)
+
+    def total_converted_dwell_time(self, inProbe, wellName):
+        """
+        return units: seconds
+        """
+        if not inProbe:
+            raise Exception("Unimplemented")
+
+        m = scipy.stats.mode(np.diff(self.sniffClassificationT))
+        k = m[0][0] / 1000.0
+        return np.count_nonzero(self.sniffClassificationNearestWell == wellName) * k
 
     def avg_dwell_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False, includeNeighbors=False, emptyVal=None):
         """

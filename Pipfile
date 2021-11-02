@@ -17,6 +17,7 @@ statsmodels = "*"
 mountainlab-pytools = "*"
 sklearn = "*"
 ffms2 = "*"
+opencv-python = "*"
 
 [dev-packages]
 
