@@ -1,27 +1,26 @@
 import os
 import readTrodesExtractedDataFile3
-from scipy.ndimage.morphology import binary_dilation
-from scipy import signal
+# from scipy.ndimage.morphology import binary_dilation
+# from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.use('Qt5Agg')
+# matplotlib.use('Qt5Agg')
 
 
-# mkfigs = np.zeros((100, ))
-mkfigs = np.ones((100, ))
-mkfigs[0] = False  # waveforms
-mkfigs[10] = False  # waveform just cluster, individuals
-mkfigs[4] = False  # Old test, don't use
-mkfigs[1] = False  # spike peak amp scatter
-mkfigs[2] = False  # spike feats just cluster
-mkfigs[11] = False  # waveform just cluster, all waveforms
-mkfigs[3] = False  # all LFP
-mkfigs[5] = False  # LFP with noise marked
-mkfigs[6] = False  # LFP with peaks marked
-mkfigs[7] = False  # peaks marked with noise peaks excluded
-mkfigs[8] = False  # LFP with clustered spikes marked
-# mkfigs[9] = False # final PSTH fig
+mkfigs = np.zeros((100, ))
+# mkfigs[0] = True  # waveforms
+# mkfigs[10] = True  # waveform just cluster, individuals
+# mkfigs[4] = True  # Old test, don't use
+# mkfigs[1] = True  # spike peak amp scatter
+# mkfigs[2] = True  # spike feats just cluster
+# mkfigs[11] = True  # waveform just cluster, all waveforms
+mkfigs[3] = True  # all LFP
+# mkfigs[5] = True  # LFP with noise marked
+# mkfigs[6] = True  # LFP with peaks marked
+# mkfigs[7] = True  # peaks marked with noise peaks excluded
+# mkfigs[8] = True  # LFP with clustered spikes marked
+# mkfigs[9] = True  # final PSTH fig
 
 DOWN_DEFLECT_NOISE_THRESH = -40000
 NOISE_BWD_EXCLUDE_SECS = 1
@@ -36,14 +35,13 @@ SPK_BIN_SZ_SECS = float(SPK_BIN_SZ_MS) / 1000.0
 
 LFP_HZ = 1500
 
-# output_dir = '/home/wcroughan/data/B2/figs/'
-output_dir = "/media/WDC7/B12/figs/"
 
-animal_name = "B12"
+animal_name = "B13"
 condition = "delay"
 tet = 7
 
 if animal_name == "B12":
+    output_dir = "/media/WDC7/B12/figs/"
     if condition == "delay":
         if tet == 5:
             data_file = "/media/WDC7/B12/20210903_145837/20210903_145837.spikes/20210903_145837.spikes_nt5.dat"
@@ -59,6 +57,20 @@ if animal_name == "B12":
         lfp_ts_file = "/media/WDC7/B12/20210901_152223/20210901_152223.LFP/20210901_152223.timestamps.dat"
     else:
         print("Condition uknonw")
+elif animal_name == "B13":
+    output_dir = "/media/WDC7/B13/figs/"
+    data_file = "/media/WDC7/B13/20211129_162149/20211129_162149.spikes/20211129_162149.spikes_nt7.dat"
+    lfp_data_file = "/media/WDC7/B13/20211129_162149/20211129_162149.LFP/20211129_162149.LFP_nt7ch3.dat"
+    lfp_ts_file = "/media/WDC7/B13/20211129_162149/20211129_162149.LFP/20211129_162149.timestamps.dat"
+    if condition == "delay":
+        tStart = None
+        tEnd = None
+    elif condition == "swr" or condition == "interruption":
+        tStart = None
+        tEnd = None
+    else:
+        print("condition unkonwn")
+
 else:
     print("animal uknonw")
 
@@ -227,7 +239,9 @@ lfp_ts = lfp_ts_dict['data']
 if mkfigs[3]:
     print(lfp_ts)
     plt.plot(lfp_ts.astype(float) / 30000, lfp_data)
-    plt.show()
+    # plt.show()
+    fname = "RawLFP.png"
+    plt.savefig(os.path.join(output_dir, fname), dpi=800)
 
 if mkfigs[4]:
     LFP_HZ = 4
@@ -242,7 +256,17 @@ NOISE_FWD_EXCLUDE_FRAMES = int(NOISE_FWD_EXCLUDE_SECS * LFP_HZ)
 STRSZHLF = max(NOISE_BWD_EXCLUDE_FRAMES, NOISE_FWD_EXCLUDE_FRAMES)
 dilstr = np.zeros((STRSZHLF * 2))
 dilstr[STRSZHLF-NOISE_BWD_EXCLUDE_FRAMES:STRSZHLF+NOISE_FWD_EXCLUDE_FRAMES] = 1
-noise_mask = binary_dilation(is_noise, structure=dilstr).astype(bool)
+
+# Ugh this isn't working after arch linux upgrade (libffi newer version)
+# noise_mask = binary_dilation(is_noise, structure=dilstr).astype(bool)
+noise_mask = np.zeros_like(is_noise)
+i = 0
+while i < len(noise_mask):
+    if is_noise[i]:
+        for j in range(max(0, i-NOISE_BWD_EXCLUDE_FRAMES), min(len(is_noise), NOISE_FWD_EXCLUDE_FRAMES)):
+            noise_mask[j] = 1
+            i = j
+    i += 1
 
 if mkfigs[4]:
     plt.subplot(121)
