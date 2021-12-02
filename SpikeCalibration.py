@@ -1,26 +1,37 @@
 import os
 import readTrodesExtractedDataFile3
-# from scipy.ndimage.morphology import binary_dilation
-# from scipy import signal
+from scipy.ndimage.morphology import binary_dilation
+from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 # matplotlib.use('Qt5Agg')
+
+possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/"]
+drive_dir = None
+for dd in possible_drive_dirs:
+    if os.path.exists(dd):
+        drive_dir = dd
+        break
+
+if drive_dir == None:
+    print("Couldnt' find data directory among any of these: {}".foramt(possible_drive_dirs))
+    exit()
 
 
 mkfigs = np.zeros((100, ))
 # mkfigs[0] = True  # waveforms
 # mkfigs[10] = True  # waveform just cluster, individuals
 # mkfigs[4] = True  # Old test, don't use
-# mkfigs[1] = True  # spike peak amp scatter
-# mkfigs[2] = True  # spike feats just cluster
-# mkfigs[11] = True  # waveform just cluster, all waveforms
+mkfigs[1] = True  # spike peak amp scatter
+mkfigs[2] = True  # spike feats just cluster
+mkfigs[11] = True  # waveform just cluster, all waveforms
 mkfigs[3] = True  # all LFP
-# mkfigs[5] = True  # LFP with noise marked
-# mkfigs[6] = True  # LFP with peaks marked
-# mkfigs[7] = True  # peaks marked with noise peaks excluded
-# mkfigs[8] = True  # LFP with clustered spikes marked
-# mkfigs[9] = True  # final PSTH fig
+mkfigs[5] = True  # LFP with noise marked
+mkfigs[6] = True  # LFP with peaks marked
+mkfigs[7] = True  # peaks marked with noise peaks excluded
+mkfigs[8] = True  # LFP with clustered spikes marked
+mkfigs[9] = True  # final PSTH fig
 
 DOWN_DEFLECT_NOISE_THRESH = -40000
 NOISE_BWD_EXCLUDE_SECS = 1
@@ -36,11 +47,16 @@ SPK_BIN_SZ_SECS = float(SPK_BIN_SZ_MS) / 1000.0
 LFP_HZ = 1500
 
 
-animal_name = "B13"
+animal_name = "B14"
 condition = "delay"
 tet = 7
 
+def ConvertTimeToTrodesTS(hours, mins, secs):
+    return 30000 * (secs + 60 * (mins + 60 * (hours)))
+
 if animal_name == "B12":
+    tStart = None
+    tEnd = None
     output_dir = "/media/WDC7/B12/figs/"
     if condition == "delay":
         if tet == 5:
@@ -58,18 +74,35 @@ if animal_name == "B12":
     else:
         print("Condition uknonw")
 elif animal_name == "B13":
-    output_dir = "/media/WDC7/B13/figs/"
-    data_file = "/media/WDC7/B13/20211129_162149/20211129_162149.spikes/20211129_162149.spikes_nt7.dat"
-    lfp_data_file = "/media/WDC7/B13/20211129_162149/20211129_162149.LFP/20211129_162149.LFP_nt7ch3.dat"
-    lfp_ts_file = "/media/WDC7/B13/20211129_162149/20211129_162149.LFP/20211129_162149.timestamps.dat"
+    output_dir = os.path.join(drive_dir, "B13/figs/")
+    data_file = os.path.join(drive_dir, "B13/20211129_162149/20211129_162149.spikes/20211129_162149.spikes_nt7.dat")
+    lfp_data_file = os.path.join(drive_dir, "B13/20211129_162149/20211129_162149.LFP/20211129_162149.LFP_nt7ch3.dat")
+    lfp_ts_file = os.path.join(drive_dir, "B13/20211129_162149/20211129_162149.LFP/20211129_162149.timestamps.dat")
     if condition == "delay":
-        tStart = None
-        tEnd = None
+        tStart = ConvertTimeToTrodesTS(2, 4, 44)
+        tEnd = ConvertTimeToTrodesTS(2, 31, 53)
     elif condition == "swr" or condition == "interruption":
-        tStart = None
-        tEnd = None
+        tStart = ConvertTimeToTrodesTS(1, 29, 7)
+        tEnd = ConvertTimeToTrodesTS(2, 2, 0)
     else:
         print("condition unkonwn")
+
+    print(tStart / 30000, tEnd / 30000)
+elif animal_name == "B14":
+    output_dir = os.path.join(drive_dir, "B14/figs/")
+    data_file = os.path.join(drive_dir, "B14/20211130_152749/20211130_152749.spikes/20211130_152749.spikes_nt1.dat")
+    lfp_data_file = os.path.join(drive_dir, "B14/20211130_152749/20211130_152749.LFP/20211130_152749.LFP_nt1ch2.dat")
+    lfp_ts_file = os.path.join(drive_dir, "B14/20211130_152749/20211130_152749.LFP/20211130_152749.timestamps.dat")
+    if condition == "delay":
+        tStart = ConvertTimeToTrodesTS(1, 0, 51)
+        tEnd = ConvertTimeToTrodesTS(1, 30, 43)
+    elif condition == "swr" or condition == "interruption":
+        tStart = ConvertTimeToTrodesTS(0, 32, 40)
+        tEnd = ConvertTimeToTrodesTS(1, 0, 0)
+    else:
+        print("condition unkonwn")
+
+    print(tStart / 30000, tEnd / 30000)
 
 else:
     print("animal uknonw")
@@ -115,8 +148,8 @@ if np.any(mkfigs[0:3]) or np.any(mkfigs[8:]):
                 plt.plot(wf4)
                 plt.show()
 
+    CHLIM = 10000
     if mkfigs[1]:
-        CHLIM = 5000
         plt.subplot(321)
         plt.scatter(features[:, 0], features[:, 1], marker=".", s=0.5)
         plt.xlim(0, CHLIM)
@@ -158,34 +191,50 @@ if np.any(mkfigs[0:3]) or np.any(mkfigs[8:]):
             else:
                 c1spks_idxs = np.logical_and(np.logical_and(np.logical_and(
                     features[:, 1] > 1000, features[:, 2] < features[:, 1] - 250), features[:, 3] < features[:, 1]), chmaxes[:, 1] < 3000)
+    elif animal_name == "B13":
+        maxfeature = np.max(features, axis=1)
+        c1spks_idxs = np.logical_and(np.logical_and(np.logical_and(features[:,1] < 7500, features[:,0] < 1000), features[:,3] > 400), maxfeature < 1000)
+        for si in range(len(c1spks_idxs)):
+            if not c1spks_idxs[si]:
+                continue
+            wf = spike_data[si][4]
+            if np.any(wf[25:] > 200):
+                c1spks_idxs[si] = False
+    elif animal_name == "B14":
+        maxfeature = np.max(features, axis=1)
+        c1spks_idxs = np.logical_and(np.logical_and(np.logical_and(features[:,1] > 1350, features[:,1] < 2000), features[:,2] < -955 + 1.26 * features[:,1]), maxfeature < 2500)
+    else:
+        print("Haven't defined the cluster yet")
+        exit()
+
     c1spks = features[c1spks_idxs, :]
     c1ts = spike_data['time'][c1spks_idxs]
     print(len(c1ts))
     if mkfigs[2]:
         plt.subplot(321)
         plt.scatter(c1spks[:, 0], c1spks[:, 1], marker=".", s=0.5)
-        plt.xlim(0, 2500)
-        plt.ylim(0, 2500)
+        plt.xlim(0, CHLIM)
+        plt.ylim(0, CHLIM)
         plt.subplot(322)
         plt.scatter(c1spks[:, 0], c1spks[:, 2], marker=".", s=0.5)
-        plt.xlim(0, 2500)
-        plt.ylim(0, 2500)
+        plt.xlim(0, CHLIM)
+        plt.ylim(0, CHLIM)
         plt.subplot(323)
         plt.scatter(c1spks[:, 0], c1spks[:, 3], marker=".", s=0.5)
-        plt.xlim(0, 2500)
-        plt.ylim(0, 2500)
+        plt.xlim(0, CHLIM)
+        plt.ylim(0, CHLIM)
         plt.subplot(324)
         plt.scatter(c1spks[:, 1], c1spks[:, 2], marker=".", s=0.5)
-        plt.xlim(0, 2500)
-        plt.ylim(0, 2500)
+        plt.xlim(0, CHLIM)
+        plt.ylim(0, CHLIM)
         plt.subplot(325)
         plt.scatter(c1spks[:, 1], c1spks[:, 3], marker=".", s=0.5)
-        plt.xlim(0, 2500)
-        plt.ylim(0, 2500)
+        plt.xlim(0, CHLIM)
+        plt.ylim(0, CHLIM)
         plt.subplot(326)
         plt.scatter(c1spks[:, 2], c1spks[:, 3], marker=".", s=0.5)
-        plt.xlim(0, 2500)
-        plt.ylim(0, 2500)
+        plt.xlim(0, CHLIM)
+        plt.ylim(0, CHLIM)
         plt.show()
 
     if mkfigs[10]:
@@ -205,6 +254,7 @@ if np.any(mkfigs[0:3]) or np.any(mkfigs[8:]):
                 plt.plot(wf2)
                 plt.plot(wf3)
                 plt.plot(wf4)
+                plt.legend(["1", "2", "3", "4"])
                 plt.show()
 
     if mkfigs[11]:
@@ -213,15 +263,30 @@ if np.any(mkfigs[0:3]) or np.any(mkfigs[8:]):
         wf2 = np.array([v[2] for v in a])
         wf3 = np.array([v[3] for v in a])
         wf4 = np.array([v[4] for v in a])
+        
+        step = 100
+        pwf1 = wf1[::step, :]
+        pwf2 = wf2[::step, :]
+        pwf3 = wf3[::step, :]
+        pwf4 = wf4[::step, :]
 
         plt.subplot(141)
-        plt.plot(wf1.T)
+        plt.plot(pwf1.T, linewidth=0.2)
         plt.subplot(142)
-        plt.plot(wf2.T)
+        plt.plot(pwf2.T, linewidth=0.2)
         plt.subplot(143)
-        plt.plot(wf3.T)
+        plt.plot(pwf3.T, linewidth=0.2)
         plt.subplot(144)
-        plt.plot(wf4.T)
+        plt.plot(pwf4.T, linewidth=0.2)
+
+        # plt.subplot(141)
+        # plt.plot(wf1.T)
+        # plt.subplot(142)
+        # plt.plot(wf2.T)
+        # plt.subplot(143)
+        # plt.plot(wf3.T)
+        # plt.subplot(144)
+        # plt.plot(wf4.T)
 
         plt.show()
 
@@ -238,10 +303,9 @@ lfp_ts = lfp_ts_dict['data']
 
 if mkfigs[3]:
     print(lfp_ts)
-    plt.plot(lfp_ts.astype(float) / 30000, lfp_data)
-    # plt.show()
-    fname = "RawLFP.png"
-    plt.savefig(os.path.join(output_dir, fname), dpi=800)
+    step = 10
+    plt.plot(lfp_ts[::step].astype(float) / 30000 , lfp_data[::step])
+    plt.show()
 
 if mkfigs[4]:
     LFP_HZ = 4
@@ -326,6 +390,11 @@ stim_times = lfp_ts[stimpeaks].astype(float) / 30000
 NUM_LFP_PSTH_BINS = int(PSTH_MARGIN_SECS * LFP_HZ)
 lfp_psth = np.zeros((stimpeaks.size, 2*NUM_LFP_PSTH_BINS))
 for si, (st, stidx) in enumerate(zip(stim_times, stimpeaks)):
+    if st < tStart / 30000:
+        continue
+    if st > tEnd / 30000:
+        print("Reached tEnd of {} with time {}, breaking".format(tEnd / 30000, st))
+        break
     bins = np.linspace(st - PSTH_MARGIN_SECS, st + PSTH_MARGIN_SECS, num=2*NUM_PSTH_BINS+1)
     h, b = np.histogram(spike_times, bins=bins)
     psth[si, :] = h
