@@ -32,7 +32,7 @@ SKIP_PREV_SESSION = True
 
 TEST_NEAREST_WELL = False
 
-animal_name = 'B12_highthresh'
+animal_name = 'B13'
 
 if animal_name == "Martin":
     data_dir = '/media/WDC1/martindata/bradtask/'
@@ -93,6 +93,30 @@ elif animal_name == "B12_highthresh":
     excluded_sessions = ["20210917_1", "20210923_1", "20211004_1", "20211005_2", "20211006_1"]
     DEFAULT_RIP_DET_TET = 8
 
+elif animal_name == "B13":
+    data_dir = "/media/WDC7/B13/bradtasksessions/"
+    output_dir = "/media/WDC7/B13/processed_data/"
+    fig_output_dir = "/media/WDC7/B13/processed_data/"
+    out_filename = "B13_bradtask.dat"
+
+    excluded_dates = []
+    minimum_date = "20211209"  # had one run on the 8th but used high ripple threshold and a different reference tetrode
+    excluded_sessions = []
+    DEFAULT_RIP_DET_TET = 7
+
+elif animal_name == "B14":
+    data_dir = "/media/WDC7/B14/bradtasksessions/"
+    output_dir = "/media/WDC7/B14/processed_data/"
+    fig_output_dir = "/media/WDC7/B14/processed_data/"
+    out_filename = "B14_bradtask.dat"
+
+    excluded_dates = []
+    minimum_date = None
+    excluded_sessions = []
+    DEFAULT_RIP_DET_TET = 3
+
+if not os.path.exists(output_dir):
+    os.mkdir(output_dir)
 
 all_data_dirs = sorted(os.listdir(data_dir), key=lambda s: (
     s.split('_')[0], s.split('_')[1]))
@@ -624,11 +648,18 @@ if __name__ == "__main__":
             seshs_on_this_day = sorted(
                 list(filter(lambda seshdir: session.date_str + "_" in seshdir, filtered_data_dirs)))
             num_on_this_day = len(seshs_on_this_day)
+            print("Looking for info file for {}".format(session_dir))
             for i in range(num_on_this_day):
+                print("\t{}".format(seshs_on_this_day[i]))
                 if seshs_on_this_day[i] == session_dir:
                     sesh_idx_within_day = i
-            info_file = os.path.join(behavior_notes_dir, date_str + "_" +
-                                     str(sesh_idx_within_day+1) + ".txt")
+            possible_info_files = sorted(
+                glob.glob(os.path.join(behavior_notes_dir, date_str + "_*.txt")))
+            print(possible_info_files)
+            # info_file = os.path.join(behavior_notes_dir, date_str + "_" +
+            #  str(sesh_idx_within_day+1) + ".txt")
+            info_file = possible_info_files[sesh_idx_within_day]
+            print(info_file)
 
         if "".join(os.path.basename(info_file).split(".")[0:-1]) in excluded_sessions:
             print(session_dir, " excluded session, skipping")
@@ -674,13 +705,14 @@ if __name__ == "__main__":
                 print("Position data just covers top of the environment")
                 session.positionOnlyTop = True
             else:
-                print("min max")
-                print(np.nanmin(session.probe_pos_ys))
-                print(np.nanmax(session.probe_pos_ys))
-                plt.plot(session.bt_pos_xs, session.bt_pos_ys)
-                plt.show()
-                plt.plot(session.probe_pos_xs, session.probe_pos_ys)
-                plt.show()
+                pass
+                # print("min max")
+                # print(np.nanmin(session.probe_pos_ys))
+                # print(np.nanmax(session.probe_pos_ys))
+                # plt.plot(session.bt_pos_xs, session.bt_pos_ys)
+                # plt.show()
+                # plt.plot(session.probe_pos_xs, session.probe_pos_ys)
+                # plt.show()
 
         # ===================================
         # Get flags and info from info file
@@ -736,10 +768,12 @@ if __name__ == "__main__":
                             print("Couldn't recognize Condition {} in file {}".format(
                                 type_in, info_file))
                     elif field_name.lower() == "thresh":
-                        if "Low" in field_val:
+                        if "low" in field_val.lower():
                             session.ripple_detection_threshold = 2.5
-                        elif "High" in field_val:
+                        elif "high" in field_val.lower():
                             session.ripple_detection_threshold = 4
+                        elif "med" in field_val.lower():
+                            session.ripple_detection_threshold = 3
                         else:
                             session.ripple_detection_threshold = float(
                                 field_val)
@@ -1173,48 +1207,54 @@ if __name__ == "__main__":
 
         gl = data_dir + session_dir + '/*.rgs'
         dir_list = glob.glob(gl)
-        session.sniffTimesFile = dir_list[0]
-        if len(dir_list) > 1:
-            print("Warning, multiple rgs files found: {}".format(dir_list))
-
-        if not os.path.exists(session.sniffTimesFile):
-            raise Exception("Couldn't find rgs file")
+        if len(dir_list) == 0:
+            print("Couldn't find sniff times files")
+            session.hasSniffTimes = False
         else:
-            print("getting rgs from {}".format(session.sniffTimesFile))
-            with open(session.sniffTimesFile, 'r') as stf:
-                streader = csv.reader(stf)
-                sniffData = [v for v in streader]
+            session.hasSniffTimes = True
 
-                session.well_sniff_times_entry = [[] for _ in all_well_names]
-                session.well_sniff_times_exit = [[] for _ in all_well_names]
-                session.bt_well_sniff_times_entry = [[] for _ in all_well_names]
-                session.bt_well_sniff_times_exit = [[] for _ in all_well_names]
-                session.probe_well_sniff_times_entry = [[] for _ in all_well_names]
-                session.probe_well_sniff_times_exit = [[] for _ in all_well_names]
+            session.sniffTimesFile = dir_list[0]
+            if len(dir_list) > 1:
+                print("Warning, multiple rgs files found: {}".format(dir_list))
 
-                session.sniff_pre_trial_light_off = int(sniffData[0][0])
-                session.sniff_trial_start = int(sniffData[0][1])
-                session.sniff_trial_stop = int(sniffData[0][2])
-                session.sniff_probe_start = int(sniffData[1][0])
-                session.sniff_probe_stop = int(sniffData[1][1])
-                session.sniff_post_probe_light_on = int(sniffData[1][2])
+            if not os.path.exists(session.sniffTimesFile):
+                raise Exception("Couldn't find rgs file")
+            else:
+                print("getting rgs from {}".format(session.sniffTimesFile))
+                with open(session.sniffTimesFile, 'r') as stf:
+                    streader = csv.reader(stf)
+                    sniffData = [v for v in streader]
 
-                for i in sniffData[2:]:
-                    w = int(well_name_to_idx[int(i[2])])
-                    entry_time = int(i[0])
-                    exit_time = int(i[1])
-                    session.well_sniff_times_entry[w].append(entry_time)
-                    session.well_sniff_times_exit[w].append(exit_time)
+                    session.well_sniff_times_entry = [[] for _ in all_well_names]
+                    session.well_sniff_times_exit = [[] for _ in all_well_names]
+                    session.bt_well_sniff_times_entry = [[] for _ in all_well_names]
+                    session.bt_well_sniff_times_exit = [[] for _ in all_well_names]
+                    session.probe_well_sniff_times_entry = [[] for _ in all_well_names]
+                    session.probe_well_sniff_times_exit = [[] for _ in all_well_names]
 
-                    if exit_time < entry_time:
-                        print("mismatched interval: {} - {}".format(entry_time, exit_time))
-                        assert False
-                    if exit_time < session.sniff_trial_stop:
-                        session.bt_well_sniff_times_entry[w].append(entry_time)
-                        session.bt_well_sniff_times_exit[w].append(exit_time)
-                    else:
-                        session.probe_well_sniff_times_entry[w].append(entry_time)
-                        session.probe_well_sniff_times_exit[w].append(exit_time)
+                    session.sniff_pre_trial_light_off = int(sniffData[0][0])
+                    session.sniff_trial_start = int(sniffData[0][1])
+                    session.sniff_trial_stop = int(sniffData[0][2])
+                    session.sniff_probe_start = int(sniffData[1][0])
+                    session.sniff_probe_stop = int(sniffData[1][1])
+                    session.sniff_post_probe_light_on = int(sniffData[1][2])
+
+                    for i in sniffData[2:]:
+                        w = int(well_name_to_idx[int(i[2])])
+                        entry_time = int(i[0])
+                        exit_time = int(i[1])
+                        session.well_sniff_times_entry[w].append(entry_time)
+                        session.well_sniff_times_exit[w].append(exit_time)
+
+                        if exit_time < entry_time:
+                            print("mismatched interval: {} - {}".format(entry_time, exit_time))
+                            assert False
+                        if exit_time < session.sniff_trial_stop:
+                            session.bt_well_sniff_times_entry[w].append(entry_time)
+                            session.bt_well_sniff_times_exit[w].append(exit_time)
+                        else:
+                            session.probe_well_sniff_times_entry[w].append(entry_time)
+                            session.probe_well_sniff_times_exit[w].append(exit_time)
 
         if session.hasPositionData:
             # ===================================
@@ -1854,4 +1894,8 @@ if __name__ == "__main__":
                 plt.show()
 
     # save all sessions to disk
+    print("Saving to file: {}".format(out_filename))
     dataob.saveToFile(os.path.join(output_dir, out_filename))
+    print("Saved sessions:")
+    for sesh in dataob.allSessions:
+        print(sesh.name)

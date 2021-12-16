@@ -28,7 +28,8 @@ from MyPlottingFunctions import *
 # animal_name = 'B12_goodpos'
 # animal_name = 'B12'
 # animal_name = 'B12_highthresh'
-animal_name = 'B12_blur'
+# animal_name = 'B12_blur'
+animal_name = 'B13'
 
 if animal_name == "Martin":
     data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
@@ -58,6 +59,11 @@ elif animal_name == "B12_blur":
     data_filename = "/media/WDC6/B12/conversion/B12_conversion_blur.dat"
     output_dir = "/media/WDC6/B12/conversion/behavior_figures/blur/"
 
+elif animal_name == "B13":
+    data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
+    output_dir = "/media/WDC7/B13/processed_data/behavior_figures/"
+
+
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
@@ -71,39 +77,39 @@ SAVE_OUTPUT_PLOTS = True
 
 SKIP_BOX_PLOTS = False
 SKIP_SCATTER_PLOTS = False
-SKIP_SWARM_PLOTS = True
+SKIP_SWARM_PLOTS = False
 SKIP_PERSEVBIAS_PLOTS = True
-SKIP_PERSEV_MEASURE_PLOTS = True
-SKIP_PERSEV_BOX_PLOTS = True
+SKIP_PERSEV_MEASURE_PLOTS = False
+SKIP_PERSEV_BOX_PLOTS = False
 SKIP_BINARY_PERSEVBIAS_PLOTS = True
-SKIP_BOUT_PLOTS = True
-SKIP_WAIT_PLOTS = True
-SKIP_BALL_PLOTS = True
-SKIP_CURVATURE_PLOTS = True
-SKIP_HISTOGRAMS = True
-SKIP_LINE_PLOTS = True
-SKIP_AVG_SPEED_COMP_PLOTS = True
-SKIP_AVG_SPEED_PLOTS = True
-SKIP_PERSEV_QUAD_PLOTS = True
-SKIP_BOUT_PROP_PLOTS = True
-SKIP_HW_PLOT = True
-SKIP_ORDER_PLOTS = True
-SKIP_RIPPLE_PLACE_PLOTS = True
-SKIP_EVERY_MINUTE_PLOTS = True
-SKIP_PREV_SESSION_PLOTS = True
-SKIP_PSEUDOPROBE_PLOTS = True
-SKIP_BASIC_BEHAVIOR_COMPARISON = True
+SKIP_BOUT_PLOTS = False
+SKIP_WAIT_PLOTS = False
+SKIP_BALL_PLOTS = False
+SKIP_CURVATURE_PLOTS = False
+SKIP_HISTOGRAMS = False
+SKIP_LINE_PLOTS = False
+SKIP_AVG_SPEED_COMP_PLOTS = False
+SKIP_AVG_SPEED_PLOTS = False
+SKIP_PERSEV_QUAD_PLOTS = False
+SKIP_BOUT_PROP_PLOTS = False
+SKIP_HW_PLOT = False
+SKIP_ORDER_PLOTS = False
+SKIP_RIPPLE_PLACE_PLOTS = False
+SKIP_EVERY_MINUTE_PLOTS = False
+SKIP_PREV_SESSION_PLOTS = False
+SKIP_PSEUDOPROBE_PLOTS = False
+SKIP_BASIC_BEHAVIOR_COMPARISON = False
 SKIP_CONSECUTIVE_SESSION_PLOTS = True
 SKIP_PSEUDOPROBE_PATH_PLOTS = True
 SKIP_OCCUPANCY_PLOTS = True
-SKIP_WELL_COLOR_GRIDS = True
+SKIP_WELL_COLOR_GRIDS = False
 SKIP_SNIFF_TIMES = True
 SKIP_SNIFF_WITH_POS_PLOTS = True
 SKIP_TOP_HALF_PLOTS = True
-SKIP_CONVERSION_PLOTS = False
+SKIP_CONVERSION_PLOTS = True
 
 PRINT_TRIAL_INFO = False
-SKIP_TO_MY_LOU_DARLIN = True
+SKIP_TO_MY_LOU_DARLIN = False
 
 TRODES_SAMPLING_RATE = 30000
 
