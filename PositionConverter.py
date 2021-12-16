@@ -10,7 +10,8 @@ from queue import Queue
 from threading import Thread
 from joblib import Parallel, delayed
 
-animal_name = 'B12_highthresh'
+animal_name = 'B11'
+
 all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 well_name_to_idx = np.empty((np.max(all_well_names)+1))
 well_name_to_idx[:] = np.nan
@@ -20,8 +21,14 @@ for widx, wname in enumerate(all_well_names):
 if animal_name == "B12_highthresh":
     data_filename = "/media/WDC7/B12/processed_data/B12_highthresh_bradtask.dat"
     output_dir = "/media/WDC6/B12/conversion"
+    training_img_dir = "/media/WDC6/B12/conversion"
     out_filename = "B12_conversion_blur.dat"
     video_dir = "/media/WDC6/B12"
+elif animal_name == "B11":
+    output_dir = "/media/WDC6/B11/conversion"
+    training_img_dir = "/media/WDC6/B12/conversion"
+    out_filename = "B11_converted.dat"
+    video_dir = "/media/WDC6/B11"
 else:
     raise Exception("unknonwn dataset")
 
@@ -29,11 +36,13 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 makefigs = np.zeros((100,))
-makefigs[3] = 1
+makefigs[4] = 1
 
 alldata = BTData()
 if makefigs[3]:
     alldata.loadFromFile(os.path.join(output_dir, out_filename))
+elif makefigs[4]:
+    pass
 else:
     alldata.loadFromFile(data_filename)
 all_sessions = alldata.getSessions()
@@ -177,7 +186,7 @@ if makefigs[1]:
 
 
 def loadClassificationImages(prefix):
-    gl = os.path.join(output_dir, prefix + "_*.png")
+    gl = os.path.join(training_img_dir, prefix + "_*.png")
     imlist = glob.glob(gl)
     assert len(imlist) == len(all_well_names)
     ret = np.empty((VID_FRAME_SZ_2, VID_FRAME_SZ_1, len(imlist)))
@@ -253,10 +262,10 @@ class VideoParser:
         return self.stream.get(cv2.CAP_PROP_FPS)
 
 
-def classifyVideo(sesh):
-    if sesh.date_str == "20211004":
+def classifyVideo(t1, t2, videoFileName, date_str, outvidName):
+    if date_str == "20211004":
         return (None, None)
-    elif sesh.date_str > "20211004":
+    elif date_str > "20211004":
         prefix = "post"
     else:
         prefix = "pre"
@@ -270,19 +279,13 @@ def classifyVideo(sesh):
     t[:] = np.nan
     idx = 0
 
-    t1 = sesh.sniff_probe_start
-    t2 = sesh.sniff_probe_stop
-
-    fn = sesh.sniffTimesFile[0:-4].split('/')[-1]
-    fn = os.path.join(video_dir, fn)
-
-    vparse = VideoParser(fn, t1, t2)
+    vparse = VideoParser(videoFileName, t1, t2)
     vparse.start()
 
     w = vparse.getWidth()
     h = vparse.getHeight()
     fr = vparse.getFR()
-    writer = cv2.VideoWriter(os.path.join(output_dir, sesh.name + "_outvid.avi"), cv2.VideoWriter_fourcc(
+    writer = cv2.VideoWriter(os.path.join(output_dir, outvidName + "_outvid.avi"), cv2.VideoWriter_fourcc(
         'M', 'J', 'P', 'G'), fr, (w, h))
 
     rt1 = time.time()
@@ -325,10 +328,34 @@ def classifyVideo(sesh):
     return (all_well_names[np.argmax(post, axis=1)], t)
 
 
+def classifyVideoForSesh(sesh):
+    t1 = sesh.sniff_probe_start
+    t2 = sesh.sniff_probe_stop
+
+    fn = sesh.sniffTimesFile[0:-4].split('/')[-1]
+    fn = os.path.join(video_dir, fn)
+
+    return classifyVideo(t1, t2, fn, sesh.date_str, sesh.name)
+
+
+def classifyVideoForRgs(rgsfilename):
+    with open(rgsfilename, "r") as rf:
+        l = rf.readline()
+        print(rgsfilename)
+        l = rf.readline().split(',')
+        t1 = int(l[0])
+        t2 = int(l[1])
+        fn = rgsfilename[0:-4].split('/')[-1]
+        vfn = os.path.join(video_dir, fn)
+        date_str = fn[0:4] + fn[5:7] + fn[8:9]
+        name = fn[0:-4]
+
+        return classifyVideo(t1, t2, vfn, date_str, name)
+
+
 if makefigs[2]:
-    classResults = Parallel(n_jobs=6)(delayed(classifyVideo)(s) for s in all_sessions)
+    classResults = Parallel(n_jobs=6)(delayed(classifyVideoForSesh)(s) for s in all_sessions)
     for si, sesh in enumerate(all_sessions):
-        # clv = classifyVideo(sesh)
         sesh.sniffClassificationNearestWell = classResults[si][0]
         sesh.sniffClassificationT = classResults[si][1]
 
@@ -382,3 +409,12 @@ if makefigs[3]:
 
         writer.release()
         vid.release()
+
+if makefigs[4]:
+    gl = os.path.join(video_dir, "*.rgs")
+    vidlist = glob.glob(gl)
+    classResults = Parallel(n_jobs=6)(delayed(classifyVideoForRgs)(v) for v in vidlist)
+    # classResults = []
+    # for v in vidlist:
+    # classResults.append(classifyVideoForRgs(v))
+    np.savez(os.path.join(output_dir, "allClass"), np.array(classResults))
