@@ -32,7 +32,7 @@ SKIP_PREV_SESSION = True
 
 TEST_NEAREST_WELL = False
 
-animal_name = 'B13'
+animal_name = 'B14'
 
 if animal_name == "Martin":
     data_dir = '/media/WDC1/martindata/bradtask/'
@@ -945,7 +945,10 @@ if __name__ == "__main__":
             if not os.path.exists(lfpdir):
                 print(lfpdir, "doesn't exists, gonna try and extract the LFP")
                 # syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportLFP -rec " + file_str + ".rec"
-                syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + file_str + ".rec"
+                if os.path.exists("/home/wcroughan/Software/Trodes21/exportLFP"):
+                    syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + file_str + ".rec"
+                else:
+                    syscmd = "/home/wcroughan/Software/Trodes21/linux/exportLFP -rec " + file_str + ".rec"
                 print(syscmd)
                 os.system(syscmd)
 

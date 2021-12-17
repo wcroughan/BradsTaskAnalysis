@@ -766,7 +766,11 @@ class BTSession:
             else:
                 bout_starts = self.bt_explore_bout_starts
                 bout_ends = self.bt_explore_bout_ends
-            timeInterval = [bout_starts[boutsInterval[0]], bout_ends[boutsInterval[1]-1]]
+
+            if len(bout_ends) >= boutsInterval[1]:
+                timeInterval = [bout_starts[boutsInterval[0]], bout_ends[boutsInterval[1]-1]]
+            else:
+                timeInterval = [bout_starts[boutsInterval[0]], bout_ends[len(bout_ends)-1]]
 
         denom = self.num_bouts(inProbe, timeInterval=timeInterval)
         if denom == 0:

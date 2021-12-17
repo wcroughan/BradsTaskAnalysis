@@ -29,7 +29,7 @@ from MyPlottingFunctions import *
 # animal_name = 'B12'
 # animal_name = 'B12_highthresh'
 # animal_name = 'B12_blur'
-animal_name = 'B13'
+animal_name = 'B14'
 
 if animal_name == "Martin":
     data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
@@ -62,6 +62,10 @@ elif animal_name == "B12_blur":
 elif animal_name == "B13":
     data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
     output_dir = "/media/WDC7/B13/processed_data/behavior_figures/"
+
+elif animal_name == "B14":
+    data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
+    output_dir = "/media/WDC7/B14/processed_data/behavior_figures/"
 
 
 if not os.path.exists(output_dir):
@@ -131,7 +135,7 @@ if SKIP_PREV_SESSION_PLOTS:
 else:
     if not SKIP_TO_MY_LOU_DARLIN:
         sessions_with_prev = [sesh for sesh in all_sessions if sesh.prevSessionInfoParsed]
-        tlbls_wprev = [trial_label(sesh) for sesh in sessions_with_prev]
+        tlbls_wprev = [P.trial_label(sesh) for sesh in sessions_with_prev]
         P.makeABoxPlot([sesh.avg_dwell_time(True, sesh.prevSessionHome, timeInterval=[0, 30]) for sesh in sessions_with_prev],
                        tlbls_wprev, ['Condition', 'probe_avg_dwell_time_30sec_prevsession_home'])
         P.makeABoxPlot([sesh.avg_dwell_time(True, sesh.prevSessionHome, timeInterval=[0, 300]) for sesh in sessions_with_prev],
@@ -1588,7 +1592,7 @@ boutProportionPlot(15)
 if SKIP_HW_PLOT:
     print("Warning, skipping home well plot")
 else:
-    session_type = [0 if trial_label(
+    session_type = [0 if P.trial_label(
         sesh) == "SWR" else 1 for sesh in all_sessions]
     xvals = [sesh.home_x for sesh in all_sessions]
     yvals = [sesh.home_y for sesh in all_sessions]
@@ -1604,10 +1608,11 @@ else:
 if SKIP_ORDER_PLOTS:
     print("Warning, skipping trial order plots")
 else:
-    P.makeAScatterPlot(list(range(len(all_sessions))),
-                       [sesh.num_sniffs(False, sesh.home_well, excludeReward=True)
-                        for sesh in all_sessions],
-                       ['Session idx', 'Num Home Sniffs'], tlbls)
+    if all_sessions[0].hasSniffTimes:
+        P.makeAScatterPlot(list(range(len(all_sessions))),
+                           [sesh.num_sniffs(False, sesh.home_well, excludeReward=True)
+                            for sesh in all_sessions],
+                           ['Session idx', 'Num Home Sniffs'], tlbls)
     P.makeAScatterPlot(list(range(len(all_sessions))),
                        [sesh.num_home_found for sesh in all_sessions],
                        ['Session idx', 'Num Homes Found'], tlbls)
@@ -1692,6 +1697,8 @@ else:
 
         # speed
         rip_idxs = np.searchsorted(post, rip_ts[rip_ts < post[-1]])
+        if rip_idxs[-1] == len(sesh.bt_vel_cm_s):
+            rip_idxs = np.delete(rip_idxs, -1)
         rip_speeds = sesh.bt_vel_cm_s[rip_idxs]
         all_rip_speeds = np.concatenate((all_rip_speeds, rip_speeds))
         all_speeds = np.concatenate((all_speeds, sesh.bt_vel_cm_s))
@@ -1826,7 +1833,7 @@ if SKIP_TOP_HALF_PLOTS:
     print("Skipping plots using just top half of pos")
 else:
     sessions_in_top_half = [sesh for sesh in all_sessions if sesh.home_well > 32]
-    tlbls_th = [trial_label(sesh) for sesh in sessions_in_top_half]
+    tlbls_th = [P.trial_label(sesh) for sesh in sessions_in_top_half]
     print("\n".join([sesh.date_str for sesh in sessions_in_top_half]))
     P.makeABoxPlot([sesh.avg_dwell_time(True, sesh.home_well) for sesh in sessions_in_top_half],
                    tlbls_th, ['Condition', 'probe_avg_home_dwell_time_top_half'])
@@ -1839,7 +1846,7 @@ if SKIP_CONVERSION_PLOTS:
     print("Skipping conversion plots")
 else:
     sessions_with_converted_wells = [sesh for sesh in all_sessions if sesh.date_str != "20211004"]
-    tlbls_converted = [trial_label(sesh) for sesh in sessions_with_converted_wells]
+    tlbls_converted = [P.trial_label(sesh) for sesh in sessions_with_converted_wells]
     y = [sesh.total_converted_dwell_time(True, sesh.home_well)
          for sesh in sessions_with_converted_wells]
     outl = np.argmax(y)
