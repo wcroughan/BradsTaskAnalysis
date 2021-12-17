@@ -11,14 +11,16 @@ from matplotlib.lines import Line2D
 
 
 class MyPlottingFunctions:
-    def __init__(self, output_dir, savePlots=True, showPlots=False, skipBoxPlots=False, skipScatterPlots=False, skipSwarmPlots=False):
+    def __init__(self, all_sessions, output_dir, savePlots=True, showPlots=False, skipBoxPlots=False, skipScatterPlots=False, skipSwarmPlots=False, skipHistograms=False):
         self.SAVE_OUTPUT_PLOTS = savePlots
         self.SHOW_OUTPUT_PLOTS = showPlots
         self.SKIP_BOX_PLOTS = skipBoxPlots
         self.SKIP_SCATTER_PLOTS = skipScatterPlots
         self.SKIP_SWARM_PLOTS = skipSwarmPlots
+        self.SKIP_HISTOGRAMS = skipHistograms
         self.output_dir = output_dir
         self.all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
+        self.all_sessions = all_sessions
 
     def saveOrShow(self, fname):
         if self.SAVE_OUTPUT_PLOTS:
@@ -202,9 +204,9 @@ class MyPlottingFunctions:
     #             output_filename = os.path.join(output_dir, output_filename)
     #         plt.savefig(output_filename, dpi=800)
 
-    def makeAPersevMeasurePlot(self, measure_name, datafunc, all_sessions, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None):
+    def makeAPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None):
         sessions_with_all_wells = list(
-            filter(lambda sesh: len(sesh.visited_away_wells) > 0, all_sessions))
+            filter(lambda sesh: len(sesh.visited_away_wells) > 0, self.all_sessions))
 
         print("WARNING=========\nExcluding 10/04\n=================================")
         sessions_with_all_wells = [
@@ -285,22 +287,22 @@ class MyPlottingFunctions:
         well_quad = self.quadrantOfWell(well_idx)
         return list(set([0, 1, 2, 3]) - set([well_quad]))
 
-    def makeAQuadrantPersevMeasurePlot(self, measure_name, datafunc, all_sessions, output_filename="", title="", doStats=True):
+    def makeAQuadrantPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True):
         home_vals = [datafunc(sesh, "Q" + str(self.quadrantOfWell(sesh.home_well)))
-                     for sesh in all_sessions]
+                     for sesh in self.all_sessions]
         other_vals = [np.nanmean(np.array([datafunc(sesh, "Q" + str(qi)) for qi in self.quadrantsExceptWell(sesh.home_well)]))
-                      for sesh in all_sessions]
+                      for sesh in self.all_sessions]
 
         # home_vals = [sesh.__dict__[measure_name][quadrantOfWell(sesh.home_well)]
-        #              for sesh in all_sessions]
+        #              for sesh in self.all_sessions]
         # other_vals = [np.nanmean(np.array([sesh.__dict__[measure_name][oq]
-        #                                    for oq in quadrantsExceptWell(sesh.home_well)])) for sesh in all_sessions]
+        #                                    for oq in quadrantsExceptWell(sesh.home_well)])) for sesh in self.all_sessions]
 
-        n = len(all_sessions)
+        n = len(self.all_sessions)
         axesNames = ["Quad_type", measure_name, "Session_Type"]
         assert len(home_vals) == len(other_vals) and len(home_vals) == n
         categories = ["home"] * n + ["other"] * n
-        session_type = [self.trial_label(sesh) for sesh in all_sessions] * 2
+        session_type = [self.trial_label(sesh) for sesh in self.all_sessions] * 2
         yvals = home_vals + other_vals
         s = pd.Series([categories, yvals, session_type], index=axesNames)
         plt.clf()
@@ -340,7 +342,7 @@ class MyPlottingFunctions:
         cnt_away_pos = np.zeros((MAX_NUM_AWAY,))
         cnt_away_total = np.zeros((MAX_NUM_AWAY,))
         num_missing_away = 0
-        for sesh in all_sessions:
+        for sesh in self.all_sessions:
             if len(sesh.visited_away_wells) == 0:
                 # print("Warning, session {} does not have visited away wells recorded".format(sesh.name))
                 num_missing_away += 1
@@ -391,7 +393,7 @@ class MyPlottingFunctions:
             plt.savefig(output_filename, dpi=800)
 
     def makeAHistogram(self, yvals, categories, output_filename="", title=""):
-        if SKIP_HISTOGRAMS:
+        if self.SKIP_HISTOGRAMS:
             print("Warning, skipping histograms!")
             return
 
@@ -427,7 +429,7 @@ class MyPlottingFunctions:
 
     def makeAPlotOverDays(self, datafunc, labels, fname, plotPast=False):
         sessions_with_all_wells = list(
-            filter(lambda sesh: len(sesh.visited_away_wells) > 0, all_sessions))
+            filter(lambda sesh: len(sesh.visited_away_wells) > 0, self.all_sessions))
         # print("Considering {} out of {} sessions that have all away wells listed".format(
         # len(sessions_with_all_wells), len(all_sessions)))
 
