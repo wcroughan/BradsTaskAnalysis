@@ -11,7 +11,7 @@ from matplotlib.lines import Line2D
 
 
 class MyPlottingFunctions:
-    def __init__(self, all_sessions, output_dir, savePlots=True, showPlots=False, skipBoxPlots=False, skipScatterPlots=False, skipSwarmPlots=False, skipHistograms=False):
+    def __init__(self, allData, output_dir, savePlots=True, showPlots=False, skipBoxPlots=False, skipScatterPlots=False, skipSwarmPlots=False, skipHistograms=False):
         self.SAVE_OUTPUT_PLOTS = savePlots
         self.SHOW_OUTPUT_PLOTS = showPlots
         self.SKIP_BOX_PLOTS = skipBoxPlots
@@ -20,7 +20,8 @@ class MyPlottingFunctions:
         self.SKIP_HISTOGRAMS = skipHistograms
         self.output_dir = output_dir
         self.all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
-        self.all_sessions = all_sessions
+        self.all_sessions = allData.getSessions()
+        self.tlbls = [self.trial_label(sesh) for sesh in self.all_sessions]
 
     def saveOrShow(self, fname):
         if self.SAVE_OUTPUT_PLOTS:
@@ -28,16 +29,24 @@ class MyPlottingFunctions:
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
 
+    def makeASimpleBoxPlot(self, valFunc, title, yAxisName=None):
+        if yAxisName is None:
+            yAxisName = title
+        self.makeABoxPlot([valFunc(sesh) for sesh in self.all_sessions],
+                          self.tlbls, ["Condition", yAxisName], title=title)
+
     def makeABoxPlot(self, yvals, categories, axesNames, output_filename="", title="", doStats=True, scaleValue=None):
         if self.SKIP_BOX_PLOTS:
             print("Warning, skipping box plots!")
             return
 
-        s = pd.Series([categories, yvals], index=axesNames)
+        axesNamesNoSpaces = [a.replace(" ", "_") for a in axesNames]
+
+        s = pd.Series([categories, yvals], index=axesNamesNoSpaces)
         plt.clf()
         print(s)
-        sns.boxplot(x=axesNames[0], y=axesNames[1], data=s, palette="Set3")
-        sns.swarmplot(x=axesNames[0], y=axesNames[1], data=s, color="0.25")
+        sns.boxplot(x=axesNamesNoSpaces[0], y=axesNamesNoSpaces[1], data=s, palette="Set3")
+        sns.swarmplot(x=axesNamesNoSpaces[0], y=axesNamesNoSpaces[1], data=s, color="0.25")
         plt.title(title)
         plt.xlabel(axesNames[0])
         plt.ylabel(axesNames[1])
@@ -46,7 +55,7 @@ class MyPlottingFunctions:
         if self.SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
             if len(output_filename) == 0:
                 output_filename = os.path.join(self.output_dir, "_".join(
-                    axesNames[::-1]) + "_" + "_".join(sorted(list(ucats))))
+                    axesNamesNoSpaces[::-1]) + "_" + "_".join(sorted(list(ucats))))
             else:
                 output_filename = os.path.join(self.output_dir, output_filename)
 
@@ -55,10 +64,10 @@ class MyPlottingFunctions:
                 for i in range(len(yvals)):
                     yvals[i] *= scaleValue
 
-            s = pd.Series([categories, yvals], index=axesNames)
+            s = pd.Series([categories, yvals], index=axesNamesNoSpaces)
             print(s)
             anovaModel = ols(
-                axesNames[1] + " ~ C(" + axesNames[0] + ")", data=s).fit()
+                axesNamesNoSpaces[1] + " ~ C(" + axesNamesNoSpaces[0] + ")", data=s).fit()
             anova_table = anova_lm(anovaModel, typ=1)
             print("============================\n" + output_filename + " ANOVA:")
             print(anova_table)
@@ -247,6 +256,9 @@ class MyPlottingFunctions:
         plt.clf()
         sns.boxplot(x=axesNames[0], y=axesNames[1], data=s,
                     hue="Session_Type", palette="Set3")
+        sns.swarmplot(x=axesNames[0], y=axesNames[1], data=s,
+                      color="0.25", hue="Session_Type", dodge=True)
+
         plt.title(title)
         plt.xlabel(axesNames[0])
         if yAxisLabel is None:
