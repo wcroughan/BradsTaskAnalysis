@@ -5,15 +5,17 @@ import matplotlib.animation as anim
 from itertools import groupby
 import random
 
-data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
+# data_filename = "/media/WDC4/martindata/bradtask/martin_bradtask.dat"
+# output_dir = '/media/WDC4/martindata/processed_data/animations'
+data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
+# output_dir = "/media/WDC7/B13/processed_data/behavior_figures/animations/"
+
+# if not os.path.exists(output_dir):
+#     os.makedirs(output_dir)
+
 alldata = BTData()
 alldata.loadFromFile(data_filename)
 all_sessions = alldata.getSessions()
-
-output_dir = '/media/WDC4/martindata/processed_data/animations'
-
-SHOW_OUTPUT_PLOTS = True
-SAVE_OUTPUT_PLOTS = False
 
 fig, ax = plt.subplots()
 line_ex, = ax.plot([], [], lw=2)

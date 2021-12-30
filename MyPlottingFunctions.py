@@ -29,6 +29,53 @@ class MyPlottingFunctions:
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
 
+    def makeALinePlot(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None):
+        """
+        valsFunc : session => [(xvals, yvals), (xvals, yvals), ...]
+        """
+        print("Line plot: {}".format(title))
+
+        if axisLims == "environment":
+            xlim1 = np.min(sesh.bt_pos_xs) - 20
+            xlim2 = np.max(sesh.bt_pos_xs) + 20
+            ylim1 = np.min(sesh.bt_pos_ys) - 20
+            ylim2 = np.max(sesh.bt_pos_ys) + 20
+
+        plt.clf()
+        for sesh in self.all_sessions:
+            vals = valsFunc(sesh)
+            # print(vals[0][0])
+            if not individualSessions and saveAllValuePairsSeparately and len(vals) > 1:
+                print("Warning: won't be saving all pairs separately since combining across sessions")
+
+            plt.xlabel(xlabel)
+            plt.ylabel(ylabel)
+            if axisLims == "environment":
+                plt.xlim(xlim1, xlim2)
+                plt.ylim(ylim1, ylim2)
+
+            for vi, (xvs, yvs) in enumerate(vals):
+                # print(yvs)
+                plt.plot(xvs, yvs)
+
+                if individualSessions and saveAllValuePairsSeparately:
+                    self.saveOrShow("{}_{}_{}".format(title, sesh.name, vi))
+                    plt.clf()
+                    plt.xlabel(xlabel)
+                    plt.ylabel(ylabel)
+                    if axisLims == "environment":
+                        plt.xlim(xlim1, xlim2)
+                        plt.ylim(ylim1, ylim2)
+
+            if individualSessions and not saveAllValuePairsSeparately:
+                self.saveOrShow("{}_{}".format(title, sesh.name))
+                plt.clf()
+
+        if not individualSessions:
+            if plotAverage:
+                raise Exception("Unimplemented")
+            self.saveOrShow(title)
+
     def makeASimpleBoxPlot(self, valFunc, title, yAxisName=None):
         if yAxisName is None:
             yAxisName = title

@@ -35,6 +35,10 @@ TEST_NEAREST_WELL = False
 animal_name = 'B14'
 
 if animal_name == "Martin":
+    X_START = 200
+    X_FINISH = 1175
+    Y_START = 20
+    Y_FINISH = 1275
     data_dir = '/media/WDC1/martindata/bradtask/'
     output_dir = '/media/WDC1/martindata/bradtask/'
     fig_output_dir = '/media/WDC1/martindata/processed_data'
@@ -50,6 +54,10 @@ if animal_name == "Martin":
     DEFAULT_RIP_DET_TET = 37
 
 elif animal_name == "B12":
+    X_START = 200
+    X_FINISH = 1175
+    Y_START = 20
+    Y_FINISH = 1275
     data_dir = "/media/WDC7/B12/bradtasksessions/"
     output_dir = "/media/WDC7/B12/processed_data/"
     fig_output_dir = "/media/WDC7/B12/processed_data/"
@@ -61,6 +69,10 @@ elif animal_name == "B12":
     DEFAULT_RIP_DET_TET = 7
 
 elif animal_name == "B12_goodpos":
+    X_START = 200
+    X_FINISH = 1175
+    Y_START = 20
+    Y_FINISH = 1275
     data_dir = "/media/WDC7/B12/bradtasksessions/"
     output_dir = "/media/WDC7/B12/processed_data/"
     fig_output_dir = "/media/WDC7/B12/processed_data/"
@@ -72,6 +84,10 @@ elif animal_name == "B12_goodpos":
     DEFAULT_RIP_DET_TET = 7
 
 elif animal_name == "B12_no19":
+    X_START = 200
+    X_FINISH = 1175
+    Y_START = 20
+    Y_FINISH = 1275
     data_dir = "/media/WDC7/B12/bradtasksessions/"
     output_dir = "/media/WDC7/B12/processed_data/"
     fig_output_dir = "/media/WDC7/B12/processed_data/"
@@ -83,6 +99,10 @@ elif animal_name == "B12_no19":
     DEFAULT_RIP_DET_TET = 7
 
 elif animal_name == "B12_highthresh":
+    X_START = 200
+    X_FINISH = 1175
+    Y_START = 20
+    Y_FINISH = 1275
     data_dir = "/media/WDC7/B12/bradtasksessions/"
     output_dir = "/media/WDC7/B12/processed_data/"
     fig_output_dir = "/media/WDC7/B12/processed_data/"
@@ -94,6 +114,10 @@ elif animal_name == "B12_highthresh":
     DEFAULT_RIP_DET_TET = 8
 
 elif animal_name == "B13":
+    X_START = 150
+    X_FINISH = 1050
+    Y_START = 20
+    Y_FINISH = 900
     data_dir = "/media/WDC7/B13/bradtasksessions/"
     output_dir = "/media/WDC7/B13/processed_data/"
     fig_output_dir = "/media/WDC7/B13/processed_data/"
@@ -105,6 +129,10 @@ elif animal_name == "B13":
     DEFAULT_RIP_DET_TET = 7
 
 elif animal_name == "B14":
+    X_START = 150
+    X_FINISH = 1050
+    Y_START = 20
+    Y_FINISH = 900
     data_dir = "/media/WDC7/B14/bradtasksessions/"
     output_dir = "/media/WDC7/B14/processed_data/"
     fig_output_dir = "/media/WDC7/B14/processed_data/"
@@ -138,10 +166,6 @@ for widx, wname in enumerate(all_well_names):
 
 MAX_JUMP_DISTANCE = 50
 N_CLEANING_REPS = 2
-X_START = 200
-X_FINISH = 1175
-Y_START = 20
-Y_FINISH = 1275
 RADIUS = 50  # pixels
 VEL_THRESH = 10  # cm/s
 PIXELS_PER_CM = 5.0

@@ -20,6 +20,9 @@ class BTSession:
     BOUT_STATE_REST = 1
     BOUT_STATE_REWARD = 2
 
+    BOUT_STATE_ON_EXCURSION = 0
+    BOUT_STATE_ON_WALL = 1
+
     all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 
     PIXELS_PER_CM = 5.0
