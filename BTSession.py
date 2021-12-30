@@ -1,6 +1,5 @@
 import numpy as np
 import scipy
-TRODES_SAMPLING_RATE = 30000
 
 
 class BTSession:
@@ -24,6 +23,8 @@ class BTSession:
     BOUT_STATE_ON_WALL = 1
 
     all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
+
+    TRODES_SAMPLING_RATE = 30000
 
     PIXELS_PER_CM = 5.0
 
@@ -322,7 +323,7 @@ class BTSession:
         if timeInterval is not None:
             assert xs.shape == ts.shape
             dur_idx = np.searchsorted(ts, np.array(
-                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
+                [ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE]))
             xs = xs[dur_idx[0]:dur_idx[1]]
             ys = ys[dur_idx[0]:dur_idx[1]]
 
@@ -458,8 +459,8 @@ class BTSession:
             else:
                 ts = self.bt_pos_ts
 
-            mint = ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE
-            maxt = ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE
+            mint = ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE
+            maxt = ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE
             if returnIdxs:
                 mint = np.searchsorted(ts, mint)
                 maxt = np.searchsorted(ts, maxt)
@@ -650,8 +651,8 @@ class BTSession:
         # now we have ents, exts, t0
         # should filter for timeInterval
         if timeInterval is not None:
-            mint = t0 + timeInterval[0] * TRODES_SAMPLING_RATE
-            maxt = t0 + timeInterval[1] * TRODES_SAMPLING_RATE
+            mint = t0 + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE
+            maxt = t0 + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE
             ents = ents[np.logical_and(ents > mint, ents < maxt)]
 
         return ents.size
@@ -660,7 +661,7 @@ class BTSession:
         """
         return units: seconds
         """
-        return np.sum(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors) / TRODES_SAMPLING_RATE)
+        return np.sum(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors) / BTSession.TRODES_SAMPLING_RATE)
 
     def total_converted_dwell_time(self, inProbe, wellName):
         """
@@ -684,7 +685,7 @@ class BTSession:
             return emptyVal
         else:
             # print("ret is {} for well {}".format(ret, wellName))
-            return avgFunc(ret / TRODES_SAMPLING_RATE)
+            return avgFunc(ret / BTSession.TRODES_SAMPLING_RATE)
 
     def num_sniffs(self, inProbe, wellName, timeInterval=None, excludeReward=False):
         # Just for now, hacking in excluded rewards
@@ -737,8 +738,8 @@ class BTSession:
             ts = self.bt_pos_ts
 
         if timeInterval is not None:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE)
+            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE)
             lbls = lbls[imin:imax]
 
         return len(set(lbls) - set([0]))
@@ -793,8 +794,8 @@ class BTSession:
             imin = 0
             imax = len(ts)
         else:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE)
+            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE)
 
         cats = cats[imin:imax]
         return float(np.count_nonzero(cats == boutState)) / float(cats.size)
@@ -816,8 +817,8 @@ class BTSession:
             imin = 0
             imax = len(ts)
         else:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE)
+            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE)
 
         vel = vel[imin:imax]
         if onlyMoving:
@@ -900,7 +901,7 @@ class BTSession:
         if timeInterval is not None:
             assert xs.shape == ts.shape
             dur_idx = np.searchsorted(ts, np.array(
-                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
+                [ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE]))
             xs = xs[dur_idx[0]:dur_idx[1]]
             ys = ys[dur_idx[0]:dur_idx[1]]
             ts = ts[dur_idx[0]:dur_idx[1]]

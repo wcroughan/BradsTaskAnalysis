@@ -40,30 +40,41 @@ class MyPlottingFunctions:
             xlim2 = np.max(sesh.bt_pos_xs) + 20
             ylim1 = np.min(sesh.bt_pos_ys) - 20
             ylim2 = np.max(sesh.bt_pos_ys) + 20
+        elif type(axisLims) == list:
+            xlim1 = axisLims[0][0]
+            xlim2 = axisLims[0][1]
+            ylim1 = axisLims[1][0]
+            ylim2 = axisLims[1][1]
 
         plt.clf()
         for sesh in self.all_sessions:
             vals = valsFunc(sesh)
+            if colorFunc is not None:
+                colors = colorFunc(sesh)
             # print(vals[0][0])
             if not individualSessions and saveAllValuePairsSeparately and len(vals) > 1:
                 print("Warning: won't be saving all pairs separately since combining across sessions")
 
             plt.xlabel(xlabel)
             plt.ylabel(ylabel)
-            if axisLims == "environment":
+            if axisLims is not None:
                 plt.xlim(xlim1, xlim2)
                 plt.ylim(ylim1, ylim2)
 
             for vi, (xvs, yvs) in enumerate(vals):
                 # print(yvs)
-                plt.plot(xvs, yvs)
+                if colorFunc is None:
+                    plt.plot(xvs, yvs)
+                else:
+                    for i in range(len(xvs)-1):
+                        plt.plot(xvs[i:i+2], yvs[i:i+2], color=colors[vi][i])
 
                 if individualSessions and saveAllValuePairsSeparately:
                     self.saveOrShow("{}_{}_{}".format(title, sesh.name, vi))
                     plt.clf()
                     plt.xlabel(xlabel)
                     plt.ylabel(ylabel)
-                    if axisLims == "environment":
+                    if axisLims is not None:
                         plt.xlim(xlim1, xlim2)
                         plt.ylim(ylim1, ylim2)
 
@@ -76,11 +87,16 @@ class MyPlottingFunctions:
                 raise Exception("Unimplemented")
             self.saveOrShow(title)
 
-    def makeASimpleBoxPlot(self, valFunc, title, yAxisName=None):
+    def makeASimpleBoxPlot(self, valFunc, title, yAxisName=None, alsoMakeSessionOrderScatterPlot=True, includeNoProbeSessions=False):
         if yAxisName is None:
             yAxisName = title
-        self.makeABoxPlot([valFunc(sesh) for sesh in self.all_sessions],
-                          self.tlbls, ["Condition", yAxisName], title=title)
+
+        # S = self.all_sessions if includeNoProbeSessions else self.sessions_with_probe
+        ys = [valFunc(sesh) for sesh in self.all_sessions]
+        self.makeABoxPlot(ys, self.tlbls, ["Condition", yAxisName], title=title)
+        if alsoMakeSessionOrderScatterPlot:
+            self.makeAScatterPlot(np.arange(len(self.all_sessions)), ys, [
+                                  "Session idx", yAxisName], categories=self.tlbls, title=title)
 
     def makeABoxPlot(self, yvals, categories, axesNames, output_filename="", title="", doStats=True, scaleValue=None):
         if self.SKIP_BOX_PLOTS:
@@ -125,6 +141,9 @@ class MyPlottingFunctions:
             plt.show()
         if self.SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
             plt.savefig(output_filename, dpi=800)
+
+    def makeAScatterPlotWithFunc(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None):
+        pass
 
     def makeAScatterPlot(self, xvals, yvals, axesNames, categories=list(), output_filename="", title="", midline=False, makeLegend=False, ax=plt, bigDots=True):
         if self.SKIP_SCATTER_PLOTS:
@@ -215,6 +234,19 @@ class MyPlottingFunctions:
                 output_filename = os.path.join(self.output_dir, output_filename)
             plt.savefig(output_filename, dpi=800)
 
+    def makeASwarmPlotByWell(self, session, valFunc, title, outputFName=None):
+        xs = np.arange(len(self.all_well_names))
+        ys = [valFunc(w) for w in self.all_well_names]
+        titleNoSpace = title.replace(" ", "_")
+        axesNames = ["well_idx", titleNoSpace]
+        if outputFName is None:
+            outputFName = "well_idx_" + title + "_" + session.name
+        wellCategory = [("home" if w == session.home_well else (
+            "away" if w in session.visited_away_wells else "other")) for w in self.all_well_names]
+
+        self.makeASwarmPlot(xs, ys, axesNames, wellCategory,
+                            output_filename=outputFName, title=title + " - " + session.name)
+
     # def makeAPersevMeasurePlotJustHome(self, measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None):
     #     sessions_with_all_wells = list(
     #         filter(lambda sesh: len(sesh.visited_away_wells) > 0, all_sessions))
@@ -260,13 +292,14 @@ class MyPlottingFunctions:
     #             output_filename = os.path.join(output_dir, output_filename)
     #         plt.savefig(output_filename, dpi=800)
 
-    def makeAPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None):
-        sessions_with_all_wells = list(
+    def makeAPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None, alsoMakePerWellPerSessionPlot=True):
+        sessions_with_all_wells_all = list(
             filter(lambda sesh: len(sesh.visited_away_wells) > 0, self.all_sessions))
 
-        print("WARNING=========\nExcluding 10/04\n=================================")
         sessions_with_all_wells = [
-            sesh for sesh in sessions_with_all_wells if sesh.date_str != "20211004"]
+            sesh for sesh in sessions_with_all_wells_all if sesh.date_str != "20211004"]
+        if len(sessions_with_all_wells) != len(sessions_with_all_wells_all):
+            print("WARNING=========\nExcluding 10/04\n=================================")
 
         home_vals = [datafunc(sesh, sesh.home_well)
                      for sesh in sessions_with_all_wells]
@@ -276,7 +309,7 @@ class MyPlottingFunctions:
             self.all_well_names) - set(sesh.visited_away_wells) - set([sesh.home_well])])) for sesh in sessions_with_all_wells]
 
         ll = [self.trial_label(sesh) for sesh in sessions_with_all_wells]
-        print([e for i, e in enumerate(home_vals) if ll[i] == "CTRL"])
+        # print([e for i, e in enumerate(home_vals) if ll[i] == "CTRL"])
         # print(away_vals)
         # print(other_vals)
 
@@ -330,6 +363,10 @@ class MyPlottingFunctions:
             else:
                 output_filename = os.path.join(self.output_dir, output_filename)
             plt.savefig(output_filename, dpi=800)
+
+        if alsoMakePerWellPerSessionPlot:
+            for sesh in sessions_with_all_wells:
+                self.makeASwarmPlotByWell(sesh, lambda w: datafunc(sesh, w), title + "_by_well")
 
     def quadrantOfWell(self, well_idx):
         if well_idx > 24:

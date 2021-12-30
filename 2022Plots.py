@@ -79,11 +79,12 @@ for animal_name in animals:
 
     # ==================
     # Behavior trace with line colored by curvature
-    if False:
-        P.makeALinePlot(lambda s: [(s.bt_pos_xs, s.bt_pos_ys)],
-                        "task colored by curvature", colorFunc=lambda s: s.bt_curvature, axisLims="environment")
-        P.makeALinePlot(lambda s: [(s.probe_pos_xs, s.probe_pos_ys)],
-                        "probe colored by curvature", colorFunc=lambda s: s.probe_curvature, axisLims="environment")
+    def lerp(v, c1, c2):
+        return c1 * (1. - v) + v * c2
+    P.makeALinePlot(lambda s: [(s.bt_pos_xs, s.bt_pos_ys)],
+                    "task colored by curvature", colorFunc=lambda s: [[lerp(v, np.array([1, 0, 0, 1]), np.array([0, 1, 1, 1])) for v in s.bt_curvature]], axisLims="environment")
+    P.makeALinePlot(lambda s: [(s.probe_pos_xs, s.probe_pos_ys)],
+                    "probe colored by curvature", colorFunc=lambda s: [[lerp(v, np.array([1, 0, 0, 1]), np.array([0, 1, 1, 1])) for v in s.probe_curvature]], axisLims="environment")
 
     # ==================
     # Behavior trace of each exploration bout, each resting period
@@ -189,37 +190,73 @@ for animal_name in animals:
     # Task behavior
     # ==================
     # Latency to each well during task (line plot)
+    P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
+                                (s.home_well_find_times -
+                                ([s.bt_pos_ts[0]] + s.away_well_leave_times)) / BTSession.TRODES_SAMPLING_RATE
+                                )], "home_find_times", individualSessions=False,
+                    colorFunc=[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))])
+    P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
+                                (s.away_well_find_times - s.home_well_leave_times[0:len(
+                                    s.away_well_find_times)]) / BTSession.TRODES_SAMPLING_RATE
+                                )], "away_find_times", individualSessions=False,
+                    colorFunc=[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.away_well_find_times))])
+
+    # ==================
+    # Task behavior comparisons between conditions
+    P.makeASimpleBoxPlot(lambda s: np.sum(s.home_well_find_times -
+                                          ([s.bt_pos_ts[0]] + s.away_well_leave_times)) / BTSession.TRODES_SAMPLING_RATE,
+                         "total home search time")
+    P.makeASimpleBoxPlot(lambda s: s.num_away_found, "num aways found")
+    P.makeASimpleBoxPlot(lambda s: (
+        s.bt_pos_ts[s.bt_recall_pos_idx] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE, "Total task time")
+
+    P.makeASimpleBoxPlot(lambda s: np.sum(s.home_well_find_times -
+                                          ([s.bt_pos_ts[0]] + s.away_well_leave_times)) / BTSession.TRODES_SAMPLING_RATE,
+                         "total home search time NP inc", includeNoProbeSessions=True)
+    P.makeASimpleBoxPlot(lambda s: s.num_away_found, "num aways found NP inc",
+                         includeNoProbeSessions=True)
+    P.makeASimpleBoxPlot(lambda s: (
+        s.bt_pos_ts[s.bt_recall_pos_idx] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE, "Total task time NP inc", includeNoProbeSessions=True)
 
     # ==========================================================================
     # Animations
     # ==================
     # Animated exploration bout vs rest vs reward
-    ani = anim.FuncAnimation(fig, animate, range(len(sesh.bt_pos_ts) - 1),
-                             repeat=False, init_func=init_plot, interval=5)
+    # ani = anim.FuncAnimation(fig, animate, range(len(sesh.bt_pos_ts) - 1),
+    #  repeat=False, init_func=init_plot, interval=5)
 
     # ==================
     # Animated task with nearest well highlighted
-    ani = anim.FuncAnimation(fig, animate, range(len(sesh.bt_pos_ts) - 1),
-                             repeat=False, init_func=init_plot, interval=5)
+    # ani = anim.FuncAnimation(fig, animate, range(len(sesh.bt_pos_ts) - 1),
+    #  repeat=False, init_func=init_plot, interval=5)
 
     # ==========================================================================
     # Perseveration measures
     # ==================
     # dwell time
-    P.makeAPersevMeasurePlot("probe_total_dwell_time_60sec",
-                             lambda s, w: s.total_dwell_time(True, w, timeInterval=[0, 60]))
-    P.makeAPersevMeasurePlot("probe_avg_dwell_time_60sec",
-                             lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, 60]))
+    interestingProbeTimes = [60, 90]
+    for iv in interestingProbeTimes:
+        P.makeAPersevMeasurePlot("probe_total_dwell_time_{}sec".format(iv),
+                                 lambda s, w: s.total_dwell_time(True, w, timeInterval=[0, iv]), alsoMakePerWellPerSessionPlot=True)
+        P.makeAPersevMeasurePlot("probe_avg_dwell_time_{}sec".format(iv),
+                                 lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, iv]), alsoMakePerWellPerSessionPlot=True)
     P.makeAPersevMeasurePlot("probe_total_dwell_time",
-                             lambda s, w: s.total_dwell_time(True, w))
+                             lambda s, w: s.total_dwell_time(True, w), alsoMakePerWellPerSessionPlot=True)
     P.makeAPersevMeasurePlot("probe_avg_dwell_time",
-                             lambda s, w: s.avg_dwell_time(True, w))
+                             lambda s, w: s.avg_dwell_time(True, w), alsoMakePerWellPerSessionPlot=True)
 
     # ==================
     # num entries
+    for iv in interestingProbeTimes:
+        P.makeAPersevMeasurePlot("probe_num_entries_{}sec".format(iv),
+                                 lambda s, w: s.num_well_entries(True, w, timeInterval=[0, iv]), alsoMakePerWellPerSessionPlot=True)
+    P.makeAPersevMeasurePlot("probe_num_entries",
+                             lambda s, w: s.total_dwell_time(True, w), alsoMakePerWellPerSessionPlot=True)
 
     # ==================
     # latency to first entry
+    P.makeASimpleBoxPlot(lambda s: s.getLatencyToWell(True, s.home_well),
+                         "Probe latency to home", yAxisName="Latency to home")
 
     # ==================
     # mean dist to home
@@ -227,10 +264,11 @@ for animal_name in animals:
                          "Probe Mean Dist to Home", yAxisName="Mean Dist to Home")
     P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_well(True, s.ctrl_home_well),
                          "Probe Mean Dist to Ctrl Home", yAxisName="Mean Dist to Ctrl Home")
-    P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_home_well(True, timeInterval=[0, 60]),
-                         "Probe Mean Dist to Home 60sec", yAxisName="Mean Dist to Home")
-    P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_well(True, s.ctrl_home_well, timeInterval=[0, 60]),
-                         "Probe Mean Dist to Ctrl Home 60sec", yAxisName="Mean Dist to Ctrl Home")
+    for iv in interestingProbeTimes:
+        P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_home_well(True, timeInterval=[0, iv]),
+                             "Probe Mean Dist to Home {}sec".format(iv), yAxisName="Mean Dist to Home")
+        P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_well(True, s.ctrl_home_well, timeInterval=[0, iv]),
+                             "Probe Mean Dist to Ctrl Home {}sec".format(iv), yAxisName="Mean Dist to Ctrl Home")
 
     # ==================
     # time within certain dist to home
