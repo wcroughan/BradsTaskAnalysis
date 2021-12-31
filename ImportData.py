@@ -124,8 +124,9 @@ elif animal_name == "B13":
     out_filename = "B13_bradtask.dat"
 
     excluded_dates = []
-    minimum_date = "20211209"  # had one run on the 8th but used high ripple threshold and a different reference tetrode
-    excluded_sessions = []
+    # minimum_date = "20211209"  # had one run on the 8th with probe but used high ripple threshold and a different reference tetrode
+    minimum_date = None
+    excluded_sessions = ["202111208_1"]
     DEFAULT_RIP_DET_TET = 7
 
 elif animal_name == "B14":
@@ -139,7 +140,7 @@ elif animal_name == "B14":
     out_filename = "B14_bradtask.dat"
 
     excluded_dates = []
-    minimum_date = None
+    minimum_date = "20211209"  # one run with high thresh and one 15 min run on the 8th
     excluded_sessions = []
     DEFAULT_RIP_DET_TET = 3
 
@@ -705,7 +706,8 @@ if __name__ == "__main__":
             else:
                 time_clips = readClipData(file_str + '.1.clips')
                 bt_time_clips = time_clips[0]
-                probe_time_clips = time_clips[1]
+                if session.probe_performed:
+                    probe_time_clips = time_clips[1]
 
             xs, ys, ts = processPosData(position_data)
             bt_start_idx = np.searchsorted(ts, bt_time_clips[0])
@@ -714,29 +716,30 @@ if __name__ == "__main__":
             session.bt_pos_ys = ys[bt_start_idx:bt_end_idx]
             session.bt_pos_ts = ts[bt_start_idx:bt_end_idx]
 
-            if session.separate_probe_file:
-                position_data = readRawPositionData(
-                    probe_file_str + '.1.videoPositionTracking')
-                xs, ys, ts = processPosData(position_data)
+            if session.probe_performed:
+                if session.separate_probe_file:
+                    position_data = readRawPositionData(
+                        probe_file_str + '.1.videoPositionTracking')
+                    xs, ys, ts = processPosData(position_data)
 
-            probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
-            probe_end_idx = np.searchsorted(ts, probe_time_clips[1])
-            session.probe_pos_xs = xs[probe_start_idx:probe_end_idx]
-            session.probe_pos_ys = ys[probe_start_idx:probe_end_idx]
-            session.probe_pos_ts = ts[probe_start_idx:probe_end_idx]
+                probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
+                probe_end_idx = np.searchsorted(ts, probe_time_clips[1])
+                session.probe_pos_xs = xs[probe_start_idx:probe_end_idx]
+                session.probe_pos_ys = ys[probe_start_idx:probe_end_idx]
+                session.probe_pos_ts = ts[probe_start_idx:probe_end_idx]
 
-            if np.nanmax(session.probe_pos_ys) < 550 and np.nanmax(session.probe_pos_ys) > 400:
-                print("Position data just covers top of the environment")
-                session.positionOnlyTop = True
-            else:
-                pass
-                # print("min max")
-                # print(np.nanmin(session.probe_pos_ys))
-                # print(np.nanmax(session.probe_pos_ys))
-                # plt.plot(session.bt_pos_xs, session.bt_pos_ys)
-                # plt.show()
-                # plt.plot(session.probe_pos_xs, session.probe_pos_ys)
-                # plt.show()
+                if np.nanmax(session.probe_pos_ys) < 550 and np.nanmax(session.probe_pos_ys) > 400:
+                    print("Position data just covers top of the environment")
+                    session.positionOnlyTop = True
+                else:
+                    pass
+                    # print("min max")
+                    # print(np.nanmin(session.probe_pos_ys))
+                    # print(np.nanmax(session.probe_pos_ys))
+                    # plt.plot(session.bt_pos_xs, session.bt_pos_ys)
+                    # plt.show()
+                    # plt.plot(session.probe_pos_xs, session.probe_pos_ys)
+                    # plt.show()
 
         # ===================================
         # Get flags and info from info file
@@ -775,8 +778,7 @@ if __name__ == "__main__":
                     if field_name.lower() == "home":
                         session.home_well = int(field_val)
                     elif field_name.lower() == "aways":
-                        session.away_wells = [int(w)
-                                              for w in field_val.strip().split(' ')]
+                        session.away_wells = [int(w) for w in field_val.strip().split(' ')]
                         # print(line)
                         # print(field_name, field_val)
                         # print(session.away_wells)
@@ -832,8 +834,30 @@ if __name__ == "__main__":
                         else:
                             print("Couldn't recognize Probe Stim condition {} in file {}".format(
                                 field_val, info_file))
+                    elif field_name.lower() == "probe performed":
+                        if 'Y' in field_val:
+                            session.probe_performed = True
+                        elif 'N' in field_val:
+                            session.probe_performed = False
+                        else:
+                            print("Couldn't recognize Probe performed val {} in file {}".format(
+                                field_val, info_file))
+                    elif field_name.lower() == "task ended at":
+                        session.bt_ended_at_well = int(field_val)
+                    elif field_name.lower() == "probe ended at":
+                        session.probe_ended_at_well = int(field_val)
+                    elif field_name.lower() == "weight":
+                        session.weight = float(field_val)
                     else:
                         session.notes.append(line)
+
+            if session.probe_performed and session.probe_ended_at_well is None:
+                raise Exception(
+                    "Didn't mark the probe end well for session {}".format(session.name))
+
+            if not (session.last_away == session.away_wells[-1] and session.ended_on_home) and session.bt_ended_at_well is None:
+                raise Exception(
+                    "Didn't find all the wells but task end well not marked for session {}".format(session.name))
 
         except FileNotFoundError as err:
             print(err)
@@ -1070,7 +1094,8 @@ if __name__ == "__main__":
         # ===================================
         rewardClipsFile = file_str + '.1.rewardClips'
         if not os.path.exists(rewardClipsFile):
-            print("Well find times not marked for session {}".format(session.name))
+            if session.num_home_found > 0:
+                print("Well find times not marked for session {}".format(session.name))
         else:
             well_visit_times = readClipData(rewardClipsFile)
             assert session.num_away_found + \
@@ -1227,6 +1252,20 @@ if __name__ == "__main__":
                 session.ctrl_home_well_idx_in_allwells]
             session.probe_ctrl_home_well_exit_times = session.probe_well_exit_times[
                 session.ctrl_home_well_idx_in_allwells]
+
+            # ===================================
+            # truncate path when rat was recalled (as he's running to be picked up) based on visit time of marked well
+            # Note need to check sessions that ended near 7
+            # ===================================
+            # bt_recall_pos_idx
+            if session.bt_ended_at_well is None:
+                assert session.last_away == session.away_wells[-1] and session.ended_on_home
+                session.bt_ended_at_well = session.home_well
+
+            session.bt_recall_pos_idx = session.bt_well_exit_idxs[session.bt_ended_at_well][-1]
+
+            if session.probe_performed:
+                session.probe_recall_pos_idx = session.probe_well_exit_idxs[session.probe_ended_at_well][-1]
 
         # ===================================
         # Sniff times marked by hand from USB camera (Not available for Martin)
