@@ -141,6 +141,11 @@ class MyPlottingFunctions:
 
         axesNamesNoSpaces = [a.replace(" ", "_") for a in axesNames]
 
+        # Same sorting here as in perseveration plot function so colors are always the same
+        sortList = [x + str(xi) for xi, x in enumerate(categories)]
+        categories = [x for _, x in sorted(zip(sortList, categories))]
+        yvals = [x for _, x in sorted(zip(sortList, yvals))]
+
         s = pd.Series([categories, yvals], index=axesNamesNoSpaces)
         plt.clf()
         # print(s)
@@ -173,6 +178,7 @@ class MyPlottingFunctions:
             self.statsFile.write(str(anova_table))
             for cat in ucats:
                 self.statsFile.write(str(cat) + " n = " + str(sum([i == cat for i in categories])))
+            self.statsFile.write("\n\n")
 
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
@@ -180,7 +186,14 @@ class MyPlottingFunctions:
             plt.savefig(output_filename, dpi=800)
 
     def makeAScatterPlotWithFunc(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False):
+        print("scatter plot:", title)
         seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
+
+        if axisLims is not None:
+            xlim1 = axisLims[0][0]
+            xlim2 = axisLims[0][1]
+            ylim1 = axisLims[1][0]
+            ylim2 = axisLims[1][1]
 
         plt.clf()
         for sesh in seshs:
@@ -200,6 +213,9 @@ class MyPlottingFunctions:
                 if individualSessions and saveAllValuePairsSeparately:
                     plt.xlabel(xlabel)
                     plt.ylabel(ylabel)
+                    if axisLims is not None:
+                        plt.xlim(xlim1, xlim2)
+                        plt.ylim(ylim1, ylim2)
                     self.saveOrShow("{}_{}_{}".format(title, sesh.name, vi))
                     plt.clf()
                     plt.xlabel(xlabel)
@@ -208,12 +224,18 @@ class MyPlottingFunctions:
             if individualSessions and not saveAllValuePairsSeparately:
                 plt.xlabel(xlabel)
                 plt.ylabel(ylabel)
+                if axisLims is not None:
+                    plt.xlim(xlim1, xlim2)
+                    plt.ylim(ylim1, ylim2)
                 self.saveOrShow("{}_{}".format(title, sesh.name))
                 plt.clf()
 
         if not individualSessions:
             plt.xlabel(xlabel)
             plt.ylabel(ylabel)
+            if axisLims is not None:
+                plt.xlim(xlim1, xlim2)
+                plt.ylim(ylim1, ylim2)
             self.saveOrShow(title)
 
     def makeAScatterPlot(self, xvals, yvals, axesNames, categories=list(), output_filename="", title="", midline=False, makeLegend=False, ax=plt, bigDots=True):
@@ -415,12 +437,26 @@ class MyPlottingFunctions:
             for i in range(len(yvals)):
                 yvals[i] *= scaleValue
 
+        # print("Unsorted:")
+        # print(categories)
+        # print(yvals)
+        # print(session_type)
+
         # Sorting them all here by session type so that the hues for each type are the same regardless of which type of session came first
-        categories = [x for _, x in sorted(zip(session_type, categories))]
-        yvals = [x for _, x in sorted(zip(session_type, yvals))]
-        session_type = sorted(session_type)
+        # Have to append the index otherwise the sorting order is ambiguous
+        sortList = [x + str(xi) for xi, x in enumerate(session_type)]
+        categories = [x for _, x in sorted(zip(sortList, categories))]
+        yvals = [x for _, x in sorted(zip(sortList, yvals))]
+        session_type = [x for _, x in sorted(zip(sortList, session_type))]
 
         s = pd.Series([categories, yvals, session_type], index=axesNames)
+        # print("sort list")
+        # print(sortList)
+        # print("Sorted:")
+        # print(categories)
+        # print(yvals)
+        # print(session_type)
+
         plt.clf()
         sns.boxplot(x=axesNames[0], y=axesNames[1], data=s,
                     hue="Session_Type", palette="Set3")
@@ -443,6 +479,7 @@ class MyPlottingFunctions:
             self.statsFile.write(str(anova_table))
             self.statsFile.write("n ctrl: " + str(session_type.count("CTRL") / 3))
             self.statsFile.write("n swr: " + str(session_type.count("SWR") / 3))
+            self.statsFile.write("\n\n")
 
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
@@ -509,6 +546,7 @@ class MyPlottingFunctions:
             self.statsFile.write(str(anova_table))
             self.statsFile.write("n ctrl: " + str(session_type.count("CTRL") / 2))
             self.statsFile.write("n swr: " + str(session_type.count("SWR") / 2))
+            self.statsFile.write("\n\n")
 
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()

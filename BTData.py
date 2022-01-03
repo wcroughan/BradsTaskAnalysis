@@ -5,6 +5,7 @@ import numpy as np
 import os
 from functools import reduce
 from BTSession import BTSession
+from BTRestSession import BTRestSession
 from datetime import datetime
 
 NP_KEY_PFX = '__numpy_ref__'
@@ -23,6 +24,7 @@ class BTData:
     def __init__(self):
         self.filename = ""
         self.allSessions = []
+        self.allRestSessions = []
 
     def loadFromFile(self, filename):
         with open(filename, 'r') as f:
@@ -36,9 +38,16 @@ class BTData:
                     load_dict = json.loads(line[:-1])
 
                     self.allSessions[-1].__dict__ = self.processAndLoadDict(load_dict, np_dir)
-                    # self.allSessions[-1].date = pd.to_datetime(self.allSessions[-1].date_str)
                     self.allSessions[-1].date = datetime.strptime("{}_{}".format(
                         self.allSessions[-1].date_str, self.allSessions[-1].time_str), "%Y%m%d_%H%M%S")
+                elif line == "!!RestSession":
+                    self.allRestSessions.append(BTRestSession())
+                    line = f.readline()
+                    load_dict = json.loads(line[:-1])
+
+                    self.allRestSessions[-1].__dict__ = self.processAndLoadDict(load_dict, np_dir)
+                    self.allRestSessions[-1].date = datetime.strptime("{}_{}".format(
+                        self.allRestSessions[-1].date_str, self.allRestSessions[-1].time_str), "%Y%m%d_%H%M%S")
                 else:
                     print("File parse error!")
                     return -2
@@ -49,6 +58,13 @@ class BTData:
                 if bi > 0:
                     self.allSessions[bi].prevSession = self.allSessions[bi-1]
                     self.allSessions[bi-1].nextSession = self.allSessions[bi]
+
+            for rsi, rs in enumerate(self.allRestSessions):
+                sn = rs.btwpSessionName
+                for bs in self.allSessions:
+                    if bs.name == sn:
+                        rs.btwpSession = bs
+                        break
 
             self.filename = filename
 
@@ -78,6 +94,19 @@ class BTData:
                 di['prevSession'] = pbp
                 di['nextSession'] = nbp
                 di['date'] = date
+
+            for rsi, rs in enumerate(self.allRestSessions):
+                f.write("!!RestSession\n")
+                di = rs.__dict__
+                date = di.pop('date', None)
+                btwp = di.pop('btwpSession', None)
+
+                rs_pfx = rs.name
+                clean_di = self.filterAndSaveDict(di, rs_pfx, np_dir)
+                f.write(json.dumps(clean_di) + '\n')
+
+                di['date'] = date
+                di['btwpSession'] = btwp
 
             self.filename = filename
             return 0

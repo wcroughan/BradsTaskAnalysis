@@ -833,7 +833,7 @@ class BTSession:
     def ctrl_well_for_well(self, wellName):
         return 49 - wellName
 
-    def path_optimality(self, inProbe, timeInterval=None, wellName=None):
+    def path_optimality(self, inProbe, timeInterval=None, wellName=None, emptyVal=np.nan):
         if timeInterval is None and wellName is None:
             raise Exception("Gimme a time interval or a well name plz")
 
@@ -847,7 +847,10 @@ class BTSession:
             xs = self.bt_pos_xs
             ys = self.bt_pos_ys
 
-        ei = self.entry_exit_times(inProbe, wellName, returnIdxs=True)[0][0]
+        ents = self.entry_exit_times(inProbe, wellName, returnIdxs=True)[0]
+        if len(ents) == 0:
+            return emptyVal
+        ei = ents[0]
         displacement_x = xs[ei] - xs[0]
         displacement_y = ys[ei] - ys[0]
         displacement = np.sqrt(displacement_x*displacement_x + displacement_y*displacement_y)

@@ -32,7 +32,7 @@ SKIP_PREV_SESSION = True
 
 TEST_NEAREST_WELL = False
 
-animal_name = 'B13'
+animal_name = 'Martin'
 
 if animal_name == "Martin":
     X_START = 200
@@ -40,8 +40,9 @@ if animal_name == "Martin":
     Y_START = 20
     Y_FINISH = 1275
     data_dir = '/media/WDC1/martindata/bradtask/'
-    output_dir = '/media/WDC1/martindata/bradtask/'
-    fig_output_dir = '/media/WDC1/martindata/processed_data'
+    # output_dir = '/media/WDC1/martindata/bradtask/'
+    output_dir = '/media/WDC7/Martin/processed_data/'
+    fig_output_dir = output_dir
     out_filename = "martin_bradtask.dat"
 
     excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
@@ -50,6 +51,11 @@ if animal_name == "Martin":
     excluded_dates += ["20200526"]
     excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
     minimum_date = None
+
+    excluded_dates += ["20200527"]
+    excluded_dates += ["20200604"]
+    excluded_dates += ["20200608"]
+    excluded_dates += ["20200609"]
 
     DEFAULT_RIP_DET_TET = 37
 
@@ -797,6 +803,8 @@ if __name__ == "__main__":
                             session.probe_performed = True
                         elif 'N' in field_val:
                             session.probe_performed = False
+                            if animal_name == "Martin":
+                                raise Exception("I thought all martin runs had a probe")
                         else:
                             print("Couldn't recognize Probe performed val {} in file {}".format(
                                 field_val, info_file))
