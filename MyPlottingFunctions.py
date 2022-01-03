@@ -8,6 +8,7 @@ import os
 from scipy.stats import pearsonr, ttest_ind_from_stats
 import statsmodels.api as sm
 from matplotlib.lines import Line2D
+from datetime import datetime
 
 
 class MyPlottingFunctions:
@@ -21,7 +22,11 @@ class MyPlottingFunctions:
         self.output_dir = output_dir
         self.all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
         self.all_sessions = allData.getSessions()
+        self.all_sessions_with_probe = [s for s in self.all_sessions if s.probe_performed]
         self.tlbls = [self.trial_label(sesh) for sesh in self.all_sessions]
+        self.tlbls_with_probe = [self.trial_label(sesh) for sesh in self.all_sessions_with_probe]
+        statsFileName = os.path.join(output_dir, datetime.now().strftime("%Y%m%d_%H%M%S_stats.txt"))
+        self.statsFile = open(statsFileName, "w")
 
     def saveOrShow(self, fname):
         if self.SAVE_OUTPUT_PLOTS:
@@ -29,47 +34,62 @@ class MyPlottingFunctions:
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
 
-    def makeALinePlot(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None):
+    def makeALinePlot(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False):
         """
         valsFunc : session => [(xvals, yvals), (xvals, yvals), ...]
         """
         print("Line plot: {}".format(title))
 
-        if axisLims == "environment":
-            xlim1 = np.min(sesh.bt_pos_xs) - 20
-            xlim2 = np.max(sesh.bt_pos_xs) + 20
-            ylim1 = np.min(sesh.bt_pos_ys) - 20
-            ylim2 = np.max(sesh.bt_pos_ys) + 20
-        elif type(axisLims) == list:
-            xlim1 = axisLims[0][0]
-            xlim2 = axisLims[0][1]
-            ylim1 = axisLims[1][0]
-            ylim2 = axisLims[1][1]
+        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
+
+        if plotAverage:
+            avgs = {}
 
         plt.clf()
-        for sesh in self.all_sessions:
+
+        for sesh in seshs:
+            if axisLims == "environment":
+                xlim1 = np.min(sesh.bt_pos_xs) - 20
+                xlim2 = np.max(sesh.bt_pos_xs) + 20
+                ylim1 = np.min(sesh.bt_pos_ys) - 20
+                ylim2 = np.max(sesh.bt_pos_ys) + 20
+            elif type(axisLims) == list:
+                xlim1 = axisLims[0][0]
+                xlim2 = axisLims[0][1]
+                ylim1 = axisLims[1][0]
+                ylim2 = axisLims[1][1]
+
             vals = valsFunc(sesh)
+            # print(vals)
             if colorFunc is not None:
                 colors = colorFunc(sesh)
             # print(vals[0][0])
             if not individualSessions and saveAllValuePairsSeparately and len(vals) > 1:
                 print("Warning: won't be saving all pairs separately since combining across sessions")
 
-            plt.xlabel(xlabel)
-            plt.ylabel(ylabel)
-            if axisLims is not None:
-                plt.xlim(xlim1, xlim2)
-                plt.ylim(ylim1, ylim2)
-
             for vi, (xvs, yvs) in enumerate(vals):
-                # print(yvs)
+                if plotAverage:
+                    for xyi in range(len(xvs)):
+                        if xvs[xyi] in avgs:
+                            avgs[xvs[xyi]].append(yvs[xyi])
+                        else:
+                            avgs[xvs[xyi]] = [yvs[xyi]]
+                    linewidth = 0.5
+                else:
+                    linewidth = 1.0
+
                 if colorFunc is None:
-                    plt.plot(xvs, yvs)
+                    plt.plot(xvs, yvs, linewidth=linewidth)
                 else:
                     for i in range(len(xvs)-1):
-                        plt.plot(xvs[i:i+2], yvs[i:i+2], color=colors[vi][i])
+                        plt.plot(xvs[i:i+2], yvs[i:i+2], color=colors[vi][i], linewidth=linewidth)
 
                 if individualSessions and saveAllValuePairsSeparately:
+                    plt.xlabel(xlabel)
+                    plt.ylabel(ylabel)
+                    if axisLims is not None:
+                        plt.xlim(xlim1, xlim2)
+                        plt.ylim(ylim1, ylim2)
                     self.saveOrShow("{}_{}_{}".format(title, sesh.name, vi))
                     plt.clf()
                     plt.xlabel(xlabel)
@@ -79,35 +99,51 @@ class MyPlottingFunctions:
                         plt.ylim(ylim1, ylim2)
 
             if individualSessions and not saveAllValuePairsSeparately:
+                plt.xlabel(xlabel)
+                plt.ylabel(ylabel)
+                if axisLims is not None:
+                    plt.xlim(xlim1, xlim2)
+                    plt.ylim(ylim1, ylim2)
                 self.saveOrShow("{}_{}".format(title, sesh.name))
                 plt.clf()
 
         if not individualSessions:
             if plotAverage:
-                raise Exception("Unimplemented")
+                xs = sorted(avgs.keys())
+                ys = [np.mean(avgs[x]) for x in xs]
+                plt.plot(xs, ys, linewidth=2)
+
+            plt.xlabel(xlabel)
+            plt.ylabel(ylabel)
+            if axisLims is not None:
+                plt.xlim(xlim1, xlim2)
+                plt.ylim(ylim1, ylim2)
             self.saveOrShow(title)
 
     def makeASimpleBoxPlot(self, valFunc, title, yAxisName=None, alsoMakeSessionOrderScatterPlot=True, includeNoProbeSessions=False):
         if yAxisName is None:
             yAxisName = title
 
-        # S = self.all_sessions if includeNoProbeSessions else self.sessions_with_probe
-        ys = [valFunc(sesh) for sesh in self.all_sessions]
-        self.makeABoxPlot(ys, self.tlbls, ["Condition", yAxisName], title=title)
+        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
+        L = self.tlbls if includeNoProbeSessions else self.tlbls_with_probe
+        ys = [valFunc(sesh) for sesh in seshs]
+        self.makeABoxPlot(ys, L, ["Condition", yAxisName], title=title)
         if alsoMakeSessionOrderScatterPlot:
-            self.makeAScatterPlot(np.arange(len(self.all_sessions)), ys, [
-                                  "Session idx", yAxisName], categories=self.tlbls, title=title)
+            self.makeAScatterPlot(np.arange(len(seshs)), ys, [
+                                  "Session idx", yAxisName], categories=L, title=title)
 
     def makeABoxPlot(self, yvals, categories, axesNames, output_filename="", title="", doStats=True, scaleValue=None):
         if self.SKIP_BOX_PLOTS:
             print("Warning, skipping box plots!")
             return
 
+        print("Box plot: {}".format(title))
+
         axesNamesNoSpaces = [a.replace(" ", "_") for a in axesNames]
 
         s = pd.Series([categories, yvals], index=axesNamesNoSpaces)
         plt.clf()
-        print(s)
+        # print(s)
         sns.boxplot(x=axesNamesNoSpaces[0], y=axesNamesNoSpaces[1], data=s, palette="Set3")
         sns.swarmplot(x=axesNamesNoSpaces[0], y=axesNamesNoSpaces[1], data=s, color="0.25")
         plt.title(title)
@@ -128,27 +164,64 @@ class MyPlottingFunctions:
                     yvals[i] *= scaleValue
 
             s = pd.Series([categories, yvals], index=axesNamesNoSpaces)
-            print(s)
+            # print(s)
             anovaModel = ols(
                 axesNamesNoSpaces[1] + " ~ C(" + axesNamesNoSpaces[0] + ")", data=s).fit()
             anova_table = anova_lm(anovaModel, typ=1)
-            print("============================\n" + output_filename + " ANOVA:")
-            print(anova_table)
+            self.statsFile.write("============================\n" +
+                                 output_filename + " ANOVA:\n")
+            self.statsFile.write(str(anova_table))
             for cat in ucats:
-                print(cat, "n = ", sum([i == cat for i in categories]))
+                self.statsFile.write(str(cat) + " n = " + str(sum([i == cat for i in categories])))
 
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
         if self.SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
             plt.savefig(output_filename, dpi=800)
 
-    def makeAScatterPlotWithFunc(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None):
-        pass
+    def makeAScatterPlotWithFunc(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False):
+        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
+
+        plt.clf()
+        for sesh in seshs:
+            vals = valsFunc(sesh)
+            if colorFunc is not None:
+                colors = colorFunc(sesh)
+            # print(vals[0][0])
+            if not individualSessions and saveAllValuePairsSeparately and len(vals) > 1:
+                print("Warning: won't be saving all pairs separately since combining across sessions")
+
+            for vi, (xvs, yvs) in enumerate(vals):
+                if colorFunc is None:
+                    plt.scatter(xvs, yvs)
+                else:
+                    plt.scatter(xvs, yvs, c=colors[vi])
+
+                if individualSessions and saveAllValuePairsSeparately:
+                    plt.xlabel(xlabel)
+                    plt.ylabel(ylabel)
+                    self.saveOrShow("{}_{}_{}".format(title, sesh.name, vi))
+                    plt.clf()
+                    plt.xlabel(xlabel)
+                    plt.ylabel(ylabel)
+
+            if individualSessions and not saveAllValuePairsSeparately:
+                plt.xlabel(xlabel)
+                plt.ylabel(ylabel)
+                self.saveOrShow("{}_{}".format(title, sesh.name))
+                plt.clf()
+
+        if not individualSessions:
+            plt.xlabel(xlabel)
+            plt.ylabel(ylabel)
+            self.saveOrShow(title)
 
     def makeAScatterPlot(self, xvals, yvals, axesNames, categories=list(), output_filename="", title="", midline=False, makeLegend=False, ax=plt, bigDots=True):
         if self.SKIP_SCATTER_PLOTS:
             print("Warning, skipping scatter plots!")
             return
+
+        print("Scatter plot: {}".format(title))
 
         if ax == plt:
             ax.clf()
@@ -190,8 +263,8 @@ class MyPlottingFunctions:
 
             ax.legend(handles=legend_elements, loc='upper right')
 
-        for cat in ucats:
-            print(cat, "n = ", sum([i == cat for i in categories]))
+        # for cat in ucats:
+            # print(cat, "n = ", sum([i == cat for i in categories]))
 
         if ax != plt:
             return
@@ -214,6 +287,8 @@ class MyPlottingFunctions:
         if self.SKIP_SWARM_PLOTS:
             print("Warning, skipping swarm plots!")
             return
+
+        print("Swarm plot: {}".format(title))
 
         s = pd.Series([xvals, yvals], index=axesNames)
         s['cat'] = categories
@@ -292,9 +367,12 @@ class MyPlottingFunctions:
     #             output_filename = os.path.join(output_dir, output_filename)
     #         plt.savefig(output_filename, dpi=800)
 
-    def makeAPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None, alsoMakePerWellPerSessionPlot=True):
+    def makeAPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None, alsoMakePerWellPerSessionPlot=True, includeNoProbeSessions=False):
+        print("Persev measure plot: {}".format(measure_name))
+
+        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
         sessions_with_all_wells_all = list(
-            filter(lambda sesh: len(sesh.visited_away_wells) > 0, self.all_sessions))
+            filter(lambda sesh: len(sesh.visited_away_wells) > 0, seshs))
 
         sessions_with_all_wells = [
             sesh for sesh in sessions_with_all_wells_all if sesh.date_str != "20211004"]
@@ -303,9 +381,14 @@ class MyPlottingFunctions:
 
         home_vals = [datafunc(sesh, sesh.home_well)
                      for sesh in sessions_with_all_wells]
-        away_vals = [np.nanmean(np.array([datafunc(sesh, aw) for aw in sesh.visited_away_wells]))
+
+        def m(a):
+            if np.all(np.isnan(a)):
+                return np.nan
+            return np.nanmean(a)
+        away_vals = [m(np.array([datafunc(sesh, aw) for aw in sesh.visited_away_wells]))
                      for sesh in sessions_with_all_wells]
-        other_vals = [np.nanmean(np.array([datafunc(sesh, ow) for ow in set(
+        other_vals = [m(np.array([datafunc(sesh, ow) for ow in set(
             self.all_well_names) - set(sesh.visited_away_wells) - set([sesh.home_well])])) for sesh in sessions_with_all_wells]
 
         ll = [self.trial_label(sesh) for sesh in sessions_with_all_wells]
@@ -332,6 +415,11 @@ class MyPlottingFunctions:
             for i in range(len(yvals)):
                 yvals[i] *= scaleValue
 
+        # Sorting them all here by session type so that the hues for each type are the same regardless of which type of session came first
+        categories = [x for _, x in sorted(zip(session_type, categories))]
+        yvals = [x for _, x in sorted(zip(session_type, yvals))]
+        session_type = sorted(session_type)
+
         s = pd.Series([categories, yvals, session_type], index=axesNames)
         plt.clf()
         sns.boxplot(x=axesNames[0], y=axesNames[1], data=s,
@@ -350,10 +438,11 @@ class MyPlottingFunctions:
             anovaModel = ols(
                 axesNames[1] + " ~ C(Well_type) + C(Session_Type) + C(Well_type):C(Session_Type)", data=s).fit()
             anova_table = anova_lm(anovaModel, typ=2)
-            print("============================\n" + measure_name + " ANOVA:")
-            print(anova_table)
-            print("n ctrl:", session_type.count("CTRL") / 3)
-            print("n swr:", session_type.count("SWR") / 3)
+            self.statsFile.write("============================\n" +
+                                 measure_name + " ANOVA:")
+            self.statsFile.write(str(anova_table))
+            self.statsFile.write("n ctrl: " + str(session_type.count("CTRL") / 3))
+            self.statsFile.write("n swr: " + str(session_type.count("SWR") / 3))
 
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
@@ -366,7 +455,8 @@ class MyPlottingFunctions:
 
         if alsoMakePerWellPerSessionPlot:
             for sesh in sessions_with_all_wells:
-                self.makeASwarmPlotByWell(sesh, lambda w: datafunc(sesh, w), title + "_by_well")
+                self.makeASwarmPlotByWell(sesh, lambda w: datafunc(
+                    sesh, w), measure_name + "_by_well")
 
     def quadrantOfWell(self, well_idx):
         if well_idx > 24:
@@ -383,22 +473,25 @@ class MyPlottingFunctions:
         well_quad = self.quadrantOfWell(well_idx)
         return list(set([0, 1, 2, 3]) - set([well_quad]))
 
-    def makeAQuadrantPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True):
+    def makeAQuadrantPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True, includeNoProbeSessions=False):
+        print("Quadrant persev measure plot: {}".format(measure_name))
+
+        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
         home_vals = [datafunc(sesh, "Q" + str(self.quadrantOfWell(sesh.home_well)))
-                     for sesh in self.all_sessions]
+                     for sesh in seshs]
         other_vals = [np.nanmean(np.array([datafunc(sesh, "Q" + str(qi)) for qi in self.quadrantsExceptWell(sesh.home_well)]))
-                      for sesh in self.all_sessions]
+                      for sesh in seshs]
 
         # home_vals = [sesh.__dict__[measure_name][quadrantOfWell(sesh.home_well)]
         #              for sesh in self.all_sessions]
         # other_vals = [np.nanmean(np.array([sesh.__dict__[measure_name][oq]
         #                                    for oq in quadrantsExceptWell(sesh.home_well)])) for sesh in self.all_sessions]
 
-        n = len(self.all_sessions)
+        n = len(seshs)
         axesNames = ["Quad_type", measure_name, "Session_Type"]
         assert len(home_vals) == len(other_vals) and len(home_vals) == n
         categories = ["home"] * n + ["other"] * n
-        session_type = [self.trial_label(sesh) for sesh in self.all_sessions] * 2
+        session_type = [self.trial_label(sesh) for sesh in seshs] * 2
         yvals = home_vals + other_vals
         s = pd.Series([categories, yvals, session_type], index=axesNames)
         plt.clf()
@@ -412,10 +505,10 @@ class MyPlottingFunctions:
             anovaModel = ols(
                 axesNames[1] + " ~ C(Quad_type) + C(Session_Type) + C(Quad_type):C(Session_Type)", data=s).fit()
             anova_table = anova_lm(anovaModel, typ=2)
-            print("============================\n" + measure_name + " ANOVA:")
-            print(anova_table)
-            print("n ctrl:", session_type.count("CTRL") / 2)
-            print("n swr:", session_type.count("SWR") / 2)
+            self.statsFile.write("============================\n" + measure_name + " ANOVA:")
+            self.statsFile.write(str(anova_table))
+            self.statsFile.write("n ctrl: " + str(session_type.count("CTRL") / 2))
+            self.statsFile.write("n swr: " + str(session_type.count("SWR") / 2))
 
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
@@ -426,10 +519,15 @@ class MyPlottingFunctions:
                 output_filename = os.path.join(self.output_dir, output_filename)
             plt.savefig(output_filename, dpi=800)
 
-    def makeABinaryPersevBiasPlot(self, measure_name, output_filename="", title=""):
+    def makeABinaryPersevBiasPlot(self, measure_name, output_filename="", title="", includeNoProbeSessions=False):
         if SKIP_BINARY_PERSEVBIAS_PLOTS:
             print("Warning, skipping binary persev bias plots!")
             return
+
+        print("binary persev measure plot: {}".format(measure_name))
+
+        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
+
         MAX_NUM_AWAY = 9
         cnt_home_pos = 0
         cnt_home_total = 0
@@ -438,7 +536,7 @@ class MyPlottingFunctions:
         cnt_away_pos = np.zeros((MAX_NUM_AWAY,))
         cnt_away_total = np.zeros((MAX_NUM_AWAY,))
         num_missing_away = 0
-        for sesh in self.all_sessions:
+        for sesh in seshs:
             if len(sesh.visited_away_wells) == 0:
                 # print("Warning, session {} does not have visited away wells recorded".format(sesh.name))
                 num_missing_away += 1
@@ -493,6 +591,8 @@ class MyPlottingFunctions:
             print("Warning, skipping histograms!")
             return
 
+        print("histogram: {}".format(title))
+
         plt.clf()
         yva = np.array(yvals)
         cata = np.array(categories)
@@ -523,11 +623,14 @@ class MyPlottingFunctions:
         else:
             return "CTRL"
 
-    def makeAPlotOverDays(self, datafunc, labels, fname, plotPast=False):
+    def makeAPlotOverDays(self, datafunc, labels, fname, plotPast=False, includeNoProbeSessions=False):
+        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
         sessions_with_all_wells = list(
-            filter(lambda sesh: len(sesh.visited_away_wells) > 0, self.all_sessions))
+            filter(lambda sesh: len(sesh.visited_away_wells) > 0, seshs))
         # print("Considering {} out of {} sessions that have all away wells listed".format(
         # len(sessions_with_all_wells), len(all_sessions)))
+
+        print("plot over days: {}".format(fname))
 
         plt.clf()
         for si, sesh in enumerate(sessions_with_all_wells):

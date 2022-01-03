@@ -19,8 +19,8 @@ class BTSession:
     BOUT_STATE_REST = 1
     BOUT_STATE_REWARD = 2
 
-    BOUT_STATE_ON_EXCURSION = 0
-    BOUT_STATE_ON_WALL = 1
+    EXCURSION_STATE_OFF_WALL = 0
+    EXCURSION_STATE_ON_WALL = 1
 
     all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 
@@ -64,6 +64,10 @@ class BTSession:
         self.ended_on_home = False
         self.ITI_stim_on = False
         self.probe_stim_on = False
+
+        self.bt_ended_at_well = None
+        self.probe_ended_at_well = None
+        self.probe_performed = None
 
         # Any other notes that are stored in the info file are added here. Each list entry is one line from that file
         self.notes = []
@@ -927,11 +931,15 @@ class BTSession:
         else:
             return res.total_seconds()
 
-    def getLatencyToWell(self, inProbe, wellName, returnIdxs=False):
+    def getLatencyToWell(self, inProbe, wellName, returnIdxs=False, emptyVal=np.nan):
         """
         units are trodes timestamps or idxs
         """
-        res = self.entry_exit_times(inProbe, wellName, returnIdxs=returnIdxs)[0][0]
+        ts = self.entry_exit_times(inProbe, wellName, returnIdxs=returnIdxs)
+        if len(ts[0]) == 0:
+            return emptyVal
+
+        res = ts[0][0]
         if not returnIdxs:
             if inProbe:
                 res -= self.probe_pos_ts[0]
