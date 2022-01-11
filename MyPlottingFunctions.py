@@ -27,6 +27,7 @@ class MyPlottingFunctions:
         self.tlbls_with_probe = [self.trial_label(sesh) for sesh in self.all_sessions_with_probe]
         statsFileName = os.path.join(output_dir, datetime.now().strftime("%Y%m%d_%H%M%S_stats.txt"))
         self.statsFile = open(statsFileName, "w")
+        self.all_rest_sessions = allData.getRestSessions()
 
     def saveOrShow(self, fname):
         if self.SAVE_OUTPUT_PLOTS:
@@ -34,13 +35,16 @@ class MyPlottingFunctions:
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
 
-    def makeALinePlot(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False):
+    def makeALinePlot(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False, restSessions=False):
         """
         valsFunc : session => [(xvals, yvals), (xvals, yvals), ...]
         """
         print("Line plot: {}".format(title))
 
-        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
+        if restSessions:
+            seshs = self.all_rest_sessions
+        else:
+            seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
 
         if plotAverage:
             avgs = {}
@@ -120,12 +124,16 @@ class MyPlottingFunctions:
                 plt.ylim(ylim1, ylim2)
             self.saveOrShow(title)
 
-    def makeASimpleBoxPlot(self, valFunc, title, yAxisName=None, alsoMakeSessionOrderScatterPlot=True, includeNoProbeSessions=False):
+    def makeASimpleBoxPlot(self, valFunc, title, yAxisName=None, alsoMakeSessionOrderScatterPlot=True, includeNoProbeSessions=False, restSessions=False):
         if yAxisName is None:
             yAxisName = title
 
-        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
-        L = self.tlbls if includeNoProbeSessions else self.tlbls_with_probe
+        if restSessions:
+            seshs = self.all_rest_sessions
+            L = [self.trial_label(rs.btwpSession) for rs in seshs]
+        else:
+            seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
+            L = self.tlbls if includeNoProbeSessions else self.tlbls_with_probe
         ys = [valFunc(sesh) for sesh in seshs]
         self.makeABoxPlot(ys, L, ["Condition", yAxisName], title=title)
         if alsoMakeSessionOrderScatterPlot:
@@ -169,13 +177,17 @@ class MyPlottingFunctions:
                     yvals[i] *= scaleValue
 
             s = pd.Series([categories, yvals], index=axesNamesNoSpaces)
-            # print(s)
-            anovaModel = ols(
-                axesNamesNoSpaces[1] + " ~ C(" + axesNamesNoSpaces[0] + ")", data=s).fit()
-            anova_table = anova_lm(anovaModel, typ=1)
+
             self.statsFile.write("============================\n" +
                                  output_filename + " ANOVA:\n")
-            self.statsFile.write(str(anova_table))
+            if s.size == 0 or np.count_nonzero(np.logical_not(np.isnan(np.array(yvals)))) == 0:
+                self.statsFile.write("No data ... can't do stats")
+            else:
+                # print(s)
+                anovaModel = ols(
+                    axesNamesNoSpaces[1] + " ~ C(" + axesNamesNoSpaces[0] + ")", data=s).fit()
+                anova_table = anova_lm(anovaModel, typ=1)
+                self.statsFile.write(str(anova_table))
             for cat in ucats:
                 self.statsFile.write(str(cat) + " n = " + str(sum([i == cat for i in categories])))
             self.statsFile.write("\n\n")
@@ -185,9 +197,14 @@ class MyPlottingFunctions:
         if self.SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
             plt.savefig(output_filename, dpi=800)
 
-    def makeAScatterPlotWithFunc(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False):
+    def makeAScatterPlotWithFunc(self, valsFunc, title, colorFunc=None, individualSessions=True,
+                                 saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="",
+                                 axisLims=None, includeNoProbeSessions=False, restSessions=False):
         print("scatter plot:", title)
-        seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
+        if restSessions:
+            seshs = self.all_rest_sessions
+        else:
+            seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
 
         if axisLims is not None:
             xlim1 = axisLims[0][0]
@@ -389,7 +406,7 @@ class MyPlottingFunctions:
     #             output_filename = os.path.join(output_dir, output_filename)
     #         plt.savefig(output_filename, dpi=800)
 
-    def makeAPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None, alsoMakePerWellPerSessionPlot=True, includeNoProbeSessions=False):
+    def makeAPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None, alsoMakePerWellPerSessionPlot=True, includeNoProbeSessions=False, yAxisLims=None):
         print("Persev measure plot: {}".format(measure_name))
 
         seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
@@ -470,13 +487,20 @@ class MyPlottingFunctions:
         else:
             plt.ylabel(yAxisLabel)
 
+        if yAxisLims is not None:
+            plt.ylim(yAxisLims)
+
         if doStats:
-            anovaModel = ols(
-                axesNames[1] + " ~ C(Well_type) + C(Session_Type) + C(Well_type):C(Session_Type)", data=s).fit()
-            anova_table = anova_lm(anovaModel, typ=2)
             self.statsFile.write("============================\n" +
                                  measure_name + " ANOVA:")
-            self.statsFile.write(str(anova_table))
+            if s.size == 0 or np.count_nonzero(np.logical_not(np.isnan(np.array(yvals)))) == 0:
+                self.statsFile.write("No data ... can't do stats")
+            else:
+                # print(s)
+                anovaModel = ols(
+                    axesNames[1] + " ~ C(Well_type) + C(Session_Type) + C(Well_type):C(Session_Type)", data=s).fit()
+                anova_table = anova_lm(anovaModel, typ=2)
+                self.statsFile.write(str(anova_table))
             self.statsFile.write("n ctrl: " + str(session_type.count("CTRL") / 3))
             self.statsFile.write("n swr: " + str(session_type.count("SWR") / 3))
             self.statsFile.write("\n\n")
@@ -539,11 +563,15 @@ class MyPlottingFunctions:
         plt.ylabel(axesNames[1])
 
         if doStats:
-            anovaModel = ols(
-                axesNames[1] + " ~ C(Quad_type) + C(Session_Type) + C(Quad_type):C(Session_Type)", data=s).fit()
-            anova_table = anova_lm(anovaModel, typ=2)
             self.statsFile.write("============================\n" + measure_name + " ANOVA:")
-            self.statsFile.write(str(anova_table))
+            if s.size == 0 or np.count_nonzero(np.logical_not(np.isnan(np.array(yvals)))) == 0:
+                self.statsFile.write("No data ... can't do stats")
+            else:
+                # print(s)
+                anovaModel = ols(
+                    axesNames[1] + " ~ C(Quad_type) + C(Session_Type) + C(Quad_type):C(Session_Type)", data=s).fit()
+                anova_table = anova_lm(anovaModel, typ=2)
+                self.statsFile.write(str(anova_table))
             self.statsFile.write("n ctrl: " + str(session_type.count("CTRL") / 2))
             self.statsFile.write("n swr: " + str(session_type.count("SWR") / 2))
             self.statsFile.write("\n\n")

@@ -13,6 +13,7 @@ from itertools import groupby
 import MountainViewIO
 from scipy.ndimage.filters import gaussian_filter
 from datetime import datetime
+import sys
 # import InterruptionAnalysis
 
 INSPECT_ALL = False
@@ -32,7 +33,12 @@ SKIP_PREV_SESSION = True
 
 TEST_NEAREST_WELL = False
 
-animal_name = 'Martin'
+if len(sys.argv) == 2:
+    animal_name = sys.argv[1]
+else:
+    animal_name = 'B13'
+
+print("Importing data for animal ", animal_name)
 
 if animal_name == "Martin":
     X_START = 200
@@ -150,6 +156,9 @@ elif animal_name == "B14":
     minimum_date = "20211209"  # one run with high thresh and one 15 min run on the 8th
     excluded_sessions = []
     DEFAULT_RIP_DET_TET = 3
+
+else:
+    raise Exception("Unknown animal name")
 
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
@@ -433,12 +442,22 @@ def getNearestWell(xs, ys, well_coords, well_idxs=all_well_names):
     return well_idxs[nearest_well]
 
 
-def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_deflections=None):
+def detectStimArtifacts(lfp_data):
+    deflection_metrics = signal.find_peaks(np.abs(np.diff(lfp_data,
+                                                          prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO,
+                                           distance=MIN_ARTIFACT_DISTANCE)
+
+    return deflection_metrics[0]
+
+
+def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_deflections=None, meanPower=None, stdPower=None):
     """
     Get ripple power in LFP
     """
+    lfp_data_copy = lfp_data.copy().astype(float)
 
-    lfp_data_copy = lfp_data.copy()
+    if (meanPower is None) != (stdPower is None):
+        raise Exception("meanPower and stdPower must both be provided or None")
 
     if lfp_deflections is None:
         if omit_artifacts:
@@ -450,12 +469,14 @@ def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_
             lfp_deflections = deflection_metrics[0]
 
     # After this preprocessing, clean up the data if needed.
+    lfp_mask = np.zeros_like(lfp_data_copy)
     if lfp_deflections is not None:
         for artifact_idx in range(len(lfp_deflections)):
             cleanup_start = max(0, lfp_deflections[artifact_idx] - SKIP_TPTS_BACKWARD)
-            cleanup_finish = min(len(lfp_data)-1, lfp_deflections[artifact_idx] +
+            cleanup_finish = min(len(lfp_data), lfp_deflections[artifact_idx] +
                                  SKIP_TPTS_FORWARD)
-            lfp_data_copy[cleanup_start:cleanup_finish] = np.nan
+            # lfp_data_copy[cleanup_start:cleanup_finish] = np.nan
+            lfp_mask[cleanup_start:cleanup_finish] = 1
 
     nyq_freq = LFP_SAMPLING_RATE * 0.5
     lo_cutoff = RIPPLE_FILTER_BAND[0]/nyq_freq
@@ -465,6 +486,8 @@ def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_
         ripple_amplitude = signal.lfilter(pl, ph, lfp_data_copy)
     else:
         ripple_amplitude = signal.filtfilt(pl, ph, lfp_data_copy)
+
+    ripple_amplitude[lfp_mask == 1] = np.nan
 
     # Smooth this data and get ripple power
     # smoothing_window_length = RIPPLE_POWER_SMOOTHING_WINDOW * LFP_SAMPLING_RATE
@@ -489,9 +512,50 @@ def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_
         ripple_power = gaussian_filter(np.abs(ripple_amplitude), smoothing_window_length)
 
     # Get the mean/standard deviation for ripple power and adjust for those
-    mean_ripple_power = np.nanmean(ripple_power)
-    std_ripple_power = np.nanstd(ripple_power)
-    return (ripple_power-mean_ripple_power)/std_ripple_power, lfp_deflections
+    if meanPower is None:
+        meanPower = np.nanmean(ripple_power)
+        stdPower = np.nanstd(ripple_power)
+    return (ripple_power-meanPower)/stdPower, meanPower, stdPower
+
+
+def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0):
+    pks, peakInfo = signal.find_peaks(ripplePower, height=minHeight)
+
+    ripStartIdxs = []
+    ripLens = []
+    ripPeakIdxs = []
+    ripPeakAmps = []
+
+    i = 0
+    while i < len(pks):
+        pkidx = pks[i]
+        ii = pkidx
+        while ii >= 0 and ripplePower[ii] > edgeThresh:
+            ii -= 1
+        ii += 1
+        ripStart = ii
+
+        length = 0
+        pkAmp = 0
+        pkAmpI = 0
+        while ii < len(ripplePower) and ripplePower[ii] > edgeThresh:
+            if ripplePower[ii] > pkAmp:
+                pkAmp = ripplePower[ii]
+                pkAmpI = ii
+            ii += 1
+            length += 1
+
+        lensec = float(length) / LFP_SAMPLING_RATE
+        if lensec >= minLen and lensec <= maxLen:
+            ripStartIdxs.append(ripStart)
+            ripLens.append(length)
+            ripPeakAmps.append(pkAmp)
+            ripPeakIdxs.append(pkAmpI)
+
+        while i < len(pks) and pks[i] < ii:
+            i += 1
+
+    return ripStartIdxs, ripLens, ripPeakIdxs, ripPeakAmps
 
 
 if __name__ == "__main__" and TEST_NEAREST_WELL:
@@ -1045,15 +1109,63 @@ if __name__ == "__main__":
             lfp_data = all_lfp_data[0][1]['voltage']
             lfp_timestamps = all_lfp_data[0][0]['time']
 
+            # Deflections represent interruptions from stimulation, artifacts include these and also weird noise
             lfp_deflections = signal.find_peaks(-lfp_data, height=DEFLECTION_THRESHOLD_HI,
                                                 distance=MIN_ARTIFACT_DISTANCE)
             interruption_idxs = lfp_deflections[0]
             session.interruption_timestamps = lfp_timestamps[interruption_idxs]
+            session.interruptionIdxs = interruption_idxs
 
             lfp_deflections = signal.find_peaks(np.abs(
                 np.diff(lfp_data, prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO, distance=MIN_ARTIFACT_DISTANCE)
             lfp_artifact_idxs = lfp_deflections[0]
             session.artifact_timestamps = lfp_timestamps[lfp_artifact_idxs]
+            session.artifactIdxs = lfp_artifact_idxs
+
+            if session.probe_performed and not session.separate_iti_file and not session.separate_probe_file:
+                ITI_MARGIN = 5  # units: seconds
+                itiLfpStart_ts = session.bt_pos_ts[-1] + TRODES_SAMPLING_RATE * ITI_MARGIN
+                itiLfpEnd_ts = session.probe_pos_ts[0] - TRODES_SAMPLING_RATE * ITI_MARGIN
+                itiLfpStart_idx = np.searchsorted(lfp_timestamps, itiLfpStart_ts)
+                itiLfpEnd_idx = np.searchsorted(lfp_timestamps, itiLfpEnd_ts)
+                itiLFPData = lfp_data[itiLfpStart_idx:itiLfpEnd_idx]
+                session.ITIRippleIdxOffset = itiLfpStart_idx
+
+                # in general none, but there's a few right at the start of where this is defined
+                itiStimIdxs = interruption_idxs - itiLfpStart_idx
+                zeroIdx = np.searchsorted(itiStimIdxs, 0)
+                itiStimIdxs = itiStimIdxs[zeroIdx:]
+
+                ripple_power, ITIMeanRipplePower, ITIStdRipplePower = get_ripple_power(
+                    itiLFPData, omit_artifacts=False, lfp_deflections=itiStimIdxs)
+                session.ITIRipStartIdxs, session.ITIRipLens, session.ITIRipPeakIdxs, session.ITIRipPeakAmps = \
+                    detectRipples(ripple_power)
+
+                session.ITIDuration = (itiLfpEnd_ts - itiLfpStart_ts) / \
+                    BTSession.TRODES_SAMPLING_RATE
+
+                probeLfpStart_ts = session.probe_pos_ts[0]
+                probeLfpEnd_ts = session.probe_pos_ts[-1]
+                probeLfpStart_idx = np.searchsorted(lfp_timestamps, probeLfpStart_ts)
+                probeLfpEnd_idx = np.searchsorted(lfp_timestamps, probeLfpEnd_ts)
+                probeLFPData = lfp_data[probeLfpStart_idx:probeLfpEnd_idx]
+                session.probeRippleIdxOffset = probeLfpStart_idx
+
+                ripple_power, probeMeanRipplePower, probeStdRipplePower = get_ripple_power(
+                    probeLFPData, omit_artifacts=False)
+                session.probeRipStartIdxs, session.probeRipLens, session.probeRipPeakIdxs, session.probeRipPeakAmps = \
+                    detectRipples(ripple_power)
+
+                session.probeDuration = (probeLfpEnd_ts - probeLfpStart_ts) / \
+                    BTSession.TRODES_SAMPLING_RATE
+
+                itiRipplePowerProbeStats, _, _ = get_ripple_power(
+                    itiLFPData, omit_artifacts=False, lfp_deflections=itiStimIdxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower)
+                session.ITIRipStartIdxsProbeStats, session.ITIRipLensProbeStats, session.ITIRipPeakIdxsProbeStats, session.ITIRipPeakAmpsProbeStats = \
+                    detectRipples(itiRipplePowerProbeStats)
+
+            elif session.probe_performed:
+                print("Probe performed but LFP in a separate file for session", session.name)
 
         # ripple_power = get_ripple_power(lfp_data, omit_artifacts=True,
         #                                 causal_smoothing=False, lfp_deflections=lfp_artifact_idxs)

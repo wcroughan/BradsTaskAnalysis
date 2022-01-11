@@ -2,10 +2,21 @@ import os
 import numpy as np
 from itertools import groupby
 from random import random
+import MountainViewIO
 
 from MyPlottingFunctions import MyPlottingFunctions
 from BTData import BTData
 from BTSession import BTSession
+from BTRestSession import BTRestSession
+
+PLOT_BEHAVIOR_TRACES = False
+PLOT_BEHAVIOR_SUMMARIES = False
+PLOT_PERSEV_MEASURES = False
+PLOT_PROBE_BEHAVIOR_SUMMARIES = False
+PLOT_ITI_LFP = True
+PLOT_INDIVIDUAL_RIPPLES_ITI = False
+PLOT_PROBE_LFP = True
+PLOT_REST_LFP = True
 
 animals = []
 animals += ["B13"]
@@ -30,17 +41,16 @@ for animal_name in animals:
 
     alldata = BTData()
     alldata.loadFromFile(data_filename)
+    # P = MyPlottingFunctions(alldata, output_dir, showPlots=True)
     P = MyPlottingFunctions(alldata, output_dir)
 
-    if False:
+    if PLOT_BEHAVIOR_TRACES:
         # ==========================================================================
         # Where were the homes?
         P.makeAScatterPlotWithFunc(
             lambda s: [((s.home_well % 8) - 1 + random() * 0.25, (s.home_well // 8) + 1 + random() * 0.25)], "home_wells", axisLims=((0, 7), (0, 7)), individualSessions=False,
             colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"])
-        continue
 
-    if False:
         # ==========================================================================
         # Behavior traces
         # ==================
@@ -208,6 +218,7 @@ for animal_name in animals:
                        BTSession.EXCURSION_STATE_OFF_WALL else [len(s.probe_excursion_category)]))
         )], "on_wall_paths_probe_combined", saveAllValuePairsSeparately=False, axisLims="environment")
 
+    if PLOT_BEHAVIOR_SUMMARIES:
         # ==========================================================================
         # Task behavior
         # ==================
@@ -274,19 +285,21 @@ for animal_name in animals:
         # ani = anim.FuncAnimation(fig, animate, range(len(sesh.bt_pos_ts) - 1),
         #  repeat=False, init_func=init_plot, interval=5)
 
+    if PLOT_PERSEV_MEASURES:
         # ==========================================================================
         # Perseveration measures
         # ==================
         # dwell time
         # interestingProbeTimes = []
 
-    interestingProbeTimes = [60, 90]
-    if False:
+        interestingProbeTimes = [60, 90]
         for iv in interestingProbeTimes:
             P.makeAPersevMeasurePlot("probe_total_dwell_time_{}sec".format(iv),
                                      lambda s, w: s.total_dwell_time(True, w, timeInterval=[0, iv]), alsoMakePerWellPerSessionPlot=True)
             P.makeAPersevMeasurePlot("probe_avg_dwell_time_{}sec".format(iv),
                                      lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, iv], emptyVal=np.nan), alsoMakePerWellPerSessionPlot=True)
+            P.makeAPersevMeasurePlot("probe_avg_dwell_time_{}sec_outlier_fix".format(iv),
+                                     lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, iv], emptyVal=np.nan), yAxisLims=(0, 10), alsoMakePerWellPerSessionPlot=False)
         P.makeAPersevMeasurePlot("probe_total_dwell_time",
                                  lambda s, w: s.total_dwell_time(True, w), alsoMakePerWellPerSessionPlot=True)
         P.makeAPersevMeasurePlot("probe_avg_dwell_time",
@@ -305,97 +318,330 @@ for animal_name in animals:
         P.makeASimpleBoxPlot(lambda s: s.getLatencyToWell(True, s.home_well) / BTSession.TRODES_SAMPLING_RATE,
                              "Probe latency to home", yAxisName="Latency to home")
 
-    # ==================
-    # optimality to first entry
-    P.makeASimpleBoxPlot(lambda s: s.path_optimality(True, wellName=s.home_well),
-                         "Probe (lack of) optimality to home", yAxisName="Lack of optimality to home")
-    continue
+        # ==================
+        # optimality to first entry
+        P.makeASimpleBoxPlot(lambda s: s.path_optimality(True, wellName=s.home_well),
+                             "Probe (lack of) optimality to home", yAxisName="Lack of optimality to home")
 
-    # ==================
-    # mean dist to home
-    P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_home_well(True),
-                         "Probe Mean Dist to Home", yAxisName="Mean Dist to Home")
-    P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_well(True, s.ctrl_home_well),
-                         "Probe Mean Dist to Ctrl Home", yAxisName="Mean Dist to Ctrl Home")
-    for iv in interestingProbeTimes:
-        P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_home_well(True, timeInterval=[0, iv]),
-                             "Probe Mean Dist to Home {}sec".format(iv), yAxisName="Mean Dist to Home {}sec".format(iv))
-        P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_well(True, s.ctrl_home_well, timeInterval=[0, iv]),
-                             "Probe Mean Dist to Ctrl Home {}sec".format(iv), yAxisName="Mean Dist to Ctrl Home {}sec".format(iv))
+        # ==================
+        # mean dist to home
+        P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_home_well(True),
+                             "Probe Mean Dist to Home", yAxisName="Mean Dist to Home")
+        P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_well(True, s.ctrl_home_well),
+                             "Probe Mean Dist to Ctrl Home", yAxisName="Mean Dist to Ctrl Home")
+        for iv in interestingProbeTimes:
+            P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_home_well(True, timeInterval=[0, iv]),
+                                 "Probe Mean Dist to Home {}sec".format(iv), yAxisName="Mean Dist to Home {}sec".format(iv))
+            P.makeASimpleBoxPlot(lambda s: s.avg_dist_to_well(True, s.ctrl_home_well, timeInterval=[0, iv]),
+                                 "Probe Mean Dist to Ctrl Home {}sec".format(iv), yAxisName="Mean Dist to Ctrl Home {}sec".format(iv))
 
-    continue
+        # ==================
+        # perseveration vs task performance
+        P.makeAScatterPlotWithFunc(lambda s: [((s.home_well_find_times[1] - s.away_well_leave_times[0]) / BTSession.TRODES_SAMPLING_RATE,
+                                               s.avg_dwell_time(True, s.home_well, emptyVal=np.nan)
+                                               )] if len(s.home_well_find_times) > 1 else [], "2nd_home_search_time_vs_avg_probe_home_dwell",
+                                   colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
 
-    # ==================
-    # perseveration vs task performance
-    P.makeAScatterPlotWithFunc(lambda s: [((s.home_well_find_times[1] - s.away_well_leave_times[0]) / BTSession.TRODES_SAMPLING_RATE,
-                                           s.avg_dwell_time(True, s.home_well, emptyVal=np.nan)
-                                           )] if len(s.home_well_find_times) > 1 else [], "2nd_home_search_time_vs_avg_probe_home_dwell",
-                               colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        # ==================
+        # time within certain dist to home
+        radius = 18
+        for iv in interestingProbeTimes:
+            P.makeAPersevMeasurePlot("probe_time_near_home_{}sec_{}cm".format(iv, radius), lambda s, w: s.total_time_near_well(
+                True, w, radius=radius, timeInterval=[0, iv]) / BTSession.TRODES_SAMPLING_RATE)
+        P.makeAPersevMeasurePlot("probe_time_near_home_{}cm".format(radius), lambda s, w: s.total_time_near_well(
+            True, w, radius=radius) / BTSession.TRODES_SAMPLING_RATE)
 
-    # ==================
-    # time within certain dist to home
-    radius = 18
-    for iv in interestingProbeTimes:
-        P.makeAPersevMeasurePlot("probe_time_near_home_{}sec_{}cm".format(iv, radius), lambda s, w: s.total_time_near_well(
-            True, w, radius=radius, timeInterval=[0, iv]) / BTSession.TRODES_SAMPLING_RATE)
-    P.makeAPersevMeasurePlot("probe_time_near_home_{}cm".format(radius), lambda s, w: s.total_time_near_well(
-        True, w, radius=radius) / BTSession.TRODES_SAMPLING_RATE)
+        # ==================
+        # curvature
+        for iv in interestingProbeTimes:
+            P.makeAPersevMeasurePlot("probe_curvature_{}sec".format(
+                iv), lambda s, w: s.avg_curvature_at_well(True, w, timeInterval=[0, iv]))
+        P.makeAPersevMeasurePlot("probe_curvature".format(iv), lambda s,
+                                 w: s.avg_curvature_at_well(True, w))
 
-    # ==================
-    # curvature
-    for iv in interestingProbeTimes:
-        P.makeAPersevMeasurePlot("probe_curvature_{}sec".format(
-            iv), lambda s, w: s.avg_curvature_at_well(True, w, timeInterval=[0, iv]))
-    P.makeAPersevMeasurePlot("probe_curvature".format(iv), lambda s,
-                             w: s.avg_curvature_at_well(True, w))
+        # ==================
+        # pct exploration bouts home well visitied
+        def numVisits(well, nearestWells):
+            return np.count_nonzero(np.array([k for k, g in groupby(nearestWells)]) == well)
 
-    # ==================
-    # pct exploration bouts home well visitied
-    def numVisits(well, nearestWells):
-        return np.count_nonzero(np.array([k for k, g in groupby(nearestWells)]) == well)
+        def didVisit(well, nearestWells):
+            return any(np.array(nearestWells) == well)
 
-    def didVisit(well, nearestWells):
-        return any(np.array(nearestWells) == well)
+        P.makeAPersevMeasurePlot("avg_visits_per_exploration_bout",
+                                 lambda s, w: np.sum([numVisits(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
+                                     s.probe_explore_bout_starts, s.probe_explore_bout_ends
+                                 )]) / float(len(s.probe_explore_bout_starts)))
+        P.makeAPersevMeasurePlot("pct_exploration_bouts_visited",
+                                 lambda s, w: np.sum([didVisit(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
+                                     s.probe_explore_bout_starts, s.probe_explore_bout_ends
+                                 )]) / float(len(s.probe_explore_bout_starts)))
 
-    P.makeAPersevMeasurePlot("avg_visits_per_exploration_bout",
-                             lambda s, w: np.sum([numVisits(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
-                                 s.probe_explore_bout_starts, s.probe_explore_bout_ends
-                             )]) / float(len(s.probe_explore_bout_starts)))
-    P.makeAPersevMeasurePlot("pct_exploration_bouts_visited",
-                             lambda s, w: np.sum([didVisit(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
-                                 s.probe_explore_bout_starts, s.probe_explore_bout_ends
-                             )]) / float(len(s.probe_explore_bout_starts)))
+        # ==================
+        # pct excursions home well visitied
+        P.makeAPersevMeasurePlot("avg_visits_per_excursion",
+                                 lambda s, w: np.sum([numVisits(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
+                                     s.probe_excursion_starts, s.probe_excursion_ends
+                                 )]) / float(len(s.probe_excursion_starts)))
+        P.makeAPersevMeasurePlot("pct_excursions_visited",
+                                 lambda s, w: np.sum([didVisit(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
+                                     s.probe_excursion_starts, s.probe_excursion_ends
+                                 )]) / float(len(s.probe_excursion_starts)))
 
-    # ==================
-    # pct excursions home well visitied
-    P.makeAPersevMeasurePlot("avg_visits_per_excursion",
-                             lambda s, w: np.sum([numVisits(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
-                                 s.probe_excursion_starts, s.probe_excursion_ends
-                             )]) / float(len(s.probe_excursion_starts)))
-    P.makeAPersevMeasurePlot("pct_excursions_visited",
-                             lambda s, w: np.sum([didVisit(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
-                                 s.probe_excursion_starts, s.probe_excursion_ends
-                             )]) / float(len(s.probe_excursion_starts)))
+    if PLOT_PROBE_BEHAVIOR_SUMMARIES:
+        # ==========================================================================
+        # behavior during probe
+        # ==================
+        # avg vel over time
+        timeResolutions = [15, 30, 60]
+        for tint in timeResolutions:
+            intervalStarts = np.arange(0, 5*60, tint)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.mean_vel(True, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )], "probe_avg_vel_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+
+        # ==================
+        # pct time exploring
+        for tint in timeResolutions:
+            intervalStarts = np.arange(0, 5*60, tint)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )], "probe_prop_time_explore_bout_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
 
     # ==========================================================================
-    # behavior during probe
-    # ==================
-    # avg vel over time
-    timeResolutions = [15, 30, 60]
-    for tint in timeResolutions:
-        intervalStarts = np.arange(0, 5*60, tint)
-        P.makeALinePlot(lambda s: [(intervalStarts,
-                                    [s.mean_vel(True, timeInterval=[i1, i1+tint])
-                                        for i1 in intervalStarts]
-                                    )], "probe_avg_vel_{}sec".format(tint), individualSessions=False,
-                        colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+    # session LFP
+    def LFPPoints(sesh, idxs, marginFwd, marginBack, plotDiff=False):
+        lfpFName = sesh.bt_lfp_fnames[-1]
+        lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
+        lfpV = lfpData[1]['voltage']
+        lfpT = lfpData[0]['time']
 
-    # ==================
-    # pct time exploring
-    for tint in timeResolutions:
-        intervalStarts = np.arange(0, 5*60, tint)
-        P.makeALinePlot(lambda s: [(intervalStarts,
-                                    [s.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
-                                        for i1 in intervalStarts]
-                                    )], "probe_prop_time_explore_bout_{}sec".format(tint), individualSessions=False,
-                        colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+        MARGIN_F_IDX = float(marginFwd) * BTRestSession.LFP_SAMPLING_RATE
+        MARGIN_B_IDX = float(marginBack) * BTRestSession.LFP_SAMPLING_RATE
+
+        ret = []
+        for i in idxs:
+            i1 = int(max(0, i - MARGIN_B_IDX))
+            i2 = int(min(i+MARGIN_F_IDX, len(lfpV)))
+            # print(i1, i2, i2-i1, MARGIN_B_IDX, MARGIN_F_IDX)
+            x = lfpT[i1:i2].astype(float)
+            x -= float(lfpT[i])
+            y = lfpV[i1:i2].astype(float)
+            if plotDiff:
+                y = np.diff(y, prepend=y[0])
+            ret.append((x, y))
+            # print(x, y)
+
+        return ret
+
+    if PLOT_ITI_LFP:
+        # ==================
+        # Raw LFP
+        P.makeALinePlot(lambda s: LFPPoints(
+            s, [0], (s.probe_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE, 0), "Raw LFP")
+        P.makeALinePlot(lambda s: LFPPoints(
+            s, [0], (s.probe_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE, 0, plotDiff=True), "Raw LFP Diff")
+
+        # ==================
+        # Deflections and artifacts
+        # P.makeALinePlot(lambda s: LFPPoints(s, s.artifactIdxs[s.artifactIdxs < s.ITIRippleIdxOffset], 0.3, 0.3),
+        # "LFP artifacts", saveAllValuePairsSeparately=True)
+        # P.makeALinePlot(lambda s: LFPPoints(s, s.interruptionIdxs[s.interruptionIdxs < s.ITIRippleIdxOffset], 0.3, 0.3),
+        # "LFP interruptions", saveAllValuePairsSeparately=True)
+
+        # P.makeALinePlot(lambda s: LFPPoints(s, s.interruptionIdxs[s.interruptionIdxs > s.ITIRippleIdxOffset], 0.3, 0.3),
+        # "ITI LFP large deflections", saveAllValuePairsSeparately=True)
+
+        # ==========================================================================
+        # probe and ITI LFP
+        # ==================
+        # ITI
+        # ==================
+        # Just raw values
+        P.makeALinePlot(lambda s: [(np.arange(len(s.ITIRipLens)), s.ITIRipLens)],
+                        "riplens", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.arange(len(s.ITIRipStartIdxs)),
+                        s.ITIRipStartIdxs)], "ripstartidxs", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.arange(len(s.ITIRipPeakIdxs)),
+                        s.ITIRipPeakIdxs)], "rippeakidxs", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.arange(len(s.ITIRipPeakAmps)),
+                        s.ITIRipPeakAmps)], "rippeakamps", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.array(s.ITIRipStartIdxs) / BTRestSession.LFP_SAMPLING_RATE,
+                        s.ITIRipPeakAmps)], "rippeakamps over time", individualSessions=False)
+
+        # ==================
+        # cumulative ripple count
+        P.makeALinePlot(lambda rs: [(np.hstack(([0], np.array(rs.ITIRipStartIdxs) / BTRestSession.LFP_SAMPLING_RATE)),
+                        np.arange(len(rs.ITIRipStartIdxs)+1))], "iti cumulative num ripples",
+                        colorFunc=lambda rs: [[
+                            ("orange" if rs.isRippleInterruption else "cyan") for v in rs.ITIRipStartIdxs]],
+                        individualSessions=False)
+
+        # # cumulative ripple length
+        # P.makeALinePlot(lambda rs: [(np.hstack(([0], np.array(rs.ITIRipStartIdxs) / BTRestSession.LFP_SAMPLING_RATE)),
+        #                 np.hstack(([0], np.cumsum(rs.ITIRipLens))))], "iti cumulative ripple length",
+        #                 colorFunc=lambda rs: [[
+        #                     ("orange" if rs.isRippleInterruption else "cyan") for v in rs.ITIRipStartIdxs]],
+        #                 individualSessions=False)
+
+        # ==================
+        # ripple length, amplitude, duration, rate
+        P.makeASimpleBoxPlot(lambda rs: np.nanmean(rs.ITIRipLens) / BTRestSession.LFP_SAMPLING_RATE,
+                             "iti Ripple length")
+        P.makeASimpleBoxPlot(lambda rs: np.nanmean(rs.ITIRipPeakAmps),
+                             "iti Ripple amp")
+        P.makeASimpleBoxPlot(lambda rs: rs.ITIDuration, "iti duration")
+        P.makeASimpleBoxPlot(lambda rs: float(len(rs.ITIRipLens)) /
+                             rs.ITIDuration, "iti ripple rate")
+
+        # ==================
+        # same but detected using probe stats
+        P.makeALinePlot(lambda s: [(np.arange(len(s.ITIRipLensProbeStats)), s.ITIRipLensProbeStats)],
+                        "riplens", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.arange(len(s.ITIRipStartIdxsProbeStats)),
+                        s.ITIRipStartIdxsProbeStats)], "ripstartidxs probestats", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.arange(len(s.ITIRipPeakIdxsProbeStats)),
+                        s.ITIRipPeakIdxsProbeStats)], "rippeakidxs probestats", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.arange(len(s.ITIRipPeakAmpsProbeStats)),
+                        s.ITIRipPeakAmpsProbeStats)], "rippeakamps probestats", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.array(s.ITIRipStartIdxsProbeStats) / BTRestSession.LFP_SAMPLING_RATE,
+                        s.ITIRipPeakAmpsProbeStats)], "rippeakamps over time probestats", individualSessions=False)
+
+        # ==================
+        # cumulative ripple count
+        P.makeALinePlot(lambda rs: [(np.hstack(([0], np.array(rs.ITIRipStartIdxsProbeStats) / BTRestSession.LFP_SAMPLING_RATE)),
+                        np.arange(len(rs.ITIRipStartIdxsProbeStats)+1))], "iti cumulative num ripples probestats",
+                        colorFunc=lambda rs: [[
+                            ("orange" if rs.isRippleInterruption else "cyan") for v in rs.ITIRipStartIdxsProbeStats]],
+                        individualSessions=False)
+
+        # ==================
+        # ripple length, amplitude, duration, rate
+        P.makeASimpleBoxPlot(lambda rs: np.nanmean(rs.ITIRipLensProbeStats) / BTRestSession.LFP_SAMPLING_RATE,
+                             "iti Ripple length probestats")
+        P.makeASimpleBoxPlot(lambda rs: np.nanmean(rs.ITIRipPeakAmpsProbeStats),
+                             "iti Ripple amp probestats")
+        P.makeASimpleBoxPlot(lambda rs: float(len(rs.ITIRipLensProbeStats)) /
+                             rs.ITIDuration, "iti ripple rate probestats")
+
+    if PLOT_INDIVIDUAL_RIPPLES_ITI:
+        # ==================
+        # Look at individual ripples
+        def ITIRippleLFPPoints(sesh, useProbeStats=False):
+            lfpFName = sesh.bt_lfp_fnames[-1]
+            lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
+            lfpV = lfpData[1]['voltage']
+            lfpT = lfpData[0]['time']
+
+            if useProbeStats:
+                starts = sesh.ITIRipStartIdxsProbeStats + sesh.ITIRippleIdxOffset
+                lens = sesh.ITIRipLensProbeStats
+                peakIdxs = sesh.ITIRipPeakIdxsProbeStats + sesh.ITIRippleIdxOffset
+            else:
+                starts = sesh.ITIRipStartIdxs + sesh.ITIRippleIdxOffset
+                lens = sesh.ITIRipLens
+                peakIdxs = sesh.ITIRipPeakIdxs + sesh.ITIRippleIdxOffset
+
+            MARGIN_MSEC = 20
+            MARGIN_IDX = float(MARGIN_MSEC) / 1000.0 * BTRestSession.LFP_SAMPLING_RATE
+
+            ret = []
+            for (i, l, pi) in zip(starts, lens, peakIdxs):
+                i1 = int(max(0, i - MARGIN_IDX))
+                i2 = int(min(i+l+MARGIN_IDX, len(lfpV)))
+                x = lfpT[i1:i2].astype(float)
+                x -= float(lfpT[pi])
+                # print(pi)
+                # print(lfpT[pi])
+                y = lfpV[i1:i2].astype(float)
+                ret.append((x, y))
+
+            return ret
+        P.makeALinePlot(ITIRippleLFPPoints, "ITI ripples", saveAllValuePairsSeparately=True)
+        P.makeALinePlot(lambda s: ITIRippleLFPPoints(s, True),
+                        "ITI ripples probe stats", saveAllValuePairsSeparately=True)
+
+    if PLOT_PROBE_LFP:
+        # ==================
+        # probe
+        # ==================
+        # Just raw values
+        P.makeALinePlot(lambda s: [(np.arange(len(s.probeRipLens)), s.probeRipLens)],
+                        "probe riplens", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.arange(len(s.probeRipStartIdxs)),
+                        s.probeRipStartIdxs)], "probe ripstartidxs", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.arange(len(s.probeRipPeakIdxs)),
+                        s.probeRipPeakIdxs)], "probe rippeakidxs", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.arange(len(s.probeRipPeakAmps)),
+                        s.probeRipPeakAmps)], "probe rippeakamps", individualSessions=False)
+        P.makeALinePlot(lambda s: [(np.array(s.probeRipStartIdxs) / BTRestSession.LFP_SAMPLING_RATE,
+                        s.probeRipPeakAmps)], "probe rippeakamps over time", individualSessions=False)
+
+        # ==================
+        # cumulative ripple count
+        P.makeALinePlot(lambda rs: [(np.hstack(([0], np.array(rs.probeRipStartIdxs) / BTRestSession.LFP_SAMPLING_RATE)),
+                        np.arange(len(rs.probeRipStartIdxs)+1))], "probe cumulative num ripples",
+                        colorFunc=lambda rs: [[
+                            ("orange" if rs.isRippleInterruption else "cyan") for v in rs.probeRipStartIdxs]],
+                        individualSessions=False)
+
+        # # cumulative ripple length
+        # P.makeALinePlot(lambda rs: [(np.hstack(([0], np.array(rs.probeRipStartIdxs) / BTRestSession.LFP_SAMPLING_RATE)),
+        #                 np.hstack(([0], np.cumsum(rs.probeRipLens))))], "probe cumulative ripple length",
+        #                 colorFunc=lambda rs: [[
+        #                     ("orange" if rs.isRippleInterruption else "cyan") for v in rs.probeRipStartIdxs]],
+        #                 individualSessions=False)
+
+        # ==================
+        # ripple length, amplitude, duration, rate
+        P.makeASimpleBoxPlot(lambda rs: np.nanmean(rs.probeRipLens) / BTRestSession.LFP_SAMPLING_RATE,
+                             "probe Ripple length")
+        P.makeASimpleBoxPlot(lambda rs: np.nanmean(rs.probeRipPeakAmps),
+                             "probe Ripple amp")
+        P.makeASimpleBoxPlot(lambda rs: rs.probeDuration, "probe duration")
+        P.makeASimpleBoxPlot(lambda rs: float(len(rs.probeRipLens)) /
+                             rs.probeDuration, "probe ripple rate")
+
+    if PLOT_REST_LFP:
+        if len(alldata.allRestSessions) > 0:
+            # ==========================================================================
+            # Rest session LFP
+            # ==================
+            # raw vals
+            P.makeALinePlot(lambda s: [(np.arange(len(s.ripLens)), s.ripLens)],
+                            "rest riplens", individualSessions=False, restSessions=True)
+            P.makeALinePlot(lambda s: [(np.arange(len(s.ripStartIdxs)),
+                            s.ripStartIdxs)], "rest ripstartidxs", individualSessions=False, restSessions=True)
+            P.makeALinePlot(lambda s: [(np.arange(len(s.ripPeakIdxs)),
+                            s.ripPeakIdxs)], "rest rippeakidxs", individualSessions=False, restSessions=True)
+            P.makeALinePlot(lambda s: [(np.arange(len(s.ripPeakAmps)),
+                            s.ripPeakAmps)], "rest rippeakamps", individualSessions=False, restSessions=True)
+            P.makeALinePlot(lambda s: [(np.array(s.ripStartIdxs) / BTRestSession.LFP_SAMPLING_RATE,
+                            s.ripPeakAmps)], "rest rippeakamps over time", individualSessions=False, restSessions=True)
+
+            # ==================
+            # cumulative ripple count
+            P.makeALinePlot(lambda rs: [(np.hstack(([0], np.array(rs.ripStartIdxs) / BTRestSession.LFP_SAMPLING_RATE)),
+                            np.arange(len(rs.ripStartIdxs)+1))], "rest cumulative num ripples", restSessions=True,
+                            colorFunc=lambda rs: [[
+                                ("orange" if rs.btwpSession.isRippleInterruption else "cyan") for v in rs.ripStartIdxs]],
+                            individualSessions=False)
+
+            # # cumulative ripple length
+            # P.makeALinePlot(lambda rs: [(np.hstack(([0], np.array(rs.ripStartIdxs) / BTRestSession.LFP_SAMPLING_RATE)),
+            #                 np.hstack(([0], np.cumsum(rs.ripLens))))], "rest cumulative ripple length", restSessions=True,
+            #                 colorFunc=lambda rs: [[
+            #                     ("orange" if rs.btwpSession.isRippleInterruption else "cyan") for v in rs.ripStartIdxs]],
+            #                 individualSessions=False)
+
+            # ripple length, amplitude, duration, rate
+            P.makeASimpleBoxPlot(lambda rs: np.nanmean(rs.ripLens) / BTRestSession.LFP_SAMPLING_RATE,
+                                 "rest Ripple length", restSessions=True)
+            P.makeASimpleBoxPlot(lambda rs: np.nanmean(rs.ripPeakAmps),
+                                 "rest Ripple amp", restSessions=True)
+            P.makeASimpleBoxPlot(lambda rs: rs.restDuration, "rest duration", restSessions=True)
+            P.makeASimpleBoxPlot(lambda rs: float(len(rs.ripLens)) /
+                                 rs.restDuration, "rest ripple rate", restSessions=True)

@@ -40,14 +40,17 @@ class BTData:
                     self.allSessions[-1].__dict__ = self.processAndLoadDict(load_dict, np_dir)
                     self.allSessions[-1].date = datetime.strptime("{}_{}".format(
                         self.allSessions[-1].date_str, self.allSessions[-1].time_str), "%Y%m%d_%H%M%S")
-                elif line == "!!RestSession":
+                elif line == "!!RestSession\n":
                     self.allRestSessions.append(BTRestSession())
                     line = f.readline()
                     load_dict = json.loads(line[:-1])
+                    # print(load_dict)
 
                     self.allRestSessions[-1].__dict__ = self.processAndLoadDict(load_dict, np_dir)
                     self.allRestSessions[-1].date = datetime.strptime("{}_{}".format(
                         self.allRestSessions[-1].date_str, self.allRestSessions[-1].time_str), "%Y%m%d_%H%M%S")
+
+                    # print(self.allRestSessions[-1].restDuration)
                 else:
                     print("File parse error!")
                     return -2
@@ -163,3 +166,6 @@ class BTData:
     # can pass in optional filter function, otherwise returns all blocks
     def getSessions(self, predicate=lambda b: True):
         return list(filter(predicate, self.allSessions))
+
+    def getRestSessions(self, predicate=lambda b: True):
+        return list(filter(predicate, self.allRestSessions))
