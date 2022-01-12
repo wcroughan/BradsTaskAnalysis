@@ -44,6 +44,8 @@ for animal_name in animals:
     # P = MyPlottingFunctions(alldata, output_dir, showPlots=True)
     P = MyPlottingFunctions(alldata, output_dir)
 
+    print("starting plots for", animal_name)
+
     if PLOT_BEHAVIOR_TRACES:
         # ==========================================================================
         # Where were the homes?
