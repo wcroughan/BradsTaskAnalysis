@@ -8,11 +8,15 @@ import seaborn as sns
 
 rngesus = np.random.default_rng()
 
-SHOW_REAL_DATA = False
+SHOW_REAL_DATA = True
 SHOW_EXAMPLE_SAMPLE = False
 
+# MEASURE = "curvature"
 MEASURE = "avgdwell"
 ONE_N_PER_RAT = True
+ONLY_AWAYS_OFF_WALL = False
+# RAT_TO_USE = "all"
+RAT_TO_USE = "Martin"
 
 # test values:
 # CTRL_HOME_MEAN = 5.0
@@ -28,6 +32,13 @@ ONE_N_PER_RAT = True
 # measured values:
 def onWall(well):
     return well < 9 or well > 40 or well % 8 in [2, 7]
+
+
+def wallCheck(well):
+    if ONLY_AWAYS_OFF_WALL:
+        return not onWall(well)
+    else:
+        return True
 
 
 def getPointsForAnimal(animal_name):
@@ -57,13 +68,13 @@ def getPointsForAnimal(animal_name):
     swrHomeCurve = [s.avg_curvature_at_well(True, s.home_well, timeInterval=[
                                             0, 90]) for s in swrWithProbe]
     ctrlAwayAvgDwell = [np.nanmean([s.avg_dwell_time(True, w, timeInterval=[
-        0, 90]) for w in s.visited_away_wells]) for s in ctrlWithProbe]
+        0, 90]) for w in s.visited_away_wells if wallCheck(w)]) for s in ctrlWithProbe]
     swrAwayAvgDwell = [np.nanmean([s.avg_dwell_time(True, w, timeInterval=[
-        0, 90]) for w in s.visited_away_wells]) for s in swrWithProbe]
+        0, 90]) for w in s.visited_away_wells if wallCheck(w)]) for s in swrWithProbe]
     ctrlAwayCurve = [np.nanmean([s.avg_curvature_at_well(True, w, timeInterval=[
-        0, 90]) for w in s.visited_away_wells]) for s in ctrlWithProbe]
+        0, 90]) for w in s.visited_away_wells if wallCheck(w)]) for s in ctrlWithProbe]
     swrAwayCurve = [np.nanmean([s.avg_curvature_at_well(True, w, timeInterval=[
-        0, 90]) for w in s.visited_away_wells]) for s in swrWithProbe]
+        0, 90]) for w in s.visited_away_wells if wallCheck(w)]) for s in swrWithProbe]
 
     return ctrlHomeAvgDwell, swrHomeAvgDwell, ctrlAwayAvgDwell, swrAwayAvgDwell, ctrlHomeCurve, swrHomeCurve, ctrlAwayCurve, swrAwayCurve
 
@@ -86,11 +97,26 @@ if MEASURE == "avgdwell":
             b14swrHomeAvgDwell), np.nanmean(marswrHomeAvgDwell)])
         swrAwayPoints = np.array([np.nanmean(b13swrAwayAvgDwell), np.nanmean(
             b14swrAwayAvgDwell), np.nanmean(marswrAwayAvgDwell)])
-    else:
+    elif RAT_TO_USE == "all":
         ctrlHomePoints = np.hstack((b13ctrlHomeAvgDwell, b14ctrlHomeAvgDwell, marctrlHomeAvgDwell))
         ctrlAwayPoints = np.hstack((b13ctrlAwayAvgDwell, b14ctrlAwayAvgDwell, marctrlAwayAvgDwell))
         swrHomePoints = np.hstack((b13swrHomeAvgDwell, b14swrHomeAvgDwell, marswrHomeAvgDwell))
         swrAwayPoints = np.hstack((b13swrAwayAvgDwell, b14swrAwayAvgDwell, marswrAwayAvgDwell))
+    elif RAT_TO_USE == "B13":
+        ctrlHomePoints = b13ctrlHomeAvgDwell
+        ctrlAwayPoints = b13ctrlAwayAvgDwell
+        swrHomePoints = b13swrHomeAvgDwell
+        swrAwayPoints = b13swrAwayAvgDwell
+    elif RAT_TO_USE == "B14":
+        ctrlHomePoints = b14ctrlHomeAvgDwell
+        ctrlAwayPoints = b14ctrlAwayAvgDwell
+        swrHomePoints = b14swrHomeAvgDwell
+        swrAwayPoints = b14swrAwayAvgDwell
+    elif RAT_TO_USE == "Martin":
+        ctrlHomePoints = marctrlHomeAvgDwell
+        ctrlAwayPoints = marctrlAwayAvgDwell
+        swrHomePoints = marswrHomeAvgDwell
+        swrAwayPoints = marswrAwayAvgDwell
 elif MEASURE == "curvature":
     if ONE_N_PER_RAT:
         ctrlHomePoints = np.array([np.nanmean(b13ctrlHomeCurve), np.nanmean(
@@ -101,11 +127,26 @@ elif MEASURE == "curvature":
             b14swrHomeCurve), np.nanmean(marswrHomeCurve)])
         swrAwayPoints = np.array([np.nanmean(b13swrAwayCurve), np.nanmean(
             b14swrAwayCurve), np.nanmean(marswrAwayCurve)])
-    else:
+    elif RAT_TO_USE == "all":
         ctrlHomePoints = np.hstack((b13ctrlHomeCurve, b14ctrlHomeCurve, marctrlHomeCurve))
         ctrlAwayPoints = np.hstack((b13ctrlAwayCurve, b14ctrlAwayCurve, marctrlAwayCurve))
         swrHomePoints = np.hstack((b13swrHomeCurve, b14swrHomeCurve, marswrHomeCurve))
         swrAwayPoints = np.hstack((b13swrAwayCurve, b14swrAwayCurve, marswrAwayCurve))
+    elif RAT_TO_USE == "B13":
+        ctrlHomePoints = b13ctrlHomeCurve
+        ctrlAwayPoints = b13ctrlAwayCurve
+        swrHomePoints = b13swrHomeCurve
+        swrAwayPoints = b13swrAwayCurve
+    elif RAT_TO_USE == "B14":
+        ctrlHomePoints = b14ctrlHomeCurve
+        ctrlAwayPoints = b14ctrlAwayCurve
+        swrHomePoints = b14swrHomeCurve
+        swrAwayPoints = b14swrAwayCurve
+    elif RAT_TO_USE == "Martin":
+        ctrlHomePoints = marctrlHomeCurve
+        ctrlAwayPoints = marctrlAwayCurve
+        swrHomePoints = marswrHomeCurve
+        swrAwayPoints = marswrAwayCurve
 
 else:
     raise Exception("Unknown measure")
@@ -133,6 +174,10 @@ if SHOW_REAL_DATA:
                 hue="condition", palette="Set3")
     sns.swarmplot(x="welltype", y="val", data=s,
                     color="0.25", hue="condition", dodge=True)
+    anovaModel = ols(
+        "val ~ C(welltype) + C(condition) + C(welltype):C(condition)", data=s).fit()
+    anova_table = anova_lm(anovaModel, typ=2)
+    print(anova_table)
 
     plt.show()
 
@@ -148,8 +193,10 @@ P_THRESH = 0.05
 
 if ONE_N_PER_RAT:
     sampleSizes = [3, 5, 7, 10, 15]
-else:
+elif RAT_TO_USE == "all":
     sampleSizes = np.round(np.exp(np.linspace(np.log(10), np.log(1000), 10))).astype(int)
+else:
+    sampleSizes = np.round(np.exp(np.linspace(np.log(5), np.log(40), 6))).astype(int)
 # sampleSizes = [2, 3]
 numSignificant = np.zeros_like(sampleSizes)
 for ssi, sampleSize in enumerate(sampleSizes):
