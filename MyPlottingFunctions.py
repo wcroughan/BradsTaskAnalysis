@@ -35,7 +35,7 @@ class MyPlottingFunctions:
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
 
-    def makeALinePlot(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False, restSessions=False):
+    def makeALinePlot(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False, restSessions=False, linewidth=None):
         """
         valsFunc : session => [(xvals, yvals), (xvals, yvals), ...]
         """
@@ -78,15 +78,25 @@ class MyPlottingFunctions:
                             avgs[xvs[xyi]].append(yvs[xyi])
                         else:
                             avgs[xvs[xyi]] = [yvs[xyi]]
-                    linewidth = 0.5
+                    if linewidth is None:
+                        linewidth = 0.5
                 else:
-                    linewidth = 1.0
+                    if linewidth is None:
+                        linewidth = 1.0
 
                 if colorFunc is None:
                     plt.plot(xvs, yvs, linewidth=linewidth)
+                elif not isinstance(colors[vi], list):
+                    plt.plot(xvs, yvs, linewidth=linewidth, color=colors[vi])
                 else:
                     for i in range(len(xvs)-1):
-                        plt.plot(xvs[i:i+2], yvs[i:i+2], color=colors[vi][i], linewidth=linewidth)
+                        try:
+                            plt.plot(xvs[i:i+2], yvs[i:i+2], color=colors[vi]
+                                     [i], linewidth=linewidth)
+                        except Exception as ef:
+                            print(i, len(xvs), len(colors), vi, len(colors[0]))
+                            print(colors)
+                            raise ef
 
                 if individualSessions and saveAllValuePairsSeparately:
                     plt.xlabel(xlabel)

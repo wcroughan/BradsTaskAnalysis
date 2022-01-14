@@ -13,10 +13,11 @@ PLOT_BEHAVIOR_TRACES = False
 PLOT_BEHAVIOR_SUMMARIES = False
 PLOT_PERSEV_MEASURES = False
 PLOT_PROBE_BEHAVIOR_SUMMARIES = False
-PLOT_ITI_LFP = True
+PLOT_ITI_LFP = False
 PLOT_INDIVIDUAL_RIPPLES_ITI = False
-PLOT_PROBE_LFP = True
-PLOT_REST_LFP = True
+PLOT_PROBE_LFP = False
+PLOT_REST_LFP = False
+PLOT_DWELL_TIME_OVER_TIME = True
 
 animals = []
 animals += ["B13"]
@@ -647,3 +648,48 @@ for animal_name in animals:
             P.makeASimpleBoxPlot(lambda rs: rs.restDuration, "rest duration", restSessions=True)
             P.makeASimpleBoxPlot(lambda rs: float(len(rs.ripLens)) /
                                  rs.restDuration, "rest ripple rate", restSessions=True)
+
+    if PLOT_DWELL_TIME_OVER_TIME:
+        def valF(sesh):
+            ret = []
+            for wi, w in enumerate(P.all_well_names):
+                xs = np.arange(sesh.num_well_entries(True, w))
+                ys = (
+                    sesh.probe_well_exit_times[wi] - sesh.probe_well_entry_times[wi]) / BTSession().TRODES_SAMPLING_RATE
+                ret.append((xs, ys))
+
+            return ret
+
+        def colorF(sesh):
+            ret = []
+            for w in P.all_well_names:
+                n = sesh.num_well_entries(True, w)
+                if w == sesh.home_well:
+                    ret.append(["green"] * n)
+                elif w in sesh.visited_away_wells:
+                    ret.append(["red"] * n)
+                else:
+                    ret.append(["gray"] * n)
+
+            return ret
+
+        # P.makeALinePlot(valF, "wellDwellTimesOverProbe", colorFunc=colorF, linewidth=0.5)
+        P.makeALinePlot(lambda s: [(np.arange(s.num_well_entries(True, s.home_well)),
+                                    (s.probe_well_exit_times[s.home_well_idx_in_allwells] - s.probe_well_entry_times[s.home_well_idx_in_allwells]) / BTSession.TRODES_SAMPLING_RATE)],
+                        "home dwell time over probe", colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+
+        def valF(sesh, emptyVal=-1.0):
+            hwi = sesh.home_well_idx_in_allwells
+            ents = sesh.probe_well_entry_times[hwi]
+            exts = sesh.probe_well_exit_times[hwi]
+            if len(ents) == 0:
+                return [(emptyVal, emptyVal)]
+
+            dwellTimes = (exts - ents) / BTSession.TRODES_SAMPLING_RATE
+            if len(dwellTimes) == 1:
+                return [(dwellTimes[0], emptyVal)]
+
+            return [(dwellTimes[0], dwellTimes[1])]
+
+        P.makeAScatterPlotWithFunc(valF, "First and second home dwell times",
+                                   colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)

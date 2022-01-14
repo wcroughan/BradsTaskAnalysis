@@ -13,23 +13,14 @@ SHOW_EXAMPLE_SAMPLE = False
 
 # MEASURE = "curvature"
 MEASURE = "avgdwell"
-ONE_N_PER_RAT = True
+ONE_N_PER_RAT = False
 ONLY_AWAYS_OFF_WALL = False
-# RAT_TO_USE = "all"
-RAT_TO_USE = "Martin"
-
-# test values:
-# CTRL_HOME_MEAN = 5.0
-# CTRL_HOME_STD = 1.0
-# CTRL_AWAY_MEAN = 2.5
-# CTRL_AWAY_STD = 1.0
-# SWR_HOME_MEAN = 2.0
-# SWR_HOME_STD = 1.0
-# SWR_AWAY_MEAN = 3.0
-# SWR_AWAY_STD = 1.0
-
+RAT_TO_USE = "all"
+# RAT_TO_USE = "B13"
 
 # measured values:
+
+
 def onWall(well):
     return well < 9 or well > 40 or well % 8 in [2, 7]
 
@@ -179,6 +170,8 @@ if SHOW_REAL_DATA:
     anova_table = anova_lm(anovaModel, typ=2)
     print(anova_table)
 
+    if MEASURE == "avgdwell":
+        plt.ylabel("Average Dwell Time (sec)")
     plt.show()
 
 
