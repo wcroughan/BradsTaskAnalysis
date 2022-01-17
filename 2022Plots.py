@@ -12,12 +12,12 @@ from BTRestSession import BTRestSession
 PLOT_BEHAVIOR_TRACES = False
 PLOT_BEHAVIOR_SUMMARIES = False
 PLOT_PERSEV_MEASURES = False
-PLOT_PROBE_BEHAVIOR_SUMMARIES = False
+PLOT_PROBE_BEHAVIOR_SUMMARIES = True
 PLOT_ITI_LFP = False
 PLOT_INDIVIDUAL_RIPPLES_ITI = False
 PLOT_PROBE_LFP = False
 PLOT_REST_LFP = False
-PLOT_DWELL_TIME_OVER_TIME = True
+PLOT_DWELL_TIME_OVER_TIME = False
 
 animals = []
 animals += ["B13"]
@@ -397,11 +397,18 @@ for animal_name in animals:
         # avg vel over time
         timeResolutions = [15, 30, 60]
         for tint in timeResolutions:
+            continue
             intervalStarts = np.arange(0, 5*60, tint)
             P.makeALinePlot(lambda s: [(intervalStarts,
                                         [s.mean_vel(True, timeInterval=[i1, i1+tint])
                                             for i1 in intervalStarts]
                                         )], "probe_avg_vel_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.mean_vel(True, timeInterval=[i1, i1+tint], onlyMoving=True)
+                                            for i1 in intervalStarts]
+                                        )], "probe_avg_vel_{}sec_just_moving".format(tint), individualSessions=False,
                             colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
 
         # ==================
@@ -413,6 +420,17 @@ for animal_name in animals:
                                             for i1 in intervalStarts]
                                         )], "probe_prop_time_explore_bout_{}sec".format(tint), individualSessions=False,
                             colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "probe_prop_time_explore_bout_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem")
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1 * tint,
+                                        [s.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "probe_prop_time_explore_bout_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem")
 
     # ==========================================================================
     # session LFP

@@ -35,7 +35,11 @@ class MyPlottingFunctions:
         if self.SHOW_OUTPUT_PLOTS:
             plt.show()
 
-    def makeALinePlot(self, valsFunc, title, colorFunc=None, individualSessions=True, saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False, restSessions=False, linewidth=None):
+    def makeALinePlot(self, valsFunc, title,
+                      colorFunc=None, individualSessions=True, holdLastPlot=False,
+                      saveAllValuePairsSeparately=False, plotAverage=False, avgError="std",
+                      xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False,
+                      restSessions=False, linewidth=None, errorFunc=None):
         """
         valsFunc : session => [(xvals, yvals), (xvals, yvals), ...]
         """
@@ -49,7 +53,8 @@ class MyPlottingFunctions:
         if plotAverage:
             avgs = {}
 
-        plt.clf()
+        if not holdLastPlot:
+            plt.clf()
 
         for sesh in seshs:
             if axisLims == "environment":
@@ -68,6 +73,8 @@ class MyPlottingFunctions:
             if colorFunc is not None:
                 colors = colorFunc(sesh)
             # print(vals[0][0])
+            if errorFunc is not None:
+                errorBars = errorFunc(sesh)
             if not individualSessions and saveAllValuePairsSeparately and len(vals) > 1:
                 print("Warning: won't be saving all pairs separately since combining across sessions")
 
@@ -84,19 +91,30 @@ class MyPlottingFunctions:
                     if linewidth is None:
                         linewidth = 1.0
 
+                if errorFunc is not None:
+                    ers = errorBars[vi]
+
                 if colorFunc is None:
-                    plt.plot(xvs, yvs, linewidth=linewidth)
+                    if errorFunc is not None:
+                        plt.errorbar(xvs, yvs, ers, linewidth=linewidth)
+                    else:
+                        plt.plot(xvs, yvs, linewidth=linewidth)
                 elif not isinstance(colors[vi], list):
-                    plt.plot(xvs, yvs, linewidth=linewidth, color=colors[vi])
+                    if errorFunc is not None:
+                        plt.errorbar(xvs, yvs, ers, linewidth=linewidth, color=colors[vi])
+                    else:
+                        plt.plot(xvs, yvs, linewidth=linewidth, color=colors[vi])
                 else:
                     for i in range(len(xvs)-1):
-                        try:
+                        if errorFunc is not None:
+                            plt.errorbar(xvs[i:i+2], yvs[i:i+2], ers[vi][i], color=colors[vi]
+                                         [i], linewidth=linewidth)
+                        else:
                             plt.plot(xvs[i:i+2], yvs[i:i+2], color=colors[vi]
                                      [i], linewidth=linewidth)
-                        except Exception as ef:
-                            print(i, len(xvs), len(colors), vi, len(colors[0]))
-                            print(colors)
-                            raise ef
+                    if errorFunc is not None:
+                        plt.errorbar([xvs[-1]], [yvs[-1]], [ers[vi][-1]], color=colors[vi]
+                                     [-1], linewidth=linewidth)
 
                 if individualSessions and saveAllValuePairsSeparately:
                     plt.xlabel(xlabel)
@@ -105,7 +123,8 @@ class MyPlottingFunctions:
                         plt.xlim(xlim1, xlim2)
                         plt.ylim(ylim1, ylim2)
                     self.saveOrShow("{}_{}_{}".format(title, sesh.name, vi))
-                    plt.clf()
+                    if not holdLastPlot:
+                        plt.clf()
                     plt.xlabel(xlabel)
                     plt.ylabel(ylabel)
                     if axisLims is not None:
@@ -119,13 +138,28 @@ class MyPlottingFunctions:
                     plt.xlim(xlim1, xlim2)
                     plt.ylim(ylim1, ylim2)
                 self.saveOrShow("{}_{}".format(title, sesh.name))
-                plt.clf()
+                if not holdLastPlot:
+                    plt.clf()
 
         if not individualSessions:
             if plotAverage:
                 xs = sorted(avgs.keys())
-                ys = [np.mean(avgs[x]) for x in xs]
-                plt.plot(xs, ys, linewidth=2)
+                ys = [np.nanmean(avgs[x]) for x in xs]
+                ers = [np.nanstd(avgs[x]) for x in xs]
+                if avgError == "std":
+                    pass
+                elif avgError == "sem":
+                    ers = np.array(ers) / np.sqrt(np.array([len(avgs[x]) for x in xs]))
+                else:
+                    raise Exception("Unknown avg error type")
+                if colorFunc is None:
+                    c = "gray"
+                else:
+                    if not isinstance(colors[vi], list):
+                        c = colors[0]
+                    else:
+                        c = colors[0][0]
+                plt.errorbar(xs, ys, ers, linewidth=2, color=c)
 
             plt.xlabel(xlabel)
             plt.ylabel(ylabel)
