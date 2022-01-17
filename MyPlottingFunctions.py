@@ -21,13 +21,23 @@ class MyPlottingFunctions:
         self.SKIP_HISTOGRAMS = skipHistograms
         self.output_dir = output_dir
         self.all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
-        self.all_sessions = allData.getSessions()
+        if isinstance(allData, list):
+            self.all_sessions = []
+            self.all_rest_sessions = []
+            for ad in allData:
+                self.all_sessions += ad.getSessions()
+                self.all_rest_sessions += ad.getRestSessions()
+        else:
+            self.all_sessions = allData.getSessions()
+            self.all_rest_sessions = allData.getRestSessions()
         self.all_sessions_with_probe = [s for s in self.all_sessions if s.probe_performed]
         self.tlbls = [self.trial_label(sesh) for sesh in self.all_sessions]
         self.tlbls_with_probe = [self.trial_label(sesh) for sesh in self.all_sessions_with_probe]
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         statsFileName = os.path.join(output_dir, datetime.now().strftime("%Y%m%d_%H%M%S_stats.txt"))
         self.statsFile = open(statsFileName, "w")
-        self.all_rest_sessions = allData.getRestSessions()
 
     def saveOrShow(self, fname):
         if self.SAVE_OUTPUT_PLOTS:

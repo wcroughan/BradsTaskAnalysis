@@ -9,45 +9,81 @@ from BTData import BTData
 from BTSession import BTSession
 from BTRestSession import BTRestSession
 
-PLOT_BEHAVIOR_TRACES = False
-PLOT_BEHAVIOR_SUMMARIES = False
-PLOT_PERSEV_MEASURES = False
-PLOT_PROBE_BEHAVIOR_SUMMARIES = False
-PLOT_ITI_LFP = False
-PLOT_INDIVIDUAL_RIPPLES_ITI = False
-PLOT_PROBE_LFP = False
-PLOT_REST_LFP = False
-PLOT_DWELL_TIME_OVER_TIME = True
+PLOT_BEHAVIOR_TRACES = 5
+PLOT_BEHAVIOR_SUMMARIES = 3
+PLOT_PERSEV_MEASURES = 1
+PLOT_PROBE_BEHAVIOR_SUMMARIES = 2
+PLOT_ITI_LFP = 7
+PLOT_INDIVIDUAL_RIPPLES_ITI = 10
+PLOT_PROBE_LFP = 9
+PLOT_REST_LFP = 10
+PLOT_DWELL_TIME_OVER_TIME = 7
+PLOT_PER_SESSION_ADDITIONAL = 8
+
+ONLY_COMBO = True
 
 animals = []
+animals += ["combo"]
 animals += ["B13"]
 animals += ["B14"]
 animals += ["Martin"]
 
+
 for animal_name in animals:
-    if animal_name == "B13":
-        data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
-        output_dir = "/media/WDC7/B13/processed_data/behavior_figures/"
-    elif animal_name == "B14":
-        data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
-        output_dir = "/media/WDC7/B14/processed_data/behavior_figures/"
-    elif animal_name == "Martin":
-        data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
-        output_dir = "/media/WDC7/Martin/processed_data/behavior_figures/"
+    if animal_name != "combo":
+        if ONLY_COMBO:
+            continue
+
+        if animal_name == "B13":
+            data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
+            output_dir = "/media/WDC7/B13/processed_data/behavior_figures/"
+        elif animal_name == "B14":
+            data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
+            output_dir = "/media/WDC7/B14/processed_data/behavior_figures/"
+        elif animal_name == "Martin":
+            data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
+            output_dir = "/media/WDC7/Martin/processed_data/behavior_figures/"
+        else:
+            raise Exception("Unknown rat " + animal_name)
+
+        print("Loading data for " + animal_name)
+        ratData = BTData()
+        ratData.loadFromFile(data_filename)
+        P = MyPlottingFunctions(ratData, output_dir)
+        print("starting plots for", animal_name)
+
+        FIG_LEVEL = 5
+
     else:
-        raise Exception("Unknown rat")
+        output_dir = "/media/WDC7/combined_figures/"
+        allData = []
+        for an in animals:
+            if an == "combo":
+                continue
+            elif an == "B13":
+                data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
+            elif an == "B14":
+                data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
+            elif an == "Martin":
+                data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
+            else:
+                raise Exception("Unknown rat " + an)
+
+            print("Loading data for " + an)
+            ratData = BTData()
+            ratData.loadFromFile(data_filename)
+            allData.append(ratData)
+
+        P = MyPlottingFunctions(allData, output_dir)
+        print("starting plots for combo")
+        FIG_LEVEL = 3
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    alldata = BTData()
-    alldata.loadFromFile(data_filename)
-    # P = MyPlottingFunctions(alldata, output_dir, showPlots=True)
-    P = MyPlottingFunctions(alldata, output_dir)
+    showAdditional = PLOT_PER_SESSION_ADDITIONAL < FIG_LEVEL
 
-    print("starting plots for", animal_name)
-
-    if PLOT_BEHAVIOR_TRACES:
+    if PLOT_BEHAVIOR_TRACES < FIG_LEVEL:
         # ==========================================================================
         # Where were the homes?
         P.makeAScatterPlotWithFunc(
@@ -221,7 +257,7 @@ for animal_name in animals:
                        BTSession.EXCURSION_STATE_OFF_WALL else [len(s.probe_excursion_category)]))
         )], "on_wall_paths_probe_combined", saveAllValuePairsSeparately=False, axisLims="environment")
 
-    if PLOT_BEHAVIOR_SUMMARIES:
+    if PLOT_BEHAVIOR_SUMMARIES < FIG_LEVEL:
         # ==========================================================================
         # Task behavior
         # ==================
@@ -288,7 +324,7 @@ for animal_name in animals:
         # ani = anim.FuncAnimation(fig, animate, range(len(sesh.bt_pos_ts) - 1),
         #  repeat=False, init_func=init_plot, interval=5)
 
-    if PLOT_PERSEV_MEASURES:
+    if PLOT_PERSEV_MEASURES < FIG_LEVEL:
         # ==========================================================================
         # Perseveration measures
         # ==================
@@ -298,23 +334,23 @@ for animal_name in animals:
         interestingProbeTimes = [60, 90]
         for iv in interestingProbeTimes:
             P.makeAPersevMeasurePlot("probe_total_dwell_time_{}sec".format(iv),
-                                     lambda s, w: s.total_dwell_time(True, w, timeInterval=[0, iv]), alsoMakePerWellPerSessionPlot=True)
+                                     lambda s, w: s.total_dwell_time(True, w, timeInterval=[0, iv]), alsoMakePerWellPerSessionPlot=showAdditional)
             P.makeAPersevMeasurePlot("probe_avg_dwell_time_{}sec".format(iv),
-                                     lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, iv], emptyVal=np.nan), alsoMakePerWellPerSessionPlot=True)
+                                     lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, iv], emptyVal=np.nan), alsoMakePerWellPerSessionPlot=showAdditional)
             P.makeAPersevMeasurePlot("probe_avg_dwell_time_{}sec_outlier_fix".format(iv),
                                      lambda s, w: s.avg_dwell_time(True, w, timeInterval=[0, iv], emptyVal=np.nan), yAxisLims=(0, 10), alsoMakePerWellPerSessionPlot=False)
         P.makeAPersevMeasurePlot("probe_total_dwell_time",
-                                 lambda s, w: s.total_dwell_time(True, w), alsoMakePerWellPerSessionPlot=True)
+                                 lambda s, w: s.total_dwell_time(True, w), alsoMakePerWellPerSessionPlot=showAdditional)
         P.makeAPersevMeasurePlot("probe_avg_dwell_time",
-                                 lambda s, w: s.avg_dwell_time(True, w, emptyVal=np.nan), alsoMakePerWellPerSessionPlot=True)
+                                 lambda s, w: s.avg_dwell_time(True, w, emptyVal=np.nan), alsoMakePerWellPerSessionPlot=showAdditional)
 
         # ==================
         # num entries
         for iv in interestingProbeTimes:
             P.makeAPersevMeasurePlot("probe_num_entries_{}sec".format(iv),
-                                     lambda s, w: s.num_well_entries(True, w, timeInterval=[0, iv]), alsoMakePerWellPerSessionPlot=True)
+                                     lambda s, w: s.num_well_entries(True, w, timeInterval=[0, iv]), alsoMakePerWellPerSessionPlot=showAdditional)
         P.makeAPersevMeasurePlot("probe_num_entries",
-                                 lambda s, w: s.total_dwell_time(True, w), alsoMakePerWellPerSessionPlot=True)
+                                 lambda s, w: s.total_dwell_time(True, w), alsoMakePerWellPerSessionPlot=showAdditional)
 
         # ==================
         # latency to first entry
@@ -350,17 +386,17 @@ for animal_name in animals:
         radius = 18
         for iv in interestingProbeTimes:
             P.makeAPersevMeasurePlot("probe_time_near_home_{}sec_{}cm".format(iv, radius), lambda s, w: s.total_time_near_well(
-                True, w, radius=radius, timeInterval=[0, iv]) / BTSession.TRODES_SAMPLING_RATE)
+                True, w, radius=radius, timeInterval=[0, iv]) / BTSession.TRODES_SAMPLING_RATE, alsoMakePerWellPerSessionPlot=showAdditional)
         P.makeAPersevMeasurePlot("probe_time_near_home_{}cm".format(radius), lambda s, w: s.total_time_near_well(
-            True, w, radius=radius) / BTSession.TRODES_SAMPLING_RATE)
+            True, w, radius=radius) / BTSession.TRODES_SAMPLING_RATE, alsoMakePerWellPerSessionPlot=showAdditional)
 
         # ==================
         # curvature
         for iv in interestingProbeTimes:
             P.makeAPersevMeasurePlot("probe_curvature_{}sec".format(
-                iv), lambda s, w: s.avg_curvature_at_well(True, w, timeInterval=[0, iv]))
+                iv), lambda s, w: s.avg_curvature_at_well(True, w, timeInterval=[0, iv]), alsoMakePerWellPerSessionPlot=showAdditional)
         P.makeAPersevMeasurePlot("probe_curvature".format(iv), lambda s,
-                                 w: s.avg_curvature_at_well(True, w))
+                                 w: s.avg_curvature_at_well(True, w), alsoMakePerWellPerSessionPlot=showAdditional)
 
         # ==================
         # pct exploration bouts home well visitied
@@ -373,24 +409,24 @@ for animal_name in animals:
         P.makeAPersevMeasurePlot("avg_visits_per_exploration_bout",
                                  lambda s, w: np.sum([numVisits(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
                                      s.probe_explore_bout_starts, s.probe_explore_bout_ends
-                                 )]) / float(len(s.probe_explore_bout_starts)))
+                                 )]) / float(len(s.probe_explore_bout_starts)), alsoMakePerWellPerSessionPlot=showAdditional)
         P.makeAPersevMeasurePlot("pct_exploration_bouts_visited",
                                  lambda s, w: np.sum([didVisit(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
                                      s.probe_explore_bout_starts, s.probe_explore_bout_ends
-                                 )]) / float(len(s.probe_explore_bout_starts)))
+                                 )]) / float(len(s.probe_explore_bout_starts)), alsoMakePerWellPerSessionPlot=showAdditional)
 
         # ==================
         # pct excursions home well visitied
         P.makeAPersevMeasurePlot("avg_visits_per_excursion",
                                  lambda s, w: np.sum([numVisits(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
                                      s.probe_excursion_starts, s.probe_excursion_ends
-                                 )]) / float(len(s.probe_excursion_starts)))
+                                 )]) / float(len(s.probe_excursion_starts)), alsoMakePerWellPerSessionPlot=showAdditional)
         P.makeAPersevMeasurePlot("pct_excursions_visited",
                                  lambda s, w: np.sum([didVisit(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
                                      s.probe_excursion_starts, s.probe_excursion_ends
-                                 )]) / float(len(s.probe_excursion_starts)))
+                                 )]) / float(len(s.probe_excursion_starts)), alsoMakePerWellPerSessionPlot=showAdditional)
 
-    if PLOT_PROBE_BEHAVIOR_SUMMARIES:
+    if PLOT_PROBE_BEHAVIOR_SUMMARIES < FIG_LEVEL:
         # ==========================================================================
         # behavior during probe
         # ==================
@@ -440,7 +476,7 @@ for animal_name in animals:
 
         return ret
 
-    if PLOT_ITI_LFP:
+    if PLOT_ITI_LFP < FIG_LEVEL:
         # ==================
         # Raw LFP
         P.makeALinePlot(lambda s: LFPPoints(
@@ -530,7 +566,7 @@ for animal_name in animals:
         P.makeASimpleBoxPlot(lambda rs: float(len(rs.ITIRipLensProbeStats)) /
                              rs.ITIDuration, "iti ripple rate probestats")
 
-    if PLOT_INDIVIDUAL_RIPPLES_ITI:
+    if PLOT_INDIVIDUAL_RIPPLES_ITI < FIG_LEVEL:
         # ==================
         # Look at individual ripples
         def ITIRippleLFPPoints(sesh, useProbeStats=False):
@@ -567,7 +603,7 @@ for animal_name in animals:
         P.makeALinePlot(lambda s: ITIRippleLFPPoints(s, True),
                         "ITI ripples probe stats", saveAllValuePairsSeparately=True)
 
-    if PLOT_PROBE_LFP:
+    if PLOT_PROBE_LFP < FIG_LEVEL:
         # ==================
         # probe
         # ==================
@@ -608,8 +644,8 @@ for animal_name in animals:
         P.makeASimpleBoxPlot(lambda rs: float(len(rs.probeRipLens)) /
                              rs.probeDuration, "probe ripple rate")
 
-    if PLOT_REST_LFP:
-        if len(alldata.allRestSessions) > 0:
+    if PLOT_REST_LFP < FIG_LEVEL:
+        if len(P.all_rest_sessions) > 0:
             # ==========================================================================
             # Rest session LFP
             # ==================
@@ -649,7 +685,7 @@ for animal_name in animals:
             P.makeASimpleBoxPlot(lambda rs: float(len(rs.ripLens)) /
                                  rs.restDuration, "rest ripple rate", restSessions=True)
 
-    if PLOT_DWELL_TIME_OVER_TIME:
+    if PLOT_DWELL_TIME_OVER_TIME < FIG_LEVEL:
         def valF(sesh):
             ret = []
             for wi, w in enumerate(P.all_well_names):
