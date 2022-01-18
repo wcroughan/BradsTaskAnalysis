@@ -12,7 +12,7 @@ from BTRestSession import BTRestSession
 
 PLOT_BEHAVIOR_TRACES = 5
 PLOT_BEHAVIOR_SUMMARIES = 3
-PLOT_PERSEV_MEASURES = 3
+PLOT_PERSEV_MEASURES = 2
 PLOT_PROBE_BEHAVIOR_SUMMARIES = 3
 PLOT_TASK_BEHAVIOR_SUMMARIES = 3
 PLOT_PROBE_VS_TASK_BEHAVIOR_SUMMARIES = 3
@@ -24,12 +24,13 @@ PLOT_DWELL_TIME_OVER_TIME = 7
 PLOT_PER_SESSION_ADDITIONAL = 8
 PLOT_INTERRUPTION_INFO = 3
 PLOT_RAW_LFP = 3
-PLOT_TASK_INDIVIDUAL_RIPPLES = 2
+PLOT_TASK_INDIVIDUAL_RIPPLES = 3
+PLOT_RIPPLES_VS_PERSEV = 2
 
 ONLY_COMBO = False
 
 animals = []
-# animals += ["combo"]
+animals += ["combo"]
 animals += ["B13"]
 animals += ["B14"]
 animals += ["Martin"]
@@ -365,6 +366,9 @@ for animal_name in animals:
                                  lambda s, w: s.total_dwell_time(True, w), alsoMakePerWellPerSessionPlot=showAdditional)
         P.makeAPersevMeasurePlot("probe_avg_dwell_time",
                                  lambda s, w: s.avg_dwell_time(True, w, emptyVal=np.nan), alsoMakePerWellPerSessionPlot=showAdditional)
+
+        P.makeAPersevMeasurePlot("probe_max_dwell_time",
+                                 lambda s, w: s.avg_dwell_time(True, w, emptyVal=0.0, avgFunc=np.nanmax), alsoMakePerWellPerSessionPlot=showAdditional)
 
         # ==================
         # num entries
@@ -718,7 +722,7 @@ for animal_name in animals:
     # ==========================================================================
     # session LFP
 
-    def LFPPoints(sesh, idxs, marginFwd, marginBack, plotDiff=False):
+    def LFPPoints(sesh, idxs, marginFwd, marginBack, step=1, plotDiff=False):
         print("{} LFP idxs".format(len(idxs)))
         lfpFName = sesh.bt_lfp_fnames[-1]
         lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
@@ -729,12 +733,13 @@ for animal_name in animals:
         MARGIN_B_IDX = float(marginBack) * BTRestSession.LFP_SAMPLING_RATE
 
         ret = []
-        for i in idxs:
-            i1 = int(max(0, i - MARGIN_B_IDX))
-            i2 = int(min(i+MARGIN_F_IDX, len(lfpV)))
+        for i in range(0, len(idxs), step):
+            idx = idxs[i]
+            i1 = int(max(0, idx - MARGIN_B_IDX))
+            i2 = int(min(idx+MARGIN_F_IDX, len(lfpV)))
             # print(i1, i2, i2-i1, MARGIN_B_IDX, MARGIN_F_IDX)
             x = lfpT[i1:i2].astype(float)
-            x -= float(lfpT[i])
+            x -= float(lfpT[idx])
             y = lfpV[i1:i2].astype(float)
             if plotDiff:
                 y = np.diff(y, prepend=y[0])
@@ -753,8 +758,41 @@ for animal_name in animals:
 
     if PLOT_TASK_INDIVIDUAL_RIPPLES < FIG_LEVEL:
         P.makeALinePlot(lambda s: LFPPoints(
-            s, s.btRipStartIdxs, 0.4, 0.4
-        ), "Task Ripples", saveAllValuePairsSeparately=True)
+            s, s.btRipStartIdxsProbeStats, 0.4, 0.4, step=100
+        ), "Task Ripples probe stats", saveAllValuePairsSeparately=True)
+
+    if PLOT_RIPPLES_VS_PERSEV < FIG_LEVEL:
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(len(s.btRipStartIdxsProbeStats) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE),
+                        s.avg_dwell_time(True, s.home_well, timeInterval=[0, 90], emptyVal=-1.0))],
+            "total ripple rate vs home dwell in 90sec", individualSessions=False,
+            colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(len(s.bt_interruption_pos_idxs) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE),
+                        s.avg_dwell_time(True, s.home_well, timeInterval=[0, 90], emptyVal=-1.0))],
+            "total stim rate vs home dwell in 90sec", individualSessions=False,
+            colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")
+        P.makeAScatterPlotWithFunc(
+            lambda s: [((len(s.btRipStartIdxsProbeStats) + len(s.bt_interruption_pos_idxs)) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE),
+                        s.avg_dwell_time(True, s.home_well, timeInterval=[0, 90], emptyVal=-1.0))],
+            "total ripple plus stim rate vs home dwell in 90sec", individualSessions=False,
+            colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")
+
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(len(s.btRipStartIdxsProbeStats) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE),
+                        s.avg_dwell_time(True, s.home_well, emptyVal=-1.0, avgFunc=np.nanmax))],
+            "total ripple rate vs max home dwell", individualSessions=False,
+            colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(len(s.bt_interruption_pos_idxs) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE),
+                        s.avg_dwell_time(True, s.home_well, emptyVal=-1.0, avgFunc=np.nanmax))],
+            "total stim rate vs max home dwell", individualSessions=False,
+            colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")
+        P.makeAScatterPlotWithFunc(
+            lambda s: [((len(s.btRipStartIdxsProbeStats) + len(s.bt_interruption_pos_idxs)) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE),
+                        s.avg_dwell_time(True, s.home_well, emptyVal=-1.0, avgFunc=np.nanmax))],
+            "total ripple plus stim rate vs max home dwell", individualSessions=False,
+            colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")
 
     if PLOT_ITI_LFP < FIG_LEVEL:
         # ==================

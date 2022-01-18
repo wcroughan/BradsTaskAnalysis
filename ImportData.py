@@ -1129,12 +1129,15 @@ if __name__ == "__main__":
 
             bt_lfp_start_idx = np.searchsorted(lfp_timestamps, session.bt_pos_ts[0])
             bt_lfp_end_idx = np.searchsorted(lfp_timestamps, session.bt_pos_ts[-1])
+            btLFPData = lfp_data[bt_lfp_start_idx:bt_lfp_end_idx]
+            bt_lfp_artifact_idxs = lfp_artifact_idxs - bt_lfp_start_idx
+            bt_lfp_artifact_idxs = bt_lfp_artifact_idxs[bt_lfp_artifact_idxs > 0]
 
             _, prebtMeanRipplePower, prebtStdRipplePower = get_ripple_power(
                 lfp_data[0:bt_lfp_start_idx], omit_artifacts=False)
             ripple_power, _, _ = get_ripple_power(
-                lfp_data[bt_lfp_start_idx:bt_lfp_end_idx], lfp_deflections=lfp_artifact_idxs, meanPower=prebtMeanRipplePower, stdPower=prebtStdRipplePower)
-            session.btRipStartIdxs, session.btRipLens, session.btRipPeakIdxs, session.btRipPeakAmps = \
+                btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=prebtMeanRipplePower, stdPower=prebtStdRipplePower)
+            session.btRipStartIdxsPreStats, session.btRipLensPreStats, session.btRipPeakIdxsPreStats, session.btRipPeakAmpsPreStats = \
                 detectRipples(ripple_power)
 
             if session.probe_performed and not session.separate_iti_file and not session.separate_probe_file:
@@ -1178,6 +1181,11 @@ if __name__ == "__main__":
                     itiLFPData, lfp_deflections=itiStimIdxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower)
                 session.ITIRipStartIdxsProbeStats, session.ITIRipLensProbeStats, session.ITIRipPeakIdxsProbeStats, session.ITIRipPeakAmpsProbeStats = \
                     detectRipples(itiRipplePowerProbeStats)
+
+                btRipplePowerProbeStats, _, _ = get_ripple_power(
+                    btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower)
+                session.btRipStartIdxsProbeStats, session.btRipLensProbeStats, session.btRipPeakIdxsProbeStats, session.btRipPeakAmpsProbeStats = \
+                    detectRipples(btRipplePowerProbeStats)
 
             elif session.probe_performed:
                 print("Probe performed but LFP in a separate file for session", session.name)

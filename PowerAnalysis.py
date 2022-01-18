@@ -16,6 +16,8 @@ MEASURE = "avgdwell"
 ONE_N_PER_RAT = False
 ONLY_AWAYS_OFF_WALL = False
 # RAT_TO_USE = "all"
+EXCLUDE_MARTIN = False
+SWAP_MARTIN_SESSIONS = True
 # RAT_TO_USE = "B14"
 # RAT_TO_USE = "B13"
 RAT_TO_USE = "Martin"
@@ -40,7 +42,10 @@ def getPointsForAnimal(animal_name):
     elif animal_name == "B14":
         data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
     elif animal_name == "Martin":
-        data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
+        if EXCLUDE_MARTIN:
+            return [], [], [], [], [], [], [], []
+        else:
+            data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
     alldata = BTData()
     print("LOading animal", animal_name)
     alldata.loadFromFile(data_filename)
@@ -48,14 +53,24 @@ def getPointsForAnimal(animal_name):
     print("Analyzing...")
 
     if ONLY_AWAYS_OFF_WALL:
+        if SWAP_MARTIN_SESSIONS and animal_name == "Martin":
+            raise Exception("UNIMPLEMENTED")
         ctrlWithProbe = alldata.getSessions(lambda s: (
             not s.isRippleInterruption) and s.probe_performed and any([not onWall(w) for w in s.visited_away_wells]))
         swrWithProbe = alldata.getSessions(lambda s: s.isRippleInterruption and s.probe_performed and any([
             not onWall(w) for w in s.visited_away_wells]))
     else:
-        ctrlWithProbe = alldata.getSessions(lambda s: (
-            not s.isRippleInterruption) and s.probe_performed)
-        swrWithProbe = alldata.getSessions(lambda s: s.isRippleInterruption and s.probe_performed)
+        if SWAP_MARTIN_SESSIONS and animal_name == "Martin":
+            def isCtrl(sesh):
+                return (not sesh.isRippleInterruption) or (sesh.name in ["test20200607_182259", "test20200701_182503"])
+            ctrlWithProbe = alldata.getSessions(lambda s: isCtrl(s) and s.probe_performed)
+            swrWithProbe = alldata.getSessions(
+                lambda s: (not isCtrl(s)) and s.probe_performed)
+        else:
+            ctrlWithProbe = alldata.getSessions(lambda s: (
+                not s.isRippleInterruption) and s.probe_performed)
+            swrWithProbe = alldata.getSessions(
+                lambda s: s.isRippleInterruption and s.probe_performed)
 
     ctrlHomeAvgDwell = [s.avg_dwell_time(True, s.home_well, timeInterval=[
                                          0, 90]) for s in ctrlWithProbe]
@@ -77,7 +92,6 @@ def getPointsForAnimal(animal_name):
     return ctrlHomeAvgDwell, swrHomeAvgDwell, ctrlAwayAvgDwell, swrAwayAvgDwell, ctrlHomeCurve, swrHomeCurve, ctrlAwayCurve, swrAwayCurve
 
 
-animals = ["B13", "B14", "Martin"]
 b13ctrlHomeAvgDwell, b13swrHomeAvgDwell, b13ctrlAwayAvgDwell, b13swrAwayAvgDwell, b13ctrlHomeCurve, b13swrHomeCurve, b13ctrlAwayCurve, b13swrAwayCurve = getPointsForAnimal(
     "B13")
 b14ctrlHomeAvgDwell, b14swrHomeAvgDwell, b14ctrlAwayAvgDwell, b14swrAwayAvgDwell, b14ctrlHomeCurve, b14swrHomeCurve, b14ctrlAwayCurve, b14swrAwayCurve = getPointsForAnimal(
