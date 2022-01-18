@@ -15,8 +15,10 @@ SHOW_EXAMPLE_SAMPLE = False
 MEASURE = "avgdwell"
 ONE_N_PER_RAT = False
 ONLY_AWAYS_OFF_WALL = False
-RAT_TO_USE = "all"
+# RAT_TO_USE = "all"
+# RAT_TO_USE = "B14"
 # RAT_TO_USE = "B13"
+RAT_TO_USE = "Martin"
 
 # measured values:
 
@@ -45,10 +47,15 @@ def getPointsForAnimal(animal_name):
 
     print("Analyzing...")
 
-    ctrlWithProbe = alldata.getSessions(lambda s: (
-        not s.isRippleInterruption) and s.probe_performed and any([not onWall(w) for w in s.visited_away_wells]))
-    swrWithProbe = alldata.getSessions(lambda s: s.isRippleInterruption and s.probe_performed and any([
-                                       not onWall(w) for w in s.visited_away_wells]))
+    if ONLY_AWAYS_OFF_WALL:
+        ctrlWithProbe = alldata.getSessions(lambda s: (
+            not s.isRippleInterruption) and s.probe_performed and any([not onWall(w) for w in s.visited_away_wells]))
+        swrWithProbe = alldata.getSessions(lambda s: s.isRippleInterruption and s.probe_performed and any([
+            not onWall(w) for w in s.visited_away_wells]))
+    else:
+        ctrlWithProbe = alldata.getSessions(lambda s: (
+            not s.isRippleInterruption) and s.probe_performed)
+        swrWithProbe = alldata.getSessions(lambda s: s.isRippleInterruption and s.probe_performed)
 
     ctrlHomeAvgDwell = [s.avg_dwell_time(True, s.home_well, timeInterval=[
                                          0, 90]) for s in ctrlWithProbe]
@@ -172,6 +179,9 @@ if SHOW_REAL_DATA:
 
     if MEASURE == "avgdwell":
         plt.ylabel("Average Dwell Time (sec)")
+        plt.ylim(0, 11)
+    else:
+        plt.ylim(0, 2)
     plt.show()
 
 

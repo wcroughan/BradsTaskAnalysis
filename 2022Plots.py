@@ -3,6 +3,7 @@ import numpy as np
 from itertools import groupby
 from random import random
 import MountainViewIO
+import matplotlib.pyplot as plt
 
 from MyPlottingFunctions import MyPlottingFunctions
 from BTData import BTData
@@ -11,22 +12,43 @@ from BTRestSession import BTRestSession
 
 PLOT_BEHAVIOR_TRACES = 5
 PLOT_BEHAVIOR_SUMMARIES = 3
-PLOT_PERSEV_MEASURES = 1
-PLOT_PROBE_BEHAVIOR_SUMMARIES = 2
+PLOT_PERSEV_MEASURES = 3
+PLOT_PROBE_BEHAVIOR_SUMMARIES = 3
+PLOT_TASK_BEHAVIOR_SUMMARIES = 3
+PLOT_PROBE_VS_TASK_BEHAVIOR_SUMMARIES = 3
 PLOT_ITI_LFP = 7
 PLOT_INDIVIDUAL_RIPPLES_ITI = 10
 PLOT_PROBE_LFP = 9
 PLOT_REST_LFP = 10
 PLOT_DWELL_TIME_OVER_TIME = 7
 PLOT_PER_SESSION_ADDITIONAL = 8
+PLOT_INTERRUPTION_INFO = 3
+PLOT_RAW_LFP = 3
+PLOT_TASK_INDIVIDUAL_RIPPLES = 2
 
-ONLY_COMBO = True
+ONLY_COMBO = False
 
 animals = []
-animals += ["combo"]
+# animals += ["combo"]
 animals += ["B13"]
 animals += ["B14"]
 animals += ["Martin"]
+
+
+def numVisits(well, nearestWells):
+    return np.count_nonzero(np.array([k for k, g in groupby(nearestWells)]) == well)
+
+
+def didVisit(well, nearestWells):
+    return any(np.array(nearestWells) == well)
+
+
+def numWellsVisited(nearestWells, countReturns=False):
+    g = groupby(nearestWells)
+    if countReturns:
+        return len([k for k, _ in g])
+    else:
+        return len(set([k for k, _ in g]))
 
 
 for animal_name in animals:
@@ -49,10 +71,10 @@ for animal_name in animals:
         print("Loading data for " + animal_name)
         ratData = BTData()
         ratData.loadFromFile(data_filename)
-        P = MyPlottingFunctions(ratData, output_dir)
+        P = MyPlottingFunctions(ratData, output_dir, showPlots=False)
         print("starting plots for", animal_name)
 
-        FIG_LEVEL = 5
+        FIG_LEVEL = 3
 
     else:
         output_dir = "/media/WDC7/combined_figures/"
@@ -74,7 +96,7 @@ for animal_name in animals:
             ratData.loadFromFile(data_filename)
             allData.append(ratData)
 
-        P = MyPlottingFunctions(allData, output_dir)
+        P = MyPlottingFunctions(allData, output_dir, showPlots=False)
         print("starting plots for combo")
         FIG_LEVEL = 3
 
@@ -400,12 +422,6 @@ for animal_name in animals:
 
         # ==================
         # pct exploration bouts home well visitied
-        def numVisits(well, nearestWells):
-            return np.count_nonzero(np.array([k for k, g in groupby(nearestWells)]) == well)
-
-        def didVisit(well, nearestWells):
-            return any(np.array(nearestWells) == well)
-
         P.makeAPersevMeasurePlot("avg_visits_per_exploration_bout",
                                  lambda s, w: np.sum([numVisits(w, s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
                                      s.probe_explore_bout_starts, s.probe_explore_bout_ends
@@ -426,6 +442,118 @@ for animal_name in animals:
                                      s.probe_excursion_starts, s.probe_excursion_ends
                                  )]) / float(len(s.probe_excursion_starts)), alsoMakePerWellPerSessionPlot=showAdditional)
 
+    if PLOT_TASK_BEHAVIOR_SUMMARIES < FIG_LEVEL:
+        # ==========================================================================
+        # behavior during task (same measures as probe stuff below)
+        # ==================
+        # avg vel over time
+        timeResolutions = [15, 30, 60]
+        for tint in timeResolutions:
+            intervalStarts = np.arange(0, 5*60, tint)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.mean_vel(False, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )], "task_avg_vel_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.mean_vel(False, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "task_avg_vel_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem")
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1*tint,
+                                        [s.mean_vel(False, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "task_avg_vel_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem")
+
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.mean_vel(False, timeInterval=[i1, i1+tint], onlyMoving=True)
+                                            for i1 in intervalStarts]
+                                        )], "task_avg_vel_{}sec_just_moving".format(tint), individualSessions=False,
+                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.mean_vel(False, timeInterval=[i1, i1+tint], onlyMoving=True)
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "task_avg_vel_by_cond_just_moving_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem")
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1*tint,
+                                        [s.mean_vel(False, timeInterval=[i1, i1+tint], onlyMoving=True)
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "task_avg_vel_by_cond_just_moving_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem")
+
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [min(s.mean_vel(False, timeInterval=[i1, i1+tint], onlyMoving=True), 45)
+                                            for i1 in intervalStarts]
+                                        )], "task_avg_vel_{}sec_just_moving_outlier_fix".format(tint), individualSessions=False,
+                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [min(s.mean_vel(False, timeInterval=[i1, i1+tint], onlyMoving=True), 45)
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "task_avg_vel_by_cond_just_moving_{}sec_outlier_fix".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem")
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1*tint,
+                                        [min(s.mean_vel(False, timeInterval=[i1, i1+tint], onlyMoving=True), 45)
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "task_avg_vel_by_cond_just_moving_{}sec_outlier_fix".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem")
+
+        # ==================
+        # pct time exploring
+        for tint in timeResolutions:
+            intervalStarts = np.arange(0, 5*60, tint)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.prop_time_in_bout_state(False, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )], "task_prop_time_explore_bout_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True, onlyPlotAverage=True)
+
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.prop_time_in_bout_state(False, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "task_prop_time_explore_bout_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem", onlyPlotAverage=True)
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1 * tint,
+                                        [s.prop_time_in_bout_state(False, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "task_prop_time_explore_bout_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem", onlyPlotAverage=True)
+
+        # ==================
+        # number of bouts/excursions
+        P.makeASimpleBoxPlot(lambda s: len(s.bt_explore_bout_lens_secs), "num explore bouts task")
+        P.makeASimpleBoxPlot(lambda s: len(s.bt_excursion_starts), "num excursions task")
+
+        # ==================
+        # how long did they last?
+        P.makeASimpleBoxPlot(lambda s: np.nanmean(
+            s.bt_explore_bout_lens_secs), "len explore bouts task")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean(s.bt_excursion_ends -
+                             s.bt_excursion_starts), "len excursions task")
+
+        # ==================
+        # How many wells visited?
+        P.makeASimpleBoxPlot(lambda s: numWellsVisited(
+            s.bt_nearest_wells), "num wells visited full task")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2]) for (i1, i2) in zip(
+            s.bt_explore_bout_starts, s.bt_explore_bout_ends
+        )]), "num wells visited per explore bout task")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2]) for (i1, i2) in zip(
+            s.bt_excursion_starts, s.bt_excursion_ends
+        )]), "num wells visited per excursion task")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=True) for (i1, i2) in zip(
+            s.bt_explore_bout_starts, s.bt_explore_bout_ends
+        )]), "num wells visited per explore bout with repeats task")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=True) for (i1, i2) in zip(
+            s.bt_excursion_starts, s.bt_excursion_ends
+        )]), "num wells visited per excursion with repeats task")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=True) - numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=False) for (i1, i2) in zip(
+            s.bt_explore_bout_starts, s.bt_explore_bout_ends
+        )]), "num repeats per explore bout task")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=True) - numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=False) for (i1, i2) in zip(
+            s.bt_excursion_starts, s.bt_excursion_ends
+        )]), "num repeats per excursion task")
+
     if PLOT_PROBE_BEHAVIOR_SUMMARIES < FIG_LEVEL:
         # ==========================================================================
         # behavior during probe
@@ -433,19 +561,54 @@ for animal_name in animals:
         # avg vel over time
         timeResolutions = [15, 30, 60]
         for tint in timeResolutions:
-            continue
             intervalStarts = np.arange(0, 5*60, tint)
             P.makeALinePlot(lambda s: [(intervalStarts,
                                         [s.mean_vel(True, timeInterval=[i1, i1+tint])
                                             for i1 in intervalStarts]
                                         )], "probe_avg_vel_{}sec".format(tint), individualSessions=False,
                             colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.mean_vel(True, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "probe_avg_vel_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem")
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1*tint,
+                                        [s.mean_vel(True, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "probe_avg_vel_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem")
 
             P.makeALinePlot(lambda s: [(intervalStarts,
                                         [s.mean_vel(True, timeInterval=[i1, i1+tint], onlyMoving=True)
                                             for i1 in intervalStarts]
                                         )], "probe_avg_vel_{}sec_just_moving".format(tint), individualSessions=False,
                             colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.mean_vel(True, timeInterval=[i1, i1+tint], onlyMoving=True)
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "probe_avg_vel_by_cond_just_moving_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem")
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1*tint,
+                                        [s.mean_vel(True, timeInterval=[i1, i1+tint], onlyMoving=True)
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "probe_avg_vel_by_cond_just_moving_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem")
+
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [min(s.mean_vel(True, timeInterval=[i1, i1+tint], onlyMoving=True), 45)
+                                            for i1 in intervalStarts]
+                                        )], "probe_avg_vel_{}sec_just_moving_outlier_fix".format(tint), individualSessions=False,
+                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [min(s.mean_vel(True, timeInterval=[i1, i1+tint], onlyMoving=True), 45)
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "probe_avg_vel_by_cond_just_moving_{}sec_outlier_fix".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem")
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1*tint,
+                                        [min(s.mean_vel(True, timeInterval=[i1, i1+tint], onlyMoving=True), 45)
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "probe_avg_vel_by_cond_just_moving_{}sec_outlier_fix".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem")
 
         # ==================
         # pct time exploring
@@ -455,22 +618,108 @@ for animal_name in animals:
                                         [s.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
                                             for i1 in intervalStarts]
                                         )], "probe_prop_time_explore_bout_{}sec".format(tint), individualSessions=False,
-                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True)
+                            colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(intervalStarts))]], plotAverage=True, onlyPlotAverage=True)
 
             P.makeALinePlot(lambda s: [(intervalStarts,
                                         [s.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
                                             for i1 in intervalStarts]
                                         )] if s.isRippleInterruption else [], "probe_prop_time_explore_bout_by_cond_{}sec".format(tint), individualSessions=False,
-                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem")
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem", onlyPlotAverage=True)
             P.makeALinePlot(lambda s: [(intervalStarts + 0.1 * tint,
                                         [s.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
                                             for i1 in intervalStarts]
                                         )] if not s.isRippleInterruption else [], "probe_prop_time_explore_bout_by_cond_{}sec".format(tint), individualSessions=False,
-                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem")
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem", onlyPlotAverage=True)
+
+        # ==================
+        # number of bouts/excursions
+        P.makeASimpleBoxPlot(lambda s: len(s.probe_explore_bout_lens_secs),
+                             "num explore bouts probe")
+        P.makeASimpleBoxPlot(lambda s: len(s.probe_excursion_starts), "num excursions probe")
+
+        # ==================
+        # how long did they last?
+        P.makeASimpleBoxPlot(lambda s: np.nanmean(
+            s.probe_explore_bout_lens_secs), "len explore bouts probe")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean(s.probe_excursion_ends -
+                             s.probe_excursion_starts), "len excursions probe")
+
+        # ==================
+        # How many wells visited?
+        P.makeASimpleBoxPlot(lambda s: numWellsVisited(
+            s.probe_nearest_wells), "num wells visited full probe")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
+            s.probe_explore_bout_starts, s.probe_explore_bout_ends
+        )]), "num wells visited per explore bout")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
+            s.probe_excursion_starts, s.probe_excursion_ends
+        )]), "num wells visited per excursion")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=True) for (i1, i2) in zip(
+            s.probe_explore_bout_starts, s.probe_explore_bout_ends
+        )]), "num wells visited per explore bout with repeats")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=True) for (i1, i2) in zip(
+            s.probe_excursion_starts, s.probe_excursion_ends
+        )]), "num wells visited per excursion with repeats")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=True) - numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=False) for (i1, i2) in zip(
+            s.probe_explore_bout_starts, s.probe_explore_bout_ends
+        )]), "num repeats per explore bout")
+        P.makeASimpleBoxPlot(lambda s: np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=True) - numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=False) for (i1, i2) in zip(
+            s.probe_excursion_starts, s.probe_excursion_ends
+        )]), "num repeats per excursion")
+
+    if PLOT_PROBE_VS_TASK_BEHAVIOR_SUMMARIES < FIG_LEVEL:
+        # ==================
+        # How are task and probe exploration related?
+        P.makeAScatterPlotWithFunc(lambda s: [(len(s.bt_explore_bout_lens_secs), len(s.probe_explore_bout_lens_secs))], "probe vs bt num bouts",
+                                   colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        P.makeAScatterPlotWithFunc(lambda s: [(len(s.bt_excursion_lens_secs), len(s.probe_excursion_lens_secs))], "probe vs bt num excursions",
+                                   colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        P.makeAScatterPlotWithFunc(lambda s: [(np.nanmean(s.bt_explore_bout_lens_secs), np.nanmean(s.probe_explore_bout_lens_secs))], "probe vs bt bouts lens",
+                                   colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        P.makeAScatterPlotWithFunc(lambda s: [(np.nanmean(s.bt_excursion_lens_secs), np.nanmean(s.probe_excursion_lens_secs))], "probe vs bt excursions lens",
+                                   colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        P.makeAScatterPlotWithFunc(lambda s: [(np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2]) for (i1, i2) in zip(
+            s.bt_explore_bout_starts, s.bt_explore_bout_ends
+        )]), np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
+            s.probe_explore_bout_starts, s.probe_explore_bout_ends
+        )]))], "probe vs bt num wells visited per explore bout",
+            colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        P.makeAScatterPlotWithFunc(lambda s: [(np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2]) for (i1, i2) in zip(
+            s.bt_excursion_starts, s.bt_excursion_ends
+        )]), np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2]) for (i1, i2) in zip(
+            s.probe_excursion_starts, s.probe_excursion_ends
+        )]))], "probe vs bt num wells visited per excursion",
+            colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        P.makeAScatterPlotWithFunc(lambda s: [(np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=True) for (i1, i2) in zip(
+            s.bt_explore_bout_starts, s.bt_explore_bout_ends
+        )]), np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=True) for (i1, i2) in zip(
+            s.probe_explore_bout_starts, s.probe_explore_bout_ends
+        )]))], "probe vs bt num wells visited per explore bout with repeats",
+            colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        P.makeAScatterPlotWithFunc(lambda s: [(np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=True) for (i1, i2) in zip(
+            s.bt_excursion_starts, s.bt_excursion_ends
+        )]), np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=True) for (i1, i2) in zip(
+            s.probe_excursion_starts, s.probe_excursion_ends
+        )]))], "probe vs bt num wells visited per excursion with repeats",
+            colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        P.makeAScatterPlotWithFunc(lambda s: [(np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=True) - numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=False) for (i1, i2) in zip(
+            s.bt_explore_bout_starts, s.bt_explore_bout_ends
+        )]), np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=True) - numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=False) for (i1, i2) in zip(
+            s.probe_explore_bout_starts, s.probe_explore_bout_ends
+        )]))], "probe vs bt num repeats per explore bout",
+            colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+        P.makeAScatterPlotWithFunc(lambda s: [(np.nanmean([numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=True) - numWellsVisited(s.bt_nearest_wells[i1:i2], countReturns=False) for (i1, i2) in zip(
+            s.bt_excursion_starts, s.bt_excursion_ends
+        )]), np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=True) - numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=False) for (i1, i2) in zip(
+            s.probe_excursion_starts, s.probe_excursion_ends
+        )]))], "probe vs bt num repeats per excursion",
+            colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
 
     # ==========================================================================
     # session LFP
+
     def LFPPoints(sesh, idxs, marginFwd, marginBack, plotDiff=False):
+        print("{} LFP idxs".format(len(idxs)))
         lfpFName = sesh.bt_lfp_fnames[-1]
         lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
         lfpV = lfpData[1]['voltage']
@@ -494,14 +743,20 @@ for animal_name in animals:
 
         return ret
 
-    if PLOT_ITI_LFP < FIG_LEVEL:
+    if PLOT_RAW_LFP < FIG_LEVEL:
         # ==================
         # Raw LFP
         P.makeALinePlot(lambda s: LFPPoints(
             s, [0], (s.probe_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE, 0), "Raw LFP")
-        P.makeALinePlot(lambda s: LFPPoints(
-            s, [0], (s.probe_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE, 0, plotDiff=True), "Raw LFP Diff")
+        # P.makeALinePlot(lambda s: LFPPoints(
+        # s, [0], (s.probe_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE, 0, plotDiff=True), "Raw LFP Diff")
 
+    if PLOT_TASK_INDIVIDUAL_RIPPLES < FIG_LEVEL:
+        P.makeALinePlot(lambda s: LFPPoints(
+            s, s.btRipStartIdxs, 0.4, 0.4
+        ), "Task Ripples", saveAllValuePairsSeparately=True)
+
+    if PLOT_ITI_LFP < FIG_LEVEL:
         # ==================
         # Deflections and artifacts
         # P.makeALinePlot(lambda s: LFPPoints(s, s.artifactIdxs[s.artifactIdxs < s.ITIRippleIdxOffset], 0.3, 0.3),
@@ -747,3 +1002,79 @@ for animal_name in animals:
 
         P.makeAScatterPlotWithFunc(valF, "First and second home dwell times",
                                    colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+
+    # where interrupted, how much?, cumulative num interruptions, compare conditions
+    if PLOT_INTERRUPTION_INFO < FIG_LEVEL:
+        if False:
+            # ==================
+            # stim locations
+            print("stim locations")
+            for sesh in P.all_sessions_with_probe:
+                plt.clf()
+                plt.plot(sesh.bt_pos_xs, sesh.bt_pos_ys)
+                xs = np.array(sesh.bt_pos_xs)
+                ys = np.array(sesh.bt_pos_ys)
+                its = sesh.interruption_timestamps
+                its = its[its < sesh.bt_pos_ts[-1]]
+                ids = np.searchsorted(sesh.bt_pos_ts, its)
+                plt.scatter(xs[ids], ys[ids], c=(
+                    "orange" if sesh.isRippleInterruption else "cyan"), zorder=2)
+                P.saveOrShow("{}_{}".format("stim locations", sesh.name))
+
+            # ==================
+            # stim count and rate by well type
+            P.makeAPersevMeasurePlot("stim count by well type",
+                                     lambda s, w: s.numStimsAtWell(w))
+            P.makeAPersevMeasurePlot("stim rate by well type", lambda s,
+                                     w: s.numStimsAtWell(w) / s.total_dwell_time(False, w))
+
+            # ==================
+            # cumulative stim count over task
+            P.makeALinePlot(lambda s: [(np.hstack(([0], (np.array(s.interruption_timestamps) - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE)),
+                            np.arange(len(s.interruption_timestamps)+1))], "task cumulative num stims",
+                            colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"],
+                            individualSessions=False)
+
+            # ==================
+            # compare interruption count/rate to dwell time in probe
+            P.makeAScatterPlotWithFunc(
+                lambda s: [(s.numStimsAtWell(s.home_well), s.avg_dwell_time(
+                    True, s.home_well, timeInterval=[0, 90], emptyVal=np.nan))],
+                "stim count vs home dwell in 90sec", individualSessions=False,
+                colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"])
+
+            P.makeAScatterPlotWithFunc(
+                lambda s: [(s.numStimsAtWell(w), s.avg_dwell_time(True, w, timeInterval=[
+                            0, 90], emptyVal=np.nan)) for w in P.all_well_names],
+                "stim count vs dwell in 90sec all wells", individualSessions=True,
+                colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in P.all_well_names])
+
+            P.makeAScatterPlotWithFunc(
+                lambda s: [(s.numStimsAtWell(w), s.avg_dwell_time(True, w, timeInterval=[
+                            0, 90], emptyVal=np.nan)) for w in (s.visited_away_wells + [s.home_well])],
+                "stim count vs dwell in 90sec rewarded wells", individualSessions=False, bigDots=False,
+                colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in (s.visited_away_wells + [s.home_well])])
+
+            P.makeAScatterPlotWithFunc(
+                lambda s: [(s.numStimsAtWell(s.home_well) / s.total_dwell_time(False, s.home_well), s.avg_dwell_time(
+                    True, s.home_well, timeInterval=[0, 90], emptyVal=np.nan))],
+                "stim rate vs home dwell in 90sec", individualSessions=False,
+                colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")
+
+            P.makeAScatterPlotWithFunc(
+                lambda s: [(s.numStimsAtWell(w) / s.total_dwell_time(False, w), s.avg_dwell_time(True, w, timeInterval=[
+                            0, 90], emptyVal=np.nan)) for w in P.all_well_names],
+                "stim rate vs dwell in 90sec all wells", individualSessions=True,
+                colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in P.all_well_names])
+
+            P.makeAScatterPlotWithFunc(
+                lambda s: [(s.numStimsAtWell(w) / s.total_dwell_time(False, w), s.avg_dwell_time(True, w, timeInterval=[
+                            0, 90], emptyVal=np.nan)) for w in (s.visited_away_wells + [s.home_well])],
+                "stim rate vs dwell in 90sec rewarded wells", individualSessions=False, bigDots=False,
+                colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in (s.visited_away_wells + [s.home_well])])
+
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(len(s.bt_interruption_pos_idxs) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE),
+                        s.avg_dwell_time(True, s.home_well, timeInterval=[0, 90], emptyVal=np.nan))],
+            "total stim rate vs home dwell in 90sec", individualSessions=False,
+            colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")

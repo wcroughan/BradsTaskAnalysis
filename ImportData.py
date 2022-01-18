@@ -1116,11 +1116,26 @@ if __name__ == "__main__":
             session.interruption_timestamps = lfp_timestamps[interruption_idxs]
             session.interruptionIdxs = interruption_idxs
 
+            session.bt_interruption_pos_idxs = np.searchsorted(
+                session.bt_pos_ts, session.interruption_timestamps)
+            session.bt_interruption_pos_idxs = session.bt_interruption_pos_idxs[
+                session.bt_interruption_pos_idxs < len(session.bt_pos_ts)]
+
             lfp_deflections = signal.find_peaks(np.abs(
                 np.diff(lfp_data, prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO, distance=MIN_ARTIFACT_DISTANCE)
             lfp_artifact_idxs = lfp_deflections[0]
             session.artifact_timestamps = lfp_timestamps[lfp_artifact_idxs]
             session.artifactIdxs = lfp_artifact_idxs
+
+            bt_lfp_start_idx = np.searchsorted(lfp_timestamps, session.bt_pos_ts[0])
+            bt_lfp_end_idx = np.searchsorted(lfp_timestamps, session.bt_pos_ts[-1])
+
+            _, prebtMeanRipplePower, prebtStdRipplePower = get_ripple_power(
+                lfp_data[0:bt_lfp_start_idx], omit_artifacts=False)
+            ripple_power, _, _ = get_ripple_power(
+                lfp_data[bt_lfp_start_idx:bt_lfp_end_idx], lfp_deflections=lfp_artifact_idxs, meanPower=prebtMeanRipplePower, stdPower=prebtStdRipplePower)
+            session.btRipStartIdxs, session.btRipLens, session.btRipPeakIdxs, session.btRipPeakAmps = \
+                detectRipples(ripple_power)
 
             if session.probe_performed and not session.separate_iti_file and not session.separate_probe_file:
                 ITI_MARGIN = 5  # units: seconds
@@ -1137,7 +1152,7 @@ if __name__ == "__main__":
                 itiStimIdxs = itiStimIdxs[zeroIdx:]
 
                 ripple_power, ITIMeanRipplePower, ITIStdRipplePower = get_ripple_power(
-                    itiLFPData, omit_artifacts=False, lfp_deflections=itiStimIdxs)
+                    itiLFPData, lfp_deflections=itiStimIdxs)
                 session.ITIRipStartIdxs, session.ITIRipLens, session.ITIRipPeakIdxs, session.ITIRipPeakAmps = \
                     detectRipples(ripple_power)
 
@@ -1160,7 +1175,7 @@ if __name__ == "__main__":
                     BTSession.TRODES_SAMPLING_RATE
 
                 itiRipplePowerProbeStats, _, _ = get_ripple_power(
-                    itiLFPData, omit_artifacts=False, lfp_deflections=itiStimIdxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower)
+                    itiLFPData, lfp_deflections=itiStimIdxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower)
                 session.ITIRipStartIdxsProbeStats, session.ITIRipLensProbeStats, session.ITIRipPeakIdxsProbeStats, session.ITIRipPeakAmpsProbeStats = \
                     detectRipples(itiRipplePowerProbeStats)
 
@@ -1862,6 +1877,9 @@ if __name__ == "__main__":
             session.bt_explore_bout_ends = stop_explores[keep_bout]
             session.bt_explore_bout_lens = session.bt_explore_bout_ends - \
                 session.bt_explore_bout_starts
+            ts = np.array(session.bt_pos_ts)
+            session.bt_explore_bout_lens_secs = (ts[session.bt_explore_bout_ends] -
+                                                 ts[session.bt_explore_bout_starts]) / TRODES_SAMPLING_RATE
 
             if session.probe_performed:
                 probe_sm_vel = scipy.ndimage.gaussian_filter1d(
@@ -1908,6 +1926,9 @@ if __name__ == "__main__":
                 session.probe_explore_bout_starts = start_explores[keep_bout]
                 session.probe_explore_bout_ends = stop_explores[keep_bout]
                 session.probe_explore_bout_lens = session.probe_explore_bout_ends - session.probe_explore_bout_starts
+                ts = np.array(session.probe_pos_ts)
+                session.probe_explore_bout_lens_secs = (ts[session.probe_explore_bout_ends] -
+                                                        ts[session.probe_explore_bout_starts]) / TRODES_SAMPLING_RATE
 
                 # add a category at each behavior time point for easy reference later:
                 session.bt_bout_category = np.zeros_like(session.bt_pos_xs)
@@ -1963,8 +1984,11 @@ if __name__ == "__main__":
             session.bt_excursion_ends = np.where(np.diff(
                 (session.bt_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == -1)[0] + 1
             if session.bt_excursion_category[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
-                session.bt_excursion_starts = np.append(
-                    session.bt_excursion_starts, len(session.bt_excursion_category))
+                session.bt_excursion_ends = np.append(
+                    session.bt_excursion_ends, len(session.bt_excursion_category))
+            ts = np.array(session.bt_pos_ts + [session.bt_pos_ts[-1]])
+            session.bt_excursion_lens_secs = (
+                ts[session.bt_excursion_ends] - ts[session.bt_excursion_starts]) / TRODES_SAMPLING_RATE
 
             if session.probe_performed:
                 session.probe_excursion_category = np.array([BTSession.EXCURSION_STATE_ON_WALL if onWall(
@@ -1976,8 +2000,11 @@ if __name__ == "__main__":
                 session.probe_excursion_ends = np.where(np.diff(
                     (session.probe_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == -1)[0] + 1
                 if session.probe_excursion_category[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
-                    session.probe_excursion_starts = np.append(
-                        session.probe_excursion_starts, len(session.probe_excursion_category))
+                    session.probe_excursion_ends = np.append(
+                        session.probe_excursion_ends, len(session.probe_excursion_category))
+                ts = np.array(session.probe_pos_ts + [session.probe_pos_ts[-1]])
+                session.probe_excursion_lens_secs = (
+                    ts[session.probe_excursion_ends] - ts[session.probe_excursion_starts]) / TRODES_SAMPLING_RATE
 
         # ======================================================================
         # TODO

@@ -950,3 +950,10 @@ class BTSession:
                 res -= self.bt_pos_ts[0]
 
         return res
+
+    def numStimsAtWell(self, wellName):
+        """
+        how many times did stim happen while rat was at the well during the task?
+        """
+        nw = np.array(self.bt_nearest_wells)
+        return np.count_nonzero(wellName == nw[self.bt_interruption_pos_idxs])

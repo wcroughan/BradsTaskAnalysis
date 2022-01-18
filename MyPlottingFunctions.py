@@ -38,6 +38,22 @@ class MyPlottingFunctions:
             os.makedirs(output_dir)
         statsFileName = os.path.join(output_dir, datetime.now().strftime("%Y%m%d_%H%M%S_stats.txt"))
         self.statsFile = open(statsFileName, "w")
+        idxKeyFileName = os.path.join(
+            output_dir, datetime.now().strftime("%Y%m%d_%H%M%S_idx_key.txt"))
+        with open(idxKeyFileName, "w") as idxKeyFile:
+            idxKeyFile.write("All sessions:\n")
+            for si, s in enumerate(self.all_sessions):
+                idxKeyFile.write("{}: {} - {} (home {}, {} stims)\n".format(si, s.name,
+                                 "SWR " if s.isRippleInterruption else "CTRL", s.home_well, len(s.bt_interruption_pos_idxs)))
+
+            idxKeyFile.write("All sessions with probe:\n")
+            for si, s in enumerate(self.all_sessions_with_probe):
+                idxKeyFile.write("{}: {} - {} (home {}, {} stims)\n".format(si, s.name,
+                                 "SWR " if s.isRippleInterruption else "CTRL", s.home_well, len(s.bt_interruption_pos_idxs)))
+
+            idxKeyFile.write("All rest sessions\n")
+            for si, s in enumerate(self.all_rest_sessions):
+                idxKeyFile.write(str(si) + ": " + s.name + "\n")
 
     def saveOrShow(self, fname):
         if self.SAVE_OUTPUT_PLOTS:
@@ -49,7 +65,8 @@ class MyPlottingFunctions:
                       colorFunc=None, individualSessions=True, holdLastPlot=False,
                       saveAllValuePairsSeparately=False, plotAverage=False, avgError="std",
                       xlabel="", ylabel="", axisLims=None, includeNoProbeSessions=False,
-                      restSessions=False, linewidth=None, errorFunc=None):
+                      restSessions=False, linewidth=None, errorFunc=None, onlyPlotAverage=False,
+                      scatterPointsFunc=None):
         """
         valsFunc : session => [(xvals, yvals), (xvals, yvals), ...]
         """
@@ -59,6 +76,9 @@ class MyPlottingFunctions:
             seshs = self.all_rest_sessions
         else:
             seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
+
+        if onlyPlotAverage:
+            assert plotAverage
 
         if plotAverage:
             avgs = {}
@@ -87,6 +107,10 @@ class MyPlottingFunctions:
                 errorBars = errorFunc(sesh)
             if not individualSessions and saveAllValuePairsSeparately and len(vals) > 1:
                 print("Warning: won't be saving all pairs separately since combining across sessions")
+            if scatterPointsFunc is not None:
+                scatterPoints = scatterPointsFunc(sesh)
+            else:
+                scatterPoints = []
 
             for vi, (xvs, yvs) in enumerate(vals):
                 if plotAverage:
@@ -104,42 +128,43 @@ class MyPlottingFunctions:
                 if errorFunc is not None:
                     ers = errorBars[vi]
 
-                if colorFunc is None:
-                    if errorFunc is not None:
-                        plt.errorbar(xvs, yvs, ers, linewidth=linewidth)
-                    else:
-                        plt.plot(xvs, yvs, linewidth=linewidth)
-                elif not isinstance(colors[vi], list):
-                    if errorFunc is not None:
-                        plt.errorbar(xvs, yvs, ers, linewidth=linewidth, color=colors[vi])
-                    else:
-                        plt.plot(xvs, yvs, linewidth=linewidth, color=colors[vi])
-                else:
-                    for i in range(len(xvs)-1):
+                if not onlyPlotAverage:
+                    if colorFunc is None:
                         if errorFunc is not None:
-                            plt.errorbar(xvs[i:i+2], yvs[i:i+2], ers[vi][i], color=colors[vi]
-                                         [i], linewidth=linewidth)
+                            plt.errorbar(xvs, yvs, ers, linewidth=linewidth)
                         else:
-                            plt.plot(xvs[i:i+2], yvs[i:i+2], color=colors[vi]
-                                     [i], linewidth=linewidth)
-                    if errorFunc is not None:
-                        plt.errorbar([xvs[-1]], [yvs[-1]], [ers[vi][-1]], color=colors[vi]
-                                     [-1], linewidth=linewidth)
+                            plt.plot(xvs, yvs, linewidth=linewidth)
+                    elif not isinstance(colors[vi], list):
+                        if errorFunc is not None:
+                            plt.errorbar(xvs, yvs, ers, linewidth=linewidth, color=colors[vi])
+                        else:
+                            plt.plot(xvs, yvs, linewidth=linewidth, color=colors[vi])
+                    else:
+                        for i in range(len(xvs)-1):
+                            if errorFunc is not None:
+                                plt.errorbar(xvs[i:i+2], yvs[i:i+2], ers[vi][i], color=colors[vi]
+                                             [i], linewidth=linewidth)
+                            else:
+                                plt.plot(xvs[i:i+2], yvs[i:i+2], color=colors[vi]
+                                         [i], linewidth=linewidth)
+                        if errorFunc is not None:
+                            plt.errorbar([xvs[-1]], [yvs[-1]], [ers[vi][-1]], color=colors[vi]
+                                         [-1], linewidth=linewidth)
 
-                if individualSessions and saveAllValuePairsSeparately:
-                    plt.xlabel(xlabel)
-                    plt.ylabel(ylabel)
-                    if axisLims is not None:
-                        plt.xlim(xlim1, xlim2)
-                        plt.ylim(ylim1, ylim2)
-                    self.saveOrShow("{}_{}_{}".format(title, sesh.name, vi))
-                    if not holdLastPlot:
-                        plt.clf()
-                    plt.xlabel(xlabel)
-                    plt.ylabel(ylabel)
-                    if axisLims is not None:
-                        plt.xlim(xlim1, xlim2)
-                        plt.ylim(ylim1, ylim2)
+                    if individualSessions and saveAllValuePairsSeparately:
+                        plt.xlabel(xlabel)
+                        plt.ylabel(ylabel)
+                        if axisLims is not None:
+                            plt.xlim(xlim1, xlim2)
+                            plt.ylim(ylim1, ylim2)
+                        self.saveOrShow("{}_{}_{}".format(title, sesh.name, vi))
+                        if not holdLastPlot:
+                            plt.clf()
+                        plt.xlabel(xlabel)
+                        plt.ylabel(ylabel)
+                        if axisLims is not None:
+                            plt.xlim(xlim1, xlim2)
+                            plt.ylim(ylim1, ylim2)
 
             if individualSessions and not saveAllValuePairsSeparately:
                 plt.xlabel(xlabel)
@@ -253,7 +278,8 @@ class MyPlottingFunctions:
 
     def makeAScatterPlotWithFunc(self, valsFunc, title, colorFunc=None, individualSessions=True,
                                  saveAllValuePairsSeparately=False, plotAverage=False, xlabel="", ylabel="",
-                                 axisLims=None, includeNoProbeSessions=False, restSessions=False):
+                                 axisLims=None, includeNoProbeSessions=False, restSessions=False, holdLastPlot=False,
+                                 bigDots=True):
         print("scatter plot:", title)
         if restSessions:
             seshs = self.all_rest_sessions
@@ -266,7 +292,13 @@ class MyPlottingFunctions:
             ylim1 = axisLims[1][0]
             ylim2 = axisLims[1][1]
 
-        plt.clf()
+        if bigDots:
+            sz = plt.rcParams['lines.markersize'] ** 2 * 3
+        else:
+            sz = plt.rcParams['lines.markersize'] ** 2
+
+        if not holdLastPlot:
+            plt.clf()
         for sesh in seshs:
             vals = valsFunc(sesh)
             if colorFunc is not None:
@@ -277,9 +309,11 @@ class MyPlottingFunctions:
 
             for vi, (xvs, yvs) in enumerate(vals):
                 if colorFunc is None:
-                    plt.scatter(xvs, yvs)
+                    plt.scatter(xvs, yvs, s=sz)
+                elif not isinstance(colors, list):
+                    plt.scatter(xvs, yvs, c=colors, s=sz)
                 else:
-                    plt.scatter(xvs, yvs, c=colors[vi])
+                    plt.scatter(xvs, yvs, c=colors[vi], s=sz)
 
                 if individualSessions and saveAllValuePairsSeparately:
                     plt.xlabel(xlabel)
@@ -288,7 +322,8 @@ class MyPlottingFunctions:
                         plt.xlim(xlim1, xlim2)
                         plt.ylim(ylim1, ylim2)
                     self.saveOrShow("{}_{}_{}".format(title, sesh.name, vi))
-                    plt.clf()
+                    if not holdLastPlot:
+                        plt.clf()
                     plt.xlabel(xlabel)
                     plt.ylabel(ylabel)
 
@@ -299,7 +334,8 @@ class MyPlottingFunctions:
                     plt.xlim(xlim1, xlim2)
                     plt.ylim(ylim1, ylim2)
                 self.saveOrShow("{}_{}".format(title, sesh.name))
-                plt.clf()
+                if not holdLastPlot:
+                    plt.clf()
 
         if not individualSessions:
             plt.xlabel(xlabel)
@@ -462,6 +498,7 @@ class MyPlottingFunctions:
 
     def makeAPersevMeasurePlot(self, measure_name, datafunc, output_filename="", title="", doStats=True, scaleValue=None, yAxisLabel=None, alsoMakePerWellPerSessionPlot=True, includeNoProbeSessions=False, yAxisLims=None):
         print("Persev measure plot: {}".format(measure_name))
+        measure_name_no_spaces = measure_name.replace(" ", "_")
 
         seshs = self.all_sessions if includeNoProbeSessions else self.all_sessions_with_probe
         sessions_with_all_wells_all = list(
@@ -497,7 +534,7 @@ class MyPlottingFunctions:
         #     all_well_names == awi)] for awi in set(all_well_names) - set(sesh.visited_away_wells) - set([sesh.home_well])])) for sesh in sessions_with_all_wells]
 
         n = len(sessions_with_all_wells)
-        axesNames = ["Well_type", measure_name, "Session_Type"]
+        axesNames = ["Well_type", measure_name_no_spaces, "Session_Type"]
         assert len(home_vals) == len(away_vals) and len(
             away_vals) == len(other_vals) and len(away_vals) == n
         categories = ["home"] * n + ["away"] * n + ["other"] * n
@@ -563,7 +600,7 @@ class MyPlottingFunctions:
             plt.show()
         if self.SAVE_OUTPUT_PLOTS or len(output_filename) > 0:
             if len(output_filename) == 0:
-                output_filename = os.path.join(self.output_dir, measure_name + title)
+                output_filename = os.path.join(self.output_dir, measure_name_no_spaces + title)
             else:
                 output_filename = os.path.join(self.output_dir, output_filename)
             plt.savefig(output_filename, dpi=800)
@@ -571,7 +608,7 @@ class MyPlottingFunctions:
         if alsoMakePerWellPerSessionPlot:
             for sesh in sessions_with_all_wells:
                 self.makeASwarmPlotByWell(sesh, lambda w: datafunc(
-                    sesh, w), measure_name + "_by_well")
+                    sesh, w), measure_name_no_spaces + "_by_well")
 
     def quadrantOfWell(self, well_idx):
         if well_idx > 24:
