@@ -9,70 +9,78 @@ import matplotlib
 # matplotlib.use('Qt5Agg')
 from xml.etree import ElementTree
 
+
 def loadTrodesClusters(fname):
     TRODES_CLUSTER_MULT_FACTOR = 5.25
     doc = ElementTree.parse(fname)
     ntrodes = []
     for nt in doc.findall("PolygonClusters/nTrode"):
         clusters = []
-        for cl in nt.getchildren():
+        for cl in nt:
             polys = []
-            for pg in cl.getchildren():
+            for pg in cl:
                 ax1 = int(pg.attrib['xAxis'])
                 ax2 = int(pg.attrib['yAxis'])
                 pts = []
-                for pt in pg.getchildren():
+                for pt in pg:
                     # x = int(float(pt.attrib['x']) / TRODES_CLUSTER_MULT_FACTOR)
                     # y = int(float(pt.attrib['y']) / TRODES_CLUSTER_MULT_FACTOR)
-                    x = int(float(pt.attrib['x']) )
-                    y = int(float(pt.attrib['y']) )
+                    x = int(float(pt.attrib['x']))
+                    y = int(float(pt.attrib['y']))
                     pts.append((x, y))
                 polys.append((ax1, ax2, pts))
             clusters.append(polys)
         ntrodes.append(clusters)
     return ntrodes
 
-def ccw(A,B,C):
+
+def ccw(A, B, C):
     return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
 
 # Return true if line segments AB and CD intersect
-def intersect(A,B,C,D):
-    return ccw(A,C,D) != ccw(B,C,D) and ccw(A,B,C) != ccw(A,B,D)
+
+
+def intersect(A, B, C, D):
+    return ccw(A, C, D) != ccw(B, C, D) and ccw(A, B, C) != ccw(A, B, D)
+
 
 def isInPolygons(polygons, points):
     ret = np.ones((points.shape[0],))
     for poly in polygons:
         ax1 = poly[0]
         ax2 = poly[1]
-        pa = points[:,[ax1,ax2]]
+        pa = points[:, [ax1, ax2]]
         ppts = poly[2]
         numIntersections = np.zeros((points.shape[0],))
         for i in range(len(ppts)):
             p1 = ppts[i]
             p2 = ppts[(i+1) % len(ppts)]
             for j in range(len(numIntersections)):
-                if intersect(p1, p2, [0,0], pa[j]):
+                if intersect(p1, p2, [0, 0], pa[j]):
                     numIntersections[j] += 1
         ret = np.logical_and(ret, numIntersections % 2 == 1)
     return ret
 
+
 def testPolygonLogic():
-    x = np.reshape(np.linspace(0, 1, 50), (50,1))
-    y = np.reshape(np.linspace(1, 0, 50), (50,1))
-    z = np.reshape(np.linspace(10, 11, 50), (50,1))
-    w = np.reshape(np.linspace(10, 11, 50), (50,1))
-    pts = np.hstack((x,y,z,w))
+    x = np.reshape(np.linspace(0, 1, 50), (50, 1))
+    y = np.reshape(np.linspace(1, 0, 50), (50, 1))
+    z = np.reshape(np.linspace(10, 11, 50), (50, 1))
+    w = np.reshape(np.linspace(10, 11, 50), (50, 1))
+    pts = np.hstack((x, y, z, w))
     print(pts.shape)
 
-    poly = [(0, 1, [(0,0.5), (1,1), (0.5,0)])]
+    poly = [(0, 1, [(0, 0.5), (1, 1), (0.5, 0)])]
 
     iip = isInPolygons(poly, pts)
-    plt.scatter(pts[iip,0], pts[iip,1])
-    plt.scatter(pts[np.logical_not(iip),0], pts[np.logical_not(iip),1])
+    plt.scatter(pts[iip, 0], pts[iip, 1])
+    plt.scatter(pts[np.logical_not(iip), 0], pts[np.logical_not(iip), 1])
     plt.show()
+
 
 def ConvertTimeToTrodesTS(hours, mins, secs):
     return 30000 * (secs + 60 * (mins + 60 * (hours)))
+
 
 def runTheThingWithFilenames(args, makeFigs=False):
     print(args)
@@ -106,7 +114,6 @@ def runTheThingWithFilenames(args, makeFigs=False):
     output_dir = os.path.join(drive_dir, ratName, "figs")
     output_fname = os.path.join(output_dir, runName + "_{}_{}_fr_psth.png".format(tStart, tEnd))
 
-
     if not os.path.exists(spike_file):
         execFileName = "/home/wcroughan/Software/Trodes210/exportspikes"
         if not os.path.exists(execFileName):
@@ -137,24 +144,48 @@ def runTheThingWithFilenames(args, makeFigs=False):
         os.system(syscmd)
 
         for lfp_ch in [1, 2, 3, 4]:
-            lfp_file = fpfx + ".LFP/" + runName + ".LFP_nt" + str(lfp_tet) + "ch" + str(lfp_ch) + ".dat"
+            lfp_file = fpfx + ".LFP/" + runName + ".LFP_nt" + \
+                str(lfp_tet) + "ch" + str(lfp_ch) + ".dat"
             if os.path.exists(lfp_file):
                 break
 
+    print("spike_file={}\nlfp_file={}\nlfp_ts_file={}\noutput_fname={}\ntStart={}\ntEnd={}\nclusterFileName={}\nclusterIndex={}\n".format(
+        spike_file, lfp_file, lfp_ts_file, output_fname, tStart, tEnd, clusterFileName, clusterIndex))
 
-    print("spike_file={}\nlfp_file={}\nlfp_ts_file={}\noutput_fname={}\ntStart={}\ntEnd={}\nclusterFileName={}\nclusterIndex={}\n".format(spike_file, lfp_file, lfp_ts_file, output_fname, tStart, tEnd, clusterFileName, clusterIndex))
+    if clusterFileName != "None":
+        clusters = loadTrodesClusters(clusterFileName)
+        clusterPolygons = clusters[spk_tet-1][clusterIndex]
+        clfunc = makeClusterFuncFromFile(clusterFileName, spk_tet-1, clusterIndex)
+    else:
+        clusterPolygons = None
+        diagPoint = np.array([3408, 682, 3053, 690], dtype=float)
+        def clfunc(f, c, m): return MUAClusterFunc(f, diagPoint)
 
-    clusters = loadTrodesClusters(clusterFileName)
-    clusterPolygons = clusters[spk_tet-1][clusterIndex]
-
-    runTheThing(spike_file, lfp_file, lfp_ts_file, output_fname, makeClusterFuncFromFile(clusterFileName, spk_tet-1, clusterIndex), tStart, tEnd, makeFigs=makeFigs, clusterPolygons=clusterPolygons)
+    runTheThing(spike_file, lfp_file, lfp_ts_file, output_fname, clfunc, tStart,
+                tEnd, makeFigs=makeFigs, clusterPolygons=clusterPolygons)
 
     return 0
+
+
+def MUAClusterFunc(features, channelRatios):
+    # For channel ratios, pick a point along the actual noise diagonal and input that here. Less sensitive channels will be scaled up
+    # Want a high-ish threshold and exclude the diagonal
+    OFF_DIAG_MIN_DIST = 1000
+    AMP_THRESH_MIN = 1000
+    AMP_THRESH_MAX = 10000
+    channelRatios = np.array(channelRatios)
+    channelRatios /= np.max(channelRatios)
+    scaledFeatures = features / channelRatios
+
+    minfeature = np.min(scaledFeatures, axis=1)
+    maxfeature = np.max(scaledFeatures, axis=1)
+    return (maxfeature < AMP_THRESH_MAX) & (maxfeature > AMP_THRESH_MIN) & (maxfeature - minfeature > OFF_DIAG_MIN_DIST)
+
 
 def makeClusterFuncFromFile(clusterFileName, trodeIndex, clusterIndex):
     clusters = loadTrodesClusters(clusterFileName)
     clusterPolygons = clusters[trodeIndex][clusterIndex]
-    return lambda features, chmaxes, maxfeature : isInPolygons(clusterPolygons, features)
+    return lambda features, chmaxes, maxfeature: isInPolygons(clusterPolygons, features)
 
 
 def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
@@ -168,11 +199,13 @@ def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
             if tet == 5:
                 data_file = "/media/WDC7/B12/20210903_145837/20210903_145837.spikes/20210903_145837.spikes_nt5.dat"
                 lfp_data_file = "/media/WDC7/B12/20210903_145837/20210903_145837.LFP/20210903_145837.LFP_nt5ch2.dat"
-                clfunc = lambda features, chmaxes, maxfeature : np.logical_and(np.logical_and(features[:, 0] < 300, features[:, 3] > 2250), features[:, 3] < 5000)
+
+                def clfunc(features, chmaxes, maxfeature): return np.logical_and(
+                    np.logical_and(features[:, 0] < 300, features[:, 3] > 2250), features[:, 3] < 5000)
             elif tet == 7:
                 data_file = "/media/WDC7/B12/20210903_145837/20210903_145837.spikes/20210903_145837.spikes_nt7.dat"
                 lfp_data_file = "/media/WDC7/B12/20210903_145837/20210903_145837.LFP/20210903_145837.LFP_nt7ch2.dat"
-                clfunc = lambda features, chmaxes, maxfeature : np.logical_and(np.logical_and(np.logical_and(
+                def clfunc(features, chmaxes, maxfeature): return np.logical_and(np.logical_and(np.logical_and(
                     features[:, 1] > 1000, features[:, 2] < features[:, 1] - 250), features[:, 3] < features[:, 1]), chmaxes[:, 1] < 3000)
             lfp_ts_file = "/media/WDC7/B12/20210903_145837/20210903_145837.LFP/20210903_145837.timestamps.dat"
             raise Exception("Haven'te implemented changing these 'globals' yet")
@@ -181,15 +214,20 @@ def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
             data_file = "/media/WDC7/B12/20210901_152223/20210901_152223.spikes/20210901_152223.spikes_nt5.dat"
             lfp_data_file = "/media/WDC7/B12/20210901_152223/20210901_152223.LFP/20210901_152223.LFP_nt5ch2.dat"
             lfp_ts_file = "/media/WDC7/B12/20210901_152223/20210901_152223.LFP/20210901_152223.timestamps.dat"
-            clfunc = lambda features, chmaxes, maxfeature : np.logical_and(np.logical_and( features[:, 0] < 250, features[:, 3] > 2500), chmaxes[:, 3] < 5200)
+
+            def clfunc(features, chmaxes, maxfeature): return np.logical_and(
+                np.logical_and(features[:, 0] < 250, features[:, 3] > 2500), chmaxes[:, 3] < 5200)
         else:
             print("Condition uknonw")
     elif animal_name == "B13":
         output_dir = os.path.join(drive_dir, "B13/figs/")
         if amplitude == 40:
-            data_file = os.path.join(drive_dir, "B13/20211129_162149/20211129_162149.spikes/20211129_162149.spikes_nt7.dat")
-            lfp_data_file = os.path.join(drive_dir, "B13/20211129_162149/20211129_162149.LFP/20211129_162149.LFP_nt7ch3.dat")
-            lfp_ts_file = os.path.join(drive_dir, "B13/20211129_162149/20211129_162149.LFP/20211129_162149.timestamps.dat")
+            data_file = os.path.join(
+                drive_dir, "B13/20211129_162149/20211129_162149.spikes/20211129_162149.spikes_nt7.dat")
+            lfp_data_file = os.path.join(
+                drive_dir, "B13/20211129_162149/20211129_162149.LFP/20211129_162149.LFP_nt7ch3.dat")
+            lfp_ts_file = os.path.join(
+                drive_dir, "B13/20211129_162149/20211129_162149.LFP/20211129_162149.timestamps.dat")
             if condition == "delay":
                 tStart = ConvertTimeToTrodesTS(2, 4, 44)
                 tEnd = ConvertTimeToTrodesTS(2, 31, 53)
@@ -198,8 +236,10 @@ def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
                 tEnd = ConvertTimeToTrodesTS(2, 2, 0)
             else:
                 print("condition unkonwn")
+
             def clfunc(features, chmaxes, maxfeature):
-                c1spks_idxs = np.logical_and(np.logical_and(np.logical_and(features[:,1] < 7500, features[:,0] < 1000), features[:,3] > 400), maxfeature < 1000)
+                c1spks_idxs = np.logical_and(np.logical_and(np.logical_and(
+                    features[:, 1] < 7500, features[:, 0] < 1000), features[:, 3] > 400), maxfeature < 1000)
                 for si in range(len(c1spks_idxs)):
                     if not c1spks_idxs[si]:
                         continue
@@ -208,10 +248,15 @@ def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
                         c1spks_idxs[si] = False
                 return c1spks_idxs
         elif amplitude in [60, 100, 140]:
-            data_file = os.path.join(drive_dir, "B13/20211202_192250/20211202_192250.spikes/20211202_192250.spikes_nt7.dat")
-            lfp_data_file = os.path.join(drive_dir, "B13/20211202_192250/20211202_192250.LFP/20211202_192250.LFP_nt7ch3.dat")
-            lfp_ts_file = os.path.join(drive_dir, "B13/20211202_192250/20211202_192250.LFP/20211202_192250.timestamps.dat")
-            clfunc = lambda features, chmaxes, maxfeature : np.logical_and(np.logical_and(features[:,3] > features[:,2] * 0.919 + 606, features[:,2] > 800), maxfeature < 2000)
+            data_file = os.path.join(
+                drive_dir, "B13/20211202_192250/20211202_192250.spikes/20211202_192250.spikes_nt7.dat")
+            lfp_data_file = os.path.join(
+                drive_dir, "B13/20211202_192250/20211202_192250.LFP/20211202_192250.LFP_nt7ch3.dat")
+            lfp_ts_file = os.path.join(
+                drive_dir, "B13/20211202_192250/20211202_192250.LFP/20211202_192250.timestamps.dat")
+
+            def clfunc(features, chmaxes, maxfeature): return np.logical_and(np.logical_and(
+                features[:, 3] > features[:, 2] * 0.919 + 606, features[:, 2] > 800), maxfeature < 2000)
             if amplitude == 60:
                 if condition == "swr" or condition == "interruption":
                     tStart = ConvertTimeToTrodesTS(0, 14, 30)
@@ -237,10 +282,15 @@ def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
     elif animal_name == "B14":
         output_dir = os.path.join(drive_dir, "B14/figs/")
         if amplitude == 40:
-            data_file = os.path.join(drive_dir, "B14/20211130_152749/20211130_152749.spikes/20211130_152749.spikes_nt1.dat")
-            lfp_data_file = os.path.join(drive_dir, "B14/20211130_152749/20211130_152749.LFP/20211130_152749.LFP_nt1ch2.dat")
-            lfp_ts_file = os.path.join(drive_dir, "B14/20211130_152749/20211130_152749.LFP/20211130_152749.timestamps.dat")
-            clfunc = lambda features, chmaxes, maxfeature : np.logical_and(np.logical_and(np.logical_and(features[:,1] > 1350, features[:,1] < 2000), features[:,2] < -955 + 1.26 * features[:,1]), maxfeature < 2500)
+            data_file = os.path.join(
+                drive_dir, "B14/20211130_152749/20211130_152749.spikes/20211130_152749.spikes_nt1.dat")
+            lfp_data_file = os.path.join(
+                drive_dir, "B14/20211130_152749/20211130_152749.LFP/20211130_152749.LFP_nt1ch2.dat")
+            lfp_ts_file = os.path.join(
+                drive_dir, "B14/20211130_152749/20211130_152749.LFP/20211130_152749.timestamps.dat")
+
+            def clfunc(features, chmaxes, maxfeature): return np.logical_and(np.logical_and(np.logical_and(
+                features[:, 1] > 1350, features[:, 1] < 2000), features[:, 2] < -955 + 1.26 * features[:, 1]), maxfeature < 2500)
             if condition == "delay":
                 tStart = ConvertTimeToTrodesTS(1, 0, 51)
                 tEnd = ConvertTimeToTrodesTS(1, 30, 43)
@@ -250,10 +300,14 @@ def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
             else:
                 print("condition unkonwn")
         elif amplitude in [60, 100, 140]:
-            data_file = os.path.join(drive_dir, "B14/20211202_123504/20211202_123504.spikes/20211202_123504.spikes_nt6.dat")
-            lfp_data_file = os.path.join(drive_dir, "B14/20211202_123504/20211202_123504.LFP/20211202_123504.LFP_nt3ch1.dat")
-            lfp_ts_file = os.path.join(drive_dir, "B14/20211202_123504/20211202_123504.LFP/20211202_123504.timestamps.dat")
-            clusterFileName = os.path.join(drive_dir, "B14/20211202_123504/20211202_123504_time_11773455.trodesClusters")
+            data_file = os.path.join(
+                drive_dir, "B14/20211202_123504/20211202_123504.spikes/20211202_123504.spikes_nt6.dat")
+            lfp_data_file = os.path.join(
+                drive_dir, "B14/20211202_123504/20211202_123504.LFP/20211202_123504.LFP_nt3ch1.dat")
+            lfp_ts_file = os.path.join(
+                drive_dir, "B14/20211202_123504/20211202_123504.LFP/20211202_123504.timestamps.dat")
+            clusterFileName = os.path.join(
+                drive_dir, "B14/20211202_123504/20211202_123504_time_11773455.trodesClusters")
             clfunc = makeClusterFuncFromFile(clusterFileName, 5, 0)
             if amplitude == 60:
                 if condition == "swr" or condition == "interruption":
@@ -286,7 +340,6 @@ def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
     output_fname = os.path.join(output_dir, fname)
 
     runTheThing(data_file, lfp_data_file, lfp_ts_file, output_fname, clfunc, tStart, tEnd)
-
 
 
 def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, tStart=None, tEnd=None,  makeFigs=False, clusterPolygons=None):
@@ -432,7 +485,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
                 ax1 = poly[0]
                 ax2 = poly[1]
                 if ax1 == 0:
-                    sp = ax2 
+                    sp = ax2
                 elif ax1 == 1:
                     sp = ax2 + 2
                 else:
@@ -472,7 +525,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         wf2 = np.array([v[2] for v in a])
         wf3 = np.array([v[3] for v in a])
         wf4 = np.array([v[4] for v in a])
-        
+
         # step = 100
         pwf1 = wf1[::step, :]
         pwf2 = wf2[::step, :]
@@ -565,7 +618,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         plt.show()
 
     peaks, props = signal.find_peaks(np.abs(lfp_data), height=UP_DEFLECT_STIM_THRESH,
-                                    prominence=UP_DEFLECT_STIM_PROMINENCE)
+                                     prominence=UP_DEFLECT_STIM_PROMINENCE)
 
     if mkfigs[6]:
         ts = lfp_ts.astype(float) / 30000
@@ -636,6 +689,11 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         plt.show()
     plt.cla()
 
+    z_psth = avg_fr_psth
+    z_psth -= np.nanmean(z_psth[0:10])
+    z_psth /= np.nanstd(z_psth[0:10])
+    return z_psth
+
 
 possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/"]
 drive_dir = None
@@ -648,6 +706,7 @@ if drive_dir == None:
     print("Couldnt' find data directory among any of these: {}".format(possible_drive_dirs))
     exit()
 
+
 def printUsage():
     print("python SpikeCalibration.py /path/to/recfile.rec spk_tet# lfp_tet# startTime(hrs.mins.secs) endTime(hrs.mins.secs) /path/to/clusterfile.trodesClusters clusterIndex#")
 
@@ -657,16 +716,19 @@ if __name__ == "__main__":
     # testPolygonLogic()
     # exit()
 
-
     # print("python SpikeCalibration.py /path/to/recfile.rec spk_tet# lfp_tet# startTime(hrs.mins.secs) endTime(hrs.mins.secs) /path/to/clusterfile.trodesClusters clusterIndex#")
-    #B13 after one turn:
+    # B13 after one turn:
     # args = ["", "/media/fosterlab/WDC7/B13/20211206_130837/20211206_130837.rec", "7", "7", "None", "None", "/media/fosterlab/WDC7/B13/20211206_130837/20211206_130837.trodesClusters", "0"]
 
     # B14 after one turn
     # args = ["", "/media/fosterlab/WDC7/B14/20211206_133702/20211206_133702.rec", "6", "3", "None", "None", "/media/fosterlab/WDC7/B14/20211206_133702/20211206_133702_time_49343784.trodesClusters", "0"]
 
-    #B13 after two turns
-    # args = ["", "/media/fosterlab/WDC7/B13/20211206_151659/20211206_151659.rec", "7", "7", "None", "None", "/media/fosterlab/WDC7/B13/20211206_151659/20211206_151659.trodesClusters", "0"]
+    # B13 after two turns
+    args = ["", "/media/WDC7/B13/20211206_151659/20211206_151659.rec", "7", "7", "None",
+            "None", "/media/WDC7/B13/20211206_151659/20211206_151659.trodesClusters", "0"]
+    # MUA
+    # args = ["", "/media/WDC7/B13/20211206_151659/20211206_151659.rec",
+    # "7", "7", "None", "None", "None", "0"]
 
     # B14 after two turns
     # args = ["", "/media/fosterlab/WDC7/B14/20211206_155328/20211206_155328.rec", "6", "3", "None", "None", "/media/fosterlab/WDC7/B14/20211206_155328/20211206_155328.trodesClusters", "3"]
@@ -674,7 +736,12 @@ if __name__ == "__main__":
     # B14 after three turns
     # args = ["", "/media/fosterlab/WDC7/B14/20211206_182602/20211206_182602.rec", "1", "3", "None", "None", "/media/fosterlab/WDC7/B14/20211206_182602/20211206_182602_time_34936241.trodesClusters", "0"]
     # again!
-    args = ["", "/media/fosterlab/WDC7/B14/20211206_190308/20211206_190308.rec", "1", "3", "None", "None", "/media/fosterlab/WDC7/B14/20211206_182602/20211206_182602_time_34936241.trodesClusters", "0"]
+    # args = ["", "/media/fosterlab/WDC7/B14/20211206_190308/20211206_190308.rec", "1", "3", "None", "None",
+    # "/media/fosterlab/WDC7/B14/20211206_182602/20211206_182602_time_34936241.trodesClusters", "0"]
+
+    # B14 MUA
+    # args = ["", "/media/WDC7/B14/20211206_190308/20211206_190308.rec",
+    # "3", "3", "None", "None", "None", "0"]
 
     if args is not None:
         if runTheThingWithFilenames(args, makeFigs=True):

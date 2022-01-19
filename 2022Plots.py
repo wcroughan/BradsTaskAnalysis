@@ -13,18 +13,18 @@ from BTRestSession import BTRestSession
 PLOT_BEHAVIOR_TRACES = 5
 PLOT_BEHAVIOR_SUMMARIES = 3
 PLOT_PERSEV_MEASURES = 2
-PLOT_PROBE_BEHAVIOR_SUMMARIES = 3
-PLOT_TASK_BEHAVIOR_SUMMARIES = 3
-PLOT_PROBE_VS_TASK_BEHAVIOR_SUMMARIES = 3
+PLOT_PROBE_BEHAVIOR_SUMMARIES = 2
+PLOT_TASK_BEHAVIOR_SUMMARIES = 2
+PLOT_PROBE_VS_TASK_BEHAVIOR_SUMMARIES = 2
 PLOT_ITI_LFP = 7
 PLOT_INDIVIDUAL_RIPPLES_ITI = 10
 PLOT_PROBE_LFP = 9
 PLOT_REST_LFP = 10
 PLOT_DWELL_TIME_OVER_TIME = 7
 PLOT_PER_SESSION_ADDITIONAL = 8
-PLOT_INTERRUPTION_INFO = 3
+PLOT_INTERRUPTION_INFO = 1
 PLOT_RAW_LFP = 3
-PLOT_TASK_INDIVIDUAL_RIPPLES = 3
+PLOT_TASK_INDIVIDUAL_RIPPLES = 8
 PLOT_RIPPLES_VS_PERSEV = 2
 
 ONLY_COMBO = False
@@ -75,7 +75,7 @@ for animal_name in animals:
         P = MyPlottingFunctions(ratData, output_dir, showPlots=False)
         print("starting plots for", animal_name)
 
-        FIG_LEVEL = 3
+        FIG_LEVEL = 2
 
     else:
         output_dir = "/media/WDC7/combined_figures/"
@@ -99,7 +99,7 @@ for animal_name in animals:
 
         P = MyPlottingFunctions(allData, output_dir, showPlots=False)
         print("starting plots for combo")
-        FIG_LEVEL = 3
+        FIG_LEVEL = 2
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -671,6 +671,11 @@ for animal_name in animals:
             s.probe_excursion_starts, s.probe_excursion_ends
         )]), "num repeats per excursion")
 
+        P.makeAScatterPlotWithFunc(lambda s: [(np.nanmean([numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=True) - numWellsVisited(s.probe_nearest_wells[i1:i2], countReturns=False) for (i1, i2) in zip(
+            s.probe_explore_bout_starts, s.probe_explore_bout_ends
+        )]), s.avg_dwell_time(True, s.home_well, timeInterval=[0, 90], emptyVal=-1.0))], "num repeats per explore bout vs avg dwell time 90sec",
+            colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"], individualSessions=False)
+
     if PLOT_PROBE_VS_TASK_BEHAVIOR_SUMMARIES < FIG_LEVEL:
         # ==================
         # How are task and probe exploration related?
@@ -1068,51 +1073,57 @@ for animal_name in animals:
 
             # ==================
             # cumulative stim count over task
-            P.makeALinePlot(lambda s: [(np.hstack(([0], (np.array(s.interruption_timestamps) - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE)),
-                            np.arange(len(s.interruption_timestamps)+1))], "task cumulative num stims",
+            def valF(sesh):
+                ts = np.array(sesh.interruption_timestamps)
+                ts = ts[np.logical_and(ts > sesh.bt_pos_ts[0], ts <
+                                       sesh.bt_pos_ts[-1])] - sesh.bt_pos_ts[0]
+                ts /= BTSession.TRODES_SAMPLING_RATE
+                ts = np.hstack(([0], ts))
+                return [(ts, np.arange(len(ts)))]
+
+            P.makeALinePlot(valF, "task cumulative num stims",
                             colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"],
                             individualSessions=False)
 
             # ==================
-            # compare interruption count/rate to dwell time in probe
-            P.makeAScatterPlotWithFunc(
-                lambda s: [(s.numStimsAtWell(s.home_well), s.avg_dwell_time(
-                    True, s.home_well, timeInterval=[0, 90], emptyVal=np.nan))],
-                "stim count vs home dwell in 90sec", individualSessions=False,
-                colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"])
+            # stim count rate and rate by condition
+            P.makeASimpleBoxPlot(lambda s: len(s.bt_interruption_pos_idxs) /
+                                 ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE), "total stim rate")
 
-            P.makeAScatterPlotWithFunc(
-                lambda s: [(s.numStimsAtWell(w), s.avg_dwell_time(True, w, timeInterval=[
-                            0, 90], emptyVal=np.nan)) for w in P.all_well_names],
-                "stim count vs dwell in 90sec all wells", individualSessions=True,
-                colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in P.all_well_names])
-
-            P.makeAScatterPlotWithFunc(
-                lambda s: [(s.numStimsAtWell(w), s.avg_dwell_time(True, w, timeInterval=[
-                            0, 90], emptyVal=np.nan)) for w in (s.visited_away_wells + [s.home_well])],
-                "stim count vs dwell in 90sec rewarded wells", individualSessions=False, bigDots=False,
-                colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in (s.visited_away_wells + [s.home_well])])
-
-            P.makeAScatterPlotWithFunc(
-                lambda s: [(s.numStimsAtWell(s.home_well) / s.total_dwell_time(False, s.home_well), s.avg_dwell_time(
-                    True, s.home_well, timeInterval=[0, 90], emptyVal=np.nan))],
-                "stim rate vs home dwell in 90sec", individualSessions=False,
-                colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")
-
-            P.makeAScatterPlotWithFunc(
-                lambda s: [(s.numStimsAtWell(w) / s.total_dwell_time(False, w), s.avg_dwell_time(True, w, timeInterval=[
-                            0, 90], emptyVal=np.nan)) for w in P.all_well_names],
-                "stim rate vs dwell in 90sec all wells", individualSessions=True,
-                colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in P.all_well_names])
-
-            P.makeAScatterPlotWithFunc(
-                lambda s: [(s.numStimsAtWell(w) / s.total_dwell_time(False, w), s.avg_dwell_time(True, w, timeInterval=[
-                            0, 90], emptyVal=np.nan)) for w in (s.visited_away_wells + [s.home_well])],
-                "stim rate vs dwell in 90sec rewarded wells", individualSessions=False, bigDots=False,
-                colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in (s.visited_away_wells + [s.home_well])])
+        # ==================
+        # compare interruption count/rate to dwell time in probe
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(s.numStimsAtWell(s.home_well), s.avg_dwell_time(
+                True, s.home_well, timeInterval=[0, 90], emptyVal=1.0))],
+            "stim count vs home dwell in 90sec", individualSessions=False,
+            colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"])
 
         P.makeAScatterPlotWithFunc(
-            lambda s: [(len(s.bt_interruption_pos_idxs) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE),
-                        s.avg_dwell_time(True, s.home_well, timeInterval=[0, 90], emptyVal=np.nan))],
-            "total stim rate vs home dwell in 90sec", individualSessions=False,
+            lambda s: [(s.numStimsAtWell(w), s.avg_dwell_time(True, w, timeInterval=[
+                        0, 90], emptyVal=1.0)) for w in P.all_well_names],
+            "stim count vs dwell in 90sec all wells", individualSessions=True,
+            colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in P.all_well_names])
+
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(s.numStimsAtWell(w), s.avg_dwell_time(True, w, timeInterval=[
+                        0, 90], emptyVal=1.0)) for w in (s.visited_away_wells + [s.home_well])],
+            "stim count vs dwell in 90sec rewarded wells", individualSessions=False, bigDots=False,
+            colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in (s.visited_away_wells + [s.home_well])])
+
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(s.numStimsAtWell(s.home_well) / s.total_dwell_time(False, s.home_well), s.avg_dwell_time(
+                True, s.home_well, timeInterval=[0, 90], emptyVal=-1.0))],
+            "stim rate vs home dwell in 90sec", individualSessions=False,
             colorFunc=lambda s: "orange" if s.isRippleInterruption else "cyan")
+
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(s.numStimsAtWell(w) / s.total_dwell_time(False, w), s.avg_dwell_time(True, w, timeInterval=[
+                        0, 90], emptyVal=1.0)) for w in P.all_well_names],
+            "stim rate vs dwell in 90sec all wells", individualSessions=True,
+            colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in P.all_well_names])
+
+        P.makeAScatterPlotWithFunc(
+            lambda s: [(s.numStimsAtWell(w) / s.total_dwell_time(False, w), s.avg_dwell_time(True, w, timeInterval=[
+                        0, 90], emptyVal=1.0)) for w in (s.visited_away_wells + [s.home_well])],
+            "stim rate vs dwell in 90sec rewarded wells", individualSessions=False, bigDots=False,
+            colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in (s.visited_away_wells + [s.home_well])])

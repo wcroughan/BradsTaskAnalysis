@@ -11,16 +11,16 @@ rngesus = np.random.default_rng()
 SHOW_REAL_DATA = True
 SHOW_EXAMPLE_SAMPLE = False
 
-# MEASURE = "curvature"
-MEASURE = "avgdwell"
+MEASURE = "curvature"
+# MEASURE = "avgdwell"
 ONE_N_PER_RAT = False
 ONLY_AWAYS_OFF_WALL = False
-# RAT_TO_USE = "all"
+RAT_TO_USE = "all"
 EXCLUDE_MARTIN = False
 SWAP_MARTIN_SESSIONS = True
 # RAT_TO_USE = "B14"
 # RAT_TO_USE = "B13"
-RAT_TO_USE = "Martin"
+# RAT_TO_USE = "Martin"
 
 # measured values:
 

@@ -1121,6 +1121,11 @@ if __name__ == "__main__":
             session.bt_interruption_pos_idxs = session.bt_interruption_pos_idxs[
                 session.bt_interruption_pos_idxs < len(session.bt_pos_ts)]
 
+            # ========
+            # dealing with weird Martin sessions:
+            if len(session.bt_interruption_pos_idxs) < 100:
+                session.isRippleInterruption = False
+
             lfp_deflections = signal.find_peaks(np.abs(
                 np.diff(lfp_data, prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO, distance=MIN_ARTIFACT_DISTANCE)
             lfp_artifact_idxs = lfp_deflections[0]
