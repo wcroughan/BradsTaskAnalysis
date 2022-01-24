@@ -185,7 +185,16 @@ def MUAClusterFunc(features, channelRatios):
 def makeClusterFuncFromFile(clusterFileName, trodeIndex, clusterIndex):
     clusters = loadTrodesClusters(clusterFileName)
     clusterPolygons = clusters[trodeIndex][clusterIndex]
-    return lambda features, chmaxes, maxfeature: isInPolygons(clusterPolygons, features)
+
+    def retF(features, chmaxes, maxfeature):
+        if isinstance(clusterIndex, list):
+            return any([isInPolygons(clusters[trodeIndex][i], features) for i in clusterIndex])
+        elif clusterIndex == -1:
+            return any([isInPolygons(clusters[trodeIndex][i], features) for i in range(len(clusters[trodeIndex]))])
+        else:
+            return isInPolygons(clusterPolygons, features)
+
+    return retF
 
 
 def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
@@ -692,7 +701,8 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
     z_psth = avg_fr_psth
     z_psth -= np.nanmean(z_psth[0:10])
     z_psth /= np.nanstd(z_psth[0:10])
-    return z_psth
+    # return z_psth
+    return x1, avg_fr_pst, std_fr_psth
 
 
 possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/"]
