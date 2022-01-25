@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import glob
 
 from SpikeCalibration import MUAClusterFunc, runTheThing, makeClusterFuncFromFile, loadTrodesClusters, ConvertTimeToTrodesTS
 
@@ -14,9 +15,15 @@ def makePSTH(animal_name):
         clusterIndex = -1
 
         recFileName = "/media/WDC7/B14/{}/{}.rec".format(runName, runName)
-        lfpFileName = "/media/WDC7/B14/{}/{}.LFP/{}.nt{}_ch1.dat".format(
+        gl = "/media/WDC7/B14/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(
             runName, runName, runName, lfpTet)
-        spikeFileName = "/media/WDC7/B14/{}/{}.spikes/{}.nt{}.dat".format(
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileName = lfpfilelist[0]
+        else:
+            lfpFileName = "nofile"
+
+        spikeFileName = "/media/WDC7/B14/{}/{}.spikes/{}.spikes_nt{}.dat".format(
             runName, runName, runName, spikeTet)
 
         clusterFileName = "/media/WDC7/B14/{}/{}.trodesClusters".format(runName, runName)
@@ -40,20 +47,17 @@ def makePSTH(animal_name):
     else:
         raise Exception("Unknown rat " + animal_name)
 
-    lfpTimestampFileName = ".".join(lfpFileName.split(".")[0:-2]) + ".timestamps.dat"
-    swrOutputFileName = animal_name + "_" + runName + "_swr_psth.png"
-    ctrlOutputFileName = animal_name + "_" + runName + "_ctrl_psth.png"
-    print(runName, "LFP tet " + str(lfpTet), "spike tet " + str(spikeTet), "cluster index " + str(clusterIndex),
-          recFileName, lfpFileName, spikeFileName, clusterFileName)
-
     # If necessary, generate lfp file
     if not os.path.exists(lfpFileName):
-        if os.path.exists("/home/wcroughan/Software/Trodes21/exportspikes"):
-            syscmd = "/home/wcroughan/Software/Trodes21/exportspikes -rec " + recFileName
+        if os.path.exists("/home/wcroughan/Software/Trodes21/exportLFP"):
+            syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + recFileName
         else:
-            syscmd = "/home/wcroughan/Software/Trodes21/linux/exportspikes -rec " + recFileName
+            syscmd = "/home/wcroughan/Software/Trodes21/linux/exportLFP -rec " + recFileName
         print(syscmd)
         os.system(syscmd)
+
+        lfpfilelist = glob.glob(gl)
+        lfpFileName = lfpfilelist[0]
 
     # If necessary, generate spike file
     if not os.path.exists(spikeFileName):
@@ -63,6 +67,12 @@ def makePSTH(animal_name):
             syscmd = "/home/wcroughan/Software/Trodes21/linux/exportspikes -rec " + recFileName
         print(syscmd)
         os.system(syscmd)
+
+    lfpTimestampFileName = ".".join(lfpFileName.split(".")[0:-2]) + ".timestamps.dat"
+    swrOutputFileName = animal_name + "_" + runName + "_swr_psth.png"
+    ctrlOutputFileName = animal_name + "_" + runName + "_ctrl_psth.png"
+    print(runName, "LFP tet " + str(lfpTet), "spike tet " + str(spikeTet), "cluster index " + str(clusterIndex),
+          recFileName, lfpFileName, spikeFileName, clusterFileName)
 
     swrTvals, swrMeanPSTH, swrStdPSTH = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
                                                     swrOutputFileName, clfunc, makeFigs=True, clusterPolygons=clusterPolygons,
