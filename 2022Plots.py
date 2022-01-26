@@ -22,10 +22,11 @@ PLOT_PROBE_LFP = 9
 PLOT_REST_LFP = 10
 PLOT_DWELL_TIME_OVER_TIME = 7
 PLOT_PER_SESSION_ADDITIONAL = 8
-PLOT_INTERRUPTION_INFO = 1
+PLOT_INTERRUPTION_INFO = 3
 PLOT_RAW_LFP = 3
 PLOT_TASK_INDIVIDUAL_RIPPLES = 8
-PLOT_RIPPLES_VS_PERSEV = 2
+PLOT_RIPPLES_VS_PERSEV = 3
+PLOT_THESIS_COMMITTEE_FIGURES = 1
 
 ONLY_COMBO = False
 
@@ -446,12 +447,12 @@ for animal_name in animals:
                                      s.probe_excursion_starts, s.probe_excursion_ends
                                  )]) / float(len(s.probe_excursion_starts)), alsoMakePerWellPerSessionPlot=showAdditional)
 
+    timeResolutions = [15, 30, 60]
     if PLOT_TASK_BEHAVIOR_SUMMARIES < FIG_LEVEL:
         # ==========================================================================
         # behavior during task (same measures as probe stuff below)
         # ==================
         # avg vel over time
-        timeResolutions = [15, 30, 60]
         for tint in timeResolutions:
             intervalStarts = np.arange(0, 5*60, tint)
             P.makeALinePlot(lambda s: [(intervalStarts,
@@ -1127,3 +1128,74 @@ for animal_name in animals:
                         0, 90], emptyVal=1.0)) for w in (s.visited_away_wells + [s.home_well])],
             "stim rate vs dwell in 90sec rewarded wells", individualSessions=False, bigDots=False,
             colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in (s.visited_away_wells + [s.home_well])])
+
+    if PLOT_THESIS_COMMITTEE_FIGURES < FIG_LEVEL:
+        # behavior trace
+        # probe traces, labeled/grouped by condition
+        P.makeALinePlot(lambda s: [(s.bt_pos_xs, s.bt_pos_ys)],
+                        "Raw Behavior Task", axisLims="environment")
+        P.makeALinePlot(lambda s: [(s.probe_pos_xs, s.probe_pos_ys)],
+                        "Raw Behavior Probe", axisLims="environment")
+
+        # home vs away latencies
+        P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
+                                    (s.home_well_find_times -
+                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
+                                    )], "home_find_times", individualSessions=False,
+                        colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))]], plotAverage=True)
+        P.makeALinePlot(lambda s: [(np.arange(s.num_away_found) + 1,
+                                    (s.away_well_find_times - s.home_well_leave_times[0:len(
+                                        s.away_well_find_times)]) / BTSession.TRODES_SAMPLING_RATE
+                                    )], "away_find_times", individualSessions=False,
+                        colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.away_well_find_times))]], plotAverage=True)
+
+        P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
+                                    (s.home_well_find_times -
+                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
+                                    )] if s.isRippleInterruption else [], "home_find_times_just_swr", individualSessions=False,
+                        colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))]], plotAverage=True)
+        P.makeALinePlot(lambda s: [(np.arange(s.num_away_found) + 1,
+                                    (s.away_well_find_times - s.home_well_leave_times[0:len(
+                                        s.away_well_find_times)]) / BTSession.TRODES_SAMPLING_RATE
+                                    )] if s.isRippleInterruption else [], "away_find_times_just_swr", individualSessions=False,
+                        colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.away_well_find_times))]], plotAverage=True)
+        P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
+                                    (s.home_well_find_times -
+                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
+                                    )] if not s.isRippleInterruption else [], "home_find_times_just_delay", individualSessions=False,
+                        colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))]], plotAverage=True)
+        P.makeALinePlot(lambda s: [(np.arange(s.num_away_found) + 1,
+                                    (s.away_well_find_times - s.home_well_leave_times[0:len(
+                                        s.away_well_find_times)]) / BTSession.TRODES_SAMPLING_RATE
+                                    )] if not s.isRippleInterruption else [], "away_find_times_just_delay", individualSessions=False,
+                        colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.away_well_find_times))]], plotAverage=True)
+
+        for tint in timeResolutions:
+            intervalStarts = np.arange(0, 5*60, tint)
+            # pct time exploring
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [s.prop_time_in_bout_state(False, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "task_prop_time_explore_bout_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem", onlyPlotAverage=True)
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1 * tint,
+                                        [s.prop_time_in_bout_state(False, BTSession.BOUT_STATE_EXPLORE, timeInterval=[i1, i1+tint])
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "task_prop_time_explore_bout_by_cond_{}sec".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem", onlyPlotAverage=True)
+
+            # velocity
+            P.makeALinePlot(lambda s: [(intervalStarts,
+                                        [min(s.mean_vel(False, timeInterval=[i1, i1+tint], onlyMoving=True), 45)
+                                            for i1 in intervalStarts]
+                                        )] if s.isRippleInterruption else [], "task_avg_vel_by_cond_just_moving_{}sec_outlier_fix".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["orange"], plotAverage=True, avgError="sem")
+            P.makeALinePlot(lambda s: [(intervalStarts + 0.1*tint,
+                                        [min(s.mean_vel(False, timeInterval=[i1, i1+tint], onlyMoving=True), 45)
+                                            for i1 in intervalStarts]
+                                        )] if not s.isRippleInterruption else [], "task_avg_vel_by_cond_just_moving_{}sec_outlier_fix".format(tint), individualSessions=False,
+                            colorFunc=lambda s: ["cyan"], plotAverage=True, holdLastPlot=True, avgError="sem")
+
+        # num wells visited
+        P.makeASimpleBoxPlot(lambda s: numWellsVisited(
+            s.probe_nearest_wells), "num wells visited full probe")

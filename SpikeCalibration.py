@@ -184,7 +184,6 @@ def MUAClusterFunc(features, channelRatios):
 
 def makeClusterFuncFromFile(clusterFileName, trodeIndex, clusterIndex):
     clusters = loadTrodesClusters(clusterFileName)
-    clusterPolygons = clusters[trodeIndex][clusterIndex]
 
     def retF(features, chmaxes, maxfeature):
         if isinstance(clusterIndex, list):
@@ -192,13 +191,15 @@ def makeClusterFuncFromFile(clusterFileName, trodeIndex, clusterIndex):
         elif clusterIndex == -1:
             # print([isInPolygons(clusters[trodeIndex][i], features)
             #   for i in range(len(clusters[trodeIndex]))])
+            print(clusters[trodeIndex])
             ret1 = np.vstack([isInPolygons(clusters[trodeIndex][i], features)
                              for i in range(len(clusters[trodeIndex]))]).T
-            print(ret1)
+            print(ret1.shape)
             ret = np.any(ret1, axis=1)
             print(ret)
             return ret
         else:
+            clusterPolygons = clusters[trodeIndex][clusterIndex]
             return isInPolygons(clusterPolygons, features)
 
     return retF
@@ -365,8 +366,8 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
 
     UP_DEFLECT_STIM_THRESH = 10000
     UP_DEFLECT_STIM_PROMINENCE = 5000
-    SPK_BIN_SZ_MS = 50
-    PSTH_MARGIN_MS = 1000
+    SPK_BIN_SZ_MS = 10
+    PSTH_MARGIN_MS = 500
     PSTH_MARGIN_SECS = float(PSTH_MARGIN_MS) / 1000.0
     SPK_BIN_SZ_SECS = float(SPK_BIN_SZ_MS) / 1000.0
 
@@ -395,6 +396,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
 
     next_pct = spike_data.size / 100
 
+    print("making features for {} spikes".format(spike_data.size))
     for si, spike in enumerate(spike_data):
         ts = spike[0]
         wf1 = spike[1]
@@ -414,7 +416,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         chmaxes[si, :] = np.max(wfs, axis=1)
 
         if si > next_pct:
-            print("{}/{}".format(si, spike_data.size))
+            # print("{}/{}".format(si, spike_data.size))
             next_pct += spike_data.size / 100
 
             if mkfigs[0]:
@@ -462,7 +464,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
 
     c1spks = features[c1spks_idxs, :]
     c1ts = spike_data['time'][c1spks_idxs]
-    print(len(c1ts))
+    print("{} spikes included in psth".format(len(c1ts)))
     if mkfigs[2]:
         plt.subplot(321)
         plt.scatter(features[::step, 0], features[::step, 1], marker=".", s=0.5)
@@ -497,21 +499,24 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
 
         if clusterPolygons is not None:
             for poly in clusterPolygons:
-                print(poly)
-                ax1 = poly[0]
-                ax2 = poly[1]
-                if ax1 == 0:
-                    sp = ax2
-                elif ax1 == 1:
-                    sp = ax2 + 2
-                else:
-                    sp = 6
-                plt.subplot(3, 2, sp)
-                vtxs = poly[2]
-                for i in range(len(vtxs)):
-                    p1 = vtxs[i]
-                    p2 = vtxs[(i+1) % len(vtxs)]
-                    plt.plot([p1[0], p2[0]], [p1[1], p2[1]])
+                if not isinstance(poly, list):
+                    poly = [poly]
+                for p in poly:
+                    print(p)
+                    ax1 = p[0]
+                    ax2 = p[1]
+                    if ax1 == 0:
+                        sp = ax2
+                    elif ax1 == 1:
+                        sp = ax2 + 2
+                    else:
+                        sp = 6
+                    plt.subplot(3, 2, sp)
+                    vtxs = p[2]
+                    for i in range(len(vtxs)):
+                        p1 = vtxs[i]
+                        p2 = vtxs[(i+1) % len(vtxs)]
+                        plt.plot([p1[0], p2[0]], [p1[1], p2[1]], color="red")
 
         plt.show()
 
@@ -705,11 +710,11 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         plt.show()
     plt.cla()
 
-    z_psth = avg_fr_psth
-    z_psth -= np.nanmean(z_psth[0:10])
-    z_psth /= np.nanstd(z_psth[0:10])
+    # z_psth = avg_fr_psth
+    # z_psth -= np.nanmean(z_psth[0:10])
+    # z_psth /= np.nanstd(z_psth[0:10])
     # return z_psth
-    return x1, avg_fr_pst, std_fr_psth
+    return x1, avg_fr_psth, std_fr_psth
 
 
 possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/"]

@@ -8,7 +8,36 @@ from SpikeCalibration import MUAClusterFunc, runTheThing, makeClusterFuncFromFil
 
 
 def makePSTH(animal_name):
-    if animal_name == "B14":
+    if animal_name == "B13":
+        runName = "20220125_094035"
+        lfpTet = 7
+        spikeTet = 7
+        clusterIndex = -1
+
+        recFileName = "/media/WDC7/B13/{}/{}.rec".format(runName, runName)
+        gl = "/media/WDC7/B13/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(
+            runName, runName, runName, lfpTet)
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileName = lfpfilelist[0]
+        else:
+            lfpFileName = "nofile"
+
+        spikeFileName = "/media/WDC7/B13/{}/{}.spikes/{}.spikes_nt{}.dat".format(
+            runName, runName, runName, spikeTet)
+
+        clusterFileName = "/media/WDC7/B13/{}/{}.trodesClusters".format(runName, runName)
+
+        clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
+        clusters = loadTrodesClusters(clusterFileName)
+        # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+        clusterPolygons = clusters[spikeTet-1]
+
+        swrt0 = ConvertTimeToTrodesTS(0, 5, 0)
+        swrt1 = ConvertTimeToTrodesTS(0, 38, 0)
+        ctrlt0 = ConvertTimeToTrodesTS(1, 7, 30)
+        ctrlt1 = ConvertTimeToTrodesTS(1, 38, 0)
+    elif animal_name == "B14":
         runName = "20220124_100811"
         lfpTet = 2
         spikeTet = 2
@@ -30,16 +59,13 @@ def makePSTH(animal_name):
 
         clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
         clusters = loadTrodesClusters(clusterFileName)
-        clusterPolygons = clusters[spikeTet-1][clusterIndex]
+        # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+        clusterPolygons = clusters[spikeTet-1]
 
         swrt0 = ConvertTimeToTrodesTS(0, 5, 0)
         swrt1 = ConvertTimeToTrodesTS(0, 35, 0)
         ctrlt0 = ConvertTimeToTrodesTS(1, 5, 0)
         ctrlt1 = ConvertTimeToTrodesTS(1, 35, 0)
-    # elif animal_name == "B13":
-    #     data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
-    #     output_dir = "/media/WDC7/B14/figs/"
-    #     diagPoint = None
     # elif animal_name == "Martin":
     #     data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
     #     output_dir = "/media/WDC7/Martin/figs/"
@@ -75,11 +101,18 @@ def makePSTH(animal_name):
           recFileName, lfpFileName, spikeFileName, clusterFileName)
 
     swrTvals, swrMeanPSTH, swrStdPSTH = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
-                                                    swrOutputFileName, clfunc, makeFigs=True, clusterPolygons=clusterPolygons,
+                                                    swrOutputFileName, clfunc, makeFigs=False, clusterPolygons=clusterPolygons,
                                                     tStart=swrt0, tEnd=swrt1)
     ctrlTvals, ctrlMeanPSTH, ctrlStdPSTH = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
-                                                       ctrlOutputFileName, clfunc, makeFigs=True, clusterPolygons=clusterPolygons,
+                                                       ctrlOutputFileName, clfunc, makeFigs=False, clusterPolygons=clusterPolygons,
                                                        tStart=ctrlt0, tEnd=ctrlt1)
+
+    # print(swrMeanPSTH)
+    # print(swrStdPSTH)
+    # print(ctrlMeanPSTH)
+    # print(ctrlStdPSTH)
+
+    ctrlTvals += 0.2
 
     plt.plot(swrTvals, swrMeanPSTH, color="orange")
     plt.fill_between(swrTvals, swrMeanPSTH - swrStdPSTH, swrMeanPSTH +
