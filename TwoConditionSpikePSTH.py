@@ -37,8 +37,22 @@ def makePSTH(animal_name):
         swrt1 = ConvertTimeToTrodesTS(0, 38, 0)
         ctrlt0 = ConvertTimeToTrodesTS(1, 7, 30)
         ctrlt1 = ConvertTimeToTrodesTS(1, 38, 0)
+
+        outputDir = "/media/WDC7/B13/figs/"
     elif animal_name == "B14":
-        runName = "20220124_100811"
+        if False:
+            runName = "20220124_100811"
+            swrt0 = ConvertTimeToTrodesTS(0, 5, 0)
+            swrt1 = ConvertTimeToTrodesTS(0, 35, 0)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 5, 0)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 35, 0)
+        else:
+            runName = "20220126_110046"
+            swrt0 = ConvertTimeToTrodesTS(0, 1, 0)
+            swrt1 = ConvertTimeToTrodesTS(0, 34, 0)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 6, 0)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 36, 0)
+
         lfpTet = 2
         spikeTet = 2
         clusterIndex = -1
@@ -62,13 +76,11 @@ def makePSTH(animal_name):
         # clusterPolygons = clusters[spikeTet-1][clusterIndex]
         clusterPolygons = clusters[spikeTet-1]
 
-        swrt0 = ConvertTimeToTrodesTS(0, 5, 0)
-        swrt1 = ConvertTimeToTrodesTS(0, 35, 0)
-        ctrlt0 = ConvertTimeToTrodesTS(1, 5, 0)
-        ctrlt1 = ConvertTimeToTrodesTS(1, 35, 0)
+        outputDir = "/media/WDC7/B14/figs/"
+
     # elif animal_name == "Martin":
     #     data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
-    #     output_dir = "/media/WDC7/Martin/figs/"
+    #     outputDir = "/media/WDC7/Martin/figs/"
     #     diagPoint = None
     else:
         raise Exception("Unknown rat " + animal_name)
@@ -95,17 +107,17 @@ def makePSTH(animal_name):
         os.system(syscmd)
 
     lfpTimestampFileName = ".".join(lfpFileName.split(".")[0:-2]) + ".timestamps.dat"
-    swrOutputFileName = animal_name + "_" + runName + "_swr_psth.png"
-    ctrlOutputFileName = animal_name + "_" + runName + "_ctrl_psth.png"
+    swrOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_swr_psth.png")
+    ctrlOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_ctrl_psth.png")
     print(runName, "LFP tet " + str(lfpTet), "spike tet " + str(spikeTet), "cluster index " + str(clusterIndex),
           recFileName, lfpFileName, spikeFileName, clusterFileName)
 
-    swrTvals, swrMeanPSTH, swrStdPSTH = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
-                                                    swrOutputFileName, clfunc, makeFigs=False, clusterPolygons=clusterPolygons,
-                                                    tStart=swrt0, tEnd=swrt1)
-    ctrlTvals, ctrlMeanPSTH, ctrlStdPSTH = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
-                                                       ctrlOutputFileName, clfunc, makeFigs=False, clusterPolygons=clusterPolygons,
-                                                       tStart=ctrlt0, tEnd=ctrlt1)
+    swrTvals, swrMeanPSTH, swrStdPSTH, swrN = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
+                                                          swrOutputFileName, clfunc, makeFigs=False, clusterPolygons=clusterPolygons,
+                                                          tStart=swrt0, tEnd=swrt1)
+    ctrlTvals, ctrlMeanPSTH, ctrlStdPSTH, ctrlN = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
+                                                              ctrlOutputFileName, clfunc, makeFigs=False, clusterPolygons=clusterPolygons,
+                                                              tStart=ctrlt0, tEnd=ctrlt1)
 
     # print(swrMeanPSTH)
     # print(swrStdPSTH)
@@ -114,12 +126,15 @@ def makePSTH(animal_name):
 
     ctrlTvals += 0.2
 
+    swrSEM = swrStdPSTH / np.sqrt(swrN)
+    ctrlSEM = ctrlStdPSTH / np.sqrt(ctrlN)
+
     plt.plot(swrTvals, swrMeanPSTH, color="orange")
-    plt.fill_between(swrTvals, swrMeanPSTH - swrStdPSTH, swrMeanPSTH +
-                     swrStdPSTH, facecolor="orange", alpha=0.2)
+    plt.fill_between(swrTvals, swrMeanPSTH - swrSEM, swrMeanPSTH +
+                     swrSEM, facecolor="orange", alpha=0.2)
     plt.plot(ctrlTvals, ctrlMeanPSTH, color="cyan")
-    plt.fill_between(ctrlTvals, ctrlMeanPSTH - ctrlStdPSTH, ctrlMeanPSTH +
-                     ctrlStdPSTH, facecolor="cyan", alpha=0.2)
+    plt.fill_between(ctrlTvals, ctrlMeanPSTH - ctrlSEM, ctrlMeanPSTH +
+                     ctrlSEM, facecolor="cyan", alpha=0.2)
 
     plt.show()
 

@@ -680,9 +680,11 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
     lfp_psth = np.zeros((stimpeaks.size, 2*NUM_LFP_PSTH_BINS))
     for si, (st, stidx) in enumerate(zip(stim_times, stimpeaks)):
         if tStart is not None and st < tStart / 30000:
+            psth[si, :] = np.nan
             continue
         if tEnd is not None and st > tEnd / 30000:
             print("Reached tEnd of {} with time {}, breaking".format(tEnd / 30000, st))
+            psth[si:, :] = np.nan
             break
         bins = np.linspace(st - PSTH_MARGIN_SECS, st + PSTH_MARGIN_SECS, num=2*NUM_PSTH_BINS+1)
         h, b = np.histogram(spike_times, bins=bins)
@@ -690,8 +692,10 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
 
         lfp_psth[si, :] = lfp_data[stidx-NUM_LFP_PSTH_BINS:stidx+NUM_LFP_PSTH_BINS]
 
-    avg_fr_psth = np.mean(psth, axis=0)
-    std_fr_psth = np.std(psth, axis=0)
+    numStimsCounted = np.count_nonzero(np.isnan(psth[:, 0]))
+    print("{}/{} stims included".format(numStimsCounted, psth.shape[0]))
+    avg_fr_psth = np.nanmean(psth, axis=0)
+    std_fr_psth = np.nanstd(psth, axis=0)
     avg_lfp_psth = np.mean(lfp_psth, axis=0)
     std_lfp_psth = np.std(lfp_psth, axis=0)
     x1 = np.linspace(-PSTH_MARGIN_SECS, PSTH_MARGIN_SECS, NUM_PSTH_BINS*2)
@@ -714,7 +718,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
     # z_psth -= np.nanmean(z_psth[0:10])
     # z_psth /= np.nanstd(z_psth[0:10])
     # return z_psth
-    return x1, avg_fr_psth, std_fr_psth
+    return x1, avg_fr_psth, std_fr_psth, numStimsCounted
 
 
 possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/"]
