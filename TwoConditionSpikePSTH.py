@@ -40,22 +40,29 @@ def makePSTH(animal_name):
 
         outputDir = "/media/WDC7/B13/figs/"
     elif animal_name == "B14":
+        lfpTet = 2
+        spikeTet = 2
+        clusterIndex = -1
+
         if False:
             runName = "20220124_100811"
             swrt0 = ConvertTimeToTrodesTS(0, 5, 0)
             swrt1 = ConvertTimeToTrodesTS(0, 35, 0)
             ctrlt0 = ConvertTimeToTrodesTS(1, 5, 0)
             ctrlt1 = ConvertTimeToTrodesTS(1, 35, 0)
-        else:
+        elif True:
             runName = "20220126_110046"
             swrt0 = ConvertTimeToTrodesTS(0, 1, 0)
             swrt1 = ConvertTimeToTrodesTS(0, 34, 0)
             ctrlt0 = ConvertTimeToTrodesTS(1, 6, 0)
             ctrlt1 = ConvertTimeToTrodesTS(1, 36, 0)
-
-        lfpTet = 2
-        spikeTet = 2
-        clusterIndex = -1
+        else:
+            runName = "20220127_090603"
+            swrt0 = ConvertTimeToTrodesTS(1, 6, 15)
+            swrt1 = ConvertTimeToTrodesTS(1, 25, 0)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 30, 25)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 50, 0)
+            spikeTet = 5
 
         recFileName = "/media/WDC7/B14/{}/{}.rec".format(runName, runName)
         gl = "/media/WDC7/B14/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(
