@@ -50,18 +50,25 @@ def makePSTH(animal_name):
             swrt1 = ConvertTimeToTrodesTS(0, 35, 0)
             ctrlt0 = ConvertTimeToTrodesTS(1, 5, 0)
             ctrlt1 = ConvertTimeToTrodesTS(1, 35, 0)
-        elif True:
+        elif False:
             runName = "20220126_110046"
             swrt0 = ConvertTimeToTrodesTS(0, 1, 0)
             swrt1 = ConvertTimeToTrodesTS(0, 34, 0)
             ctrlt0 = ConvertTimeToTrodesTS(1, 6, 0)
             ctrlt1 = ConvertTimeToTrodesTS(1, 36, 0)
-        else:
+        elif False:
             runName = "20220127_090603"
             swrt0 = ConvertTimeToTrodesTS(1, 6, 15)
             swrt1 = ConvertTimeToTrodesTS(1, 25, 0)
             ctrlt0 = ConvertTimeToTrodesTS(1, 30, 25)
             ctrlt1 = ConvertTimeToTrodesTS(1, 50, 0)
+            spikeTet = 5
+        else:
+            runName = "20220128_093620"
+            swrt0 = ConvertTimeToTrodesTS(0, 3, 15)
+            swrt1 = ConvertTimeToTrodesTS(0, 36, 30)
+            ctrlt0 = ConvertTimeToTrodesTS(0, 53, 41)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 27, 0)
             spikeTet = 5
 
         recFileName = "/media/WDC7/B14/{}/{}.rec".format(runName, runName)
