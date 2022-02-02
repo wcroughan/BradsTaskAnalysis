@@ -37,6 +37,18 @@ animals += ["B14"]
 animals += ["Martin"]
 
 
+possibleDataDirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/home/wcroughan/data/"]
+dataDir = None
+for dd in possibleDataDirs:
+    if os.path.exists(dd):
+        dataDir = dd
+        break
+
+if dataDir == None:
+    print("Couldnt' find data directory among any of these: {}".format(possibleDataDirs))
+    exit()
+
+
 def numVisits(well, nearestWells):
     return np.count_nonzero(np.array([k for k, g in groupby(nearestWells)]) == well)
 
@@ -59,14 +71,14 @@ for animal_name in animals:
             continue
 
         if animal_name == "B13":
-            data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
-            output_dir = "/media/WDC7/B13/processed_data/behavior_figures/"
+            data_filename = os.path.join(dataDir, "B13/processed_data/B13_bradtask.dat")
+            output_dir = os.path.join(dataDir, "B13/processed_data/behavior_figures")
         elif animal_name == "B14":
-            data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
-            output_dir = "/media/WDC7/B14/processed_data/behavior_figures/"
+            data_filename = os.path.join(dataDir, "B14/processed_data/B14_bradtask.dat")
+            output_dir = os.path.join(dataDir, "B14/processed_data/behavior_figures")
         elif animal_name == "Martin":
-            data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
-            output_dir = "/media/WDC7/Martin/processed_data/behavior_figures/"
+            data_filename = os.path.join(dataDir, "Martin/processed_data/martin_bradtask.dat")
+            output_dir = os.path.join(dataDir, "Martin/processed_data/behavior_figures")
         else:
             raise Exception("Unknown rat " + animal_name)
 
@@ -79,17 +91,17 @@ for animal_name in animals:
         FIG_LEVEL = 2
 
     else:
-        output_dir = "/media/WDC7/combined_figures/"
+        output_dir = os.path.join(dataDir, "combined_figures")
         allData = []
         for an in animals:
             if an == "combo":
                 continue
             elif an == "B13":
-                data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
+                data_filename = os.path.join(dataDir, "B13/processed_data/B13_bradtask.dat")
             elif an == "B14":
-                data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
+                data_filename = os.path.join(dataDir, "B14/processed_data/B14_bradtask.dat")
             elif an == "Martin":
-                data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
+                data_filename = os.path.join(dataDir, "Martin/processed_data/martin_bradtask.dat")
             else:
                 raise Exception("Unknown rat " + an)
 
