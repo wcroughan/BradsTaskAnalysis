@@ -9,6 +9,7 @@ from scipy.stats import pearsonr, ttest_ind_from_stats
 import statsmodels.api as sm
 from matplotlib.lines import Line2D
 from datetime import datetime
+import math
 
 from BTData import BTData
 from BTSession import BTSession
@@ -99,16 +100,35 @@ def makeThesisCommitteeFigs():
         if clearAxes:
             plt.cla()
 
+    def plotIndividualAndAverage(ax, dataPoints, xvals, individualColor="black", avgColor="blue"):
+        hm = np.nanmean(dataPoints, axis=0)
+        hs = np.nanstd(dataPoints, axis=0)
+        h1 = hm - hs
+        h2 = hm + hs
+        axs.plot(xvals, dataPoints.T, c=individualColor, lw=0.5)
+        axs.plot(xvals, hm, color=avgColor)
+        axs.fill_between(xvals, h1, h2, facecolor=avgColor, alpha=0.2)
+
     FIG_SCALE = 5
     fig = plt.figure(figsize=(FIG_SCALE, FIG_SCALE))
-    # plt.tight_layout()
     axs = fig.subplots()
     for animalName in animalNames:
+        print("==========================\n" + animalName)
         animalOutputDir = os.path.join(globalOutputDir, animalName)
         if not os.path.exists(animalOutputDir):
             os.makedirs(animalOutputDir)
 
         numSessions = len(allSessionsByRat[animalName])
+        sessionIsInterruption = np.zeros((numSessions,)).astype(bool)
+        for i in range(numSessions):
+            if allSessionsByRat[animalName][i].isRippleInterruption:
+                sessionIsInterruption[i] = True
+
+        numSessionsWithProbe = len(allSessionsWithProbeByRat[animalName])
+        sessionWithProbeIsInterruption = np.zeros((numSessionsWithProbe,)).astype(bool)
+        for i in range(numSessionsWithProbe):
+            if allSessionsWithProbeByRat[animalName][i].isRippleInterruption:
+                sessionWithProbeIsInterruption[i] = True
 
         # =============
         # well find latencies
@@ -134,32 +154,72 @@ def makeThesisCommitteeFigs():
 
         fig.set_figheight(FIG_SCALE / 2)
         fig.set_figwidth(FIG_SCALE / 2)
+
+        pltx = np.arange(10)+1
         # ymax = max(np.nanmax(homeFindTimes), np.nanmax(awayFindTimes))
         ymax = 300
-        hm = np.nanmean(homeFindTimes, axis=0)
-        hs = np.nanstd(homeFindTimes, axis=0)
-        h1 = hm - hs
-        h2 = hm + hs
-        axs.plot(homeFindTimes.T, c="black", lw=0.5)
-        axs.plot(hm, color="blue")
-        axs.fill_between(np.arange(len(hm)), h1, h2, facecolor="blue", alpha=0.2)
+        plotIndividualAndAverage(axs, homeFindTimes, pltx)
         axs.set_ylim(0, ymax)
+        axs.set_xlim(1, 10)
+        axs.set_xticks(np.arange(0, 10, 2) + 1)
         saveOrShow("latency_to_home", outputDir=animalOutputDir)
 
-        am = np.nanmean(awayFindTimes, axis=0)
-        ast = np.nanstd(awayFindTimes, axis=0)
-        a1 = am - ast
-        a2 = am + ast
-        axs.plot(awayFindTimes.T, c="black", lw=0.5)
-        axs.plot(am, color="blue")
-        axs.fill_between(np.arange(len(am)), a1, a2, facecolor="blue", alpha=0.2)
+        plotIndividualAndAverage(axs, awayFindTimes, pltx)
         axs.set_ylim(0, ymax)
+        axs.set_xlim(1, 10)
+        axs.set_xticks(np.arange(0, 10, 2) + 1)
         saveOrShow("latency_to_away", outputDir=animalOutputDir)
-        fig.set_figheight(FIG_SCALE)
-        fig.set_figwidth(FIG_SCALE)
+
+        # =============
+        # well find latencies by condition
+        ymax = 100
+        swrHomeFindTimes = homeFindTimes[sessionIsInterruption, :]
+        ctrlHomeFindTimes = homeFindTimes[np.logical_not(sessionIsInterruption), :]
+        plotIndividualAndAverage(axs, swrHomeFindTimes, pltx,
+                                 individualColor="orange", avgColor="orange")
+        plotIndividualAndAverage(axs, ctrlHomeFindTimes, pltx,
+                                 individualColor="cyan", avgColor="cyan")
+        axs.set_ylim(0, ymax)
+        axs.set_xlim(1, 10)
+        axs.set_xticks(np.arange(0, 10, 2) + 1)
+        saveOrShow("latency_to_home_by_condition", outputDir=animalOutputDir)
+
+        swrAwayFindTimes = awayFindTimes[sessionIsInterruption, :]
+        ctrlAwayFindTimes = awayFindTimes[np.logical_not(sessionIsInterruption), :]
+        plotIndividualAndAverage(axs, swrAwayFindTimes, pltx,
+                                 individualColor="orange", avgColor="orange")
+        plotIndividualAndAverage(axs, ctrlAwayFindTimes, pltx,
+                                 individualColor="cyan", avgColor="cyan")
+        axs.set_ylim(0, ymax)
+        axs.set_xlim(1, 10)
+        axs.set_xticks(np.arange(0, 10, 2) + 1)
+        saveOrShow("latency_to_away_by_condition", outputDir=animalOutputDir)
+
+        # =============
+        # average vel in probe
+        windowSize = 15
+        windowsSlide = 3
+        t0Array = np.arange(0, 60*5-windowSize+windowsSlide, windowsSlide)
+
+        avgVels = np.empty((numSessionsWithProbe, len(t0Array)))
+        avgVels[:] = np.nan
+
+        for si, sesh in enumerate(allSessionsWithProbeByRat[animalName]):
+            for ti, t0 in enumerate(t0Array):
+                avgVels[si, ti] = sesh.mean_vel(True, timeInterval=[t0, t0+windowSize])
+
+        # ymax = np.max(avgVels)
+        plotIndividualAndAverage(axs, avgVels, t0Array)
+        # axs.set_ylim(0, ymax)
+        # axs.set_xlim(1, 10)
+        # axs.set_xticks(np.arange(0, 10, 2) + 1)
+        saveOrShow("avgVel", outputDir=animalOutputDir)
 
         if SKIP_SINGLE_SESSION_PLOTS:
             continue
+
+        fig.set_figheight(FIG_SCALE)
+        fig.set_figwidth(FIG_SCALE)
 
         for sesh in allSessionsByRat[animalName]:
             print(sesh.name)
