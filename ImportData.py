@@ -1894,6 +1894,22 @@ if __name__ == "__main__":
             session.bt_explore_bout_lens_secs = (ts[session.bt_explore_bout_ends] -
                                                  ts[session.bt_explore_bout_starts]) / TRODES_SAMPLING_RATE
 
+            # add a category at each behavior time point for easy reference later:
+            session.bt_bout_category = np.zeros_like(session.bt_pos_xs)
+            last_stop = 0
+            for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
+                session.bt_bout_category[last_stop:bst] = 1
+                last_stop = ben
+            session.bt_bout_category[last_stop:] = 1
+            for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
+                pidx1 = np.searchsorted(session.bt_pos_ts, wft)
+                pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
+                session.bt_bout_category[pidx1:pidx2] = 2
+            for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
+                pidx1 = np.searchsorted(session.bt_pos_ts, wft)
+                pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
+                session.bt_bout_category[pidx1:pidx2] = 2
+
             if session.probe_performed:
                 probe_sm_vel = scipy.ndimage.gaussian_filter1d(
                     session.probe_vel_cm_s, BOUT_VEL_SM_SIGMA)
@@ -1944,20 +1960,6 @@ if __name__ == "__main__":
                                                         ts[session.probe_explore_bout_starts]) / TRODES_SAMPLING_RATE
 
                 # add a category at each behavior time point for easy reference later:
-                session.bt_bout_category = np.zeros_like(session.bt_pos_xs)
-                last_stop = 0
-                for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
-                    session.bt_bout_category[last_stop:bst] = 1
-                    last_stop = ben
-                session.bt_bout_category[last_stop:] = 1
-                for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
-                    pidx1 = np.searchsorted(session.bt_pos_ts, wft)
-                    pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
-                    session.bt_bout_category[pidx1:pidx2] = 2
-                for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
-                    pidx1 = np.searchsorted(session.bt_pos_ts, wft)
-                    pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
-                    session.bt_bout_category[pidx1:pidx2] = 2
                 session.probe_bout_category = np.zeros_like(session.probe_pos_xs)
                 last_stop = 0
                 for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
