@@ -63,13 +63,20 @@ def makePSTH(animal_name):
             ctrlt0 = ConvertTimeToTrodesTS(1, 30, 25)
             ctrlt1 = ConvertTimeToTrodesTS(1, 50, 0)
             spikeTet = 5
-        else:
+        elif False:
             runName = "20220128_093620"
             swrt0 = ConvertTimeToTrodesTS(0, 3, 15)
             swrt1 = ConvertTimeToTrodesTS(0, 36, 30)
             ctrlt0 = ConvertTimeToTrodesTS(0, 53, 41)
             ctrlt1 = ConvertTimeToTrodesTS(1, 27, 0)
             spikeTet = 5
+        else:
+            runName = "20220202_125441"
+            swrt0 = ConvertTimeToTrodesTS(4, 2, 38)
+            swrt1 = ConvertTimeToTrodesTS(4, 33, 0)
+            ctrlt0 = ConvertTimeToTrodesTS(5, 13, 1)
+            ctrlt1 = ConvertTimeToTrodesTS(5, 44, 0)
+            spikeTet = 2
 
         recFileName = "/media/WDC7/B14/{}/{}.rec".format(runName, runName)
         gl = "/media/WDC7/B14/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(
@@ -123,6 +130,7 @@ def makePSTH(animal_name):
     lfpTimestampFileName = ".".join(lfpFileName.split(".")[0:-2]) + ".timestamps.dat"
     swrOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_swr_psth.png")
     ctrlOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_ctrl_psth.png")
+    comboOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_combo_psth.png")
     print(runName, "LFP tet " + str(lfpTet), "spike tet " + str(spikeTet), "cluster index " + str(clusterIndex),
           recFileName, lfpFileName, spikeFileName, clusterFileName)
 
@@ -150,6 +158,7 @@ def makePSTH(animal_name):
     plt.fill_between(ctrlTvals, ctrlMeanPSTH - ctrlSEM, ctrlMeanPSTH +
                      ctrlSEM, facecolor="cyan", alpha=0.2)
 
+    plt.savefig(comboOutputFileName, dpi=800)
     plt.show()
 
 

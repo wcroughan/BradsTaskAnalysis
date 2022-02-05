@@ -362,7 +362,7 @@ def makeThesisCommitteeFigs():
         else:
             return len(set([k for k, _ in g if k in wellSubset]))
 
-    def makeFiguresForSessions(sessions, outputDir, SKIP_SINGLE_SESSION_PLOTS=True, SKIP_NO_PROBE_SESSION_PLOTS=False, SKIP_PROBE_SESSION_PLOTS=False):
+    def makeFiguresForSessions(sessions, outputDir, SKIP_ALL_SESSIONS_PLOTS=False, SKIP_SINGLE_SESSION_PLOTS=True, SKIP_NO_PROBE_SESSION_PLOTS=False, SKIP_PROBE_SESSION_PLOTS=False):
         fig = plt.figure(figsize=(FIG_SCALE, FIG_SCALE))
         axs = fig.subplots()
 
@@ -385,226 +385,224 @@ def makeThesisCommitteeFigs():
             if sessionsWithProbe[i].isRippleInterruption:
                 sessionWithProbeIsInterruption[i] = True
 
-        if True:
-            if False:
-                # =============
-                # well find latencies
-                homeFindTimes = np.empty((numSessions, 10))
-                homeFindTimes[:] = np.nan
-                for si, sesh in enumerate(sessions):
-                    t1 = np.array(sesh.home_well_find_times)
-                    t0 = np.array(np.hstack(([sesh.bt_pos_ts[0]], sesh.away_well_leave_times)))
-                    if not sesh.ended_on_home:
-                        t0 = t0[0:-1]
-                    times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
-                    homeFindTimes[si, 0:sesh.num_home_found] = times
+        if not SKIP_ALL_SESSIONS_PLOTS:
+            # =============
+            # well find latencies
+            homeFindTimes = np.empty((numSessions, 10))
+            homeFindTimes[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                t1 = np.array(sesh.home_well_find_times)
+                t0 = np.array(np.hstack(([sesh.bt_pos_ts[0]], sesh.away_well_leave_times)))
+                if not sesh.ended_on_home:
+                    t0 = t0[0:-1]
+                times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
+                homeFindTimes[si, 0:sesh.num_home_found] = times
 
-                awayFindTimes = np.empty((numSessions, 10))
-                awayFindTimes[:] = np.nan
-                for si, sesh in enumerate(sessions):
-                    t1 = np.array(sesh.away_well_find_times)
-                    t0 = np.array(sesh.home_well_leave_times)
-                    if sesh.ended_on_home:
-                        t0 = t0[0:-1]
-                    times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
-                    awayFindTimes[si, 0:sesh.num_away_found] = times
+            awayFindTimes = np.empty((numSessions, 10))
+            awayFindTimes[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                t1 = np.array(sesh.away_well_find_times)
+                t0 = np.array(sesh.home_well_leave_times)
+                if sesh.ended_on_home:
+                    t0 = t0[0:-1]
+                times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
+                awayFindTimes[si, 0:sesh.num_away_found] = times
 
-                fig.set_figheight(FIG_SCALE / 2)
-                fig.set_figwidth(FIG_SCALE / 2)
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth(FIG_SCALE / 2)
 
-                pltx = np.arange(10)+1
-                # ymax = max(np.nanmax(homeFindTimes), np.nanmax(awayFindTimes))
-                ymax = 300
-                plotIndividualAndAverage(axs, homeFindTimes, pltx)
-                axs.set_ylim(0, ymax)
-                axs.set_xlim(1, 10)
-                axs.set_xticks(np.arange(0, 10, 2) + 1)
-                axs = saveOrShow("latency_to_home", outputDir=outputDir, statsFile=statsFile)
+            pltx = np.arange(10)+1
+            # ymax = max(np.nanmax(homeFindTimes), np.nanmax(awayFindTimes))
+            ymax = 300
+            plotIndividualAndAverage(axs, homeFindTimes, pltx)
+            axs.set_ylim(0, ymax)
+            axs.set_xlim(1, 10)
+            axs.set_xticks(np.arange(0, 10, 2) + 1)
+            axs = saveOrShow("task_latency_to_home", outputDir=outputDir, statsFile=statsFile)
 
-                plotIndividualAndAverage(axs, awayFindTimes, pltx)
-                axs.set_ylim(0, ymax)
-                axs.set_xlim(1, 10)
-                axs.set_xticks(np.arange(0, 10, 2) + 1)
-                axs = saveOrShow("latency_to_away", outputDir=outputDir, statsFile=statsFile)
+            plotIndividualAndAverage(axs, awayFindTimes, pltx)
+            axs.set_ylim(0, ymax)
+            axs.set_xlim(1, 10)
+            axs.set_xticks(np.arange(0, 10, 2) + 1)
+            axs = saveOrShow("task_latency_to_away", outputDir=outputDir, statsFile=statsFile)
 
-                # =============
-                # well find latencies by condition
-                ymax = 100
-                swrHomeFindTimes = homeFindTimes[sessionIsInterruption, :]
-                ctrlHomeFindTimes = homeFindTimes[np.logical_not(sessionIsInterruption), :]
-                plotIndividualAndAverage(axs, swrHomeFindTimes, pltx,
-                                         individualColor="orange", avgColor="orange", spread="sem")
-                plotIndividualAndAverage(axs, ctrlHomeFindTimes, pltx,
-                                         individualColor="cyan", avgColor="cyan", spread="sem")
-                axs.set_ylim(0, ymax)
-                axs.set_xlim(1, 10)
-                axs.set_xticks(np.arange(0, 10, 2) + 1)
-                axs = saveOrShow("latency_to_home_by_condition",
-                                 outputDir=outputDir, statsFile=statsFile)
+            # =============
+            # well find latencies by condition
+            ymax = 100
+            swrHomeFindTimes = homeFindTimes[sessionIsInterruption, :]
+            ctrlHomeFindTimes = homeFindTimes[np.logical_not(sessionIsInterruption), :]
+            plotIndividualAndAverage(axs, swrHomeFindTimes, pltx,
+                                     individualColor="orange", avgColor="orange", spread="sem")
+            plotIndividualAndAverage(axs, ctrlHomeFindTimes, pltx,
+                                     individualColor="cyan", avgColor="cyan", spread="sem")
+            axs.set_ylim(0, ymax)
+            axs.set_xlim(1, 10)
+            axs.set_xticks(np.arange(0, 10, 2) + 1)
+            axs = saveOrShow("task_latency_to_home_by_condition",
+                             outputDir=outputDir, statsFile=statsFile)
 
-                swrAwayFindTimes = awayFindTimes[sessionIsInterruption, :]
-                ctrlAwayFindTimes = awayFindTimes[np.logical_not(sessionIsInterruption), :]
-                plotIndividualAndAverage(axs, swrAwayFindTimes, pltx,
-                                         individualColor="orange", avgColor="orange", spread="sem")
-                plotIndividualAndAverage(axs, ctrlAwayFindTimes, pltx,
-                                         individualColor="cyan", avgColor="cyan", spread="sem")
-                axs.set_ylim(0, ymax)
-                axs.set_xlim(1, 10)
-                axs.set_xticks(np.arange(0, 10, 2) + 1)
-                axs = saveOrShow("latency_to_away_by_condition",
-                                 outputDir=outputDir, statsFile=statsFile)
+            swrAwayFindTimes = awayFindTimes[sessionIsInterruption, :]
+            ctrlAwayFindTimes = awayFindTimes[np.logical_not(sessionIsInterruption), :]
+            plotIndividualAndAverage(axs, swrAwayFindTimes, pltx,
+                                     individualColor="orange", avgColor="orange", spread="sem")
+            plotIndividualAndAverage(axs, ctrlAwayFindTimes, pltx,
+                                     individualColor="cyan", avgColor="cyan", spread="sem")
+            axs.set_ylim(0, ymax)
+            axs.set_xlim(1, 10)
+            axs.set_xticks(np.arange(0, 10, 2) + 1)
+            axs = saveOrShow("task_latency_to_away_by_condition",
+                             outputDir=outputDir, statsFile=statsFile)
 
-                # =============
-                # average vel in probe
-                windowSize = 15
-                windowsSlide = 3
-                t0Array = np.arange(0, 60*5-windowSize+windowsSlide, windowsSlide)
-                avgVels = np.empty((numSessionsWithProbe, len(t0Array)))
-                avgVels[:] = np.nan
-                for si, sesh in enumerate(sessionsWithProbe):
-                    for ti, t0 in enumerate(t0Array):
-                        avgVels[si, ti] = sesh.mean_vel(True, timeInterval=[t0, t0+windowSize])
-                plotIndividualAndAverage(axs, avgVels, t0Array)
-                axs.set_xticks(np.arange(0, 60*5+1, 60))
-                axs = saveOrShow("avgVel_probe", outputDir=outputDir, statsFile=statsFile)
+            # =============
+            # average vel in probe
+            windowSize = 15
+            windowsSlide = 3
+            t0Array = np.arange(0, 60*5-windowSize+windowsSlide, windowsSlide)
+            avgVels = np.empty((numSessionsWithProbe, len(t0Array)))
+            avgVels[:] = np.nan
+            for si, sesh in enumerate(sessionsWithProbe):
+                for ti, t0 in enumerate(t0Array):
+                    avgVels[si, ti] = sesh.mean_vel(True, timeInterval=[t0, t0+windowSize])
+            plotIndividualAndAverage(axs, avgVels, t0Array)
+            axs.set_xticks(np.arange(0, 60*5+1, 60))
+            axs = saveOrShow("probe_avgVel", outputDir=outputDir, statsFile=statsFile)
 
-                # =============
-                # average vel in probe by condition
-                swrAvgVels = avgVels[sessionWithProbeIsInterruption, :]
-                ctrlAvgVels = avgVels[np.logical_not(sessionWithProbeIsInterruption), :]
-                plotIndividualAndAverage(axs, swrAvgVels, t0Array,
-                                         individualColor="orange", avgColor="orange", spread="sem")
-                plotIndividualAndAverage(axs, ctrlAvgVels, t0Array,
-                                         individualColor="cyan", avgColor="cyan", spread="sem")
-                axs.set_xticks(np.arange(0, 60*5+1, 60))
-                axs = saveOrShow("avgVel_probe_by_condition",
-                                 outputDir=outputDir, statsFile=statsFile)
+            # =============
+            # average vel in probe by condition
+            swrAvgVels = avgVels[sessionWithProbeIsInterruption, :]
+            ctrlAvgVels = avgVels[np.logical_not(sessionWithProbeIsInterruption), :]
+            plotIndividualAndAverage(axs, swrAvgVels, t0Array,
+                                     individualColor="orange", avgColor="orange", spread="sem")
+            plotIndividualAndAverage(axs, ctrlAvgVels, t0Array,
+                                     individualColor="cyan", avgColor="cyan", spread="sem")
+            axs.set_xticks(np.arange(0, 60*5+1, 60))
+            axs = saveOrShow("probe_avgVel_by_condition",
+                             outputDir=outputDir, statsFile=statsFile)
 
-                # =============
-                # average vel in task
-                windowSize = 60
-                windowsSlide = 12
-                t0Array = np.arange(0, 60*20-windowSize+windowsSlide, windowsSlide)
-                avgVels = np.empty((numSessions, len(t0Array)))
-                avgVels[:] = np.nan
-                for si, sesh in enumerate(sessions):
-                    duration = (sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0]) / \
-                        BTSession.TRODES_SAMPLING_RATE
-                    for ti, t0 in enumerate(t0Array):
-                        if t0+windowSize > duration:
-                            axs.scatter(t0, avgVels[si, ti-1], c="black", zorder=0, s=1)
-                            break
-                        avgVels[si, ti] = sesh.mean_vel(False, timeInterval=[t0, t0+windowSize])
-                plotIndividualAndAverage(axs, avgVels, t0Array)
-                axs.set_xticks(np.arange(0, 60*20+1, 60*5))
-                axs = saveOrShow("avgVel_task", outputDir=outputDir, statsFile=statsFile)
+            # =============
+            # average vel in task
+            windowSize = 60
+            windowsSlide = 12
+            t0Array = np.arange(0, 60*20-windowSize+windowsSlide, windowsSlide)
+            avgVels = np.empty((numSessions, len(t0Array)))
+            avgVels[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                duration = (sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0]) / \
+                    BTSession.TRODES_SAMPLING_RATE
+                for ti, t0 in enumerate(t0Array):
+                    if t0+windowSize > duration:
+                        axs.scatter(t0, avgVels[si, ti-1], c="black", zorder=0, s=1)
+                        break
+                    avgVels[si, ti] = sesh.mean_vel(False, timeInterval=[t0, t0+windowSize])
+            plotIndividualAndAverage(axs, avgVels, t0Array)
+            axs.set_xticks(np.arange(0, 60*20+1, 60*5))
+            axs = saveOrShow("task_avgVel", outputDir=outputDir, statsFile=statsFile)
 
-                # =============
-                # average vel in task by condition
-                swrAvgVels = avgVels[sessionIsInterruption, :]
-                ctrlAvgVels = avgVels[np.logical_not(sessionIsInterruption), :]
-                plotIndividualAndAverage(axs, swrAvgVels, t0Array,
-                                         individualColor="orange", avgColor="orange", spread="sem")
-                plotIndividualAndAverage(axs, ctrlAvgVels, t0Array,
-                                         individualColor="cyan", avgColor="cyan", spread="sem")
-                axs.set_xticks(np.arange(0, 60*20+1, 60*5))
-                axs = saveOrShow("avgVel_task_by_condition",
-                                 outputDir=outputDir, statsFile=statsFile)
+            # =============
+            # average vel in task by condition
+            swrAvgVels = avgVels[sessionIsInterruption, :]
+            ctrlAvgVels = avgVels[np.logical_not(sessionIsInterruption), :]
+            plotIndividualAndAverage(axs, swrAvgVels, t0Array,
+                                     individualColor="orange", avgColor="orange", spread="sem")
+            plotIndividualAndAverage(axs, ctrlAvgVels, t0Array,
+                                     individualColor="cyan", avgColor="cyan", spread="sem")
+            axs.set_xticks(np.arange(0, 60*20+1, 60*5))
+            axs = saveOrShow("task_avgVel_by_condition",
+                             outputDir=outputDir, statsFile=statsFile)
 
-                # =============
-                # frac time exploring in probe
-                windowSize = 15
-                windowsSlide = 3
-                t0Array = np.arange(0, 60*5-windowSize+windowsSlide, windowsSlide)
-                fracExplores = np.empty((numSessionsWithProbe, len(t0Array)))
-                fracExplores[:] = np.nan
-                for si, sesh in enumerate(sessionsWithProbe):
-                    for ti, t0 in enumerate(t0Array):
-                        fracExplores[si, ti] = sesh.prop_time_in_bout_state(
-                            True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[t0, t0+windowSize])
-                plotIndividualAndAverage(axs, fracExplores, t0Array)
-                axs.set_xticks(np.arange(0, 60*5+1, 60))
-                axs = saveOrShow("fracExplore_probe", outputDir=outputDir, statsFile=statsFile)
+            # =============
+            # frac time exploring in probe
+            windowSize = 15
+            windowsSlide = 3
+            t0Array = np.arange(0, 60*5-windowSize+windowsSlide, windowsSlide)
+            fracExplores = np.empty((numSessionsWithProbe, len(t0Array)))
+            fracExplores[:] = np.nan
+            for si, sesh in enumerate(sessionsWithProbe):
+                for ti, t0 in enumerate(t0Array):
+                    fracExplores[si, ti] = sesh.prop_time_in_bout_state(
+                        True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[t0, t0+windowSize])
+            plotIndividualAndAverage(axs, fracExplores, t0Array)
+            axs.set_xticks(np.arange(0, 60*5+1, 60))
+            axs = saveOrShow("probe_fracExplore", outputDir=outputDir, statsFile=statsFile)
 
-                # =============
-                # frac time exploring in probe by condition
-                swrfracExplores = fracExplores[sessionWithProbeIsInterruption, :]
-                ctrlfracExplores = fracExplores[np.logical_not(sessionWithProbeIsInterruption), :]
-                plotIndividualAndAverage(axs, swrfracExplores, t0Array,
-                                         individualColor="orange", avgColor="orange", spread="sem")
-                plotIndividualAndAverage(axs, ctrlfracExplores, t0Array,
-                                         individualColor="cyan", avgColor="cyan", spread="sem")
-                axs.set_xticks(np.arange(0, 60*5+1, 60))
-                axs = saveOrShow("fracExplore_probe_by_condition",
-                                 outputDir=outputDir, statsFile=statsFile)
+            # =============
+            # frac time exploring in probe by condition
+            swrfracExplores = fracExplores[sessionWithProbeIsInterruption, :]
+            ctrlfracExplores = fracExplores[np.logical_not(sessionWithProbeIsInterruption), :]
+            plotIndividualAndAverage(axs, swrfracExplores, t0Array,
+                                     individualColor="orange", avgColor="orange", spread="sem")
+            plotIndividualAndAverage(axs, ctrlfracExplores, t0Array,
+                                     individualColor="cyan", avgColor="cyan", spread="sem")
+            axs.set_xticks(np.arange(0, 60*5+1, 60))
+            axs = saveOrShow("probe_fracExplore_by_condition",
+                             outputDir=outputDir, statsFile=statsFile)
 
-                if False:
-                    # =============
-                    # frac time exploring in task
-                    windowSize = 60
-                    windowsSlide = 12
-                    t0Array = np.arange(0, 60*20-windowSize+windowsSlide, windowsSlide)
-                    fracExplores = np.empty((numSessions, len(t0Array)))
-                    fracExplores[:] = np.nan
-                    for si, sesh in enumerate(sessions):
-                        duration = (sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0]) / \
-                            BTSession.TRODES_SAMPLING_RATE
-                        for ti, t0 in enumerate(t0Array):
-                            if t0+windowSize > duration:
-                                axs.scatter(t0, fracExplores[si, ti-1], c="black", zorder=0, s=1)
-                                break
-                            fracExplores[si, ti] = sesh.prop_time_in_bout_state(
-                                False, BTSession.BOUT_STATE_EXPLORE, timeInterval=[t0, t0+windowSize])
-                    plotIndividualAndAverage(axs, fracExplores, t0Array)
-                    axs.set_xticks(np.arange(0, 60*20+1, 60*5))
-                    axs = saveOrShow("fracExplore_task", outputDir=outputDir, statsFile=statsFile)
+            # =============
+            # frac time exploring in task
+            windowSize = 60
+            windowsSlide = 12
+            t0Array = np.arange(0, 60*20-windowSize+windowsSlide, windowsSlide)
+            fracExplores = np.empty((numSessions, len(t0Array)))
+            fracExplores[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                duration = (sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0]) / \
+                    BTSession.TRODES_SAMPLING_RATE
+                for ti, t0 in enumerate(t0Array):
+                    if t0+windowSize > duration:
+                        axs.scatter(t0, fracExplores[si, ti-1], c="black", zorder=0, s=1)
+                        break
+                    fracExplores[si, ti] = sesh.prop_time_in_bout_state(
+                        False, BTSession.BOUT_STATE_EXPLORE, timeInterval=[t0, t0+windowSize])
+            plotIndividualAndAverage(axs, fracExplores, t0Array)
+            axs.set_xticks(np.arange(0, 60*20+1, 60*5))
+            axs = saveOrShow("task_fracExplore", outputDir=outputDir, statsFile=statsFile)
 
-                    # =============
-                    # frac time exploring in task by condition
-                    swrfracExplores = fracExplores[sessionIsInterruption, :]
-                    ctrlfracExplores = fracExplores[np.logical_not(sessionIsInterruption), :]
-                    plotIndividualAndAverage(axs, swrfracExplores, t0Array,
-                                             individualColor="orange", avgColor="orange", spread="sem")
-                    plotIndividualAndAverage(axs, ctrlfracExplores, t0Array,
-                                             individualColor="cyan", avgColor="cyan", spread="sem")
-                    axs.set_xticks(np.arange(0, 60*20+1, 60*5))
-                    axs = saveOrShow("fracExplore_task_by_condition",
-                                     outputDir=outputDir, statsFile=statsFile)
+            # =============
+            # frac time exploring in task by condition
+            swrfracExplores = fracExplores[sessionIsInterruption, :]
+            ctrlfracExplores = fracExplores[np.logical_not(sessionIsInterruption), :]
+            plotIndividualAndAverage(axs, swrfracExplores, t0Array,
+                                     individualColor="orange", avgColor="orange", spread="sem")
+            plotIndividualAndAverage(axs, ctrlfracExplores, t0Array,
+                                     individualColor="cyan", avgColor="cyan", spread="sem")
+            axs.set_xticks(np.arange(0, 60*20+1, 60*5))
+            axs = saveOrShow("task_fracExplore_by_condition",
+                             outputDir=outputDir, statsFile=statsFile)
 
-                # =============
-                # Interruption condition probe traces
-                numSWRSessionsWithProbe = np.count_nonzero(sessionWithProbeIsInterruption)
-                fig.set_figheight(math.ceil(numSWRSessionsWithProbe / 2) * FIG_SCALE / 2)
-                fig.set_figwidth(2 * FIG_SCALE / 2)
-                axs = fig.subplots(math.ceil(numSWRSessionsWithProbe / 2), 2)
-                for si, sesh in enumerate(np.array(sessionsWithProbe)[sessionWithProbeIsInterruption]):
-                    axs[si // 2, si % 2].plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
-                    setupBehaviorTracePlot(axs[si // 2, si % 2], sesh)
-                if numSWRSessionsWithProbe % 2 == 1:
-                    axs[-1, 1].cla()
-                    axs[-1, 1].tick_params(axis="both", which="both", label1On=False,
-                                           label2On=False, tick1On=False, tick2On=False)
-                axs = saveOrShow("swr_probe_traces", outputDir=outputDir, statsFile=statsFile)
-                fig.set_figheight(FIG_SCALE)
-                fig.set_figwidth(FIG_SCALE)
+            # =============
+            # Interruption condition probe traces
+            numSWRSessionsWithProbe = np.count_nonzero(sessionWithProbeIsInterruption)
+            fig.set_figheight(math.ceil(numSWRSessionsWithProbe / 2) * FIG_SCALE / 2)
+            fig.set_figwidth(2 * FIG_SCALE / 2)
+            axs = fig.subplots(math.ceil(numSWRSessionsWithProbe / 2), 2)
+            for si, sesh in enumerate(np.array(sessionsWithProbe)[sessionWithProbeIsInterruption]):
+                axs[si // 2, si % 2].plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                setupBehaviorTracePlot(axs[si // 2, si % 2], sesh)
+            if numSWRSessionsWithProbe % 2 == 1:
+                axs[-1, 1].cla()
+                axs[-1, 1].tick_params(axis="both", which="both", label1On=False,
+                                       label2On=False, tick1On=False, tick2On=False)
+            axs = saveOrShow("probe_traces_swr", outputDir=outputDir, statsFile=statsFile)
+            fig.set_figheight(FIG_SCALE)
+            fig.set_figwidth(FIG_SCALE)
 
-                # =============
-                # control condition probe traces
-                numCtrlSessionsWithProbe = np.count_nonzero(
-                    np.logical_not(sessionWithProbeIsInterruption))
-                fig.set_figheight(math.ceil(numCtrlSessionsWithProbe / 2) * FIG_SCALE / 2)
-                fig.set_figwidth(2 * FIG_SCALE / 2)
-                axs = fig.subplots(math.ceil(numCtrlSessionsWithProbe / 2), 2)
-                for si, sesh in enumerate(np.array(sessionsWithProbe)[np.logical_not(sessionWithProbeIsInterruption)]):
-                    axs[si // 2, si % 2].plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
-                    setupBehaviorTracePlot(axs[si // 2, si % 2], sesh)
-                if numCtrlSessionsWithProbe % 2 == 1:
-                    axs[-1, 1].cla()
-                    axs[-1, 1].tick_params(axis="both", which="both", label1On=False,
-                                           label2On=False, tick1On=False, tick2On=False)
-                axs = saveOrShow("ctrl_probe_traces", outputDir=outputDir, statsFile=statsFile)
-                fig.set_figheight(FIG_SCALE)
-                fig.set_figwidth(FIG_SCALE)
+            # =============
+            # control condition probe traces
+            numCtrlSessionsWithProbe = np.count_nonzero(
+                np.logical_not(sessionWithProbeIsInterruption))
+            fig.set_figheight(math.ceil(numCtrlSessionsWithProbe / 2) * FIG_SCALE / 2)
+            fig.set_figwidth(2 * FIG_SCALE / 2)
+            axs = fig.subplots(math.ceil(numCtrlSessionsWithProbe / 2), 2)
+            for si, sesh in enumerate(np.array(sessionsWithProbe)[np.logical_not(sessionWithProbeIsInterruption)]):
+                axs[si // 2, si % 2].plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                setupBehaviorTracePlot(axs[si // 2, si % 2], sesh)
+            if numCtrlSessionsWithProbe % 2 == 1:
+                axs[-1, 1].cla()
+                axs[-1, 1].tick_params(axis="both", which="both", label1On=False,
+                                       label2On=False, tick1On=False, tick2On=False)
+            axs = saveOrShow("probe_traces_ctrl", outputDir=outputDir, statsFile=statsFile)
+            fig.set_figheight(FIG_SCALE)
+            fig.set_figwidth(FIG_SCALE)
 
             # =============
             # probe latency to home
@@ -799,7 +797,7 @@ def makeThesisCommitteeFigs():
                         sesh.probe_nearest_wells[0:i1], countReturns=False)
             plotIndividualAndAverage(axs, numVisited, t1Array)
             axs.set_xticks(np.arange(0, 60*5+1, 60))
-            axs = saveOrShow("numVisitedOverTime", outputDir=outputDir, statsFile=statsFile)
+            axs = saveOrShow("probe_numVisitedOverTime", outputDir=outputDir, statsFile=statsFile)
 
             # =============
             # num wells visited in probe by time by condition
@@ -810,7 +808,7 @@ def makeThesisCommitteeFigs():
             plotIndividualAndAverage(axs, ctrlfracExplores, t1Array,
                                      individualColor="cyan", avgColor="cyan", spread="sem")
             axs.set_xticks(np.arange(0, 60*5+1, 60))
-            axs = saveOrShow("numVisitedOverTime_by_condition",
+            axs = saveOrShow("probe_numVisitedOverTime_by_condition",
                              outputDir=outputDir, statsFile=statsFile)
 
             # =============
@@ -1141,7 +1139,7 @@ def makeThesisCommitteeFigs():
                 individualColor="cyan", avgColor="cyan", spread="sem")
             axs.set_xlim(0, 60)
             axs.set_ylim(0, 36)
-            axs = saveOrShow("wellsCheckedAfterRewardHome",
+            axs = saveOrShow("task_wellsCheckedAfterRewardHome",
                              outputDir=outputDir, statsFile=statsFile)
             plotIndividualAndAverage(axs, numWellsChecked[np.logical_and(terminationCondition == "found", np.logical_and(
                 seshCat == "Interruption", wellCat == "away")), :], t1Array,
@@ -1151,7 +1149,7 @@ def makeThesisCommitteeFigs():
                 individualColor="cyan", avgColor="cyan", spread="sem")
             axs.set_xlim(0, 60)
             axs.set_ylim(0, 36)
-            axs = saveOrShow("wellsCheckedAfterRewardAway",
+            axs = saveOrShow("task_wellsCheckedAfterRewardAway",
                              outputDir=outputDir, statsFile=statsFile)
 
             plotIndividualAndAverage(axs, numTimesHomeWellChecked[homeWellCheckSeshCat == "Interruption", :], t1Array,
@@ -1160,7 +1158,7 @@ def makeThesisCommitteeFigs():
                                      individualColor="cyan", avgColor="cyan", spread="sem")
             axs.set_xlim(0, 60)
             # axs.set_ylim(0, 36)
-            axs = saveOrShow("numTimesHomeWellChecked_by_condition",
+            axs = saveOrShow("task_numTimesHomeWellChecked_by_condition",
                              outputDir=outputDir, statsFile=statsFile)
 
             numRepeatsChecked = numWellsCheckedWithRepeats - numWellsChecked
@@ -1172,7 +1170,7 @@ def makeThesisCommitteeFigs():
                 individualColor="cyan", avgColor="cyan", spread="sem")
             axs.set_xlim(0, 120)
             axs.set_ylim(0, 36)
-            axs = saveOrShow("repeatsCheckedAfterRewardHome",
+            axs = saveOrShow("task_repeatsCheckedAfterRewardHome",
                              outputDir=outputDir, statsFile=statsFile)
             plotIndividualAndAverage(axs, numRepeatsChecked[np.logical_and(terminationCondition == "found", np.logical_and(
                 seshCat == "Interruption", wellCat == "away")), :], t1Array,
@@ -1182,7 +1180,7 @@ def makeThesisCommitteeFigs():
                 individualColor="cyan", avgColor="cyan", spread="sem")
             axs.set_xlim(0, 120)
             axs.set_ylim(0, 36)
-            axs = saveOrShow("repeatsCheckedAfterRewardAway",
+            axs = saveOrShow("task_repeatsCheckedAfterRewardAway",
                              outputDir=outputDir, statsFile=statsFile)
 
             # check more wells or repeats on way to home well in one condition?
@@ -1194,14 +1192,14 @@ def makeThesisCommitteeFigs():
             yvals = np.nanmax(yvals, axis=1)
             boxPlot(axs, yvals, cat1, categories2=cat2, violin=True, axesNames=[
                     "Condition", "Num checked before next reward", "Trial Type"], statsFile=statsFile)
-            axs = saveOrShow("num_checked_before_next_reward",
+            axs = saveOrShow("task_num_checked_before_next_reward",
                              outputDir=outputDir, statsFile=statsFile)
 
             yvals = numRepeatsChecked[idx]
             yvals = np.nanmax(yvals, axis=1)
             boxPlot(axs, yvals, cat1, categories2=cat2, violin=True, axesNames=[
                     "Condition", "Num repeats checked before next reward", "Trial Type"], statsFile=statsFile)
-            axs = saveOrShow("num_repeats_checked_before_next_reward",
+            axs = saveOrShow("task_num_repeats_checked_before_next_reward",
                              outputDir=outputDir, statsFile=statsFile)
 
             idx = np.logical_and(terminationCondition == "found", trialIdx > 4)
@@ -1212,43 +1210,42 @@ def makeThesisCommitteeFigs():
             yvals = np.nanmax(yvals, axis=1)
             boxPlot(axs, yvals, cat1, categories2=cat2, violin=True, axesNames=[
                     "Condition", "Num checked before next reward", "Trial Type"], statsFile=statsFile)
-            axs = saveOrShow("num_checked_before_next_reward_secondhalf",
+            axs = saveOrShow("task_num_checked_before_next_reward_secondhalf",
                              outputDir=outputDir, statsFile=statsFile)
 
             yvals = numRepeatsChecked[idx]
             yvals = np.nanmax(yvals, axis=1)
             boxPlot(axs, yvals, cat1, categories2=cat2, violin=True, axesNames=[
                     "Condition", "Num repeats checked before next reward", "Trial Type"], statsFile=statsFile)
-            axs = saveOrShow("num_repeats_checked_before_next_reward_secondhalf",
+            axs = saveOrShow("task_num_repeats_checked_before_next_reward_secondhalf",
                              outputDir=outputDir, statsFile=statsFile)
 
-        # =============
-        # stim rate at different well types
-        wellCats = []
-        seshCats = []
-        vals = []
-        for sesh in sessions:
-            seshCats.append(
-                "Interruption" if sesh.isRippleInterruption else "Control")
-            wellCats.append("home")
-            vals.append(sesh.numStimsAtWell(sesh.home_well) /
-                        sesh.total_dwell_time(False, sesh.home_well))
-
-            for aw in sesh.visited_away_wells:
+            # =============
+            # stim rate at different well types
+            wellCats = []
+            seshCats = []
+            vals = []
+            for sesh in sessions:
                 seshCats.append(
                     "Interruption" if sesh.isRippleInterruption else "Control")
-                wellCats.append("away")
-                vals.append(sesh.numStimsAtWell(aw) / sesh.total_dwell_time(False, aw))
+                wellCats.append("home")
+                vals.append(sesh.numStimsAtWell(sesh.home_well) /
+                            sesh.total_dwell_time(False, sesh.home_well))
 
-        boxPlot(axs, vals, seshCats, categories2=wellCats, violin=True, axesNames=[
-                "Condition", "Stim rate (Hz)", "Well type"], statsFile=statsFile)
-        axs = saveOrShow("stim_rate_at_wells", outputDir=outputDir, statsFile=statsFile)
+                for aw in sesh.visited_away_wells:
+                    seshCats.append(
+                        "Interruption" if sesh.isRippleInterruption else "Control")
+                    wellCats.append("away")
+                    vals.append(sesh.numStimsAtWell(aw) / sesh.total_dwell_time(False, aw))
 
-        if False:
+            boxPlot(axs, vals, seshCats, categories2=wellCats, violin=True, axesNames=[
+                    "Condition", "Stim rate (Hz)", "Well type"], statsFile=statsFile)
+            axs = saveOrShow("lfp_stim_rate_at_wells", outputDir=outputDir, statsFile=statsFile)
+
             # =============
             # cumulative number of stims and ripples
             windowSize = 5
-            bins = np.arange(0, 60*20+1, windowsSize)
+            bins = np.arange(0, 60*20+1, windowSize)
             stimCounts = np.empty((numSessions, len(bins)-1))
             rippleCounts = np.empty((numSessions, len(bins)-1))
             for si, sesh in enumerate(sessions):
@@ -1256,18 +1253,21 @@ def makeThesisCommitteeFigs():
                 stimTs = stimTs[np.logical_and(stimTs > sesh.bt_pos_ts[0], stimTs <
                                                sesh.bt_pos_ts[-1])] - sesh.bt_pos_ts[0]
                 stimTs /= BTSession.TRODES_SAMPLING_RATE
-                stimCounts[si, :] = np.histogram(stimTs, bins=bins)
+                stimCounts[si, :], _ = np.histogram(stimTs, bins=bins)
 
                 ripTs = np.array(sesh.btRipStartTimstampsPreStats)
                 ripTs = ripTs[np.logical_and(ripTs > sesh.bt_pos_ts[0], ripTs <
                                              sesh.bt_pos_ts[-1])] - sesh.bt_pos_ts[0]
                 ripTs /= BTSession.TRODES_SAMPLING_RATE
-                rippleCounts[si, :] = np.histogram(ripTs, bins=bins)
+                rippleCounts[si, :], _ = np.histogram(ripTs, bins=bins)
+
+            stimCounts = np.cumsum(stimCounts, axis=1)
+            rippleCounts = np.cumsum(rippleCounts, axis=1)
 
             plotIndividualAndAverage(axs, stimCounts, bins[1:])
-            axs = saveOrShow("stimCounts", outputDir=outputDir, statsFile=statsFile)
+            axs = saveOrShow("lfp_stimCounts", outputDir=outputDir, statsFile=statsFile)
             plotIndividualAndAverage(axs, rippleCounts, bins[1:])
-            axs = saveOrShow("rippleCounts", outputDir=outputDir, statsFile=statsFile)
+            axs = saveOrShow("lfp_rippleCounts", outputDir=outputDir, statsFile=statsFile)
 
             stimCountsSWR = stimCounts[sessionIsInterruption, :]
             stimCountsCtrl = stimCounts[np.logical_not(sessionIsInterruption), :]
@@ -1275,7 +1275,8 @@ def makeThesisCommitteeFigs():
                                      individualColor="orange", avgColor="orange", spread="sem")
             plotIndividualAndAverage(axs, stimCountsCtrl, bins[1:],
                                      individualColor="cyan", avgColor="cyan", spread="sem")
-            axs = saveOrShow("stimCounts_by_condition", outputDir=outputDir, statsFile=statsFile)
+            axs = saveOrShow("lfp_stimCounts_by_condition",
+                             outputDir=outputDir, statsFile=statsFile)
 
             rippleCountsSWR = rippleCounts[sessionIsInterruption, :]
             rippleCountsCtrl = rippleCounts[np.logical_not(sessionIsInterruption), :]
@@ -1283,22 +1284,25 @@ def makeThesisCommitteeFigs():
                                      individualColor="orange", avgColor="orange", spread="sem")
             plotIndividualAndAverage(axs, rippleCountsCtrl, bins[1:],
                                      individualColor="cyan", avgColor="cyan", spread="sem")
-            axs = saveOrShow("rippleCounts_by_condition", outputDir=outputDir, statsFile=statsFile)
+            axs = saveOrShow("lfp_rippleCounts_by_condition",
+                             outputDir=outputDir, statsFile=statsFile)
 
             # =============
             # cumulative number of ripples (just when using probe stats)
             windowSize = 5
-            bins = np.arange(0, 60*20+1, windowsSize)
+            bins = np.arange(0, 60*20+1, windowSize)
             rippleCounts = np.empty((numSessionsWithProbe, len(bins)-1))
             for si, sesh in enumerate(sessionsWithProbe):
                 ripTs = np.array(sesh.btRipStartTimstampsProbeStats)
                 ripTs = ripTs[np.logical_and(ripTs > sesh.bt_pos_ts[0], ripTs <
                                              sesh.bt_pos_ts[-1])] - sesh.bt_pos_ts[0]
                 ripTs /= BTSession.TRODES_SAMPLING_RATE
-                rippleCounts[si, :] = np.histogram(ripTs, bins=bins)
+                rippleCounts[si, :], _ = np.histogram(ripTs, bins=bins)
+
+            rippleCounts = np.cumsum(rippleCounts, axis=1)
 
             plotIndividualAndAverage(axs, rippleCounts, bins[1:])
-            axs = saveOrShow("rippleCountsProbeStats", outputDir=outputDir, statsFile=statsFile)
+            axs = saveOrShow("lfp_rippleCountsProbeStats", outputDir=outputDir, statsFile=statsFile)
 
             rippleCountsSWR = rippleCounts[sessionWithProbeIsInterruption, :]
             rippleCountsCtrl = rippleCounts[np.logical_not(sessionWithProbeIsInterruption), :]
@@ -1306,7 +1310,7 @@ def makeThesisCommitteeFigs():
                                      individualColor="orange", avgColor="orange", spread="sem")
             plotIndividualAndAverage(axs, rippleCountsCtrl, bins[1:],
                                      individualColor="cyan", avgColor="cyan", spread="sem")
-            axs = saveOrShow("rippleCountsProbeStats_by_condition",
+            axs = saveOrShow("lfp_rippleCountsProbeStats_by_condition",
                              outputDir=outputDir, statsFile=statsFile)
 
         # s.numStimsAtWell(w)
@@ -1334,7 +1338,23 @@ def makeThesisCommitteeFigs():
             # Raw behavioral trace (task)
             axs.plot(sesh.bt_pos_xs, sesh.bt_pos_ys, c="#deac7f")
             setupBehaviorTracePlot(axs, sesh)
-            axs = saveOrShow("raw_task", outputDir=seshOutputDir, statsFile=statsFile)
+            axs = saveOrShow("task_raw", outputDir=seshOutputDir, statsFile=statsFile)
+
+            # =============
+            # Raw behavioral trace (task) colored by curvature
+            def lerp(v, c1, c2):
+                return np.clip(c1 * (1. - v) + v * c2, 0, 1)
+
+            def normalized(a):
+                return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a))
+
+            curve = normalized(sesh.bt_curvature)
+            col1 = np.array([0, 1, 1, 1])
+            col2 = np.array([1, 0, 0, 1])
+            for i in range(len(sesh.bt_pos_xs)-1):
+                axs.plot(sesh.bt_pos_xs[i:i+2], sesh.bt_pos_ys[i:i+2], c=lerp(curve[i], col1, col2))
+            setupBehaviorTracePlot(axs, sesh)
+            axs = saveOrShow("task_curvature_color", outputDir=seshOutputDir, statsFile=statsFile)
 
             # =============
             # Trace split by trial
@@ -1362,25 +1382,26 @@ def makeThesisCommitteeFigs():
                 setupBehaviorTracePlot(axs, sesh, showAllWells=True, showAways=False, zorder=1)
                 if sesh.ended_on_home:
                     axs[1, -1].cla()
-                axs = saveOrShow("all_trials", outputDir=seshOutputDir, statsFile=statsFile)
+                axs = saveOrShow("task_all_trials", outputDir=seshOutputDir, statsFile=statsFile)
                 fig.set_figheight(FIG_SCALE)
                 fig.set_figwidth(FIG_SCALE)
 
-            for fti, ft in enumerate(sesh.home_well_find_pos_idxs):
-                i1 = 0 if fti == 0 else sesh.away_well_leave_pos_idxs[fti-1]
-                i2 = ft
-                axs.plot(sesh.bt_pos_xs[i1:i2], sesh.bt_pos_ys[i1:i2], c="#deac7f")
-                setupBehaviorTracePlot(axs, sesh)
-                axs = saveOrShow("home_find_{}".format(
-                    fti), outputDir=seshOutputDir, statsFile=statsFile)
+            if False:
+                for fti, ft in enumerate(sesh.home_well_find_pos_idxs):
+                    i1 = 0 if fti == 0 else sesh.away_well_leave_pos_idxs[fti-1]
+                    i2 = ft
+                    axs.plot(sesh.bt_pos_xs[i1:i2], sesh.bt_pos_ys[i1:i2], c="#deac7f")
+                    setupBehaviorTracePlot(axs, sesh)
+                    axs = saveOrShow("task_home_find_{}".format(
+                        fti), outputDir=seshOutputDir, statsFile=statsFile)
 
-            for fti, ft in enumerate(sesh.away_well_find_pos_idxs):
-                i1 = sesh.home_well_leave_pos_idxs[fti]
-                i2 = ft
-                axs.plot(sesh.bt_pos_xs[i1:i2], sesh.bt_pos_ys[i1:i2], c="#deac7f")
-                setupBehaviorTracePlot(axs, sesh)
-                axs = saveOrShow("away_find_{}".format(
-                    fti), outputDir=seshOutputDir, statsFile=statsFile)
+                for fti, ft in enumerate(sesh.away_well_find_pos_idxs):
+                    i1 = sesh.home_well_leave_pos_idxs[fti]
+                    i2 = ft
+                    axs.plot(sesh.bt_pos_xs[i1:i2], sesh.bt_pos_ys[i1:i2], c="#deac7f")
+                    setupBehaviorTracePlot(axs, sesh)
+                    axs = saveOrShow("task_away_find_{}".format(
+                        fti), outputDir=seshOutputDir, statsFile=statsFile)
 
         for sesh in sessionsWithProbe:
             if SKIP_PROBE_SESSION_PLOTS:
@@ -1395,8 +1416,25 @@ def makeThesisCommitteeFigs():
             # Raw behavioral trace (probe)
             axs.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
             setupBehaviorTracePlot(axs, sesh)
-            axs = saveOrShow("raw_probe".format(sesh.name),
+            axs = saveOrShow("probe_raw".format(sesh.name),
                              outputDir=seshOutputDir, statsFile=statsFile)
+
+            # =============
+            # Raw behavioral trace (probe) colored by curvature
+            def lerp(v, c1, c2):
+                return np.clip(c1 * (1. - v) + v * c2, 0, 1)
+
+            def normalized(a):
+                return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a))
+
+            curve = normalized(sesh.probe_curvature)
+            col1 = np.array([0, 1, 1, 1])
+            col2 = np.array([1, 0, 0, 1])
+            for i in range(len(sesh.probe_pos_xs)-1):
+                axs.plot(sesh.probe_pos_xs[i:i+2],
+                         sesh.probe_pos_ys[i:i+2], c=lerp(curve[i], col1, col2))
+            setupBehaviorTracePlot(axs, sesh)
+            axs = saveOrShow("probe_curvature_color", outputDir=seshOutputDir, statsFile=statsFile)
 
     for animalName in animalNames:
         # if animalName == "B14":
@@ -1404,12 +1442,13 @@ def makeThesisCommitteeFigs():
         print("==========================\n" + animalName)
         animalOutputDir = os.path.join(globalOutputDir, animalName)
         sessions = allSessionsByRat[animalName]
-        makeFiguresForSessions(sessions, animalOutputDir)
+        makeFiguresForSessions(sessions, animalOutputDir,
+                               SKIP_ALL_SESSIONS_PLOTS=True, SKIP_SINGLE_SESSION_PLOTS=False)
 
     print("==========================\nPrince Martin")
     princeMartinOutputDir = os.path.join(globalOutputDir, "PrinceMartin")
     sessions = allSessionsByRat["B13"] + allSessionsByRat["Martin"]
-    makeFiguresForSessions(sessions, princeMartinOutputDir)
+    makeFiguresForSessions(sessions, princeMartinOutputDir, SKIP_ALL_SESSIONS_PLOTS=True)
 
 
 if __name__ == "__main__":
