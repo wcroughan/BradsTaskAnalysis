@@ -326,7 +326,11 @@ def makeThesisCommitteeFigs():
         axesNamesNoSpaces = [a.replace(" ", "_") for a in axesNames]
         s = pd.Series([categories, yvals, categories2], index=axesNamesNoSpaces)
 
-        ax.cla()
+        try:
+            ax.cla()
+        except:
+            ax.clf()
+
         pal = sns.color_palette(palette=["cyan", "orange"])
         if violin:
             plotWorked = False
