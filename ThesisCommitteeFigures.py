@@ -12,6 +12,9 @@ from datetime import datetime
 import math
 from itertools import groupby
 import warnings
+import textwrap as twp
+from matplotlib.transforms import Bbox
+import matplotlib
 
 from BTData import BTData
 from BTSession import BTSession
@@ -158,7 +161,7 @@ def makeThesisCommitteeFigs():
             ma = sdf.groupby(cat1Name).mean()
             shuffleValues[si] = ma.iat[1, 0] - ma.iat[0, 0]
         pctile = np.count_nonzero(shuffleValues < observedADiff) / numShuffles
-        retDict['globalAPval'] = pctile
+        retDict['Global ' + cat1Name] = pctile
         if statsFile is not None:
             shufMean = np.nanmean(shuffleValues)
             shufStd = np.nanstd(shuffleValues)
@@ -173,7 +176,7 @@ def makeThesisCommitteeFigs():
             ma = sdf.groupby(cat2Name).mean()
             shuffleValues[si] = ma.iat[1, 0] - ma.iat[0, 0]
         pctile = np.count_nonzero(shuffleValues < observedBDiff) / numShuffles
-        retDict['globalBPval'] = pctile
+        retDict['Global ' + cat2Name] = pctile
         if statsFile is not None:
             shufMean = np.nanmean(shuffleValues)
             shufStd = np.nanstd(shuffleValues)
@@ -194,7 +197,7 @@ def makeThesisCommitteeFigs():
             shuffleValues[si] = (mab2.iat[1, 0] - mab1.iat[1, 0]) - \
                 (mab2.iat[0, 0] - mab1.iat[0, 0])
         pctile = np.count_nonzero(shuffleValues < observedABDiff) / numShuffles
-        retDict['globalABPval'] = pctile
+        retDict[cat2Name + ' diff (' + cat1Name + ' shuffle)'] = pctile
         if statsFile is not None:
             shufMean = np.nanmean(shuffleValues)
             shufStd = np.nanstd(shuffleValues)
@@ -215,7 +218,7 @@ def makeThesisCommitteeFigs():
             shuffleValues[si] = (mab2.iat[1, 0] - mab1.iat[1, 0]) - \
                 (mab2.iat[0, 0] - mab1.iat[0, 0])
         pctile = np.count_nonzero(shuffleValues < observedBADiff) / numShuffles
-        retDict['globalBAPval'] = pctile
+        retDict[cat1Name + ' diff (' + cat2Name + ' shuffle)'] = pctile
         if statsFile is not None:
             shufMean = np.nanmean(shuffleValues)
             shufStd = np.nanstd(shuffleValues)
@@ -235,7 +238,7 @@ def makeThesisCommitteeFigs():
                 ma = sdf.groupby(cat1Name).mean()
                 shuffleValues[si] = ma.iat[1, 0] - ma.iat[0, 0]
             pctile = np.count_nonzero(shuffleValues < observedADiffUV) / numShuffles
-            retDict['localA_' + str(uv)] = pctile
+            retDict['within ' + str(uv)] = pctile
             if statsFile is not None:
                 shufMean = np.nanmean(shuffleValues)
                 shufStd = np.nanstd(shuffleValues)
@@ -255,7 +258,7 @@ def makeThesisCommitteeFigs():
                 ma = sdf.groupby(cat2Name).mean()
                 shuffleValues[si] = ma.iat[1, 0] - ma.iat[0, 0]
             pctile = np.count_nonzero(shuffleValues < observedBDiffUV) / numShuffles
-            retDict['localB_' + str(uv)] = pctile
+            retDict['within ' + str(uv)] = pctile
             if statsFile is not None:
                 shufMean = np.nanmean(shuffleValues)
                 shufStd = np.nanstd(shuffleValues)
@@ -290,6 +293,8 @@ def makeThesisCommitteeFigs():
             statsFile.write("Global effect of {}\n\tShuffle mean: {}\tstd: {}\n\tObserved Value: {}\n\tpval={}\n".format(
                 catName, shufMean, shufStd, observedADiff, pctile))
             statsFile.write("\n")
+
+        return pctile
 
     def pctilePvalSig(val):
         if val > 0.1 and val < 0.9:
@@ -326,29 +331,42 @@ def makeThesisCommitteeFigs():
         axesNamesNoSpaces = [a.replace(" ", "_") for a in axesNames]
         s = pd.Series([categories, yvals, categories2], index=axesNamesNoSpaces)
 
-        try:
-            ax.cla()
-        except:
-            ax.clf()
+        ax.cla()
 
         pal = sns.color_palette(palette=["cyan", "orange"])
         if violin:
+            print(axesNames)
             plotWorked = False
             swarmDotSize = 3
             with warnings.catch_warnings():
                 warnings.filterwarnings("error", category=UserWarning)
                 while not plotWorked:
                     try:
+                        # print("trying...")
                         p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
                                             y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
                         p2 = sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
                                            y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", size=swarmDotSize, dodge=True, zorder=3)
+                        # print("worked")
                         plotWorked = True
                     except UserWarning as e:
                         swarmDotSize /= 2
                         print("reduing dots to {}".format(swarmDotSize))
 
-                        ax.cla()
+                        # ax.cla()
+                        # print(ax.figure)
+                        # try:
+                        #     p1.remove()
+                        # except:
+                        #     pass
+
+                        # try:
+                        #     p2.remove()
+                        # except:
+                        #     pass
+                        p1.cla()
+
+                        print(ax.figure)
 
                         if swarmDotSize < 0.1:
                             raise e
@@ -360,8 +378,6 @@ def makeThesisCommitteeFigs():
 
         if cat2IsFake:
             p1.set(xticklabels=[])
-        # lg = p2.get_legend()
-        # lg.remove()
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles[:2], labels[:2], fontsize=6).set_zorder(2)
 
@@ -372,26 +388,47 @@ def makeThesisCommitteeFigs():
 
         if doStats:
             if cat2IsFake:
-                runOneWayShuffle(
+                pval = runOneWayShuffle(
                     yvals, categories, catName=axesNamesNoSpaces[0], dataName=axesNamesNoSpaces[1], statsFile=statsFile)
+
+                if statsAx is not None:
+                    statsAx.remove()
+                    r = matplotlib.patches.Rectangle((0, 0), 1, 1, fill=False, edgecolor='none',
+                                                     visible=False)
+                    pvalDisplay = str(min(pval, 1.0-pval))
+                    if len(pvalDisplay) > 5:
+                        pvalDisplay = pvalDisplay[:5]
+
+                    pvalLabel = "".join(["*"] * pctilePvalSig(pval) +
+                                        ["p=" + pvalDisplay])
+                    print(pvalLabel)
+                    handles, labels = ax.get_legend_handles_labels()
+                    ax.legend(handles[:2] + [r], labels[:2] + [pvalLabel], fontsize=6).set_zorder(2)
             else:
                 statsDict = runTwoWayShuffle(yvals, categories, categories2,
                                              cat1Name=axesNamesNoSpaces[0], cat2Name=axesNamesNoSpaces[2], dataName=axesNamesNoSpaces[1], statsFile=statsFile)
-                ymin, ymax = ax.get_ylim()
-                ax.plot([0, 1], [ymin, ymax])
-
-                xlabels = ax.get_xticklabels()
-                for xlabel in xlabels:
-                    x, y = xlabel.get_position()
-                    txt = xlabel.get_text()
-                    pvalName = 'localA_' + txt
-                    print(pvalName)
-
-                    if pctilePvalSig(statsDict[pvalName]) > 0:
-                        print(xlabel)
-
                 if statsAx is not None:
-                    statsAx.table([["asdf", "oijwefiojewf", "iojij"], ["ij", "i", "i"]])
+                    statsAx.tick_params(axis="both", which="both", label1On=False,
+                                        label2On=False, tick1On=False, tick2On=False)
+                    txtwidth = 20
+                    fontsizelabel = 7
+                    fontsizepval = 8
+
+                    for li, (ll, lp) in enumerate(reversed(list(zip([twp.fill(str(s), txtwidth) for s in statsDict.keys()], [
+                            twp.fill(str(s), txtwidth) for s in statsDict.values()])))):
+
+                        pvalDisplay = str(min(float(lp), 1.0-float(lp)))
+                        if len(pvalDisplay) > 5:
+                            pvalDisplay = pvalDisplay[:5]
+                        yp = (li + 0.75) / (len(statsDict) + 0.5)
+                        statsAx.text(0.15, yp, ll, fontsize=fontsizelabel, va="center")
+                        statsAx.text(0.75, yp, pvalDisplay, fontsize=fontsizepval, va="center")
+                        statsAx.text(0.13, yp, ''.join(
+                            ['*'] * pctilePvalSig(float(lp))), fontsize=fontsizepval, va="center", ha="right")
+
+                        # if li > 0:
+                        #     statsAx.plot([0, 1], [(li + 0.25) / (len(statsDict) + 0.5)] * 2,
+                        #                  c="grey", lw=0.5)
 
     def numWellsVisited(nearestWells, countReturns=False, wellSubset=None):
         g = groupby(nearestWells)
@@ -424,6 +461,10 @@ def makeThesisCommitteeFigs():
         for i in range(numSessionsWithProbe):
             if sessionsWithProbe[i].isRippleInterruption:
                 sessionWithProbeIsInterruption[i] = True
+
+        boxPlotWidthRatio = 1
+        doubleBoxPlotWidthRatio = 2
+        boxPlotStatsRatio = 1
 
         if not SKIP_ALL_SESSIONS_PLOTS:
             if False:
@@ -647,33 +688,38 @@ def makeThesisCommitteeFigs():
 
             # =============
             # probe latency to home
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             probeLatHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
                                 else "Control" for i in range(numSessionsWithProbe)]
             probeLatHome = [min(s.getLatencyToWell(
                 True, s.home_well, returnSeconds=True, emptyVal=300), 300) for s in sessionsWithProbe]
-            boxPlotSubFigs = fig.subfigures(1, 2, width_ratios=[3, 1])
-            boxPlot(boxPlotSubFigs[0], probeLatHome, probeLatHomeCats,
-                    axesNames=["Condition", "Latency to Home (s)"], statsFile=statsFile, statsAx=boxPlotSubFigs[1])
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], probeLatHome, probeLatHomeCats,
+                    axesNames=["Condition", "Latency to Home (s)"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_latency_to_home", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # probe number of visits to home
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             probeNumVisitsHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
                                       else "Control" for i in range(numSessionsWithProbe)]
             probeNumVisitsHome = [s.num_well_entries(True, s.home_well)
                                   for s in sessionsWithProbe]
-            boxPlot(axs, probeNumVisitsHome, probeNumVisitsHomeCats, axesNames=[
-                    "Condition", "Number of visits to home well"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], probeNumVisitsHome, probeNumVisitsHomeCats, axesNames=[
+                    "Condition", "Number of visits to home well"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_visits_to_home", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # probe latency to all aways
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             probeLatAwaysCats = []
             probeLatAways = []
             for sesh in sessionsWithProbe:
@@ -682,14 +728,18 @@ def makeThesisCommitteeFigs():
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     probeLatAways.append(min(sesh.getLatencyToWell(
                         True, aw, returnSeconds=True, emptyVal=300), 300))
-            boxPlot(axs, probeLatAways, probeLatAwaysCats, axesNames=[
-                    "Condition", "Latency to Aways (s)"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], probeLatAways, probeLatAwaysCats, axesNames=[
+                    "Condition", "Latency to Aways (s)"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_latency_to_aways", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # probe num visits to aways
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             probeNumVisitsAwaysCats = []
             probeNumVisitsAways = []
             for sesh in sessionsWithProbe:
@@ -697,14 +747,18 @@ def makeThesisCommitteeFigs():
                     probeNumVisitsAwaysCats.append(
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     probeNumVisitsAways.append(sesh.num_well_entries(True, aw))
-            boxPlot(axs, probeNumVisitsAways, probeNumVisitsAwaysCats, axesNames=[
-                    "Condition", "Number of visits to away well"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], probeNumVisitsAways, probeNumVisitsAwaysCats, axesNames=[
+                    "Condition", "Number of visits to away well"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_visits_to_away", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # probe latency to all others
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             probeLatOthersCats = []
             probeLatOthers = []
             for sesh in sessionsWithProbe:
@@ -715,14 +769,18 @@ def makeThesisCommitteeFigs():
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     probeLatOthers.append(min(sesh.getLatencyToWell(
                         True, ow, returnSeconds=True, emptyVal=300), 300))
-            boxPlot(axs, probeLatOthers, probeLatOthersCats, axesNames=[
-                    "Condition", "Latency to Others (s)"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], probeLatOthers, probeLatOthersCats, axesNames=[
+                    "Condition", "Latency to Others (s)"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_latency_to_others", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # probe num visits to others
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             probeNumVisitsOthersCats = []
             probeNumVisitsOthers = []
             for sesh in sessionsWithProbe:
@@ -732,71 +790,95 @@ def makeThesisCommitteeFigs():
                     probeNumVisitsOthersCats.append(
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     probeNumVisitsOthers.append(sesh.num_well_entries(True, ow))
-            boxPlot(axs, probeNumVisitsOthers, probeNumVisitsOthersCats, axesNames=[
-                    "Condition", "Number of visits to other wells"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], probeNumVisitsOthers, probeNumVisitsOthersCats, axesNames=[
+                    "Condition", "Number of visits to other wells"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_visits_to_others", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # Combined box plots from above
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE)
             seshCats = probeLatHomeCats + probeLatAwaysCats
             yvals = probeLatHome + probeLatAways
             wellCats = ["home"] * len(probeLatHomeCats) + ["away"] * len(probeLatAwaysCats)
-            boxPlot(axs, yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
-                    "Condition", "Latency to well (s)", "Well Type"], violin=True, statsFile=statsFile)
-            axs = saveOrShow("probe_latency_to_wells", outputDir=outputDir, statsFile=statsFile)
-
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
             fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Latency to well (s)", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_latency_to_wells", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
             seshCats = probeNumVisitsHomeCats + probeNumVisitsAwaysCats
             yvals = probeNumVisitsHome + probeNumVisitsAways
             wellCats = ["home"] * len(probeNumVisitsHomeCats) + \
                 ["away"] * len(probeNumVisitsAwaysCats)
-            boxPlot(axs, yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
-                    "Condition", "Number of visits", "Well Type"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Number of visits", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_visits_to_wells", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # probe num wells visited by condition
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             categories = ["Interruption" if sessionWithProbeIsInterruption[i]
                           else "Control" for i in range(numSessionsWithProbe)]
             yvals = [numWellsVisited(s.probe_nearest_wells)
                      for s in sessionsWithProbe]
-            boxPlot(axs, yvals, categories, axesNames=[
-                    "Condition", "Number of wells visited in probe"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals, categories, axesNames=[
+                    "Condition", "Number of wells visited in probe"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_wells_visited", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # frac time exploring in probe by condition (box plot)
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             categories = ["Interruption" if sessionWithProbeIsInterruption[i]
                           else "Control" for i in range(numSessionsWithProbe)]
             yvals = [s.prop_time_in_bout_state(True, BTSession.BOUT_STATE_EXPLORE)
                      for s in sessionsWithProbe]
-            boxPlot(axs, yvals, categories, axesNames=[
-                    "Condition", "Frac of probe exploring"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals, categories, axesNames=[
+                    "Condition", "Frac of probe exploring"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_frac_explore_box", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # Num explore bouts in probe by condition
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             categories = ["Interruption" if sessionWithProbeIsInterruption[i]
                           else "Control" for i in range(numSessionsWithProbe)]
             yvals = [len(s.probe_explore_bout_ends)
                      for s in sessionsWithProbe]
-            boxPlot(axs, yvals, categories, axesNames=[
-                    "Condition", "Num explore bouts"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals, categories, axesNames=[
+                    "Condition", "Num explore bouts"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_explore_bouts", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # probe num wells visited per bout with repeats by condition
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             categories = []
             yvals = []
             for sesh in sessionsWithProbe:
@@ -804,15 +886,19 @@ def makeThesisCommitteeFigs():
                     categories.append("Interruption" if sesh.isRippleInterruption else "Control")
                     yvals.append(numWellsVisited(
                         sesh.probe_nearest_wells[i1:i2], countReturns=True))
-            boxPlot(axs, yvals, categories, axesNames=[
-                    "Condition", "Number of wells visited per explore bout with repeats"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals, categories, axesNames=[
+                    "Condition", "Number of wells visited per explore bout with repeats"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_wells_visited_per_explore_bout_with_repeats",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # probe num wells visited per bout without repeats by condition
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             categories = []
             yvals = []
             for sesh in sessionsWithProbe:
@@ -820,10 +906,16 @@ def makeThesisCommitteeFigs():
                     categories.append("Interruption" if sesh.isRippleInterruption else "Control")
                     yvals.append(numWellsVisited(
                         sesh.probe_nearest_wells[i1:i2], countReturns=False))
-            boxPlot(axs, yvals, categories, axesNames=[
-                    "Condition", "Number of wells visited per explore bout without repeats"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals, categories, axesNames=[
+                    "Condition", "Number of wells visited per explore bout without repeats"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_wells_visited_per_explore_bout_without_repeats",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # num wells visited in probe by time
@@ -855,16 +947,20 @@ def makeThesisCommitteeFigs():
 
             # =============
             # total dwell time, full probe
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             totalDwellTimeHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
                                       else "Control" for i in range(numSessionsWithProbe)]
             totalDwellTimeHome = [s.total_dwell_time(True, s.home_well)
                                   for s in sessionsWithProbe]
-            boxPlot(axs, totalDwellTimeHome, totalDwellTimeHomeCats, axesNames=[
-                    "Condition", "total dwell time (s)"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], totalDwellTimeHome, totalDwellTimeHomeCats, axesNames=[
+                    "Condition", "total dwell time (s)"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_total_dwell_time_home",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             totalDwellTimeAwayCats = []
             totalDwellTimeAway = []
@@ -873,33 +969,47 @@ def makeThesisCommitteeFigs():
                     totalDwellTimeAwayCats.append(
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     totalDwellTimeAway.append(sesh.total_dwell_time(True, aw))
-            boxPlot(axs, totalDwellTimeAway, totalDwellTimeAwayCats, axesNames=[
-                    "Condition", "total dwell time (s)"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], totalDwellTimeAway, totalDwellTimeAwayCats, axesNames=[
+                    "Condition", "total dwell time (s)"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_total_dwell_time_aways",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE)
             seshCats = totalDwellTimeHomeCats + totalDwellTimeAwayCats
             yvals = totalDwellTimeHome + totalDwellTimeAway
             wellCats = ["home"] * len(totalDwellTimeHomeCats) + \
                 ["away"] * len(totalDwellTimeAwayCats)
-            boxPlot(axs, yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
-                    "Condition", "total dwell time (s)", "Well Type"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "total dwell time (s)", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_total_dwell_time", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # total dwell time, 90sec
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             totalDwellTimeHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
                                       else "Control" for i in range(numSessionsWithProbe)]
             totalDwellTimeHome = [s.total_dwell_time(True, s.home_well, timeInterval=[0, 90])
                                   for s in sessionsWithProbe]
-            boxPlot(axs, totalDwellTimeHome, totalDwellTimeHomeCats, axesNames=[
-                    "Condition", "total dwell time (s)"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], totalDwellTimeHome, totalDwellTimeHomeCats, axesNames=[
+                    "Condition", "total dwell time (s)"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_total_dwell_time_home_90sec",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             totalDwellTimeAwayCats = []
             totalDwellTimeAway = []
@@ -909,34 +1019,48 @@ def makeThesisCommitteeFigs():
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     totalDwellTimeAway.append(sesh.total_dwell_time(
                         True, aw, timeInterval=[0, 90]))
-            boxPlot(axs, totalDwellTimeAway, totalDwellTimeAwayCats, axesNames=[
-                    "Condition", "total dwell time (s)"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], totalDwellTimeAway, totalDwellTimeAwayCats, axesNames=[
+                    "Condition", "total dwell time (s)"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_total_dwell_time_aways_90sec",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE)
             seshCats = totalDwellTimeHomeCats + totalDwellTimeAwayCats
             yvals = totalDwellTimeHome + totalDwellTimeAway
             wellCats = ["home"] * len(totalDwellTimeHomeCats) + \
                 ["away"] * len(totalDwellTimeAwayCats)
-            boxPlot(axs, yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
-                    "Condition", "total dwell time (s)", "Well Type"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "total dwell time (s)", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_total_dwell_time_90sec",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # Avg dwell time, full probe
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             avgDwellTimeHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
                                     else "Control" for i in range(numSessionsWithProbe)]
             avgDwellTimeHome = [s.avg_dwell_time(True, s.home_well, emptyVal=np.nan)
                                 for s in sessionsWithProbe]
-            boxPlot(axs, avgDwellTimeHome, avgDwellTimeHomeCats, axesNames=[
-                    "Condition", "Avg dwell time (s)"], statsFile=statsFile)
-            axs.set_ylim(top=15)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], avgDwellTimeHome, avgDwellTimeHomeCats, axesNames=[
+                    "Condition", "Avg dwell time (s)"], statsFile=statsFile, statsAx=axs[1])
+            axs[0].set_ylim(top=15)
             axs = saveOrShow("probe_avg_dwell_time_home", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             avgDwellTimeAwayCats = []
             avgDwellTimeAway = []
@@ -945,33 +1069,47 @@ def makeThesisCommitteeFigs():
                     avgDwellTimeAwayCats.append(
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     avgDwellTimeAway.append(sesh.avg_dwell_time(True, aw, emptyVal=np.nan))
-            boxPlot(axs, avgDwellTimeAway, avgDwellTimeAwayCats, axesNames=[
-                    "Condition", "Avg dwell time (s)"], violin=True, statsFile=statsFile)
-            axs.set_ylim(top=15)
-            axs = saveOrShow("probe_avg_dwell_time_aways", outputDir=outputDir, statsFile=statsFile)
-
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
             fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], avgDwellTimeAway, avgDwellTimeAwayCats, axesNames=[
+                    "Condition", "Avg dwell time (s)"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs[0].set_ylim(top=15)
+            axs = saveOrShow("probe_avg_dwell_time_aways", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
             seshCats = avgDwellTimeHomeCats + avgDwellTimeAwayCats
             yvals = avgDwellTimeHome + avgDwellTimeAway
             wellCats = ["home"] * len(avgDwellTimeHomeCats) + ["away"] * len(avgDwellTimeAwayCats)
-            boxPlot(axs, yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
-                    "Condition", "Avg dwell time (s)", "Well Type"], violin=True, statsFile=statsFile)
-            axs.set_ylim(top=15)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Avg dwell time (s)", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs[0].set_ylim(top=15)
             axs = saveOrShow("probe_avg_dwell_time", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # Avg dwell time, 90sec
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             avgDwellTimeHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
                                     else "Control" for i in range(numSessionsWithProbe)]
             avgDwellTimeHome = [s.avg_dwell_time(True, s.home_well, emptyVal=np.nan, timeInterval=[0, 90])
                                 for s in sessionsWithProbe]
-            boxPlot(axs, avgDwellTimeHome, avgDwellTimeHomeCats, axesNames=[
-                    "Condition", "Avg dwell time (s)"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], avgDwellTimeHome, avgDwellTimeHomeCats, axesNames=[
+                    "Condition", "Avg dwell time (s)"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_avg_dwell_time_home_90sec",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             avgDwellTimeAwayCats = []
             avgDwellTimeAway = []
@@ -981,32 +1119,46 @@ def makeThesisCommitteeFigs():
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     avgDwellTimeAway.append(sesh.avg_dwell_time(
                         True, aw, emptyVal=np.nan, timeInterval=[0, 90]))
-            boxPlot(axs, avgDwellTimeAway, avgDwellTimeAwayCats, axesNames=[
-                    "Condition", "Avg dwell time (s)"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], avgDwellTimeAway, avgDwellTimeAwayCats, axesNames=[
+                    "Condition", "Avg dwell time (s)"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_avg_dwell_time_aways_90sec",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE)
             seshCats = avgDwellTimeHomeCats + avgDwellTimeAwayCats
             yvals = avgDwellTimeHome + avgDwellTimeAway
             wellCats = ["home"] * len(avgDwellTimeHomeCats) + ["away"] * len(avgDwellTimeAwayCats)
-            boxPlot(axs, yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
-                    "Condition", "Avg dwell time (s)", "Well Type"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Avg dwell time (s)", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_avg_dwell_time_90sec", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # num entries, 90sec
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             numEntriesHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
                                   else "Control" for i in range(numSessionsWithProbe)]
             numEntriesHome = [s.num_well_entries(True, s.home_well, timeInterval=[0, 90])
                               for s in sessionsWithProbe]
-            boxPlot(axs, numEntriesHome, numEntriesHomeCats, axesNames=[
-                    "Condition", "Num entries"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], numEntriesHome, numEntriesHomeCats, axesNames=[
+                    "Condition", "Num entries"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_entries_home_90sec",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             numEntriesAwayCats = []
             numEntriesAway = []
@@ -1016,31 +1168,45 @@ def makeThesisCommitteeFigs():
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     numEntriesAway.append(sesh.num_well_entries(
                         True, aw, timeInterval=[0, 90]))
-            boxPlot(axs, numEntriesAway, numEntriesAwayCats, axesNames=[
-                    "Condition", "Num entries"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], numEntriesAway, numEntriesAwayCats, axesNames=[
+                    "Condition", "Num entries"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_entries_aways_90sec",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE)
             seshCats = numEntriesHomeCats + numEntriesAwayCats
             yvals = numEntriesHome + numEntriesAway
             wellCats = ["home"] * len(numEntriesHomeCats) + ["away"] * len(numEntriesAwayCats)
-            boxPlot(axs, yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
-                    "Condition", "Num entries", "Well Type"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Num entries", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_num_entries_90sec", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # curvature, full probe
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             curvatureHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
                                  else "Control" for i in range(numSessionsWithProbe)]
             curvatureHome = [s.avg_curvature_at_well(True, s.home_well)
                              for s in sessionsWithProbe]
-            boxPlot(axs, curvatureHome, curvatureHomeCats, axesNames=[
-                    "Condition", "Curvature"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], curvatureHome, curvatureHomeCats, axesNames=[
+                    "Condition", "Curvature"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_curvature_at_home", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             curvatureAwayCats = []
             curvatureAway = []
@@ -1049,31 +1215,45 @@ def makeThesisCommitteeFigs():
                     curvatureAwayCats.append(
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     curvatureAway.append(sesh.avg_curvature_at_well(True, aw))
-            boxPlot(axs, curvatureAway, curvatureAwayCats, axesNames=[
-                    "Condition", "Curvature"], violin=True, statsFile=statsFile)
-            axs = saveOrShow("probe_curvature_at_aways", outputDir=outputDir, statsFile=statsFile)
-
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
             fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], curvatureAway, curvatureAwayCats, axesNames=[
+                    "Condition", "Curvature"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_curvature_at_aways", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
             seshCats = curvatureHomeCats + curvatureAwayCats
             yvals = curvatureHome + curvatureAway
             wellCats = ["home"] * len(curvatureHomeCats) + ["away"] * len(curvatureAwayCats)
-            boxPlot(axs, yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
-                    "Condition", "Curvature", "Well Type"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Curvature", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_curvature", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # curvature, 90sec
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE / 2)
             curvatureHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
                                  else "Control" for i in range(numSessionsWithProbe)]
             curvatureHome = [s.avg_curvature_at_well(True, s.home_well, timeInterval=[0, 90])
                              for s in sessionsWithProbe]
-            boxPlot(axs, curvatureHome, curvatureHomeCats, axesNames=[
-                    "Condition", "Curvature"], statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], curvatureHome, curvatureHomeCats, axesNames=[
+                    "Condition", "Curvature"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_curvature_at_home_90sec",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             curvatureAwayCats = []
             curvatureAway = []
@@ -1083,19 +1263,29 @@ def makeThesisCommitteeFigs():
                         "Interruption" if sesh.isRippleInterruption else "Control")
                     curvatureAway.append(sesh.avg_curvature_at_well(
                         True, aw, timeInterval=[0, 90]))
-            boxPlot(axs, curvatureAway, curvatureAwayCats, axesNames=[
-                    "Condition", "Curvature"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], curvatureAway, curvatureAwayCats, axesNames=[
+                    "Condition", "Curvature"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_curvature_at_aways_90sec",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
-            fig.set_figheight(FIG_SCALE / 2)
-            fig.set_figwidth(FIG_SCALE)
             seshCats = curvatureHomeCats + curvatureAwayCats
             yvals = curvatureHome + curvatureAway
             wellCats = ["home"] * len(curvatureHomeCats) + ["away"] * len(curvatureAwayCats)
-            boxPlot(axs, yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
-                    "Condition", "Curvature", "Well Type"], violin=True, statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Curvature", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_curvature_90sec", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # Num wells checked, centered on reward find times
@@ -1232,17 +1422,29 @@ def makeThesisCommitteeFigs():
             cat2 = ["home" if c == "away" else "away" for c in cat2]
             yvals = numWellsChecked[idx]
             yvals = np.nanmax(yvals, axis=1)
-            boxPlot(axs, yvals, cat1, categories2=cat2, violin=True, axesNames=[
-                    "Condition", "Num checked before next reward", "Trial Type"], statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals, cat1, categories2=cat2, violin=True, axesNames=[
+                    "Condition", "Num checked before next reward", "Trial Type"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("task_num_checked_before_next_reward",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             yvals = numRepeatsChecked[idx]
             yvals = np.nanmax(yvals, axis=1)
-            boxPlot(axs, yvals, cat1, categories2=cat2, violin=True, axesNames=[
-                    "Condition", "Num repeats checked before next reward", "Trial Type"], statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals, cat1, categories2=cat2, violin=True, axesNames=[
+                    "Condition", "Num repeats checked before next reward", "Trial Type"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("task_num_repeats_checked_before_next_reward",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             idx = np.logical_and(terminationCondition == "found", trialIdx > 4)
             cat1 = seshCat[idx]
@@ -1250,17 +1452,29 @@ def makeThesisCommitteeFigs():
             cat2 = ["home" if c == "away" else "away" for c in cat2]
             yvals = numWellsChecked[idx]
             yvals = np.nanmax(yvals, axis=1)
-            boxPlot(axs, yvals, cat1, categories2=cat2, violin=True, axesNames=[
-                    "Condition", "Num checked before next reward", "Trial Type"], statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals, cat1, categories2=cat2, violin=True, axesNames=[
+                    "Condition", "Num checked before next reward", "Trial Type"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("task_num_checked_before_next_reward_secondhalf",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             yvals = numRepeatsChecked[idx]
             yvals = np.nanmax(yvals, axis=1)
-            boxPlot(axs, yvals, cat1, categories2=cat2, violin=True, axesNames=[
-                    "Condition", "Num repeats checked before next reward", "Trial Type"], statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals, cat1, categories2=cat2, violin=True, axesNames=[
+                    "Condition", "Num repeats checked before next reward", "Trial Type"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("task_num_repeats_checked_before_next_reward_secondhalf",
                              outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # stim rate at different well types
@@ -1280,9 +1494,15 @@ def makeThesisCommitteeFigs():
                     wellCats.append("away")
                     vals.append(sesh.numStimsAtWell(aw) / sesh.total_dwell_time(False, aw))
 
-            boxPlot(axs, vals, seshCats, categories2=wellCats, violin=True, axesNames=[
-                    "Condition", "Stim rate (Hz)", "Well type"], statsFile=statsFile)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], vals, seshCats, categories2=wellCats, violin=True, axesNames=[
+                    "Condition", "Stim rate (Hz)", "Well type"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("lfp_stim_rate_at_wells", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
 
             # =============
             # cumulative number of stims and ripples
