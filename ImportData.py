@@ -450,7 +450,7 @@ def detectStimArtifacts(lfp_data):
     return deflection_metrics[0]
 
 
-def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_deflections=None, meanPower=None, stdPower=None):
+def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_deflections=None, meanPower=None, stdPower=None, showPlot=False):
     """
     Get ripple power in LFP
     """
@@ -477,6 +477,9 @@ def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_
                                  SKIP_TPTS_FORWARD)
             # lfp_data_copy[cleanup_start:cleanup_finish] = np.nan
             lfp_mask[cleanup_start:cleanup_finish] = 1
+
+        print("LFP mask letting {} of signal through".format(
+            1 - (np.count_nonzero(lfp_mask) / len(lfp_mask))))
 
     nyq_freq = LFP_SAMPLING_RATE * 0.5
     lo_cutoff = RIPPLE_FILTER_BAND[0]/nyq_freq
@@ -515,7 +518,23 @@ def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_
     if meanPower is None:
         meanPower = np.nanmean(ripple_power)
         stdPower = np.nanstd(ripple_power)
-    return (ripple_power-meanPower)/stdPower, meanPower, stdPower
+    zpower = (ripple_power-meanPower)/stdPower
+
+    if showPlot:
+        lc = lfp_data.copy()
+        lc = lc / np.nanmax(np.abs(lc)) * 10
+        rc = np.array([min(10, p) for p in zpower])
+        ts = np.linspace(0, len(lc)/1500, len(lc))
+        plt.plot(ts, rc, c="orange", zorder=0)
+        plt.plot(ts, lc, c="blue", zorder=1)
+        # plt.plot(np.diff(lc), c="red")
+        # plt.plot([0, len(lc)], [3, 3], color="red", zorder=-1)
+        if lfp_deflections is not None:
+            plt.scatter(lfp_deflections / 1500, [0]*len(lfp_deflections), zorder=2, c="red")
+
+        plt.show()
+
+    return zpower, meanPower, stdPower
 
 
 def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0):
@@ -708,7 +727,7 @@ if __name__ == "__main__":
         session.name = session_dir
         session.time_str = time_str
         s = "{}_{}".format(date_str, time_str)
-        print(s)
+        # print(s)
         session.date = datetime.strptime(s, "%Y%m%d_%H%M%S")
         print(session.date)
 
@@ -744,18 +763,18 @@ if __name__ == "__main__":
             seshs_on_this_day = sorted(
                 list(filter(lambda seshdir: session.date_str + "_" in seshdir, filtered_data_dirs)))
             num_on_this_day = len(seshs_on_this_day)
-            print("Looking for info file for {}".format(session_dir))
+            # print("Looking for info file for {}".format(session_dir))
             for i in range(num_on_this_day):
                 print("\t{}".format(seshs_on_this_day[i]))
                 if seshs_on_this_day[i] == session_dir:
                     sesh_idx_within_day = i
             possible_info_files = sorted(
                 glob.glob(os.path.join(behavior_notes_dir, date_str + "_*.txt")))
-            print(possible_info_files)
+            # print(possible_info_files)
             # info_file = os.path.join(behavior_notes_dir, date_str + "_" +
             #  str(sesh_idx_within_day+1) + ".txt")
             info_file = possible_info_files[sesh_idx_within_day]
-            print(info_file)
+            # print(info_file)
 
         if "".join(os.path.basename(info_file).split(".")[0:-1]) in excluded_sessions:
             print(session_dir, " excluded session, skipping")
@@ -1123,9 +1142,22 @@ if __name__ == "__main__":
 
             # ========
             # dealing with weird Martin sessions:
-            if len(session.bt_interruption_pos_idxs) < 100:
+            showPlot = False
+            print("{} interruptions detected".format(len(session.bt_interruption_pos_idxs)))
+            if len(session.bt_interruption_pos_idxs) < 50:
+                if (session.isRippleInterruption):
+                    print(
+                        "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER THAN 100 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
+                else:
+                    print(
+                        "WARNING: very few interruptions. This was a delay control but is basically a no-stim control")
+                # showPlot = True
                 session.isRippleInterruption = False
+            elif len(session.bt_interruption_pos_idxs) < 100:
+                print("50-100 interruptions: not overriding label")
+                # showPlot = True
 
+            print("Condition - {}".format("SWR" if session.isRippleInterruption else "Ctrl"))
             lfp_deflections = signal.find_peaks(np.abs(
                 np.diff(lfp_data, prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO, distance=MIN_ARTIFACT_DISTANCE)
             lfp_artifact_idxs = lfp_deflections[0]
@@ -1135,16 +1167,17 @@ if __name__ == "__main__":
             bt_lfp_start_idx = np.searchsorted(lfp_timestamps, session.bt_pos_ts[0])
             bt_lfp_end_idx = np.searchsorted(lfp_timestamps, session.bt_pos_ts[-1])
             btLFPData = lfp_data[bt_lfp_start_idx:bt_lfp_end_idx]
-            bt_lfp_artifact_idxs = lfp_artifact_idxs - bt_lfp_start_idx
+            # bt_lfp_artifact_idxs = lfp_artifact_idxs - bt_lfp_start_idx
+            bt_lfp_artifact_idxs = interruption_idxs - bt_lfp_start_idx
             bt_lfp_artifact_idxs = bt_lfp_artifact_idxs[bt_lfp_artifact_idxs > 0]
 
             _, prebtMeanRipplePower, prebtStdRipplePower = get_ripple_power(
                 lfp_data[0:bt_lfp_start_idx], omit_artifacts=False)
             ripple_power, _, _ = get_ripple_power(
-                btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=prebtMeanRipplePower, stdPower=prebtStdRipplePower)
+                btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=prebtMeanRipplePower, stdPower=prebtStdRipplePower, showPlot=showPlot)
             session.btRipStartIdxsPreStats, session.btRipLensPreStats, session.btRipPeakIdxsPreStats, session.btRipPeakAmpsPreStats = \
                 detectRipples(ripple_power)
-            session.btRipStartTimstampsPreStats = lfp_timestamps[session.btRipStartIdxsPreStats]
+            session.btRipStartTimestampsPreStats = lfp_timestamps[session.btRipStartIdxsPreStats + bt_lfp_start_idx]
 
             if session.probe_performed and not session.separate_iti_file and not session.separate_probe_file:
                 ITI_MARGIN = 5  # units: seconds
@@ -1154,6 +1187,8 @@ if __name__ == "__main__":
                 itiLfpEnd_idx = np.searchsorted(lfp_timestamps, itiLfpEnd_ts)
                 itiLFPData = lfp_data[itiLfpStart_idx:itiLfpEnd_idx]
                 session.ITIRippleIdxOffset = itiLfpStart_idx
+                session.itiLfpStart_ts = itiLfpStart_ts
+                session.itiLfpEnd_ts = itiLfpEnd_ts
 
                 # in general none, but there's a few right at the start of where this is defined
                 itiStimIdxs = interruption_idxs - itiLfpStart_idx
@@ -1164,7 +1199,7 @@ if __name__ == "__main__":
                     itiLFPData, lfp_deflections=itiStimIdxs)
                 session.ITIRipStartIdxs, session.ITIRipLens, session.ITIRipPeakIdxs, session.ITIRipPeakAmps = \
                     detectRipples(ripple_power)
-                session.ITIRipStartTimstamps = lfp_timestamps[session.ITIRipStartIdxs]
+                session.ITIRipStartTimestamps = lfp_timestamps[session.ITIRipStartIdxs + itiLfpStart_idx]
 
                 session.ITIDuration = (itiLfpEnd_ts - itiLfpStart_ts) / \
                     BTSession.TRODES_SAMPLING_RATE
@@ -1175,12 +1210,14 @@ if __name__ == "__main__":
                 probeLfpEnd_idx = np.searchsorted(lfp_timestamps, probeLfpEnd_ts)
                 probeLFPData = lfp_data[probeLfpStart_idx:probeLfpEnd_idx]
                 session.probeRippleIdxOffset = probeLfpStart_idx
+                session.probeLfpStart_ts = probeLfpStart_ts
+                session.probeLfpEnd_ts = probeLfpEnd_ts
 
                 ripple_power, probeMeanRipplePower, probeStdRipplePower = get_ripple_power(
                     probeLFPData, omit_artifacts=False)
                 session.probeRipStartIdxs, session.probeRipLens, session.probeRipPeakIdxs, session.probeRipPeakAmps = \
                     detectRipples(ripple_power)
-                session.probeRipStartTimstamps = lfp_timestamps[session.probeRipStartIdxs]
+                session.probeRipStartTimestamps = lfp_timestamps[session.probeRipStartIdxs + probeLfpStart_idx]
 
                 session.probeDuration = (probeLfpEnd_ts - probeLfpStart_ts) / \
                     BTSession.TRODES_SAMPLING_RATE
@@ -1189,13 +1226,18 @@ if __name__ == "__main__":
                     itiLFPData, lfp_deflections=itiStimIdxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower)
                 session.ITIRipStartIdxsProbeStats, session.ITIRipLensProbeStats, session.ITIRipPeakIdxsProbeStats, session.ITIRipPeakAmpsProbeStats = \
                     detectRipples(itiRipplePowerProbeStats)
-                session.ITIRipStartTimstampsProbeStats = lfp_timestamps[session.ITIRipStartIdxsProbeStats]
+                session.ITIRipStartTimestampsProbeStats = lfp_timestamps[
+                    session.ITIRipStartIdxsProbeStats + itiLfpStart_idx]
 
                 btRipplePowerProbeStats, _, _ = get_ripple_power(
-                    btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower)
+                    btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower, showPlot=showPlot)
                 session.btRipStartIdxsProbeStats, session.btRipLensProbeStats, session.btRipPeakIdxsProbeStats, session.btRipPeakAmpsProbeStats = \
                     detectRipples(btRipplePowerProbeStats)
-                session.btRipStartTimstampsProbeStats = lfp_timestamps[session.btRipStartIdxsProbeStats]
+                session.btRipStartTimestampsProbeStats = lfp_timestamps[
+                    session.btRipStartIdxsProbeStats + bt_lfp_start_idx]
+
+                print("{} ripples found during task".format(
+                    len(session.btRipStartTimestampsProbeStats)))
 
             elif session.probe_performed:
                 print("Probe performed but LFP in a separate file for session", session.name)

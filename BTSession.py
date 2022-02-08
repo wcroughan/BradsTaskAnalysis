@@ -965,3 +965,16 @@ class BTSession:
         """
         nw = np.array(self.bt_nearest_wells)
         return np.count_nonzero(wellName == nw[self.bt_interruption_pos_idxs])
+
+    def numRipplesAtWell(self, inProbe, wellName):
+        """
+        how many times did ripple happen while rat was at the well?
+        """
+        if inProbe:
+            ripPosIdxs = np.searchsorted(self.probe_pos_ts, self.probeRipStartTimestamps)
+            nw = np.array(self.probe_nearest_wells)
+            return np.count_nonzero(wellName == nw[ripPosIdxs])
+        else:
+            ripPosIdxs = np.searchsorted(self.bt_pos_ts, self.btRipStartTimestampsPreStats)
+            nw = np.array(self.bt_nearest_wells)
+            return np.count_nonzero(wellName == nw[ripPosIdxs])
