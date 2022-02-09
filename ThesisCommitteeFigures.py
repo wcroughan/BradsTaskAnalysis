@@ -201,7 +201,7 @@ def makeThesisCommitteeFigs():
             shuffleValues[si] = (mab2.iat[1, 0] - mab1.iat[1, 0]) - \
                 (mab2.iat[0, 0] - mab1.iat[0, 0])
         pctile = np.count_nonzero(shuffleValues < observedABDiff) / numShuffles
-        retDict[cat2Name + ' diff (' + cat1Name + ' shuffle)'] = pctile
+        retDict[cat2Name + ' diff (' + cat1Name + ' effect)'] = pctile
         if statsFile is not None:
             shufMean = np.nanmean(shuffleValues)
             shufStd = np.nanstd(shuffleValues)
@@ -222,7 +222,7 @@ def makeThesisCommitteeFigs():
             shuffleValues[si] = (mab2.iat[1, 0] - mab1.iat[1, 0]) - \
                 (mab2.iat[0, 0] - mab1.iat[0, 0])
         pctile = np.count_nonzero(shuffleValues < observedBADiff) / numShuffles
-        retDict[cat1Name + ' diff (' + cat2Name + ' shuffle)'] = pctile
+        retDict[cat1Name + ' diff (' + cat2Name + ' effect)'] = pctile
         if statsFile is not None:
             shufMean = np.nanmean(shuffleValues)
             shufStd = np.nanstd(shuffleValues)
@@ -450,8 +450,8 @@ def makeThesisCommitteeFigs():
             return len(set([k for k, _ in g if k in wellSubset]))
 
     def makeFiguresForSessions(sessions, outputDir, MAKE_STATS_FILE=False,
-                               SKIP_ALL_SESSIONS_PLOTS=True, SKIP_COMPARISON_PLOTS=False,
-                               SKIP_LFP_PLOTS=True, SKIP_SINGLE_SESSION_PLOTS=True,
+                               SKIP_ALL_SESSIONS_PLOTS=False, SKIP_COMPARISON_PLOTS=False,
+                               SKIP_LFP_PLOTS=False, SKIP_SINGLE_SESSION_PLOTS=True,
                                SKIP_NO_PROBE_SESSION_PLOTS=False, SKIP_PROBE_SESSION_PLOTS=False):
         fig = plt.figure(figsize=(FIG_SCALE, FIG_SCALE))
         axs = fig.subplots()
