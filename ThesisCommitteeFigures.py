@@ -451,8 +451,9 @@ def makeThesisCommitteeFigs():
 
     def makeFiguresForSessions(sessions, outputDir, MAKE_STATS_FILE=False,
                                SKIP_ALL_SESSIONS_PLOTS=False, SKIP_COMPARISON_PLOTS=False,
-                               SKIP_LFP_PLOTS=False, SKIP_SINGLE_SESSION_PLOTS=True,
-                               SKIP_NO_PROBE_SESSION_PLOTS=False, SKIP_PROBE_SESSION_PLOTS=False):
+                               SKIP_LFP_PLOTS=False,
+                               SKIP_SINGLE_SESSION_PLOTS=True, SKIP_NO_PROBE_SESSION_PLOTS=False,
+                               SKIP_PROBE_SESSION_PLOTS=False):
         fig = plt.figure(figsize=(FIG_SCALE, FIG_SCALE))
         axs = fig.subplots()
 
@@ -1310,6 +1311,82 @@ def makeThesisCommitteeFigs():
             fig.clf()
             axs = plt.subplot(111)
 
+            def onWall(well):
+                return well < 9 or well > 40 or well % 8 in [2, 7]
+
+            curvatureOffWallAwayCats = []
+            curvatureOffWallAway = []
+            for sesh in sessionsWithProbe:
+                for aw in sesh.visited_away_wells:
+                    if onWall(aw):
+                        continue
+                    curvatureOffWallAwayCats.append(
+                        "Interruption" if sesh.isRippleInterruption else "Control")
+                    curvatureOffWallAway.append(sesh.avg_curvature_at_well(True, aw))
+            plt.close(fig)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], curvatureOffWallAway, curvatureOffWallAwayCats, axesNames=[
+                    "Condition", "Curvature"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_curvature_at_off_wall_aways",
+                             outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
+            seshCats = curvatureHomeCats + curvatureOffWallAwayCats
+            yvals = curvatureHome + curvatureOffWallAway
+            wellCats = ["home"] * len(curvatureHomeCats) + \
+                ["OffWallAway"] * len(curvatureOffWallAwayCats)
+            plt.close(fig)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Curvature", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_curvature_offwall", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
+            curvatureOffWallOtherCats = []
+            curvatureOffWallOther = []
+            for sesh in sessionsWithProbe:
+                for ow in allWellNames:
+                    if ow == sesh.home_well or ow in sesh.visited_away_wells or onWall(ow):
+                        continue
+                    curvatureOffWallOtherCats.append(
+                        "Interruption" if sesh.isRippleInterruption else "Control")
+                    curvatureOffWallOther.append(sesh.avg_curvature_at_well(True, ow))
+            plt.close(fig)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], curvatureOffWallOther, curvatureOffWallOtherCats, axesNames=[
+                    "Condition", "Curvature"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_curvature_at_off_wall_Others",
+                             outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
+            seshCats = curvatureOffWallOtherCats + curvatureOffWallAwayCats
+            yvals = curvatureOffWallOther + curvatureOffWallAway
+            wellCats = ["OffWallOther"] * len(curvatureOffWallOtherCats) + \
+                ["OffWallAway"] * len(curvatureOffWallAwayCats)
+            plt.close(fig)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Curvature", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_curvature_offwall_away_vs_Other",
+                             outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
             # =============
             # curvature, 90sec
             curvatureHomeCats = ["Interruption" if sessionWithProbeIsInterruption[i]
@@ -1359,6 +1436,82 @@ def makeThesisCommitteeFigs():
             boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
                     "Condition", "Curvature", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("probe_curvature_90sec", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
+            curvatureOffWallAwayCats = []
+            curvatureOffWallAway = []
+            for sesh in sessionsWithProbe:
+                for aw in sesh.visited_away_wells:
+                    if onWall(aw):
+                        continue
+                    curvatureOffWallAwayCats.append(
+                        "Interruption" if sesh.isRippleInterruption else "Control")
+                    curvatureOffWallAway.append(
+                        sesh.avg_curvature_at_well(True, aw, timeInterval=[0, 90]))
+            plt.close(fig)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], curvatureOffWallAway, curvatureOffWallAwayCats, axesNames=[
+                    "Condition", "Curvature"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_curvature_at_off_wall_aways_90sec",
+                             outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
+            seshCats = curvatureHomeCats + curvatureOffWallAwayCats
+            yvals = curvatureHome + curvatureOffWallAway
+            wellCats = ["home"] * len(curvatureHomeCats) + \
+                ["OffWallAway"] * len(curvatureOffWallAwayCats)
+            plt.close(fig)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Curvature", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_curvature_offwall_90sec",
+                             outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
+            curvatureOffWallOtherCats = []
+            curvatureOffWallOther = []
+            for sesh in sessionsWithProbe:
+                for ow in allWellNames:
+                    if ow == sesh.home_well or ow in sesh.visited_away_wells or onWall(ow):
+                        continue
+                    curvatureOffWallOtherCats.append(
+                        "Interruption" if sesh.isRippleInterruption else "Control")
+                    curvatureOffWallOther.append(
+                        sesh.avg_curvature_at_well(True, ow, timeInterval=[0, 90]))
+            plt.close(fig)
+            fig, axs = plt.subplots(1, 2, gridspec_kw={'width_ratios': [
+                boxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((boxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], curvatureOffWallOther, curvatureOffWallOtherCats, axesNames=[
+                    "Condition", "Curvature"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_curvature_at_off_wall_Other_90sec",
+                             outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
+            seshCats = curvatureOffWallOtherCats + curvatureOffWallAwayCats
+            yvals = curvatureOffWallOther + curvatureOffWallAway
+            wellCats = ["OffWallOther"] * len(curvatureOffWallOtherCats) + \
+                ["OffWallAway"] * len(curvatureOffWallAwayCats)
+            plt.close(fig)
+            fig, axs = plt.subplots(
+                1, 2, gridspec_kw={'width_ratios': [doubleBoxPlotWidthRatio, boxPlotStatsRatio]})
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth((doubleBoxPlotWidthRatio+boxPlotStatsRatio) * FIG_SCALE / 2)
+            boxPlot(axs[0], yvals=yvals, categories=seshCats, categories2=wellCats, axesNames=[
+                    "Condition", "Curvature", "Well Type"], violin=True, statsFile=statsFile, statsAx=axs[1])
+            axs = saveOrShow("probe_curvature_offwall_away_vs_Other_90sec",
+                             outputDir=outputDir, statsFile=statsFile)
             fig.clf()
             axs = plt.subplot(111)
 
@@ -1553,6 +1706,55 @@ def makeThesisCommitteeFigs():
             boxPlot(axs[0], yvals, cat1, categories2=cat2, violin=True, axesNames=[
                     "Condition", "Num repeats checked before next reward", "Trial Type"], statsFile=statsFile, statsAx=axs[1])
             axs = saveOrShow("task_num_repeats_checked_before_next_reward_secondhalf",
+                             outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+
+            # =============
+            # How correlated are dwell time and curvature
+            wellCats = []
+            wallCats = []
+            curvature = []
+            avgDwell = []
+
+            def onWall(well):
+                return well < 9 or well > 40 or well % 8 in [2, 7]
+
+            for sesh in sessionsWithProbe:
+                for w in allWellNames:
+                    if w == sesh.home_well:
+                        wellCats.append("home")
+                    elif w in sesh.visited_away_wells:
+                        wellCats.append("away")
+                    else:
+                        wellCats.append("other")
+
+                    wallCats.append(onWall(w))
+
+                    curvature.append(sesh.avg_curvature_at_well(True, w))
+                    avgDwell.append(sesh.avg_dwell_time(True, w))
+
+            wellCats = np.array(wellCats)
+            wallCats = np.array(wallCats)
+            curvature = np.array(curvature)
+            avgDwell = np.array(avgDwell)
+
+            offWallIdx = np.logical_not(wallCats)
+            awayIdx = wellCats == "away"
+
+            fig.set_figheight(FIG_SCALE / 2)
+            fig.set_figwidth(FIG_SCALE / 2)
+            axs.scatter(avgDwell[offWallIdx], curvature[offWallIdx])
+            axs = saveOrShow("avgDwellVsCurvature_offwall",
+                             outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+            axs.scatter(avgDwell[awayIdx], curvature[awayIdx])
+            axs = saveOrShow("avgDwellVsCurvature_away", outputDir=outputDir, statsFile=statsFile)
+            fig.clf()
+            axs = plt.subplot(111)
+            axs.scatter(avgDwell[awayIdx & offWallIdx], curvature[awayIdx & offWallIdx])
+            axs = saveOrShow("avgDwellVsCurvature_away_offwall",
                              outputDir=outputDir, statsFile=statsFile)
             fig.clf()
             axs = plt.subplot(111)
@@ -2310,11 +2512,6 @@ def makeThesisCommitteeFigs():
 
                     axs = saveOrShow("compare_{}_{}_{}_{}_justprobe".format(seshLFPMeasureNames[slmi], seshPersevMeasureNames[spmi], slmi, spmi),
                                      outputDir=outputDir, statsFile=statsFile)
-
-        # s.numStimsAtWell(w)
-        #  w: s.numStimsAtWell(w) / s.total_dwell_time(False, w))
-        # len(s.bt_interruption_pos_idxs) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE)
-        # len(s.btRipStartIdxsProbeStats) / ((s.bt_pos_ts[-1] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE)
 
         # ==========================================
         if SKIP_SINGLE_SESSION_PLOTS:
