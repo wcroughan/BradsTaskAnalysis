@@ -191,12 +191,12 @@ def makeClusterFuncFromFile(clusterFileName, trodeIndex, clusterIndex):
         elif clusterIndex == -1:
             # print([isInPolygons(clusters[trodeIndex][i], features)
             #   for i in range(len(clusters[trodeIndex]))])
-            print(clusters[trodeIndex])
+            # print(clusters[trodeIndex])
             ret1 = np.vstack([isInPolygons(clusters[trodeIndex][i], features)
                              for i in range(len(clusters[trodeIndex]))]).T
-            print(ret1.shape)
+            # print(ret1.shape)
             ret = np.any(ret1, axis=1)
-            print(ret)
+            # print(ret)
             return ret
         else:
             clusterPolygons = clusters[trodeIndex][clusterIndex]

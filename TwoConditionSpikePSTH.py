@@ -97,13 +97,20 @@ def makePSTH(animal_name):
                 return np.logical_and(ret, endFeatures[:,2] < 0)
             clusters = loadTrodesClusters(clusterFileName)
             clusterPolygons = clusters[spikeTet-1]
-        else:
+        elif False:
             runName = "20220202_125441"
             swrt0 = ConvertTimeToTrodesTS(4, 2, 38)
             swrt1 = ConvertTimeToTrodesTS(4, 33, 0)
             ctrlt0 = ConvertTimeToTrodesTS(5, 13, 1)
             ctrlt1 = ConvertTimeToTrodesTS(5, 44, 0)
             spikeTet = 2
+        else:
+            runName = "20220217_142910"
+            swrt0 = ConvertTimeToTrodesTS(0, 21, 2)
+            swrt1 = ConvertTimeToTrodesTS(0, 59, 11)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 38, 22)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 10, 45)
+            spikeTet = 8
 
 
         recFileName = os.path.join(drive_dir, "B14/{}/{}.rec".format(runName, runName))
@@ -169,7 +176,7 @@ def makePSTH(animal_name):
                                                           swrOutputFileName, clfunc, makeFigs=True, clusterPolygons=clusterPolygons,
                                                           tStart=swrt0, tEnd=swrt1)
     ctrlTvals, ctrlMeanPSTH, ctrlStdPSTH, ctrlN = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
-                                                              ctrlOutputFileName, clfunc, makeFigs=True, clusterPolygons=clusterPolygons,
+                                                              ctrlOutputFileName, clfunc, makeFigs=False, clusterPolygons=clusterPolygons,
                                                               tStart=ctrlt0, tEnd=ctrlt1)
 
     # print(swrMeanPSTH)
