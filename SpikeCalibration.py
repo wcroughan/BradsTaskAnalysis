@@ -699,7 +699,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
             break
         bins = np.linspace(st - PSTH_MARGIN_SECS, st + PSTH_MARGIN_SECS, num=2*NUM_PSTH_BINS+1)
         h, b = np.histogram(spike_times, bins=bins)
-        psth[si, :] = h
+        psth[si, :] = h / (SPK_BIN_SZ_MS / 1000)
 
         lfp_psth[si, :] = lfp_data[stidx-NUM_LFP_PSTH_BINS:stidx+NUM_LFP_PSTH_BINS]
 

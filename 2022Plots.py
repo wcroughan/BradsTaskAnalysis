@@ -1107,19 +1107,19 @@ for animal_name in animals:
         # compare interruption count/rate to dwell time in probe
         P.makeAScatterPlotWithFunc(
             lambda s: [(s.numStimsAtWell(s.home_well), s.avg_dwell_time(
-                True, s.home_well, timeInterval=[0, 90], emptyVal=1.0))],
+                True, s.home_well, timeInterval=[0, 90], emptyVal=-1.0))],
             "stim count vs home dwell in 90sec", individualSessions=False,
             colorFunc=lambda s: ["orange" if s.isRippleInterruption else "cyan"])
 
         P.makeAScatterPlotWithFunc(
             lambda s: [(s.numStimsAtWell(w), s.avg_dwell_time(True, w, timeInterval=[
-                        0, 90], emptyVal=1.0)) for w in P.all_well_names],
+                        0, 90], emptyVal=-1.0)) for w in P.all_well_names],
             "stim count vs dwell in 90sec all wells", individualSessions=True,
             colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in P.all_well_names])
 
         P.makeAScatterPlotWithFunc(
             lambda s: [(s.numStimsAtWell(w), s.avg_dwell_time(True, w, timeInterval=[
-                        0, 90], emptyVal=1.0)) for w in (s.visited_away_wells + [s.home_well])],
+                        0, 90], emptyVal=-1.0)) for w in (s.visited_away_wells + [s.home_well])],
             "stim count vs dwell in 90sec rewarded wells", individualSessions=False, bigDots=False,
             colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in (s.visited_away_wells + [s.home_well])])
 
@@ -1131,13 +1131,13 @@ for animal_name in animals:
 
         P.makeAScatterPlotWithFunc(
             lambda s: [(s.numStimsAtWell(w) / s.total_dwell_time(False, w), s.avg_dwell_time(True, w, timeInterval=[
-                        0, 90], emptyVal=1.0)) for w in P.all_well_names],
+                        0, 90], emptyVal=-1.0)) for w in P.all_well_names],
             "stim rate vs dwell in 90sec all wells", individualSessions=True,
             colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in P.all_well_names])
 
         P.makeAScatterPlotWithFunc(
             lambda s: [(s.numStimsAtWell(w) / s.total_dwell_time(False, w), s.avg_dwell_time(True, w, timeInterval=[
-                        0, 90], emptyVal=1.0)) for w in (s.visited_away_wells + [s.home_well])],
+                        0, 90], emptyVal=-1.0)) for w in (s.visited_away_wells + [s.home_well])],
             "stim rate vs dwell in 90sec rewarded wells", individualSessions=False, bigDots=False,
             colorFunc=lambda s: ["green" if w == s.home_well else ("red" if w in s.visited_away_wells else "gray") for w in (s.visited_away_wells + [s.home_well])])
 

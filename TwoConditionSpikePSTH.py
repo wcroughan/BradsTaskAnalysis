@@ -99,9 +99,9 @@ def makePSTH(animal_name):
             clusterPolygons = clusters[spikeTet-1]
         else:
             runName = "20220202_125441"
-            swrt0 = ConvertTimeToTrodesTS(4, 2, 40)
-            swrt1 = ConvertTimeToTrodesTS(4, 33, 15)
-            ctrlt0 = ConvertTimeToTrodesTS(5, 13, 0)
+            swrt0 = ConvertTimeToTrodesTS(4, 2, 38)
+            swrt1 = ConvertTimeToTrodesTS(4, 33, 0)
+            ctrlt0 = ConvertTimeToTrodesTS(5, 13, 1)
             ctrlt1 = ConvertTimeToTrodesTS(5, 44, 0)
             spikeTet = 2
 
@@ -161,6 +161,7 @@ def makePSTH(animal_name):
     lfpTimestampFileName = ".".join(lfpFileName.split(".")[0:-2]) + ".timestamps.dat"
     swrOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_swr_psth.png")
     ctrlOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_ctrl_psth.png")
+    comboOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_combo_psth.png")
     print(runName, "LFP tet " + str(lfpTet), "spike tet " + str(spikeTet), "cluster index " + str(clusterIndex),
           recFileName, lfpFileName, spikeFileName, clusterFileName)
 
@@ -188,6 +189,7 @@ def makePSTH(animal_name):
     plt.fill_between(ctrlTvals, ctrlMeanPSTH - ctrlSEM, ctrlMeanPSTH +
                      ctrlSEM, facecolor="cyan", alpha=0.2)
 
+    plt.savefig(comboOutputFileName, dpi=800)
     plt.show()
 
 

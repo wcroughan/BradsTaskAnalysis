@@ -802,6 +802,9 @@ class BTSession:
             imax = np.searchsorted(ts, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE)
 
         cats = cats[imin:imax]
+        if float(cats.size) == 0:
+            print(len(self.bt_bout_category))
+            print(inProbe, imin, imax, timeInterval)
         return float(np.count_nonzero(cats == boutState)) / float(cats.size)
 
     def mean_vel(self, inProbe, onlyMoving=False, timeInterval=None):
@@ -934,10 +937,12 @@ class BTSession:
         else:
             return res.total_seconds()
 
-    def getLatencyToWell(self, inProbe, wellName, returnIdxs=False, emptyVal=np.nan):
+    def getLatencyToWell(self, inProbe, wellName, returnIdxs=False, returnSeconds=False, emptyVal=np.nan):
         """
-        units are trodes timestamps or idxs
+        units are trodes timestamps or idxs or seconds
         """
+        assert not (returnIdxs and returnSeconds)
+
         ts = self.entry_exit_times(inProbe, wellName, returnIdxs=returnIdxs)
         if len(ts[0]) == 0:
             return emptyVal
@@ -949,6 +954,9 @@ class BTSession:
             else:
                 res -= self.bt_pos_ts[0]
 
+            if returnSeconds:
+                res /= BTSession.TRODES_SAMPLING_RATE
+
         return res
 
     def numStimsAtWell(self, wellName):
@@ -957,3 +965,16 @@ class BTSession:
         """
         nw = np.array(self.bt_nearest_wells)
         return np.count_nonzero(wellName == nw[self.bt_interruption_pos_idxs])
+
+    def numRipplesAtWell(self, inProbe, wellName):
+        """
+        how many times did ripple happen while rat was at the well?
+        """
+        if inProbe:
+            ripPosIdxs = np.searchsorted(self.probe_pos_ts, self.probeRipStartTimestamps)
+            nw = np.array(self.probe_nearest_wells)
+            return np.count_nonzero(wellName == nw[ripPosIdxs])
+        else:
+            ripPosIdxs = np.searchsorted(self.bt_pos_ts, self.btRipStartTimestampsPreStats)
+            nw = np.array(self.bt_nearest_wells)
+            return np.count_nonzero(wellName == nw[ripPosIdxs])
