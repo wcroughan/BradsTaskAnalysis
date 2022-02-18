@@ -185,7 +185,7 @@ def MUAClusterFunc(features, channelRatios):
 def makeClusterFuncFromFile(clusterFileName, trodeIndex, clusterIndex):
     clusters = loadTrodesClusters(clusterFileName)
 
-    def retF(features, chmaxes, maxfeature):
+    def retF(features, chmaxes, maxfeature, endFeatures, chmins):
         if isinstance(clusterIndex, list):
             return any([isInPolygons(clusters[trodeIndex][i], features) for i in clusterIndex])
         elif clusterIndex == -1:
@@ -392,7 +392,9 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
     spike_data = spike_data_dict['data']
     # features = np.zeros((spike_data.size, 3))
     features = np.zeros((spike_data.size, 4))
+    endFeatures = np.zeros((spike_data.size, 4))
     chmaxes = np.zeros((spike_data.size, 4))
+    chmins = np.zeros((spike_data.size, 4))
 
     next_pct = spike_data.size / 100
 
@@ -413,7 +415,16 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         maxslice = maxpt % ntp
         features[si, :] = wfs[:, maxslice]
 
+        endSize = 10
+        endWf = wfs[:,-endSize:]
+        ntp = endSize
+        maxpt = np.argmax(endWf)
+        maxtet = maxpt // ntp
+        maxslice = maxpt % ntp
+        endFeatures[si, :] = endWf[:, maxslice]
+
         chmaxes[si, :] = np.max(wfs, axis=1)
+        chmins[si, :] = np.min(wfs, axis=1)
 
         if si > next_pct:
             # print("{}/{}".format(si, spike_data.size))
@@ -460,7 +471,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
     # c1spks_idxs = features[:, 3] < features[:, 1] - 500
 
     maxfeature = np.max(features, axis=1)
-    c1spks_idxs = clfunc(features, chmaxes, maxfeature)
+    c1spks_idxs = clfunc(features, chmaxes, maxfeature, endFeatures, chmins)
 
     c1spks = features[c1spks_idxs, :]
     c1ts = spike_data['time'][c1spks_idxs]

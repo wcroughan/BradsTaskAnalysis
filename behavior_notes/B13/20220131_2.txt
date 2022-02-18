@@ -1,0 +1,17 @@
+Home: 36
+Aways: 22 20 12 37 44 11 19 42 3
+Condition: Interruption
+Thresh: Low
+Last Away: 
+Last well: 
+ITI Stim On: 
+Probe Stim On: 
+Weight: 
+
+
+aaa...
+.aaa..
+a.a..a
+.aa.a.
+.aa.aa
+.a...a
