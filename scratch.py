@@ -1,19 +1,35 @@
-import numpy as np
-from BTData import BTData
-from BTSession import BTSession
-import matplotlib.pyplot as plt
-import MountainViewIO
-from ImportData import get_ripple_power
+class TestManager:
+    def __init__(self):
+        self.count = 0
+
+    def __enter__(self):
+        print("enter", self.count)
+        return self
+
+    def __exit__(self, *args):
+        print("exit", self.count)
+        self.count += 1
+
+
+t = TestManager()
+
+with t as tt:
+    print("hello!")
+    print(tt.count)
+    print(t.count)
+
+with t:
+    print("hello again!", t.count)
 
 # data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
-data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
-alldata = BTData()
-alldata.loadFromFile(data_filename)
+# data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
+# alldata = BTData()
+# alldata.loadFromFile(data_filename)
 
-TRODES_SAMPLING_RATE = 30000
+# TRODES_SAMPLING_RATE = 30000
 
-for sesh in alldata.getSessions(lambda s: s.probe_performed):
-    print(sesh.name, sesh.home_well, sesh.isRippleInterruption)
+# for sesh in alldata.getSessions(lambda s: s.probe_performed):
+#     print(sesh.name, sesh.home_well, sesh.isRippleInterruption)
     # 1918 35, quick check
     # 1315 13, good check, pause before sniff
     # 1514 21, longer check at 13 just before (also pause b4 sniff again at 13 but not at 21)

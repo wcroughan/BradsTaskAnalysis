@@ -352,7 +352,6 @@ def makeThesisCommitteeFigs():
                 warnings.filterwarnings("error", category=UserWarning)
                 while not plotWorked:
                     try:
-                        # print("trying...")
                         p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
                                             y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
                         p2 = sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
@@ -361,22 +360,7 @@ def makeThesisCommitteeFigs():
                         plotWorked = True
                     except UserWarning as e:
                         swarmDotSize /= 2
-                        # print("reduing dots to {}".format(swarmDotSize))
-
-                        # ax.cla()
-                        # print(ax.figure)
-                        # try:
-                        #     p1.remove()
-                        # except:
-                        #     pass
-
-                        # try:
-                        #     p2.remove()
-                        # except:
-                        #     pass
                         p1.cla()
-
-                        # print(ax.figure)
 
                         if swarmDotSize < 0.1:
                             raise e
