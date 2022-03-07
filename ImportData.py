@@ -534,7 +534,7 @@ def get_ripple_power(lfp_data, omit_artifacts=True, causal_smoothing=False, lfp_
 
         plt.show()
 
-    return zpower, meanPower, stdPower
+    return ripple_power, zpower, meanPower, stdPower
 
 
 def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0):
@@ -544,6 +544,7 @@ def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThres
     ripLens = []
     ripPeakIdxs = []
     ripPeakAmps = []
+    ripCrossThreshIdx = []
 
     i = 0
     while i < len(pks):
@@ -557,12 +558,21 @@ def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThres
         length = 0
         pkAmp = 0
         pkAmpI = 0
+        crossI = 0
+        crossed = False
         while ii < len(ripplePower) and ripplePower[ii] > edgeThresh:
             if ripplePower[ii] > pkAmp:
                 pkAmp = ripplePower[ii]
                 pkAmpI = ii
+
+            if not crossed and ripplePower[ii] > minHeight:
+                crossed = True
+                crossI = ii
+
             ii += 1
             length += 1
+
+        assert crossed
 
         lensec = float(length) / LFP_SAMPLING_RATE
         if lensec >= minLen and lensec <= maxLen:
@@ -570,11 +580,12 @@ def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThres
             ripLens.append(length)
             ripPeakAmps.append(pkAmp)
             ripPeakIdxs.append(pkAmpI)
+            ripCrossThreshIdx.append(crossI)
 
         while i < len(pks) and pks[i] < ii:
             i += 1
 
-    return ripStartIdxs, ripLens, ripPeakIdxs, ripPeakAmps
+    return ripStartIdxs, ripLens, ripPeakIdxs, ripPeakAmps, ripCrossThreshIdx
 
 
 if __name__ == "__main__" and TEST_NEAREST_WELL:
@@ -1147,7 +1158,7 @@ if __name__ == "__main__":
             if len(session.bt_interruption_pos_idxs) < 50:
                 if (session.isRippleInterruption):
                     print(
-                        "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER THAN 100 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
+                        "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER THAN 50 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
                 else:
                     print(
                         "WARNING: very few interruptions. This was a delay control but is basically a no-stim control")
@@ -1171,13 +1182,22 @@ if __name__ == "__main__":
             bt_lfp_artifact_idxs = interruption_idxs - bt_lfp_start_idx
             bt_lfp_artifact_idxs = bt_lfp_artifact_idxs[bt_lfp_artifact_idxs > 0]
 
-            _, prebtMeanRipplePower, prebtStdRipplePower = get_ripple_power(
+            pre_bt_interruption_idxs = interruption_idxs[interruption_idxs < bt_lfp_start_idx]
+            pre_bt_interruption_idxs_first_half = interruption_idxs[interruption_idxs < int(
+                bt_lfp_start_idx/2)]
+
+            _, _, session.prebtMeanRipplePower, session.prebtStdRipplePower = get_ripple_power(
                 lfp_data[0:bt_lfp_start_idx], omit_artifacts=False)
-            ripple_power, _, _ = get_ripple_power(
-                btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=prebtMeanRipplePower, stdPower=prebtStdRipplePower, showPlot=showPlot)
-            session.btRipStartIdxsPreStats, session.btRipLensPreStats, session.btRipPeakIdxsPreStats, session.btRipPeakAmpsPreStats = \
+            _, ripple_power, _, _ = get_ripple_power(
+                btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=session.prebtMeanRipplePower, stdPower=session.prebtStdRipplePower, showPlot=showPlot)
+            session.btRipStartIdxsPreStats, session.btRipLensPreStats, session.btRipPeakIdxsPreStats, session.btRipPeakAmpsPreStats, session.btRipCrossThreshIdxsPreStats = \
                 detectRipples(ripple_power)
             session.btRipStartTimestampsPreStats = lfp_timestamps[session.btRipStartIdxsPreStats + bt_lfp_start_idx]
+
+            _, _, session.prebtMeanRipplePowerArtifactsRemoved, session.prebtStdRipplePowerArtifactsRemoved = get_ripple_power(
+                lfp_data[0:bt_lfp_start_idx], lfp_deflections=pre_bt_interruption_idxs)
+            _, _, session.prebtMeanRipplePowerArtifactsRemovedFirstHalf, session.prebtStdRipplePowerArtifactsRemovedFirstHalf = get_ripple_power(
+                lfp_data[0:int(bt_lfp_start_idx/2)], lfp_deflections=pre_bt_interruption_idxs)
 
             if session.probe_performed and not session.separate_iti_file and not session.separate_probe_file:
                 ITI_MARGIN = 5  # units: seconds
@@ -1195,9 +1215,9 @@ if __name__ == "__main__":
                 zeroIdx = np.searchsorted(itiStimIdxs, 0)
                 itiStimIdxs = itiStimIdxs[zeroIdx:]
 
-                ripple_power, ITIMeanRipplePower, ITIStdRipplePower = get_ripple_power(
+                _, ripple_power, session.ITIMeanRipplePower, session.ITIStdRipplePower = get_ripple_power(
                     itiLFPData, lfp_deflections=itiStimIdxs)
-                session.ITIRipStartIdxs, session.ITIRipLens, session.ITIRipPeakIdxs, session.ITIRipPeakAmps = \
+                session.ITIRipStartIdxs, session.ITIRipLens, session.ITIRipPeakIdxs, session.ITIRipPeakAmps, session.ITIRipCrossThreshIdxs = \
                     detectRipples(ripple_power)
                 session.ITIRipStartTimestamps = lfp_timestamps[session.ITIRipStartIdxs + itiLfpStart_idx]
 
@@ -1213,25 +1233,25 @@ if __name__ == "__main__":
                 session.probeLfpStart_ts = probeLfpStart_ts
                 session.probeLfpEnd_ts = probeLfpEnd_ts
 
-                ripple_power, probeMeanRipplePower, probeStdRipplePower = get_ripple_power(
+                _, ripple_power, session.probeMeanRipplePower, session.probeStdRipplePower = get_ripple_power(
                     probeLFPData, omit_artifacts=False)
-                session.probeRipStartIdxs, session.probeRipLens, session.probeRipPeakIdxs, session.probeRipPeakAmps = \
+                session.probeRipStartIdxs, session.probeRipLens, session.probeRipPeakIdxs, session.probeRipPeakAmps, session.probeRipCrossThreshIdxs = \
                     detectRipples(ripple_power)
                 session.probeRipStartTimestamps = lfp_timestamps[session.probeRipStartIdxs + probeLfpStart_idx]
 
                 session.probeDuration = (probeLfpEnd_ts - probeLfpStart_ts) / \
                     BTSession.TRODES_SAMPLING_RATE
 
-                itiRipplePowerProbeStats, _, _ = get_ripple_power(
-                    itiLFPData, lfp_deflections=itiStimIdxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower)
-                session.ITIRipStartIdxsProbeStats, session.ITIRipLensProbeStats, session.ITIRipPeakIdxsProbeStats, session.ITIRipPeakAmpsProbeStats = \
+                _, itiRipplePowerProbeStats, _, _ = get_ripple_power(
+                    itiLFPData, lfp_deflections=itiStimIdxs, meanPower=session.probeMeanRipplePower, stdPower=session.probeStdRipplePower)
+                session.ITIRipStartIdxsProbeStats, session.ITIRipLensProbeStats, session.ITIRipPeakIdxsProbeStats, session.ITIRipPeakAmpsProbeStats, session.ITIRipCrossThreshIdxsProbeStats = \
                     detectRipples(itiRipplePowerProbeStats)
                 session.ITIRipStartTimestampsProbeStats = lfp_timestamps[
                     session.ITIRipStartIdxsProbeStats + itiLfpStart_idx]
 
-                btRipplePowerProbeStats, _, _ = get_ripple_power(
-                    btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=probeMeanRipplePower, stdPower=probeStdRipplePower, showPlot=showPlot)
-                session.btRipStartIdxsProbeStats, session.btRipLensProbeStats, session.btRipPeakIdxsProbeStats, session.btRipPeakAmpsProbeStats = \
+                _, btRipplePowerProbeStats, _, _ = get_ripple_power(
+                    btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=session.probeMeanRipplePower, stdPower=session.probeStdRipplePower, showPlot=showPlot)
+                session.btRipStartIdxsProbeStats, session.btRipLensProbeStats, session.btRipPeakIdxsProbeStats, session.btRipPeakAmpsProbeStats, session.btRipCrossThreshIdxsProbeStats = \
                     detectRipples(btRipplePowerProbeStats)
                 session.btRipStartTimestampsProbeStats = lfp_timestamps[
                     session.btRipStartIdxsProbeStats + bt_lfp_start_idx]

@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+from datetime import datetime
 
 
 class PlotCtx:
@@ -14,15 +15,26 @@ class PlotCtx:
         # Show when exiting context?
         self.showPlot = False
 
+        self.timeStr = datetime.now().strftime("%Y%m%d_%H%M%S_info.txt")
         self.setOutputDir(outputDir)
         self.figName = ""
 
     def __enter__(self):
         return self.axs
 
-    def newFig(self, figName):
+    def newFig(self, figName, subPlots=None):
         self.clearFig()
         self.figName = figName
+
+        if subPlots is not None:
+            assert len(subPlots) == 2
+            self.axs = self.fig.subplots(*subPlots)
+
+            self.fig.set_figheight(self.figSizeY * subPlots[0])
+            self.fig.set_figwidth(self.figSizeX * subPlots[1])
+        else:
+            self.fig.set_figheight(self.figSizeY)
+            self.fig.set_figwidth(self.figSizeX)
 
         return self
 
@@ -46,6 +58,7 @@ class PlotCtx:
         else:
             fname = self.figName
         plt.savefig(fname, bbox_inches="tight", dpi=200)
+        self.writeToInfoFile("wrote file {}".format(fname))
 
     def clearFig(self):
         self.fig.clf()
@@ -56,6 +69,12 @@ class PlotCtx:
         self.outputDir = outputDir
         if not os.path.exists(outputDir):
             os.makedirs(outputDir)
+        self.txtOutputFName = os.path.join(
+            outputDir, self.timeStr)
+
+    def writeToInfoFile(self, txt, suffix="\n"):
+        with open(self.txtOutputFName, "a") as f:
+            f.write(txt + suffix)
 
 
 def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAways=True, zorder=2):
