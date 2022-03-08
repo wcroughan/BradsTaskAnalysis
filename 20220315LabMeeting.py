@@ -5,10 +5,13 @@ from BTData import BTData
 from BTSession import BTSession
 import os
 import sys
+from UtilFunctions import getRipplePower
+from consts import TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 
 MAKE_RAW_LFP_FIGS = False
 RUN_RIPPLE_DETECTION_COMPARISON = False
 RUN_RIPPLE_REFRAC_PERIOD_CHECK = True
+RUN_RIPPLE_BASELINE_TET_ANALYSIS = True
 
 possibleDataDirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/home/wcroughan/data/"]
 dataDir = None
@@ -126,25 +129,48 @@ for ratName in animalNames:
         if RUN_RIPPLE_REFRAC_PERIOD_CHECK:
             # interruptionI = 0
             # interruptionIdx = sesh.interruptionIdxs[interruptionI]
-            LFP_HZ = 1500.0
             ripCrossIdxs = np.array(sesh.btRipCrossThreshIdxsProbeStats)
             mostRecentInterruption = np.searchsorted(
                 sesh.interruptionIdxs, ripCrossIdxs)
             notTooEarly = mostRecentInterruption > 0
-            mostRecentInterruption = mostRecentInterruption[notTooEarly]
+            mostRecentInterruption = mostRecentInterruption[notTooEarly] - 1
             ripCrossIdxs = ripCrossIdxs[notTooEarly]
             interruptionToRipInterval = (
-                ripCrossIdxs - sesh.interruptionIdxs[mostRecentInterruption-1]).astype(float) / LFP_HZ
+                ripCrossIdxs - sesh.interruptionIdxs[mostRecentInterruption]).astype(float) / float(LFP_SAMPLING_RATE)
 
             with pp.newFig("interruption_to_ripple_delay") as ax:
                 ax.hist(interruptionToRipInterval, bins=np.linspace(0, 1, 40))
+
+        if RUN_RIPPLE_BASELINE_TET_ANALYSIS:
+            lfpFName = sesh.bt_lfp_fnames[-1]
+            print("LFP data from file {}".format(lfpFName))
+            lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
+            lfpV = lfpData[1]['voltage']
+            lfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
+
+            print("LFP data from file {}".format(sesh.bt_lfp_baseline_fname))
+            lfpData = MountainViewIO.loadLFP(data_file=sesh.bt_lfp_baseline_fname)
+            baselfpV = lfpData[1]['voltage']
+            baselfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
+
+            # TODO in when getting power: grab probe stats (need to remake foor baseline tetrode), use those here
+            # rawRipplePower, zRipplePower, _, _ = getRipplePower(
+            #     btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=session.prebtMeanRipplePower, stdPower=session.prebtStdRipplePower, showPlot=showPlot)
+            # session.btRipStartIdxsPreStats, session.btRipLensPreStats, session.btRipPeakIdxsPreStats, session.btRipPeakAmpsPreStats, session.btRipCrossThreshIdxsPreStats = \
+            #     detectRipples(ripple_power)
+
+            # Run detection with and without subtracting baseline power
+            # Make simple 2x2 confusion matrix
+            #   col 1: detected without baseline, how many also detected vs not with baseline
+            #   col 2: detected with baseline, how many also detected vs not
+            pass
 
         if MAKE_RAW_LFP_FIGS:
             lfpFName = sesh.bt_lfp_fnames[-1]
             print("LFP data from file {}".format(lfpFName))
             lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
             lfpV = lfpData[1]['voltage']
-            lfpT = np.array(lfpData[0]['time']) / BTSession.TRODES_SAMPLING_RATE
+            lfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
 
             amps = sesh.btRipPeakAmpsProbeStats
 

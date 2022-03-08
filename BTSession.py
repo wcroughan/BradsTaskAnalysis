@@ -93,6 +93,7 @@ class BTSession:
         self.isDelayedInterruption = False
         self.isNoInterruption = False
         self.ripple_detection_tetrodes = []
+        self.ripple_baseline_tetrode = None
         # self.ripple_detection_tetrodes = [37]
 
         # Rat weight if it was recorded
@@ -114,6 +115,7 @@ class BTSession:
         # LFP data is huge, so only load on demand
         # brad's task
         self.bt_lfp_fnames = []
+        self.bt_lfp_baseline_fname = None
         self.bt_lfp_start_ts = 0
         self.bt_lfp_end_ts = 0
         self.bt_lfp_start_idx = 0
