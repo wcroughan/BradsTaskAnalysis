@@ -18,6 +18,7 @@ mountainlab-pytools = "*"
 sklearn = "*"
 ffms2 = "*"
 opencv-python = "*"
+ffmpeg-python = "*"
 
 [dev-packages]
 
