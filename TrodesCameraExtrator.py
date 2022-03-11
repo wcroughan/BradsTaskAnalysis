@@ -7,6 +7,7 @@ import numpy as np
 import struct
 import os
 import matplotlib.pyplot as plt
+import time
 
 from UtilFunctions import readRawPositionData, processPosData
 
@@ -77,6 +78,7 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
 
     outputArray = np.zeros((len(timeStamps),), dtype=outputDataType)
     outputIdx = 0
+    timestampOffset = batchStart
 
     quitReq = False
     batchNum = -1
@@ -190,12 +192,12 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
                     quitReq = True
                     break
 
-            outputArray[outputIdx]['timestamp'] = timeStamps[outputIdx]
+            outputArray[outputIdx]['timestamp'] = timeStamps[outputIdx + timestampOffset]
             outputArray[outputIdx]['x1'] = ratXLoc
             outputArray[outputIdx]['y1'] = ratYLoc
             outputArray[outputIdx]['x2'] = 0
             outputArray[outputIdx]['y2'] = 0
-            print(outputArray[outputIdx])
+            # print(outputArray[outputIdx])
             outputIdx += 1
 
         if quitReq:
@@ -217,15 +219,36 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
 
 if __name__ == "__main__":
     videoFileName = "/home/wcroughan/Desktop/20211215_140433.1.h264"
+
+    # t1 = time.perf_counter()
+    # processRawTrodesVideo(videoFileName, timestampFileName=None,
+    #                       threshold=50, searchDist=150, showVideo=False, frameBatchSize=2000,
+    #                       maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteWithoutConfirm=True)
+    # t2 = time.perf_counter()
     processRawTrodesVideo(videoFileName, timestampFileName=None,
-                          threshold=50, searchDist=100, showVideo=False, frameBatchSize=1000,
-                          maxNumBatches=2, outputFileName=None, batchStart=4200)
+                          threshold=50, searchDist=150, showVideo=False, frameBatchSize=1000,
+                          maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteWithoutConfirm=True)
+    # t3 = time.perf_counter()
+    # print("batch size 500: ", t2 - t1)
+    # print("batch size 1000: ", t3 - t2)
+    # batch size 2000 gets killed ... batch size 1000 is twice as fast as 500
 
     posFileName = "/home/wcroughan/Desktop/20211215_140433.1.videoPositionTracking"
+    originalPosFileName = "/home/wcroughan/Desktop/originalTracking.videoPositionTracking"
 
     position_data = readRawPositionData(posFileName)
-    print(position_data)
+    # print(position_data)
     print(position_data.shape)
     xs, ys, ts = processPosData(position_data)
-    plt.plot(xs, ys)
+    # plt.plot(xs, ys)
+    plt.plot(ts, xs)
+    plt.xlim(ts[0], ts[-1])
+
+    position_data = readRawPositionData(originalPosFileName)
+    # print(position_data)
+    print(position_data.shape)
+    xs, ys, ts = processPosData(position_data)
+    # plt.plot(xs, ys)
+    plt.plot(ts, xs)
+    plt.legend(["py", "trodes"])
     plt.show()

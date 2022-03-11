@@ -19,6 +19,7 @@ sklearn = "*"
 ffms2 = "*"
 opencv-python = "*"
 ffmpeg-python = "*"
+timer = "*"
 
 [dev-packages]
 
