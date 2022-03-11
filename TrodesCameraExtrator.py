@@ -33,7 +33,7 @@ def getFrameBatch(videoFileName, startFrame, numFrames=100):
 def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThreshold=0.1,
                           threshold=50, searchDist=100, showVideo=False, frameBatchSize=1000,
                           maxNumBatches=None, outputFileName=None, batchStart=0,
-                          overwriteMode="never"):
+                          overwriteMode="ask"):
     probe = ffmpeg.probe(videoFileName)
     video_stream = next(
         (stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
@@ -266,8 +266,13 @@ def runTest():
 if __name__ == "__main__":
     dataDir = "/media/WDC6/"
     animalNames = ["B13", "B14"]
+    allVids = []
     for animalName in animalNames:
         gl = dataDir + "/" + animalName + "/bradtasksessions/*/*.h264"
         videoNameList = glob.glob(gl)
-        for videoName in videoNameList:
-            processRawTrodesVideo(videoName)
+        allVids += videoNameList
+    # print("\n".join(allVids))
+
+    for videoName in allVids:
+        print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
+        processRawTrodesVideo(videoName, overwriteMode="never")

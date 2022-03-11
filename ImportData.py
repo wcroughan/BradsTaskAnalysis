@@ -17,7 +17,7 @@ import sys
 
 from consts import all_well_names, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 from UtilFunctions import readWellCoordsFile, readRawPositionData, readClipData, \
-    processPosData, getWellCoordinates, getNearestWell, getWellEntryAndExitTimek, \
+    processPosData, getWellCoordinates, getNearestWell, getWellEntryAndExitTimes, \
     quadrantOfWell, getListOfVisitedWells, onWall, getRipplePower, detectRipples
 
 INSPECT_ALL = False
@@ -34,6 +34,7 @@ SAVE_DONT_SHOW = True
 SHOW_CURVATURE_VIDEO = False
 SKIP_LFP = False
 SKIP_PREV_SESSION = True
+JUST_EXTRACT_TRODES_DATA = False
 
 TEST_NEAREST_WELL = False
 
@@ -135,9 +136,9 @@ elif animal_name == "B13":
     X_FINISH = 1050
     Y_START = 20
     Y_FINISH = 900
-    data_dir = "/media/WDC7/B13/bradtasksessions/"
-    output_dir = "/media/WDC7/B13/processed_data/"
-    fig_output_dir = "/media/WDC7/B13/processed_data/"
+    data_dir = "/media/WDC6/B13/bradtasksessions/"
+    output_dir = "/media/WDC6/B13/processed_data/"
+    fig_output_dir = "/media/WDC6/B13/processed_data/"
     out_filename = "B13_bradtask.dat"
 
     excluded_dates = []
@@ -153,13 +154,14 @@ elif animal_name == "B14":
     X_FINISH = 1050
     Y_START = 20
     Y_FINISH = 900
-    data_dir = "/media/WDC7/B14/bradtasksessions/"
-    output_dir = "/media/WDC7/B14/processed_data/"
-    fig_output_dir = "/media/WDC7/B14/processed_data/"
+    data_dir = "/media/WDC6/B14/bradtasksessions/"
+    output_dir = "/media/WDC6/B14/processed_data/"
+    fig_output_dir = "/media/WDC6/B14/processed_data/"
     out_filename = "B14_bradtask.dat"
 
     excluded_dates = []
-    minimum_date = "20211209"  # one run with high thresh and one 15 min run on the 8th
+    # minimum_date = "20211209"  # one run with high thresh and one 15 min run on the 8th
+    minimum_date = "20220220"  # Only after adjusting stim electrode to correct place!
     excluded_sessions = []
     DEFAULT_RIP_DET_TET = 3
     DEFAULT_RIP_BAS_TET = 2
@@ -363,6 +365,9 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 field_name = lineparts[0]
                 field_val = lineparts[1]
 
+                if JUST_EXTRACT_TRODES_DATA and field_name.lower() not in ["reference", "ref", "baseline"]:
+                    continue
+
                 if field_name.lower() == "home":
                     session.home_well = int(field_val)
                 elif field_name.lower() == "aways":
@@ -451,13 +456,14 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 else:
                     session.notes.append(line)
 
-        if session.probe_performed and session.probe_ended_at_well is None:
-            raise Exception(
-                "Didn't mark the probe end well for session {}".format(session.name))
+        if not JUST_EXTRACT_TRODES_DATA:
+            if session.probe_performed and session.probe_ended_at_well is None:
+                raise Exception(
+                    "Didn't mark the probe end well for session {}".format(session.name))
 
-        if not (session.last_away_well == session.away_wells[-1] and session.ended_on_home) and session.bt_ended_at_well is None:
-            raise Exception(
-                "Didn't find all the wells but task end well not marked for session {}".format(session.name))
+            if not (session.last_away_well == session.away_wells[-1] and session.ended_on_home) and session.bt_ended_at_well is None:
+                raise Exception(
+                    "Didn't find all the wells but task end well not marked for session {}".format(session.name))
 
     except FileNotFoundError as err:
         print(err)
@@ -565,7 +571,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     else:
         session.prevSessionInfoParsed = False
 
-    if session.home_well == 0:
+    if session.home_well == 0 and not JUST_EXTRACT_TRODES_DATA:
         print("Home well not listed in notes file, skipping")
         continue
 
@@ -573,78 +579,79 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     # Read position data
     # ===================================
 
-    position_data = readRawPositionData(
-        file_str + '.1.videoPositionTracking')
-    if position_data is None:
-        print("Warning: skipping position data")
-        session.hasPositionData = False
-    else:
-        session.hasPositionData = True
-
-        if session.separate_probe_file:
-            probe_file_str = os.path.join(
-                session.probe_dir, os.path.basename(session.probe_dir))
-            bt_time_clips = readClipData(file_str + '.1.clips')[0]
-            probe_time_clips = readClipData(probe_file_str + '.1.clips')[0]
+    if not JUST_EXTRACT_TRODES_DATA:
+        position_data = readRawPositionData(
+            file_str + '.1.videoPositionTracking')
+        if position_data is None:
+            print("Warning: skipping position data")
+            session.hasPositionData = False
         else:
-            time_clips = readClipData(file_str + '.1.clips')
-            bt_time_clips = time_clips[0]
-            if session.probe_performed:
-                probe_time_clips = time_clips[1]
+            session.hasPositionData = True
 
-        xs, ys, ts = processPosData(position_data, xLim=(
-            X_START, X_FINISH), yLim=(Y_START, Y_FINISH))
-        bt_start_idx = np.searchsorted(ts, bt_time_clips[0])
-        bt_end_idx = np.searchsorted(ts, bt_time_clips[1])
-        session.bt_pos_xs = xs[bt_start_idx:bt_end_idx]
-        session.bt_pos_ys = ys[bt_start_idx:bt_end_idx]
-        session.bt_pos_ts = ts[bt_start_idx:bt_end_idx]
-
-        if session.probe_performed:
             if session.separate_probe_file:
-                position_data = readRawPositionData(
-                    probe_file_str + '.1.videoPositionTracking')
-                xs, ys, ts = processPosData(position_data, xLim=(
-                    X_START, X_FINISH), yLim=(Y_START, Y_FINISH))
-
-            probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
-            probe_end_idx = np.searchsorted(ts, probe_time_clips[1])
-            session.probe_pos_xs = xs[probe_start_idx:probe_end_idx]
-            session.probe_pos_ys = ys[probe_start_idx:probe_end_idx]
-            session.probe_pos_ts = ts[probe_start_idx:probe_end_idx]
-
-            if np.nanmax(session.probe_pos_ys) < 550 and np.nanmax(session.probe_pos_ys) > 400:
-                print("Position data just covers top of the environment")
-                session.positionOnlyTop = True
+                probe_file_str = os.path.join(
+                    session.probe_dir, os.path.basename(session.probe_dir))
+                bt_time_clips = readClipData(file_str + '.1.clips')[0]
+                probe_time_clips = readClipData(probe_file_str + '.1.clips')[0]
             else:
-                pass
-                # print("min max")
-                # print(np.nanmin(session.probe_pos_ys))
-                # print(np.nanmax(session.probe_pos_ys))
-                # plt.plot(session.bt_pos_xs, session.bt_pos_ys)
-                # plt.show()
-                # plt.plot(session.probe_pos_xs, session.probe_pos_ys)
-                # plt.show()
+                time_clips = readClipData(file_str + '.1.clips')
+                bt_time_clips = time_clips[0]
+                if session.probe_performed:
+                    probe_time_clips = time_clips[1]
 
-    # ===================================
-    # get well coordinates
-    # ===================================
+            xs, ys, ts = processPosData(position_data, xLim=(
+                X_START, X_FINISH), yLim=(Y_START, Y_FINISH))
+            bt_start_idx = np.searchsorted(ts, bt_time_clips[0])
+            bt_end_idx = np.searchsorted(ts, bt_time_clips[1])
+            session.bt_pos_xs = xs[bt_start_idx:bt_end_idx]
+            session.bt_pos_ys = ys[bt_start_idx:bt_end_idx]
+            session.bt_pos_ts = ts[bt_start_idx:bt_end_idx]
 
-    well_coords_file_name = file_str + '.1.wellLocations.csv'
-    if not os.path.exists(well_coords_file_name):
-        well_coords_file_name = os.path.join(data_dir, 'well_locations.csv')
-        print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
-    session.well_coords_map = readWellCoordsFile(well_coords_file_name)
-    session.home_x, session.home_y = getWellCoordinates(
-        session.home_well, session.well_coords_map)
+            if session.probe_performed:
+                if session.separate_probe_file:
+                    position_data = readRawPositionData(
+                        probe_file_str + '.1.videoPositionTracking')
+                    xs, ys, ts = processPosData(position_data, xLim=(
+                        X_START, X_FINISH), yLim=(Y_START, Y_FINISH))
 
-    # for i in range(len(session.ripple_detection_tetrodes)):
-    #     spkdir = file_str + ".spikes"
-    #     if not os.path.exists(spkdir):
-    #         print(spkdir, "doesn't exists, gonna try and extract the spikes")
-    #         syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportspikes -rec " + file_str + ".rec"
-    #         print(syscmd)
-    #         os.system(syscmd)
+                probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
+                probe_end_idx = np.searchsorted(ts, probe_time_clips[1])
+                session.probe_pos_xs = xs[probe_start_idx:probe_end_idx]
+                session.probe_pos_ys = ys[probe_start_idx:probe_end_idx]
+                session.probe_pos_ts = ts[probe_start_idx:probe_end_idx]
+
+                if np.nanmax(session.probe_pos_ys) < 550 and np.nanmax(session.probe_pos_ys) > 400:
+                    print("Position data just covers top of the environment")
+                    session.positionOnlyTop = True
+                else:
+                    pass
+                    # print("min max")
+                    # print(np.nanmin(session.probe_pos_ys))
+                    # print(np.nanmax(session.probe_pos_ys))
+                    # plt.plot(session.bt_pos_xs, session.bt_pos_ys)
+                    # plt.show()
+                    # plt.plot(session.probe_pos_xs, session.probe_pos_ys)
+                    # plt.show()
+
+        # ===================================
+        # get well coordinates
+        # ===================================
+
+        well_coords_file_name = file_str + '.1.wellLocations.csv'
+        if not os.path.exists(well_coords_file_name):
+            well_coords_file_name = os.path.join(data_dir, 'well_locations.csv')
+            print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
+        session.well_coords_map = readWellCoordsFile(well_coords_file_name)
+        session.home_x, session.home_y = getWellCoordinates(
+            session.home_well, session.well_coords_map)
+
+        # for i in range(len(session.ripple_detection_tetrodes)):
+        #     spkdir = file_str + ".spikes"
+        #     if not os.path.exists(spkdir):
+        #         print(spkdir, "doesn't exists, gonna try and extract the spikes")
+        #         syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportspikes -rec " + file_str + ".rec"
+        #         print(syscmd)
+        #         os.system(syscmd)
 
     if len(session.ripple_detection_tetrodes) == 0:
         session.ripple_detection_tetrodes = [DEFAULT_RIP_DET_TET]
@@ -690,6 +697,9 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         lfpfilename = lfpfilelist[0]
         session.bt_lfp_baseline_fname = lfpfilename
         baseline_lfp_data = MountainViewIO.loadLFP(data_file=session.bt_lfp_baseline_fname)
+
+    if JUST_EXTRACT_TRODES_DATA:
+        continue
 
     # ======================================================================
     # ===================================
