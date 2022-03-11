@@ -8,6 +8,7 @@ import struct
 import os
 import matplotlib.pyplot as plt
 import time
+import glob
 
 from UtilFunctions import readRawPositionData, processPosData
 
@@ -32,7 +33,7 @@ def getFrameBatch(videoFileName, startFrame, numFrames=100):
 def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThreshold=0.1,
                           threshold=50, searchDist=100, showVideo=False, frameBatchSize=1000,
                           maxNumBatches=None, outputFileName=None, batchStart=0,
-                          overwriteWithoutConfirm=False):
+                          overwriteMode="never"):
     probe = ffmpeg.probe(videoFileName)
     video_stream = next(
         (stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
@@ -68,9 +69,17 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
     if outputFileName is None:
         outputFileName = '.'.join(videoFileName.split('.')[0:-1]) + '.videoPositionTracking'
 
-    if os.path.exists(outputFileName) and not overwriteWithoutConfirm:
-        c = input("Output file {} exists, overwrite? (y/N):".format(outputFileName))
-        if c != "y":
+    if os.path.exists(outputFileName):
+        if overwriteMode == "never":
+            return
+
+        elif overwriteMode == "ask":
+            c = input("Output file {} exists, overwrite? (y/N):".format(outputFileName))
+            if c != "y":
+                return
+
+        elif overwriteMode != "always":
+            print("Unknown overwrite mode {}".format(overwriteMode))
             return
 
     outputDataType = np.dtype([('timestamp', np.uint32), ('x1', np.uint16),
@@ -217,17 +226,17 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
         cv2.destroyAllWindows()
 
 
-if __name__ == "__main__":
+def runTest():
     videoFileName = "/home/wcroughan/Desktop/20211215_140433.1.h264"
 
     # t1 = time.perf_counter()
     # processRawTrodesVideo(videoFileName, timestampFileName=None,
     #                       threshold=50, searchDist=150, showVideo=False, frameBatchSize=2000,
-    #                       maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteWithoutConfirm=True)
+    #                       maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteMode=True)
     # t2 = time.perf_counter()
     processRawTrodesVideo(videoFileName, timestampFileName=None,
                           threshold=50, searchDist=150, showVideo=False, frameBatchSize=1000,
-                          maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteWithoutConfirm=True)
+                          maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteMode=True)
     # t3 = time.perf_counter()
     # print("batch size 500: ", t2 - t1)
     # print("batch size 1000: ", t3 - t2)
@@ -252,3 +261,13 @@ if __name__ == "__main__":
     plt.plot(ts, xs)
     plt.legend(["py", "trodes"])
     plt.show()
+
+
+if __name__ == "__main__":
+    dataDir = "/media/WDC6/"
+    animalNames = ["B13", "B14"]
+    for animalName in animalNames:
+        gl = dataDir + "/" + animalName + "/bradtasksessions/*/*.h264"
+        videoNameList = glob.glob(gl)
+        for videoName in videoNameList:
+            processRawTrodesVideo(videoName)
