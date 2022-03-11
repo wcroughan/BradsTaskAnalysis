@@ -592,7 +592,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             if session.probe_performed:
                 probe_time_clips = time_clips[1]
 
-        xs, ys, ts = processPosData(position_data)
+        xs, ys, ts = processPosData(position_data, xLim=(
+            X_START, X_FINISH), yLim=(Y_START, Y_FINISH))
         bt_start_idx = np.searchsorted(ts, bt_time_clips[0])
         bt_end_idx = np.searchsorted(ts, bt_time_clips[1])
         session.bt_pos_xs = xs[bt_start_idx:bt_end_idx]
@@ -603,7 +604,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             if session.separate_probe_file:
                 position_data = readRawPositionData(
                     probe_file_str + '.1.videoPositionTracking')
-                xs, ys, ts = processPosData(position_data)
+                xs, ys, ts = processPosData(position_data, xLim=(
+                    X_START, X_FINISH), yLim=(Y_START, Y_FINISH))
 
             probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
             probe_end_idx = np.searchsorted(ts, probe_time_clips[1])

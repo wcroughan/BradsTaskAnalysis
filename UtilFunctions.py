@@ -1,3 +1,6 @@
+import numpy as np
+from consts import all_well_names, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
+
 
 def readWellCoordsFile(well_coords_file):
     # For some reason json saving and loading turns the keys into strings, just going to change that here so it's consistent
@@ -56,7 +59,8 @@ def readClipData(data_filename):
     return time_clips
 
 
-def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2):
+def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
+                   xLim=(100, 1050), yLim=(20, 900)):
     x_pos = np.array(position_data['x1'], dtype=float)
     y_pos = np.array(position_data['y1'], dtype=float)
 
@@ -75,8 +79,8 @@ def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2):
         jump_distance = np.sqrt(np.square(np.diff(x_pos, prepend=x_pos[0])) +
                                 np.square(np.diff(y_pos, prepend=y_pos[0])))
         # print(jump_distance)
-        points_in_range = (x_pos > X_START) & (x_pos < X_FINISH) &\
-            (y_pos > Y_START) & (y_pos < Y_FINISH)
+        points_in_range = (x_pos > xLim[0]) & (x_pos < xLim[1]) &\
+            (y_pos > yLim[0]) & (y_pos < yLim[1])
         clean_points = jump_distance < maxJumpDistance
 
     # substitute them with NaNs then interpolate
