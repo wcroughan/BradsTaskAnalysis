@@ -580,7 +580,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     # ===================================
 
     if not JUST_EXTRACT_TRODES_DATA:
-        position_data = readRawPositionData(
+        _, position_data = readRawPositionData(
             file_str + '.1.videoPositionTracking')
         if position_data is None:
             print("Warning: skipping position data")
@@ -609,7 +609,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 
             if session.probe_performed:
                 if session.separate_probe_file:
-                    position_data = readRawPositionData(
+                    _, position_data = readRawPositionData(
                         probe_file_str + '.1.videoPositionTracking')
                     xs, ys, ts = processPosData(position_data, xLim=(
                         X_START, X_FINISH), yLim=(Y_START, Y_FINISH))

@@ -26,16 +26,19 @@ def readRawPositionData(data_filename):
             l = ""
             max_iter = 8
             iter = 0
+            settings = []
             while l != b'<end settings>\n':
                 l = datafile.readline().lower()
+                if l != b'<end settings>\n' and l != b'<start settings>\n':
+                    settings.append(l)
                 # print(l)
                 iter += 1
                 if iter > max_iter:
                     raise Exception
-            return np.fromfile(datafile, dtype=dt)
+            return settings, np.fromfile(datafile, dtype=dt)
     except Exception as err:
         print(err)
-        return None
+        return None, None
 
 
 def readClipData(data_filename):
