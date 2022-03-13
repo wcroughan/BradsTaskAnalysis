@@ -87,6 +87,7 @@ class BTSession:
         self.away_wells = []
         self.num_away_found = 0
         self.num_home_found = 0
+        self.foundWells = None
 
         # Flags indicating stim condition
         self.isRippleInterruption = False

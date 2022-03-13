@@ -1,5 +1,9 @@
 import numpy as np
 from consts import all_well_names, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
+import csv
+import glob
+from scipy import stats, signal
+from scipy.ndimage.filters import gaussian_filter
 
 
 def readWellCoordsFile(well_coords_file):
@@ -26,11 +30,13 @@ def readRawPositionData(data_filename):
             l = ""
             max_iter = 8
             iter = 0
-            settings = []
+            settings = {}
             while l != b'<end settings>\n':
                 l = datafile.readline().lower()
                 if l != b'<end settings>\n' and l != b'<start settings>\n':
-                    settings.append(l)
+                    ss = str(l).split(":")
+                    if len(ss) == 2:
+                        settings[ss[0].lower()] = ss[1]
                 # print(l)
                 iter += 1
                 if iter > max_iter:
@@ -420,3 +426,206 @@ def getListOfVisitedWells(nearestWells, countFirstVisitOnly):
 
 def onWall(well):
     return well < 9 or well > 40 or well % 8 in [2, 7]
+
+
+class AnimalInfo:
+    def __init__(self):
+        self.X_START = None
+        self.X_FINISH = None
+        self.Y_START = None
+        self.Y_FINISH = None
+        self.data_dir = ""
+        self.output_dir = ""
+        self.fig_output_dir = ""
+        self.out_filename = ""
+
+        self.excluded_dates = []
+        self.excluded_sessions = []
+        self.minimum_date = None
+
+        self.DEFAULT_RIP_DET_TET = None
+        self.DEFAULT_RIP_BAS_TET = None
+
+
+def getInfoForAnimal(animalName):
+    ret = AnimalInfo
+    if animalName == "Martin":
+        ret.X_START = 200
+        ret.X_FINISH = 1175
+        ret.Y_START = 20
+        ret.Y_FINISH = 1275
+        ret.data_dir = '/media/WDC1/martindata/bradtask/'
+        ret.output_dir = '/media/WDC7/Martin/processed_data/'
+        ret.fig_output_dir = output_dir
+        ret.out_filename = "martin_bradtask.dat"
+
+        ret.excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
+        ret.excluded_dates += ["20200531",  "20200603", "20200602",
+                               "20200606", "20200605", "20200601"]
+        ret.excluded_dates += ["20200526"]
+        ret.excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
+        ret.minimum_date = None
+
+        ret.excluded_dates += ["20200527"]
+        ret.excluded_dates += ["20200604"]
+        ret.excluded_dates += ["20200608"]
+        ret.excluded_dates += ["20200609"]
+
+        ret.DEFAULT_RIP_DET_TET = 37
+        ret.DEFAULT_RIP_BAS_TET = None
+
+    elif animalName == "B12":
+        ret.X_START = 200
+        ret.X_FINISH = 1175
+        ret.Y_START = 20
+        ret.Y_FINISH = 1275
+        ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
+        ret.output_dir = "/media/WDC7/B12/processed_data/"
+        ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        ret.out_filename = "B12_bradtask.dat"
+
+        ret.excluded_dates = []
+        ret.minimum_date = None
+        ret.excluded_sessions = []
+        ret.DEFAULT_RIP_DET_TET = 7
+
+    elif animalName == "B12_goodpos":
+        ret.X_START = 200
+        ret.X_FINISH = 1175
+        ret.Y_START = 20
+        ret.Y_FINISH = 1275
+        ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
+        ret.output_dir = "/media/WDC7/B12/processed_data/"
+        ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        ret.out_filename = "B12_goodpos_bradtask.dat"
+
+        ret.excluded_dates = ["20210816", "20210817", "20210818", "20210819"]
+        ret.minimum_date = None
+        ret.excluded_sessions = []
+        ret.DEFAULT_RIP_DET_TET = 7
+
+    elif animalName == "B12_no19":
+        ret.X_START = 200
+        ret.X_FINISH = 1175
+        ret.Y_START = 20
+        ret.Y_FINISH = 1275
+        ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
+        ret.output_dir = "/media/WDC7/B12/processed_data/"
+        ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        ret.out_filename = "B12_no19_bradtask.dat"
+
+        ret.excluded_dates = ["20210819"]
+        ret.minimum_date = None
+        ret.excluded_sessions = []
+        ret.DEFAULT_RIP_DET_TET = 7
+
+    elif animalName == "B12_highthresh":
+        ret.X_START = 200
+        ret.X_FINISH = 1175
+        ret.Y_START = 20
+        ret.Y_FINISH = 1275
+        ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
+        ret.output_dir = "/media/WDC7/B12/processed_data/"
+        ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        ret.out_filename = "B12_highthresh_bradtask.dat"
+
+        ret.excluded_dates = []
+        ret.minimum_date = "20210916"
+        ret.excluded_sessions = ["20210917_1", "20210923_1",
+                                 "20211004_1", "20211005_2", "20211006_1"]
+        ret.DEFAULT_RIP_DET_TET = 8
+
+    elif animalName == "B13":
+        ret.X_START = 100
+        ret.X_FINISH = 1050
+        ret.Y_START = 20
+        ret.Y_FINISH = 900
+        ret.data_dir = "/media/WDC6/B13/bradtasksessions/"
+        ret.output_dir = "/media/WDC6/B13/processed_data/"
+        ret.fig_output_dir = "/media/WDC6/B13/processed_data/"
+        ret.out_filename = "B13_bradtask.dat"
+
+        ret.excluded_dates = ["20220209"]
+        # minimum_date = "20211209"  # had one run on the 8th with probe but used high ripple threshold and a different reference tetrode
+        ret.minimum_date = None
+        # high ripple thresh on 12/08-1, forgot to turn stim on til after first home on 12/16-2
+        ret.excluded_sessions = ["20211208_1", "20211216_2"]
+        ret.DEFAULT_RIP_DET_TET = 7
+        ret.DEFAULT_RIP_BAS_TET = 2
+
+        # These sessions just have slightly weird stuff, so excluding them for now but should go back and figure out how to include them cause the data's still good
+        ret.excluded_sessions += ["20220131_2", "20220222_2"]
+        # this one just has light on -> off -> on -> off before the task, throwing off my autodetect code
+        ret.excluded_sessions += ["20211208_2"]
+
+    elif animalName == "B14":
+        ret.X_START = 100
+        ret.X_FINISH = 1050
+        ret.Y_START = 20
+        ret.Y_FINISH = 900
+        ret.data_dir = "/media/WDC6/B14/bradtasksessions/"
+        ret.output_dir = "/media/WDC6/B14/processed_data/"
+        ret.fig_output_dir = "/media/WDC6/B14/processed_data/"
+        ret.out_filename = "B14_bradtask.dat"
+
+        ret.excluded_dates = []
+        # minimum_date = "20211209"  # one run with high thresh and one 15 min run on the 8th
+        ret.minimum_date = "20220220"  # Only after adjusting stim electrode to correct place!
+        ret.excluded_sessions = []
+        ret.DEFAULT_RIP_DET_TET = 3
+        ret.DEFAULT_RIP_BAS_TET = 2
+
+    else:
+        raise Exception("Unknown animal name")
+
+    return ret
+
+
+def generateFoundWells(home_well, away_wells, last_away_well, ended_on_home, found_first_home):
+    if not found_first_home:
+        return []
+    elif last_away_well is None:
+        return [home_well]
+
+    foundWells = []
+    for aw in away_wells:
+        foundWells += [home_well, aw]
+        if aw == last_away_well:
+            break
+    if ended_on_home:
+        foundWells.append(home_well)
+    return foundWells
+
+
+def getUSBVideoFile(seshName, possibleDirectories):
+    seshDate, seshTime = seshName.split("_")
+    seshTimeVal = float(seshTime[0:2]) * 3600 + \
+        float(seshTime[2:4]) * 60 + float(seshTime[4:6])
+
+    usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
+    possibleUSBVids = []
+    for pd in possibleDirectories:
+        gl = pd + "/" + usbDateStr + "*.mkv"
+        possibleUSBVids += glob.glob(gl)
+
+    if len(possibleUSBVids) == 0:
+        return None
+
+    minDiff = 24 * 3600
+    usbVidFile = None
+    for uvi, uv in enumerate(sorted(possibleUSBVids)):
+        fname = uv.split("/")[-1]
+        if " " in fname:
+            timeStr = fname.split(" ")[1].split(".")[0]
+        else:
+            timeStr = fname.split("_")[1].split(".")[0]
+        timeVals = [float(v) for v in timeStr.split("-")]
+        usbTime = timeVals[0] * 3600 + timeVals[1] * 60 + timeVals[0]
+
+        diff = abs(usbTime - seshTimeVal)
+        if diff < minDiff:
+            minDiff = diff
+            usbVidFile = uv
+            seshWithinDay = uvi
+
+    return usbVidFile

@@ -18,7 +18,10 @@ import sys
 from consts import all_well_names, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 from UtilFunctions import readWellCoordsFile, readRawPositionData, readClipData, \
     processPosData, getWellCoordinates, getNearestWell, getWellEntryAndExitTimes, \
-    quadrantOfWell, getListOfVisitedWells, onWall, getRipplePower, detectRipples
+    quadrantOfWell, getListOfVisitedWells, onWall, getRipplePower, detectRipples, \
+    getInfoForAnimal, AnimalInfo, generateFoundWells, getUSBVideoFile
+from ClipsMaker import runPositionAnnotator
+from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo
 
 INSPECT_ALL = False
 INSPECT_IN_DETAIL = []
@@ -44,139 +47,16 @@ else:
     animal_name = 'B13'
 
 print("Importing data for animal ", animal_name)
+animalInfo = getInfoForAnimal(animal_name)
 
-if animal_name == "Martin":
-    X_START = 200
-    X_FINISH = 1175
-    Y_START = 20
-    Y_FINISH = 1275
-    data_dir = '/media/WDC1/martindata/bradtask/'
-    # output_dir = '/media/WDC1/martindata/bradtask/'
-    output_dir = '/media/WDC7/Martin/processed_data/'
-    fig_output_dir = output_dir
-    out_filename = "martin_bradtask.dat"
+if not os.path.exists(animalInfo.output_dir):
+    os.mkdir(animalInfo.output_dir)
 
-    excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
-    excluded_dates += ["20200531",  "20200603", "20200602",
-                       "20200606", "20200605", "20200601"]
-    excluded_dates += ["20200526"]
-    excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
-    minimum_date = None
-
-    excluded_dates += ["20200527"]
-    excluded_dates += ["20200604"]
-    excluded_dates += ["20200608"]
-    excluded_dates += ["20200609"]
-
-    DEFAULT_RIP_DET_TET = 37
-    DEFAULT_RIP_BAS_TET = None
-
-elif animal_name == "B12":
-    X_START = 200
-    X_FINISH = 1175
-    Y_START = 20
-    Y_FINISH = 1275
-    data_dir = "/media/WDC7/B12/bradtasksessions/"
-    output_dir = "/media/WDC7/B12/processed_data/"
-    fig_output_dir = "/media/WDC7/B12/processed_data/"
-    out_filename = "B12_bradtask.dat"
-
-    excluded_dates = []
-    minimum_date = None
-    excluded_sessions = []
-    DEFAULT_RIP_DET_TET = 7
-
-elif animal_name == "B12_goodpos":
-    X_START = 200
-    X_FINISH = 1175
-    Y_START = 20
-    Y_FINISH = 1275
-    data_dir = "/media/WDC7/B12/bradtasksessions/"
-    output_dir = "/media/WDC7/B12/processed_data/"
-    fig_output_dir = "/media/WDC7/B12/processed_data/"
-    out_filename = "B12_goodpos_bradtask.dat"
-
-    excluded_dates = ["20210816", "20210817", "20210818", "20210819"]
-    minimum_date = None
-    excluded_sessions = []
-    DEFAULT_RIP_DET_TET = 7
-
-elif animal_name == "B12_no19":
-    X_START = 200
-    X_FINISH = 1175
-    Y_START = 20
-    Y_FINISH = 1275
-    data_dir = "/media/WDC7/B12/bradtasksessions/"
-    output_dir = "/media/WDC7/B12/processed_data/"
-    fig_output_dir = "/media/WDC7/B12/processed_data/"
-    out_filename = "B12_no19_bradtask.dat"
-
-    excluded_dates = ["20210819"]
-    minimum_date = None
-    excluded_sessions = []
-    DEFAULT_RIP_DET_TET = 7
-
-elif animal_name == "B12_highthresh":
-    X_START = 200
-    X_FINISH = 1175
-    Y_START = 20
-    Y_FINISH = 1275
-    data_dir = "/media/WDC7/B12/bradtasksessions/"
-    output_dir = "/media/WDC7/B12/processed_data/"
-    fig_output_dir = "/media/WDC7/B12/processed_data/"
-    out_filename = "B12_highthresh_bradtask.dat"
-
-    excluded_dates = []
-    minimum_date = "20210916"
-    excluded_sessions = ["20210917_1", "20210923_1", "20211004_1", "20211005_2", "20211006_1"]
-    DEFAULT_RIP_DET_TET = 8
-
-elif animal_name == "B13":
-    X_START = 100
-    X_FINISH = 1050
-    Y_START = 20
-    Y_FINISH = 900
-    data_dir = "/media/WDC6/B13/bradtasksessions/"
-    output_dir = "/media/WDC6/B13/processed_data/"
-    fig_output_dir = "/media/WDC6/B13/processed_data/"
-    out_filename = "B13_bradtask.dat"
-
-    excluded_dates = []
-    # minimum_date = "20211209"  # had one run on the 8th with probe but used high ripple threshold and a different reference tetrode
-    minimum_date = None
-    # high ripple thresh on 12/08-1, forgot to turn stim on til after first home on 12/16-2
-    excluded_sessions = ["20211208_1", "20211216_2"]
-    DEFAULT_RIP_DET_TET = 7
-    DEFAULT_RIP_BAS_TET = 2
-
-elif animal_name == "B14":
-    X_START = 100
-    X_FINISH = 1050
-    Y_START = 20
-    Y_FINISH = 900
-    data_dir = "/media/WDC6/B14/bradtasksessions/"
-    output_dir = "/media/WDC6/B14/processed_data/"
-    fig_output_dir = "/media/WDC6/B14/processed_data/"
-    out_filename = "B14_bradtask.dat"
-
-    excluded_dates = []
-    # minimum_date = "20211209"  # one run with high thresh and one 15 min run on the 8th
-    minimum_date = "20220220"  # Only after adjusting stim electrode to correct place!
-    excluded_sessions = []
-    DEFAULT_RIP_DET_TET = 3
-    DEFAULT_RIP_BAS_TET = 2
-
-else:
-    raise Exception("Unknown animal name")
-
-if not os.path.exists(output_dir):
-    os.mkdir(output_dir)
-
-all_data_dirs = sorted(os.listdir(data_dir), key=lambda s: (
+all_data_dirs = sorted(os.listdir(animalInfo.data_dir), key=lambda s: (
     s.split('_')[0], s.split('_')[1]))
-behavior_notes_dir = os.path.join(data_dir, 'behavior_notes')
+behavior_notes_dir = os.path.join(animalInfo.data_dir, 'behavior_notes')
 
-if os.path.exists(os.path.join(output_dir, out_filename)):
+if os.path.exists(os.path.join(animalInfo.output_dir, animalInfo.out_filename)):
     # confirm = input("Output file exists already. Overwrite? (y/n):")
     confirm = "y"
     if confirm != "y":
@@ -231,7 +111,7 @@ for session_idx, session_dir in enumerate(all_data_dirs):
     if session_dir == "behavior_notes" or "numpy_objs" in session_dir:
         continue
 
-    if not os.path.isdir(os.path.join(data_dir, session_dir)):
+    if not os.path.isdir(os.path.join(animalInfo.data_dir, session_dir)):
         print("skipping this file ... dirs only")
         continue
 
@@ -246,13 +126,13 @@ for session_idx, session_dir in enumerate(all_data_dirs):
     if RUN_JUST_SPECIFIED and date_str not in SPECIFIED_DAYS:
         continue
 
-    if date_str in excluded_dates:
+    if date_str in animalInfo.excluded_dates:
         print("skipping, excluded date")
         prevSession = session_dir
         continue
 
-    if minimum_date is not None and date_str < minimum_date:
-        print("skipping date {}, is before minimum date {}".format(date_str, minimum_date))
+    if animalInfo.minimum_date is not None and date_str < animalInfo.minimum_date:
+        print("skipping date {}, is before minimum date {}".format(date_str, animalInfo.minimum_date))
         prevSession = session_dir
         continue
 
@@ -286,7 +166,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 
     # check for files that belong to this date
     session.bt_dir = session_dir
-    gl = data_dir + session_name_pfx + date_str + "*"
+    gl = animalInfo.data_dir + session_name_pfx + date_str + "*"
     dir_list = glob.glob(gl)
     for d in dir_list:
         if d.split('_')[-1] == "ITI":
@@ -299,11 +179,11 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 
     if not session.separate_probe_file:
         session.recorded_iti = True
-        session.probe_dir = os.path.join(data_dir, session_dir)
+        session.probe_dir = os.path.join(animalInfo.data_dir, session_dir)
     if not session.separate_iti_file and session.recorded_iti:
         session.iti_dir = session_dir
 
-    file_str = os.path.join(data_dir, session_dir, session_dir)
+    file_str = os.path.join(animalInfo.data_dir, session_dir, session_dir)
     all_lfp_data = []
     session.bt_lfp_fnames = []
 
@@ -325,9 +205,9 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         # info_file = os.path.join(behavior_notes_dir, date_str + "_" +
         #  str(sesh_idx_within_day+1) + ".txt")
         info_file = possible_info_files[sesh_idx_within_day]
-        # print(info_file)
+        print(info_file)
 
-    if "".join(os.path.basename(info_file).split(".")[0:-1]) in excluded_sessions:
+    if "".join(os.path.basename(info_file).split(".")[0:-1]) in animalInfo.excluded_sessions:
         print(session_dir, " excluded session, skipping")
         continue
 
@@ -575,18 +455,103 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         print("Home well not listed in notes file, skipping")
         continue
 
-    # ===================================
-    # Read position data
-    # ===================================
+    if session.foundWells is None:
+        session.foundWells = generateFoundWells(
+            session.home_well, session.away_wells, session.last_away_well, session.ended_on_home, session.found_first_home)
 
     if not JUST_EXTRACT_TRODES_DATA:
-        _, position_data = readRawPositionData(
-            file_str + '.1.videoPositionTracking')
+        # ===================================
+        # get well coordinates
+        # ===================================
+        well_coords_file_name = file_str + '.1.wellLocations.csv'
+        if not os.path.exists(well_coords_file_name):
+            well_coords_file_name = os.path.join(animalInfo.data_dir, 'well_locations.csv')
+            print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
+        session.well_coords_map = readWellCoordsFile(well_coords_file_name)
+        session.home_x, session.home_y = getWellCoordinates(
+            session.home_well, session.well_coords_map)
+
+        # ===================================
+        # Read position data
+        # ===================================
+        trackingFile = file_str + '.1.videoPositionTracking'
+        if os.path.exists(trackingFile):
+            position_data_metadata, position_data = readRawPositionData(
+                file_str + '.1.videoPositionTracking')
+
+            if "source" not in position_data_metadata or "TrodesCameraExtractor" not in position_data_metadata["source"]:
+                position_data = None
+                os.rename(file_str + '.1.videoPositionTracking', file_str +
+                          '.1.videoPositionTracking.manualOutput')
+        else:
+            position_data = None
+
+        if position_data is None:
+            print("running trodes camera extractor!")
+            processRawTrodesVideo(file_str + '.1.h264')
+            position_data_metadata, position_data = readRawPositionData(
+                file_str + '.1.videoPositionTracking')
+
         if position_data is None:
             print("Warning: skipping position data")
             session.hasPositionData = False
         else:
             session.hasPositionData = True
+            xs, ys, ts = processPosData(position_data, xLim=(
+                animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
+
+            if "lightonframe" in position_data_metadata:
+                trodesLightOnFrame = position_data_metadata['lightonframe']
+                if trodesLightOnFrame[-3:] == "\\n'":
+                    trodesLightOnFrame = trodesLightOnFrame[0:-3]
+                trodesLightOnFrame = int(trodesLightOnFrame)
+                trodesLightOffFrame = position_data_metadata['lightoffframe']
+                if trodesLightOffFrame[-3:] == "\\n'":
+                    trodesLightOffFrame = trodesLightOffFrame[0:-3]
+                trodesLightOffFrame = int(trodesLightOffFrame)
+                session.trodesLightOnFrame = trodesLightOnFrame
+                session.trodesLightOffFrame = trodesLightOffFrame
+                print(session.trodesLightOffFrame, session.trodesLightOnFrame)
+                print(len(ts))
+                session.trodesLightOnTime = ts[session.trodesLightOnFrame]
+                session.trodesLightOffTime = ts[session.trodesLightOffFrame]
+            else:
+                # was a separate metadatafile made?
+                positionMetadataFile = file_str + '.1.justLights'
+                if os.path.exists(positionMetadataFile):
+                    lightInfo = np.fromfile(positionMetadataFile, sep=",").astype(int)
+                    session.trodesLightOffFrame = lightInfo[0]
+                    session.trodesLightOnFrame = lightInfo[1]
+                    print(lightInfo)
+                    print(len(ts))
+                    session.trodesLightOnTime = ts[session.trodesLightOnFrame]
+                    session.trodesLightOffTime = ts[session.trodesLightOffFrame]
+                else:
+                    print("doing the lights")
+                    session.trodesLightOffFrame, session.trodesLightOnFrame = getTrodesLightTimes(
+                        file_str + '.1.h264', showVideo=True)
+                    print(session.trodesLightOffFrame, session.trodesLightOnFrame)
+                    print(len(ts))
+                    session.trodesLightOnTime = ts[session.trodesLightOnFrame]
+                    session.trodesLightOffTime = ts[session.trodesLightOffFrame]
+
+            possibleDirectories = [
+                "/media/WDC6/{}/".format(animal_name), "/media/WDC7/{}/".format(animal_name)]
+            session.usbVidFile = getUSBVideoFile(session.name, possibleDirectories)
+
+            clipsFileName = file_str + '.1.clips'
+            if not os.path.exists(clipsFileName) and len(session.foundWells) > 0:
+                print("clips file not found, gonna launch clips generator")
+                all_pos_nearest_wells = getNearestWell(
+                    xs, ys, session.well_coords_map)
+                all_pos_well_entry_idxs, all_pos_well_exit_idxs, \
+                    all_pos_well_entry_times, all_pos_well_exit_times = \
+                    getWellEntryAndExitTimes(
+                        all_pos_nearest_wells, ts)
+
+                runPositionAnnotator(xs, ys, ts, session.trodesLightOffTime, session.trodesLightOnTime,
+                                     session.usbVidFile, all_pos_well_entry_times, all_pos_well_exit_times,
+                                     session.foundWells, not session.probe_performed, file_str + '.1')
 
             if session.separate_probe_file:
                 probe_file_str = os.path.join(
@@ -599,8 +564,6 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 if session.probe_performed:
                     probe_time_clips = time_clips[1]
 
-            xs, ys, ts = processPosData(position_data, xLim=(
-                X_START, X_FINISH), yLim=(Y_START, Y_FINISH))
             bt_start_idx = np.searchsorted(ts, bt_time_clips[0])
             bt_end_idx = np.searchsorted(ts, bt_time_clips[1])
             session.bt_pos_xs = xs[bt_start_idx:bt_end_idx]
@@ -612,7 +575,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     _, position_data = readRawPositionData(
                         probe_file_str + '.1.videoPositionTracking')
                     xs, ys, ts = processPosData(position_data, xLim=(
-                        X_START, X_FINISH), yLim=(Y_START, Y_FINISH))
+                        animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
 
                 probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
                 probe_end_idx = np.searchsorted(ts, probe_time_clips[1])
@@ -633,18 +596,6 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     # plt.plot(session.probe_pos_xs, session.probe_pos_ys)
                     # plt.show()
 
-        # ===================================
-        # get well coordinates
-        # ===================================
-
-        well_coords_file_name = file_str + '.1.wellLocations.csv'
-        if not os.path.exists(well_coords_file_name):
-            well_coords_file_name = os.path.join(data_dir, 'well_locations.csv')
-            print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
-        session.well_coords_map = readWellCoordsFile(well_coords_file_name)
-        session.home_x, session.home_y = getWellCoordinates(
-            session.home_well, session.well_coords_map)
-
         # for i in range(len(session.ripple_detection_tetrodes)):
         #     spkdir = file_str + ".spikes"
         #     if not os.path.exists(spkdir):
@@ -654,7 +605,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         #         os.system(syscmd)
 
     if len(session.ripple_detection_tetrodes) == 0:
-        session.ripple_detection_tetrodes = [DEFAULT_RIP_DET_TET]
+        session.ripple_detection_tetrodes = [animalInfo.DEFAULT_RIP_DET_TET]
 
     for i in range(len(session.ripple_detection_tetrodes)):
         lfpdir = file_str + ".LFP"
@@ -676,7 +627,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         all_lfp_data.append(MountainViewIO.loadLFP(data_file=session.bt_lfp_fnames[-1]))
 
     if session.ripple_baseline_tetrode is None:
-        session.ripple_baseline_tetrode = DEFAULT_RIP_BAS_TET
+        session.ripple_baseline_tetrode = animalInfo.DEFAULT_RIP_BAS_TET
 
     # I think Martin didn't have this baseline tetrode? Need to check
     if session.ripple_baseline_tetrode is None:
@@ -830,13 +781,6 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 detectRipples(btRipplePowerProbeStats)
             session.btRipStartTimestampsProbeStats = lfp_timestamps[
                 session.btRipStartIdxsProbeStats + bt_lfp_start_idx]
-
-            print("{} ripples found during task".format(
-                len(session.btRipStartTimestampsProbeStats)))
-
-        elif session.probe_performed:
-            print("Probe performed but LFP in a separate file for session", session.name)
-
     # ripple_power = getRipplePower(lfp_data, omit_artifacts=True,
     #                                 causal_smoothing=False, lfp_deflections=lfp_artifact_idxs)
 
@@ -884,6 +828,12 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     # # plt.show()
 
     # continue
+
+            print("{} ripples found during task".format(
+                len(session.btRipStartTimestampsProbeStats)))
+
+        elif session.probe_performed:
+            print("Probe performed but LFP in a separate file for session", session.name)
 
     # ===================================
     # which away wells were visited?
@@ -1085,7 +1035,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     # Sniff times marked by hand from USB camera (Not available for Martin)
     # ===================================
 
-    gl = data_dir + session_dir + '/*.rgs'
+    gl = animalInfo.data_dir + session_dir + '/*.rgs'
     dir_list = glob.glob(gl)
     if len(dir_list) == 0:
         print("Couldn't find sniff times files")
@@ -1731,7 +1681,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 plt.plot([x[bst], x[bst]], [mny, mxy], 'b')
                 plt.plot([x[ben-1], x[ben-1]], [mny, mxy], 'r')
             if SAVE_DONT_SHOW:
-                plt.savefig(os.path.join(fig_output_dir, "bouts",
+                plt.savefig(os.path.join(animalInfo.fig_output_dir, "bouts",
                                          session.name + "_bouts_over_time"), dpi=800)
             else:
                 plt.show()
@@ -1750,7 +1700,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     plt.scatter(wx, wy, c='red')
 
                 if SAVE_DONT_SHOW:
-                    plt.savefig(os.path.join(fig_output_dir, "bouts",
+                    plt.savefig(os.path.join(animalInfo.fig_output_dir, "bouts",
                                              session.name + "_bouts_" + str(i)), dpi=800)
                 else:
                     plt.show()
@@ -1827,8 +1777,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             plt.show()
 
 # save all sessions to disk
-print("Saving to file: {}".format(out_filename))
-dataob.saveToFile(os.path.join(output_dir, out_filename))
+print("Saving to file: {}".format(animalInfo.out_filename))
+dataob.saveToFile(os.path.join(animalInfo.output_dir, animalInfo.out_filename))
 print("Saved sessions:")
 for sesh in dataob.allSessions:
     print(sesh.name)

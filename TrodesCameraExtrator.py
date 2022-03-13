@@ -46,6 +46,35 @@ def getSingleFrame(videoFileName, frameIdx):
     return getFrameBatch(videoFileName, frameIdx, numFrames=1)
 
 
+def getTrodesLightTimes(videoFileName, initialSkipAmt=8, showVideo=False, outputFileName=None):
+    if outputFileName is None:
+        outputFileName = '.'.join(videoFileName.split('.')[0:-1]) + '.justLights'
+    initialFrameJump = np.power(2, initialSkipAmt)
+
+    # Step one: find left and right bound on light off and on time
+    loffF1, loffF2, lonF1, lonF2 = findLightTimesLinearTrodes(
+        videoFileName, 0, None, initialFrameJump, showVideo=showVideo)
+    loffF1 *= initialFrameJump
+    loffF2 *= initialFrameJump
+    lonF1 *= initialFrameJump
+    lonF2 *= initialFrameJump
+
+    print(loffF1, loffF2, lonF1, lonF2)
+
+    # Step two: for each of those intervals, get the video in that range and binary search that ish
+    _, lightsOffFrame, _, _ = findLightTimesLinearTrodes(
+        videoFileName, loffF1, loffF2, 1, showVideo=showVideo, findLightOn=False)
+    lightsOffFrame += loffF1
+    _, _, _, lightsOnFrame = findLightTimesLinearTrodes(
+        videoFileName, lonF1, lonF2, 1, showVideo=showVideo, findLightOff=False)
+    lightsOnFrame += lonF1
+
+    outputArr = np.array([lightsOffFrame, lightsOnFrame])
+    outputArr.tofile(outputFileName, sep=",")
+
+    return lightsOffFrame, lightsOnFrame
+
+
 def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThreshold=0.1,
                           threshold=50, searchDist=100, showVideo=False, frameBatchSize=1000,
                           maxNumBatches=None, outputFileName=None, batchStart=0,
@@ -326,8 +355,8 @@ def getFrameColorHeuristic(frame, greyDiffThreshLow=25, greyDiffThreshHigh=200):
     return h1[0], h2[0], h3[0]
 
 
-def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, findLightOff=True, findLightOn=True,
-                         showVideo=False, lightOnThreshold=0.2, lightOffThreshold=0.1):
+def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuristicFunction, findLightOff=True, findLightOn=True,
+                         showVideo=False, lightOnThreshold=None, lightOffThreshold=None):
     """
     making a separate function here b/c hopefully that means freed memory?
     """
@@ -337,9 +366,6 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, findL
     width = int(video_stream['width'])
     height = int(video_stream['height'])
 
-    lightOffThreshold *= 255 * width * height
-    lightOnThreshold *= 255 * width * height
-
     if frameEnd is None:
         batch = getFrameBatch(videoFileName, frameStart, frameStride=frameStride)
     else:
@@ -348,19 +374,30 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, findL
     frames = np.frombuffer(batch, np.uint8).reshape((-1, height, width, 3))
     nFrames = frames.shape[0]
 
-    allFrameH = np.array([getFrameColorHeuristic(
-        frames[i, :, :, :].reshape(height, width, 3))[1][1] for i in range(nFrames)])
+    allFrameH = np.array(
+        [heuristicFunction(frames[i, :, :, :].reshape(height, width, 3)) for i in range(nFrames)])
+    # allFrameH = np.array([getFrameColorHeuristic(
+    # frames[i, :, :, :].reshape(height, width, 3))[1][1] for i in range(nFrames)])
     print(allFrameH)
     maxH = np.max(allFrameH)
     minH = np.min(allFrameH)
     thresh = (maxH + minH) / 2.0
 
+    if lightOffThreshold is not None:
+        lightOffThreshold *= 255 * width * height
+    else:
+        lightOffThreshold = thresh
+    if lightOnThreshold is not None:
+        lightOnThreshold *= 255 * width * height
+    else:
+        lightOnThreshold = thresh
+
     if showVideo and False:
-        for frameI in range(nFrames):
-            if frameI < 15 or nFrames - frameI < 15:
-                frame = frames[frameI, :, :, :].reshape((height, width, 3))
-                heur = getFrameColorHeuristic(frame)
-                print(heur)
+        # for frameI in range(nFrames):
+        #     if frameI < 15 or nFrames - frameI < 15:
+        #         frame = frames[frameI, :, :, :].reshape((height, width, 3))
+        #         heur = getFrameColorHeuristic(frame)
+        #         print(heur)
 
         for frameI in range(nFrames):
             if frameI < 15 or nFrames - frameI < 15:
@@ -383,13 +420,13 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, findL
     lonF2 = None
 
     for i in range(1, nFrames):
-        if allFrameH[i] < thresh and allFrameH[i-1] > thresh and not loffSet and findLightOff:
+        if allFrameH[i] < lightOffThreshold and allFrameH[i-1] > lightOffThreshold and not loffSet and findLightOff:
             loffF1 = i - 1
             loffF2 = i
             loffSet = True
             if not findLightOn:
                 break
-        if allFrameH[i] > thresh and allFrameH[i-1] < thresh and findLightOn:
+        if allFrameH[i] > lightOnThreshold and allFrameH[i-1] < lightOnThreshold and findLightOn:
             lonF1 = i - 1
             lonF2 = i
             lonSet = True
@@ -401,11 +438,11 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, findL
         lonF2 = nFrames
 
     if showVideo and True:
-        for frameI in range(nFrames):
-            if frameI < 15 or nFrames - frameI < 15:
-                frame = frames[frameI, :, :, :].reshape((height, width, 3))
-                heur = getFrameColorHeuristic(frame)
-                print(heur)
+        # for frameI in range(nFrames):
+        #     if frameI < 15 or nFrames - frameI < 15:
+        #         frame = frames[frameI, :, :, :].reshape((height, width, 3))
+        #         heur = getFrameColorHeuristic(frame)
+        #         print(heur)
 
         for frameI in range(nFrames):
             frame = frames[frameI, :, :, :].reshape((height, width, 3))
@@ -423,6 +460,22 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, findL
     return loffF1, loffF2, lonF1, lonF2
 
 
+def findLightTimesLinearUSB(videoFileName, frameStart, frameEnd, frameStride, findLightOff=True, findLightOn=True,
+                            showVideo=False, lightOnThreshold=None, lightOffThreshold=None):
+    def hfunc(frame):
+        return getFrameColorHeuristic(frame)[1][1]
+    return findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, hfunc, findLightOff=findLightOff, findLightOn=findLightOn,
+                                showVideo=showVideo, lightOnThreshold=lightOnThreshold, lightOffThreshold=lightOffThreshold)
+
+
+def findLightTimesLinearTrodes(videoFileName, frameStart, frameEnd, frameStride, findLightOff=True, findLightOn=True,
+                               showVideo=False, lightOnThreshold=None, lightOffThreshold=None):
+    def hfunc(frame):
+        return np.sum(frame)
+    return findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, hfunc, findLightOff=findLightOff, findLightOn=findLightOn,
+                                showVideo=showVideo, lightOnThreshold=lightOnThreshold, lightOffThreshold=lightOffThreshold)
+
+
 def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
                         greyDiffThreshHigh=100, greyDiffThreshLow=25, lightOnThreshold=0.1, lightOffThreshold=0.04,
                         maxNumBatches=None, showVideo=False, outputFileName=None, overwriteMode="ask", initialSkipAmt=8):
@@ -431,14 +484,6 @@ def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
         (stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
     width = int(video_stream['width'])
     height = int(video_stream['height'])
-
-    lightOnThreshold *= width * height
-    lightOffThreshold *= width * height
-
-    STATE_START_LIGHTSON = 0
-    STATE_LIGHTSOFF = 1
-    STATE_END_LIGHTSON = 2
-    currentState = STATE_START_LIGHTSON
 
     lightsOffFrame = None
     lightsOnFrame = None
@@ -474,7 +519,7 @@ def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
     initialFrameJump = np.power(2, initialSkipAmt)
 
     # Step one: find left and right bound on light off and on time
-    loffF1, loffF2, lonF1, lonF2 = findLightTimesLinear(
+    loffF1, loffF2, lonF1, lonF2 = findLightTimesLinearUSB(
         videoFileName, 0, None, initialFrameJump, showVideo=showVideo)
     loffF1 *= initialFrameJump
     loffF2 *= initialFrameJump
@@ -484,14 +529,10 @@ def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
     print(loffF1, loffF2, lonF1, lonF2)
 
     # Step two: for each of those intervals, get the video in that range and binary search that ish
-    # lightsOffFrame = findLightTimesBinary(
-    #     videoFileName, loffF1, loffF2, 1, findLightOff=True, showVideo=showVideo)
-    # lightsOnFrame = findLightTimesBinary(
-    #     videoFileName, lonF1, lonF2, 1, findLightOn=True, showVideo=showVideo)
-    _, lightsOffFrame, _, _ = findLightTimesLinear(
+    _, lightsOffFrame, _, _ = findLightTimesLinearUSB(
         videoFileName, loffF1, loffF2, 1, showVideo=showVideo, findLightOn=False)
     lightsOffFrame += loffF1
-    _, _, _, lightsOnFrame = findLightTimesLinear(
+    _, _, _, lightsOnFrame = findLightTimesLinearUSB(
         videoFileName, lonF1, lonF2, 1, showVideo=showVideo, findLightOff=False)
     lightsOnFrame += lonF1
 
