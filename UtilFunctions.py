@@ -4,6 +4,7 @@ import csv
 import glob
 from scipy import stats, signal
 from scipy.ndimage.filters import gaussian_filter
+import matplotlib.pyplot as plt
 
 
 def readWellCoordsFile(well_coords_file):
@@ -36,7 +37,7 @@ def readRawPositionData(data_filename):
                 if l != b'<end settings>\n' and l != b'<start settings>\n':
                     ss = str(l).split(":")
                     if len(ss) == 2:
-                        settings[ss[0].lower()] = ss[1]
+                        settings[str(ss[0])[2:].strip()] = str(ss[1])[0:-3].strip()
                 # print(l)
                 iter += 1
                 if iter > max_iter:
@@ -76,12 +77,13 @@ def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
     # Interpolate the position data into evenly sampled time points
     x = np.linspace(position_data['timestamp'][0],
                     position_data['timestamp'][-1], position_data.shape[0])
+
     xp = position_data['timestamp']
     x_pos = np.interp(x, xp, position_data['x1'])
     y_pos = np.interp(x, xp, position_data['y1'])
     position_sampling_frequency = TRODES_SAMPLING_RATE/np.diff(x)[0]
     # Interpolated Timestamps:
-    position_data['timestamp'] = x
+    # position_data['timestamp'] = x
 
     # Remove large jumps in position (tracking errors)
     for _ in range(nCleaningReps):
@@ -557,6 +559,8 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions += ["20220131_2", "20220222_2"]
         # this one just has light on -> off -> on -> off before the task, throwing off my autodetect code
         ret.excluded_sessions += ["20211208_2"]
+        # Just for testing the clips generator
+        ret.minimum_date = "20220122"
 
     elif animalName == "B14":
         ret.X_START = 100

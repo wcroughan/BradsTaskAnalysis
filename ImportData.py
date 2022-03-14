@@ -5,7 +5,7 @@ import os
 import csv
 import glob
 import json
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import random
 import scipy
 from scipy import stats, signal
@@ -14,14 +14,15 @@ import MountainViewIO
 from scipy.ndimage.filters import gaussian_filter
 from datetime import datetime
 import sys
+from PyQt5.QtWidgets import QApplication
 
 from consts import all_well_names, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 from UtilFunctions import readWellCoordsFile, readRawPositionData, readClipData, \
     processPosData, getWellCoordinates, getNearestWell, getWellEntryAndExitTimes, \
     quadrantOfWell, getListOfVisitedWells, onWall, getRipplePower, detectRipples, \
     getInfoForAnimal, AnimalInfo, generateFoundWells, getUSBVideoFile
-from ClipsMaker import runPositionAnnotator
-from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo
+from ClipsMaker import runPositionAnnotator, AnnotatorWindow
+from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, playFrames, processUSBVideoData
 
 INSPECT_ALL = False
 INSPECT_IN_DETAIL = []
@@ -140,6 +141,8 @@ for session_idx, session_dir in enumerate(all_data_dirs):
     prevSessionDirs.append(prevSession)
 
 print("\n".join(filtered_data_dirs))
+
+parent_app = QApplication(sys.argv)
 
 for session_idx, session_dir in enumerate(filtered_data_dirs):
 
@@ -479,10 +482,14 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             position_data_metadata, position_data = readRawPositionData(
                 file_str + '.1.videoPositionTracking')
 
-            if "source" not in position_data_metadata or "TrodesCameraExtractor" not in position_data_metadata["source"]:
+            if "source" not in position_data_metadata or "trodescameraextractor" not in position_data_metadata["source"]:
+                print(position_data_metadata)
                 position_data = None
                 os.rename(file_str + '.1.videoPositionTracking', file_str +
                           '.1.videoPositionTracking.manualOutput')
+            else:
+                print("all good, from the source!!")
+                session.frameTimes = position_data['timestamp']
         else:
             position_data = None
 
@@ -491,6 +498,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             processRawTrodesVideo(file_str + '.1.h264')
             position_data_metadata, position_data = readRawPositionData(
                 file_str + '.1.videoPositionTracking')
+            session.frameTimes = position_data['timestamp']
 
         if position_data is None:
             print("Warning: skipping position data")
@@ -501,20 +509,16 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
 
             if "lightonframe" in position_data_metadata:
-                trodesLightOnFrame = position_data_metadata['lightonframe']
-                if trodesLightOnFrame[-3:] == "\\n'":
-                    trodesLightOnFrame = trodesLightOnFrame[0:-3]
-                trodesLightOnFrame = int(trodesLightOnFrame)
-                trodesLightOffFrame = position_data_metadata['lightoffframe']
-                if trodesLightOffFrame[-3:] == "\\n'":
-                    trodesLightOffFrame = trodesLightOffFrame[0:-3]
-                trodesLightOffFrame = int(trodesLightOffFrame)
-                session.trodesLightOnFrame = trodesLightOnFrame
-                session.trodesLightOffFrame = trodesLightOffFrame
+                session.trodesLightOnFrame = int(position_data_metadata['lightonframe'])
+                session.trodesLightOffFrame = int(position_data_metadata['lightoffframe'])
                 print(session.trodesLightOffFrame, session.trodesLightOnFrame)
                 print(len(ts))
-                session.trodesLightOnTime = ts[session.trodesLightOnFrame]
-                session.trodesLightOffTime = ts[session.trodesLightOffFrame]
+                session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
+                session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
+                # playFrames(file_str + '.1.h264', session.trodesLightOffFrame -
+                #            20, session.trodesLightOffFrame + 20)
+                # playFrames(file_str + '.1.h264', session.trodesLightOnFrame -
+                #            20, session.trodesLightOnFrame + 20)
             else:
                 # was a separate metadatafile made?
                 positionMetadataFile = file_str + '.1.justLights'
@@ -524,20 +528,22 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     session.trodesLightOnFrame = lightInfo[1]
                     print(lightInfo)
                     print(len(ts))
-                    session.trodesLightOnTime = ts[session.trodesLightOnFrame]
-                    session.trodesLightOffTime = ts[session.trodesLightOffFrame]
+                    session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
+                    session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
                 else:
                     print("doing the lights")
                     session.trodesLightOffFrame, session.trodesLightOnFrame = getTrodesLightTimes(
-                        file_str + '.1.h264', showVideo=True)
+                        file_str + '.1.h264', showVideo=False)
                     print(session.trodesLightOffFrame, session.trodesLightOnFrame)
                     print(len(ts))
-                    session.trodesLightOnTime = ts[session.trodesLightOnFrame]
-                    session.trodesLightOffTime = ts[session.trodesLightOffFrame]
+                    session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
+                    session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
 
             possibleDirectories = [
                 "/media/WDC6/{}/".format(animal_name), "/media/WDC7/{}/".format(animal_name)]
             session.usbVidFile = getUSBVideoFile(session.name, possibleDirectories)
+            session.usbLightOffFrame, session.usbLightOnFrame = processUSBVideoData(
+                session.usbVidFile, overwriteMode="loadOld", showVideo=False)
 
             clipsFileName = file_str + '.1.clips'
             if not os.path.exists(clipsFileName) and len(session.foundWells) > 0:
@@ -549,9 +555,13 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     getWellEntryAndExitTimes(
                         all_pos_nearest_wells, ts)
 
-                runPositionAnnotator(xs, ys, ts, session.trodesLightOffTime, session.trodesLightOnTime,
-                                     session.usbVidFile, all_pos_well_entry_times, all_pos_well_exit_times,
-                                     session.foundWells, not session.probe_performed, file_str + '.1')
+                ann = AnnotatorWindow(xs, ys, ts, session.trodesLightOffTime, session.trodesLightOnTime,
+                                      session.usbVidFile, all_pos_well_entry_times, all_pos_well_exit_times,
+                                      session.foundWells, not session.probe_performed, file_str + '.1',
+                                      session.well_coords_map)
+                ann.resize(1600, 800)
+                ann.show()
+                parent_app.exec()
 
             if session.separate_probe_file:
                 probe_file_str = os.path.join(
@@ -564,6 +574,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 if session.probe_performed:
                     probe_time_clips = time_clips[1]
 
+            print(bt_time_clips)
+            print(len(ts))
             bt_start_idx = np.searchsorted(ts, bt_time_clips[0])
             bt_end_idx = np.searchsorted(ts, bt_time_clips[1])
             session.bt_pos_xs = xs[bt_start_idx:bt_end_idx]

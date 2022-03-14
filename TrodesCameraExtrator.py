@@ -3,7 +3,7 @@
 import io
 import ffmpeg
 import numpy as np
-import cv2
+# import cv2
 import struct
 import os
 import matplotlib.pyplot as plt
@@ -23,6 +23,8 @@ def getFrameBatch(videoFileName, startFrame, numFrames=None, frameStride=1):
             .video
             .filter('select', 'gte(n,{})*not(mod(n,{}))'.format(startFrame, frameStride))
             .output('pipe:', format='rawvideo', pix_fmt='rgb24', vsync="vfr")
+            .global_args('-loglevel', 'error')
+            .overwrite_output()
             .run_async(pipe_stdin=True, pipe_stdout=True)
         )
     else:
@@ -32,6 +34,8 @@ def getFrameBatch(videoFileName, startFrame, numFrames=None, frameStride=1):
             .video
             .filter('select', 'gte(n,{})*not(mod(n,{}))'.format(startFrame, frameStride))
             .output('pipe:', format='rawvideo', vframes=numFrames, pix_fmt='rgb24', vsync="vfr")
+            .global_args('-loglevel', 'error')
+            .overwrite_output()
             .run_async(pipe_stdin=True, pipe_stdout=True)
         )
 
@@ -293,6 +297,7 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
 
 def runTest():
     videoFileName = "/home/wcroughan/Desktop/20211215_140433.1.h264"
+    # videoFileName = "/home/wcroughan/Desktop/20220224_192509.1.h264"
 
     # t1 = time.perf_counter()
     # processRawTrodesVideo(videoFileName, timestampFileName=None,
@@ -629,5 +634,11 @@ def testUSBAlignment():
         playFrames(usbVideoFile, wellFrames[0], wellFrames[1])
 
 
+def runBatchTest():
+    videoFileName = "/home/wcroughan/Desktop/20220224_192509.1.h264"
+    b = getFrameBatch(videoFileName, 0, numFrames=100, frameStride=1)
+    print(b)
+
+
 if __name__ == "__main__":
-    testUSBAlignment()
+    runBatchTest()
