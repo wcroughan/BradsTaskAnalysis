@@ -3,14 +3,14 @@
 import io
 import ffmpeg
 import numpy as np
-# import cv2
+import cv2
 import struct
 import os
 import matplotlib.pyplot as plt
 import time
 import glob
 
-from UtilFunctions import readRawPositionData, processPosData
+from UtilFunctions import readRawPositionData, processPosData, getInfoForAnimal, getTrodesVideoFile
 from consts import TRODES_SAMPLING_RATE
 from BTData import BTData
 
@@ -80,7 +80,7 @@ def getTrodesLightTimes(videoFileName, initialSkipAmt=8, showVideo=False, output
 
 
 def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThreshold=0.1,
-                          threshold=50, searchDist=100, showVideo=False, frameBatchSize=1000,
+                          threshold=50, searchDist=150, showVideo=False, frameBatchSize=1000,
                           maxNumBatches=None, outputFileName=None, batchStart=0,
                           overwriteMode="ask", lightOnThreshold=0.2):
     if outputFileName is None:
@@ -153,6 +153,7 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
         if maxNumBatches is not None and batchNum > maxNumBatches:
             break
 
+        print("getting batch at", batchStart)
         batch = getFrameBatch(videoFileName, batchStart, numFrames=frameBatchSize)
         batchStart += frameBatchSize
 
@@ -168,10 +169,16 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
             if not frame:
                 break
 
-            if showVideo:
+            if showVideo or True:
                 npframe = np.frombuffer(frame, np.uint8).reshape((height, width, 3)).copy()
             else:
                 npframe = np.frombuffer(frame, np.uint8).reshape((height, width, 3))
+
+            # This should get rid of the pvc pipe at the corner taking over the tracking
+            # There's also some weird red pixels that are just stuck
+            npframe[0:150, 0:150, :] = 0
+            npframe[200:220, 130:145, :] = 0
+            npframe[780:790, 665:675, :] = 0
 
             # print("state = {}".format(currentState))
 
@@ -202,10 +209,13 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
                 y2 = int(height / 2)
                 rchan = npframe[y1:y2, x1:x2, 2].flatten()
                 gchan = npframe[y1:y2, x1:x2, 1].flatten()
-                if np.count_nonzero(rchan > threshold) > 0 and np.count_nonzero(gchan > threshold):
+
+                if np.count_nonzero(rchan > threshold) > 0 and np.count_nonzero(gchan > threshold) > 0:
                     # A light!
                     print("state start lightoff --> task")
                     currentState = STATE_TASK
+                    hasRed = True
+                    hasGreen = True
 
                     # Where is the light?
                     mgidx = np.argmax(gchan)
@@ -226,14 +236,27 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
 
                 subHeight = y2 - y1
                 subWidth = x2 - x1
+                hasGreen = False
+                hasRed = False
+                if np.count_nonzero(gchan > threshold) > 0:
+                    mgidx = np.argmax(gchan)
+                    mgcoords = np.unravel_index(mgidx, (subHeight, subWidth))
+                    hasGreen = True
 
-                mgidx = np.argmax(gchan)
-                mgcoords = np.unravel_index(mgidx, (subHeight, subWidth))
-                mridx = np.argmax(rchan)
-                mrcoords = np.unravel_index(mridx, (subHeight, subWidth))
+                if np.count_nonzero(rchan > threshold) > 0:
+                    mridx = np.argmax(rchan)
+                    mrcoords = np.unravel_index(mridx, (subHeight, subWidth))
+                    hasRed = True
 
-                ratXLoc = int((mrcoords[1] + mgcoords[1]) / 2.0) + x1
-                ratYLoc = int((mrcoords[0] + mgcoords[0]) / 2.0) + y1
+                if hasGreen and not hasRed:
+                    ratXLoc = mgcoords[1] + x1
+                    ratYLoc = mgcoords[1] + y1
+                elif hasRed and not hasGreen:
+                    ratXLoc = mrcoords[1] + x1
+                    ratYLoc = mrcoords[1] + y1
+                elif hasRed and hasGreen:
+                    ratXLoc = int((mrcoords[1] + mgcoords[1]) / 2.0) + x1
+                    ratYLoc = int((mrcoords[0] + mgcoords[0]) / 2.0) + y1
 
                 # check for end of task (lights on)
                 brightness = np.sum(npframe)
@@ -244,16 +267,18 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
 
             if showVideo:
                 if currentState == STATE_TASK:
-                    for i in range(-3, 3):
-                        for j in range(-3, 3):
-                            npframe[mgcoords[0] + i + y1, mgcoords[1] + j + x1, 0] = 255
-                            npframe[mgcoords[0] + i + y1, mgcoords[1] + j + x1, 1] = 255
-                            npframe[mgcoords[0] + i + y1, mgcoords[1] + j + x1, 2] = 0
-                    for i in range(-3, 3):
-                        for j in range(-3, 3):
-                            npframe[mrcoords[0] + i + y1, mrcoords[1] + j + x1, 0] = 255
-                            npframe[mrcoords[0] + i + y1, mrcoords[1] + j + x1, 1] = 0
-                            npframe[mrcoords[0] + i + y1, mrcoords[1] + j + x1, 2] = 255
+                    if hasGreen:
+                        for i in range(-3, 3):
+                            for j in range(-3, 3):
+                                npframe[mgcoords[0] + i + y1, mgcoords[1] + j + x1, 0] = 255
+                                npframe[mgcoords[0] + i + y1, mgcoords[1] + j + x1, 1] = 255
+                                npframe[mgcoords[0] + i + y1, mgcoords[1] + j + x1, 2] = 0
+                    if hasRed:
+                        for i in range(-3, 3):
+                            for j in range(-3, 3):
+                                npframe[mrcoords[0] + i + y1, mrcoords[1] + j + x1, 0] = 255
+                                npframe[mrcoords[0] + i + y1, mrcoords[1] + j + x1, 1] = 0
+                                npframe[mrcoords[0] + i + y1, mrcoords[1] + j + x1, 2] = 255
 
                 if currentState == STATE_START_LIGHTSOFF or currentState == STATE_TASK:
                     npframe[y1:y2, x1, :] = 255
@@ -261,10 +286,17 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
                     npframe[y1, x1:x2, :] = 255
                     npframe[y2-1, x1:x2, :] = 255
 
+                # frameDur = 1 if currentState == STATE_START_LIGHTSON else 100
+
                 cv2.imshow("frame", npframe)
-                if cv2.waitKey(50) & 0xFF == ord('q'):
-                    quitReq = True
-                    break
+                if currentState == STATE_START_LIGHTSON or currentState == STATE_START_LIGHTSOFF:
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        quitReq = True
+                        break
+                else:
+                    if cv2.waitKey() & 0xFF == ord('q'):
+                        quitReq = True
+                        break
 
             outputArray[outputIdx]['timestamp'] = timeStamps[videoFrame]
             outputArray[outputIdx]['x1'] = ratXLoc
@@ -346,6 +378,21 @@ def runAllBradTask():
     for videoName in allVids:
         print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
         processRawTrodesVideo(videoName, overwriteMode="never")
+
+
+def rerunBradTaskVideos():
+    animalNames = ["B13", "B14"]
+    allVids = []
+    for animalName in animalNames:
+        info = getInfoForAnimal(animalName)
+        for s in info.rerun_videos:
+            vidFile = getTrodesVideoFile(s, info.data_dir)
+            allVids.append(vidFile)
+
+    for videoName in reversed(allVids):
+        print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
+        # processRawTrodesVideo(videoName, overwriteMode="ask", showVideo=True, batchStart=2000)
+        processRawTrodesVideo(videoName, overwriteMode="always")
 
 
 def getFrameColorHeuristic(frame, greyDiffThreshLow=25, greyDiffThreshHigh=200):
@@ -645,4 +692,4 @@ def runBatchTest():
 
 
 if __name__ == "__main__":
-    runBatchTest()
+    rerunBradTaskVideos()

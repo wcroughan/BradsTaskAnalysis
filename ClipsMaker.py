@@ -142,7 +142,7 @@ class USBVideoWidget(QWidget):
         self.videoHeight = int(video_stream['height'])
 
         print(self.videoWidth, self.videoHeight)
-        if self.videoWidth / self.videoHeight < 0.6:
+        if self.videoWidth == 252 and self.videoHeight == 288:
             self.videoType = 1
         else:
             self.videoType = 2
@@ -155,20 +155,25 @@ class USBVideoWidget(QWidget):
 
     def initUI(self):
         if self.videoType == 2:
-            # videoOffset = QPointF(-1200, 10000)
             videoOffset = QPointF(0, 0)
             videoSize = QSizeF(750, 500)
             viewSceneRect = QRectF(-10, 20, 1, 1)
             sceneSceneRect = QRectF(0, 0, 1, 1)
 
-            # smallVideoSize = QSizeF(400, 200)
             smallVideoOffset = QPointF(0, 0)
             smallVideoSize = QSizeF(375, 250)
             smallViewSceneRect = QRectF(-10, 20, 1, 1)
             smallSceneSceneRect = QRectF(0, 0, 1, 1)
         else:
-            videoOffset = QPointF(-1200, -800)
-            videoSize = QSizeF(4000, 2000)
+            videoOffset = QPointF(0, 0)
+            videoSize = QSizeF(700, 500)
+            viewSceneRect = QRectF(120, -5, 1, 1)
+            sceneSceneRect = QRectF(0, 0, 1, 1)
+
+            smallVideoOffset = QPointF(0, 0)
+            smallVideoSize = QSizeF(350, 160)
+            smallViewSceneRect = QRectF(100, -2, 1, 1)
+            smallSceneSceneRect = QRectF(0, 0, 1, 1)
 
         scene = QGraphicsScene()
         self.videoWidget = QGraphicsVideoItem()
@@ -210,12 +215,12 @@ class USBVideoWidget(QWidget):
             l2.addWidget(endFrameVideoParent)
 
             l1 = QVBoxLayout()
-            l1.addLayout(l2)
-            l1.addWidget(self.regionListWidget)
+            l1.addLayout(l2, 1)
+            l1.addWidget(self.regionListWidget, 2)
 
             layout = QHBoxLayout()
-            layout.addLayout(l1)
-            layout.addWidget(mainViewParent)
+            layout.addLayout(l1, 2)
+            layout.addWidget(mainVideoParent, 3)
             self.setLayout(layout)
         else:
             l2 = QHBoxLayout()

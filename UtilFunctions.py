@@ -560,7 +560,20 @@ def getInfoForAnimal(animalName):
         # this one just has light on -> off -> on -> off before the task, throwing off my autodetect code
         ret.excluded_sessions += ["20211208_2"]
         # Video tracking not working perfectly, fix later
-        ret.excluded_sessions += ["20220125_2", "20220201_2", "20220217_1", "20220223_1"]
+        ret.excluded_sessions += ["20220125_2", "20220201_2", "20220217_1", "20220223_1",
+                                  "20220225_1", "20220303_2", "20220304_2", "20220305_1",
+                                  "20220306_1", "20220307_2", "20220308_1", "20220308_2",
+                                  "20220309_2"]
+        # Something weird with the well order
+        ret.excluded_sessions += ["20220224_1", "20220303_1"]
+        # USB light times not found
+        ret.excluded_sessions += ["20220305_2", "20220306_2", "20220307_1", "20220309_1"]
+
+        ret.rerun_videos = []
+        ret.rerun_videos += ["20220125_2", "20220201_2", "20220217_1", "20220223_1",
+                             "20220225_1", "20220303_2", "20220304_2", "20220305_1",
+                             "20220306_1", "20220307_2", "20220308_1", "20220308_2",
+                             "20220309_2"]
 
         # Just for testing the clips generator
         ret.minimum_date = "20220201"
@@ -581,6 +594,32 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions = []
         ret.DEFAULT_RIP_DET_TET = 3
         ret.DEFAULT_RIP_BAS_TET = 2
+
+        # Video tracking not working perfectly, fix later
+        ret.excluded_sessions += ["20220222_1"]
+        ret.excluded_sessions += ["20220304_2"]
+        ret.excluded_sessions += ["20220305_2"]
+        ret.excluded_sessions += ["20220306_1"]
+        ret.excluded_sessions += ["20220306_2"]
+        ret.excluded_sessions += ["20220307_1"]
+        ret.excluded_sessions += ["20220307_2"]
+        ret.excluded_sessions += ["20220308_1"]
+        ret.excluded_sessions += ["20220309_1"]
+        # Something weird with USB video
+        ret.excluded_sessions += ["20220305_1"]
+        ret.excluded_sessions += ["20220308_2"]
+        ret.excluded_sessions += ["20220309_2"]
+
+        ret.rerun_videos = []
+        ret.rerun_videos += ["20220222_1"]
+        ret.rerun_videos += ["20220304_2"]
+        ret.rerun_videos += ["20220305_2"]
+        ret.rerun_videos += ["20220306_1"]
+        ret.rerun_videos += ["20220306_2"]
+        ret.rerun_videos += ["20220307_1"]
+        ret.rerun_videos += ["20220307_2"]
+        ret.rerun_videos += ["20220308_1"]
+        ret.rerun_videos += ["20220309_1"]
 
     else:
         raise Exception("Unknown animal name")
@@ -636,3 +675,17 @@ def getUSBVideoFile(seshName, possibleDirectories):
             seshWithinDay = uvi
 
     return usbVidFile
+
+
+def getTrodesVideoFile(seshInfoFileName, data_dir):
+    seshDate, seshIdx = seshInfoFileName.split("_")
+
+    gl = data_dir + "/" + seshDate + "_*/" + seshDate + "_*.1.h264"
+    possibleTrodesVids = glob.glob(gl)
+
+    if len(possibleTrodesVids) == 0:
+        return None
+
+    seshIdx = int(seshIdx) - 1
+    possibleTrodesVids = sorted(possibleTrodesVids)
+    return possibleTrodesVids[seshIdx]

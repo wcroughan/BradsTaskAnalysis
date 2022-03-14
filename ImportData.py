@@ -39,6 +39,10 @@ SHOW_CURVATURE_VIDEO = False
 SKIP_LFP = False
 SKIP_PREV_SESSION = True
 JUST_EXTRACT_TRODES_DATA = True
+RUN_INTERACTIVE = True
+
+numExtracted = 0
+numExcluded = 0
 
 TEST_NEAREST_WELL = False
 
@@ -212,6 +216,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 
     if "".join(os.path.basename(info_file).split(".")[0:-1]) in animalInfo.excluded_sessions:
         print(session_dir, " excluded session, skipping")
+        numExcluded += 1
         continue
 
     # ===================================
@@ -248,8 +253,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 field_name = lineparts[0]
                 field_val = lineparts[1]
 
-                if JUST_EXTRACT_TRODES_DATA and field_name.lower() not in ["reference", "ref", "baseline", "home", "aways", "last away", "last well"]:
-                    continue
+                # if JUST_EXTRACT_TRODES_DATA and field_name.lower() not in ["reference", "ref", "baseline", "home", "aways", "last away", "last well", "probe performed"]:
+                # continue
 
                 if field_name.lower() == "home":
                     session.home_well = int(field_val)
@@ -485,7 +490,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             # print(position_data_metadata)
             position_data = None
             os.rename(file_str + '.1.videoPositionTracking', file_str +
-                        '.1.videoPositionTracking.manualOutput')
+                      '.1.videoPositionTracking.manualOutput')
         else:
             print("all good, from the source!!")
             session.frameTimes = position_data['timestamp']
@@ -510,7 +515,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         if "lightonframe" in position_data_metadata:
             session.trodesLightOnFrame = int(position_data_metadata['lightonframe'])
             session.trodesLightOffFrame = int(position_data_metadata['lightoffframe'])
-            print("metadata says trodes light frames {}, {} (/{})".format( session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
+            print("metadata says trodes light frames {}, {} (/{})".format(session.trodesLightOffFrame,
+                  session.trodesLightOnFrame, len(ts)))
             session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
             session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
             # playFrames(file_str + '.1.h264', session.trodesLightOffFrame -
@@ -524,14 +530,16 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 lightInfo = np.fromfile(positionMetadataFile, sep=",").astype(int)
                 session.trodesLightOffFrame = lightInfo[0]
                 session.trodesLightOnFrame = lightInfo[1]
-                print("justlights file says trodes light frames {}, {} (/{})".format( session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
+                print("justlights file says trodes light frames {}, {} (/{})".format(
+                    session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
                 session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
                 session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
             else:
                 print("doing the lights")
                 session.trodesLightOffFrame, session.trodesLightOnFrame = getTrodesLightTimes(
                     file_str + '.1.h264', showVideo=False)
-                print("trodesLightFunc says trodes light frames {}, {} (/{})".format( session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
+                print("trodesLightFunc says trodes light frames {}, {} (/{})".format(
+                    session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
                 session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
                 session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
 
@@ -544,7 +552,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             session.usbLightOffFrame, session.usbLightOnFrame = processUSBVideoData(
                 session.usbVidFile, overwriteMode="loadOld", showVideo=False)
 
-        if not JUST_EXTRACT_TRODES_DATA:
+        if not JUST_EXTRACT_TRODES_DATA or RUN_INTERACTIVE:
             clipsFileName = file_str + '.1.clips'
             if not os.path.exists(clipsFileName) and len(session.foundWells) > 0:
                 print("clips file not found, gonna launch clips generator")
@@ -563,6 +571,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 ann.show()
                 parent_app.exec()
 
+        if not JUST_EXTRACT_TRODES_DATA:
             if session.separate_probe_file:
                 probe_file_str = os.path.join(
                     session.probe_dir, os.path.basename(session.probe_dir))
@@ -661,6 +670,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         baseline_lfp_data = MountainViewIO.loadLFP(data_file=session.bt_lfp_baseline_fname)
 
     if JUST_EXTRACT_TRODES_DATA:
+        numExtracted += 1
         continue
 
     # ======================================================================
@@ -1787,9 +1797,13 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 
             plt.show()
 
-# save all sessions to disk
-print("Saving to file: {}".format(animalInfo.out_filename))
-dataob.saveToFile(os.path.join(animalInfo.output_dir, animalInfo.out_filename))
-print("Saved sessions:")
-for sesh in dataob.allSessions:
-    print(sesh.name)
+
+if JUST_EXTRACT_TRODES_DATA:
+    print("extracted: {}\nexcluded: {}".format(numExtracted, numExcluded))
+else:
+    # save all sessions to disk
+    print("Saving to file: {}".format(animalInfo.out_filename))
+    dataob.saveToFile(os.path.join(animalInfo.output_dir, animalInfo.out_filename))
+    print("Saved sessions:")
+    for sesh in dataob.allSessions:
+        print(sesh.name)
