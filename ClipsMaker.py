@@ -272,7 +272,7 @@ class USBVideoWidget(QWidget):
                 startPositionUpdated = True
             self.startPosition = newStartPosition
             self.startFrameMediaPlayer.setPosition(self.startPosition)
-            self.startFrameMediaPlayer.pause()
+            # self.startFrameMediaPlayer.pause()
         else:
             self.startPosition = None
 
@@ -284,12 +284,12 @@ class USBVideoWidget(QWidget):
                 stopPositionUpdated = True
             self.stopPosition = newStopPosition
             self.endFrameMediaPlayer.setPosition(self.stopPosition)
-            self.endFrameMediaPlayer.pause()
+            # self.endFrameMediaPlayer.pause()
         else:
             self.stopPosition = None
 
         if (self.stopPosition is None or self.startPosition is None) and self.isAnimatingClip:
-            self.mainMediaPlayer.pause()
+            # self.mainMediaPlayer.pause()
             self.isAnimatingClip = False
             self.animPauseTimer.stop()
 

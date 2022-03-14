@@ -560,7 +560,7 @@ def getInfoForAnimal(animalName):
         # this one just has light on -> off -> on -> off before the task, throwing off my autodetect code
         ret.excluded_sessions += ["20211208_2"]
         # Just for testing the clips generator
-        ret.minimum_date = "20220122"
+        ret.minimum_date = "20220124"
 
     elif animalName == "B14":
         ret.X_START = 100
