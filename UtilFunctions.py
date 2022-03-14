@@ -559,8 +559,11 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions += ["20220131_2", "20220222_2"]
         # this one just has light on -> off -> on -> off before the task, throwing off my autodetect code
         ret.excluded_sessions += ["20211208_2"]
+        # Video tracking not working perfectly, fix later
+        ret.excluded_sessions += ["20220125_2", "20220201_2", "20220217_1", "20220223_1"]
+
         # Just for testing the clips generator
-        ret.minimum_date = "20220124"
+        ret.minimum_date = "20220201"
 
     elif animalName == "B14":
         ret.X_START = 100

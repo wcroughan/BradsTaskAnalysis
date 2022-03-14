@@ -383,7 +383,7 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuri
         [heuristicFunction(frames[i, :, :, :].reshape(height, width, 3)) for i in range(nFrames)])
     # allFrameH = np.array([getFrameColorHeuristic(
     # frames[i, :, :, :].reshape(height, width, 3))[1][1] for i in range(nFrames)])
-    print(allFrameH)
+    # print(allFrameH)
     maxH = np.max(allFrameH)
     minH = np.min(allFrameH)
     thresh = (maxH + minH) / 2.0
@@ -526,6 +526,8 @@ def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
     # Step one: find left and right bound on light off and on time
     loffF1, loffF2, lonF1, lonF2 = findLightTimesLinearUSB(
         videoFileName, 0, None, initialFrameJump, showVideo=showVideo)
+    if loffF1 is None or loffF2 is None or lonF1 is None or lonF2 is None:
+        return None, None
     loffF1 *= initialFrameJump
     loffF2 *= initialFrameJump
     lonF1 *= initialFrameJump
@@ -542,6 +544,8 @@ def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
     lightsOnFrame += lonF1
 
     print(lightsOffFrame, lightsOnFrame)
+    if lightsOffFrame is None or lightsOnFrame is None:
+        return None, None
 
     outArr = np.array([lightsOffFrame, lightsOnFrame])
     with open(outputFileName, "w") as outFile:

@@ -38,7 +38,7 @@ SAVE_DONT_SHOW = True
 SHOW_CURVATURE_VIDEO = False
 SKIP_LFP = False
 SKIP_PREV_SESSION = True
-JUST_EXTRACT_TRODES_DATA = False
+JUST_EXTRACT_TRODES_DATA = True
 
 TEST_NEAREST_WELL = False
 
@@ -199,7 +199,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         num_on_this_day = len(seshs_on_this_day)
         # print("Looking for info file for {}".format(session_dir))
         for i in range(num_on_this_day):
-            print("\t{}".format(seshs_on_this_day[i]))
+            # print("\t{}".format(seshs_on_this_day[i]))
             if seshs_on_this_day[i] == session_dir:
                 sesh_idx_within_day = i
         possible_info_files = sorted(
@@ -208,7 +208,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         # info_file = os.path.join(behavior_notes_dir, date_str + "_" +
         #  str(sesh_idx_within_day+1) + ".txt")
         info_file = possible_info_files[sesh_idx_within_day]
-        print(info_file)
+        print("===========================\n", info_file, "\n")
 
     if "".join(os.path.basename(info_file).split(".")[0:-1]) in animalInfo.excluded_sessions:
         print(session_dir, " excluded session, skipping")
@@ -248,7 +248,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 field_name = lineparts[0]
                 field_val = lineparts[1]
 
-                if JUST_EXTRACT_TRODES_DATA and field_name.lower() not in ["reference", "ref", "baseline"]:
+                if JUST_EXTRACT_TRODES_DATA and field_name.lower() not in ["reference", "ref", "baseline", "home", "aways", "last away", "last well"]:
                     continue
 
                 if field_name.lower() == "home":
@@ -462,89 +462,89 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         session.foundWells = generateFoundWells(
             session.home_well, session.away_wells, session.last_away_well, session.ended_on_home, session.found_first_home)
 
-    if not JUST_EXTRACT_TRODES_DATA:
-        # ===================================
-        # get well coordinates
-        # ===================================
-        well_coords_file_name = file_str + '.1.wellLocations.csv'
-        if not os.path.exists(well_coords_file_name):
-            well_coords_file_name = os.path.join(animalInfo.data_dir, 'well_locations.csv')
-            print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
-        session.well_coords_map = readWellCoordsFile(well_coords_file_name)
-        session.home_x, session.home_y = getWellCoordinates(
-            session.home_well, session.well_coords_map)
+    # ===================================
+    # get well coordinates
+    # ===================================
+    well_coords_file_name = file_str + '.1.wellLocations.csv'
+    if not os.path.exists(well_coords_file_name):
+        well_coords_file_name = os.path.join(animalInfo.data_dir, 'well_locations.csv')
+        print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
+    session.well_coords_map = readWellCoordsFile(well_coords_file_name)
+    session.home_x, session.home_y = getWellCoordinates(
+        session.home_well, session.well_coords_map)
 
-        # ===================================
-        # Read position data
-        # ===================================
-        trackingFile = file_str + '.1.videoPositionTracking'
-        if os.path.exists(trackingFile):
-            position_data_metadata, position_data = readRawPositionData(
-                file_str + '.1.videoPositionTracking')
+    # ===================================
+    # Read position data
+    # ===================================
+    trackingFile = file_str + '.1.videoPositionTracking'
+    if os.path.exists(trackingFile):
+        position_data_metadata, position_data = readRawPositionData(
+            file_str + '.1.videoPositionTracking')
 
-            if "source" not in position_data_metadata or "trodescameraextractor" not in position_data_metadata["source"]:
-                print(position_data_metadata)
-                position_data = None
-                os.rename(file_str + '.1.videoPositionTracking', file_str +
-                          '.1.videoPositionTracking.manualOutput')
-            else:
-                print("all good, from the source!!")
-                session.frameTimes = position_data['timestamp']
-        else:
+        if "source" not in position_data_metadata or "trodescameraextractor" not in position_data_metadata["source"]:
+            # print(position_data_metadata)
             position_data = None
-
-        if position_data is None:
-            print("running trodes camera extractor!")
-            processRawTrodesVideo(file_str + '.1.h264')
-            position_data_metadata, position_data = readRawPositionData(
-                file_str + '.1.videoPositionTracking')
-            session.frameTimes = position_data['timestamp']
-
-        if position_data is None:
-            print("Warning: skipping position data")
-            session.hasPositionData = False
+            os.rename(file_str + '.1.videoPositionTracking', file_str +
+                        '.1.videoPositionTracking.manualOutput')
         else:
-            session.hasPositionData = True
-            xs, ys, ts = processPosData(position_data, xLim=(
-                animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
+            print("all good, from the source!!")
+            session.frameTimes = position_data['timestamp']
+    else:
+        position_data = None
 
-            if "lightonframe" in position_data_metadata:
-                session.trodesLightOnFrame = int(position_data_metadata['lightonframe'])
-                session.trodesLightOffFrame = int(position_data_metadata['lightoffframe'])
-                print(session.trodesLightOffFrame, session.trodesLightOnFrame)
-                print(len(ts))
+    if position_data is None:
+        print("running trodes camera extractor!")
+        processRawTrodesVideo(file_str + '.1.h264')
+        position_data_metadata, position_data = readRawPositionData(
+            file_str + '.1.videoPositionTracking')
+        session.frameTimes = position_data['timestamp']
+
+    if position_data is None:
+        print("Warning: skipping position data")
+        session.hasPositionData = False
+    else:
+        session.hasPositionData = True
+        xs, ys, ts = processPosData(position_data, xLim=(
+            animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
+
+        if "lightonframe" in position_data_metadata:
+            session.trodesLightOnFrame = int(position_data_metadata['lightonframe'])
+            session.trodesLightOffFrame = int(position_data_metadata['lightoffframe'])
+            print("metadata says trodes light frames {}, {} (/{})".format( session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
+            session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
+            session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
+            # playFrames(file_str + '.1.h264', session.trodesLightOffFrame -
+            #            20, session.trodesLightOffFrame + 20)
+            # playFrames(file_str + '.1.h264', session.trodesLightOnFrame -
+            #            20, session.trodesLightOnFrame + 20)
+        else:
+            # was a separate metadatafile made?
+            positionMetadataFile = file_str + '.1.justLights'
+            if os.path.exists(positionMetadataFile):
+                lightInfo = np.fromfile(positionMetadataFile, sep=",").astype(int)
+                session.trodesLightOffFrame = lightInfo[0]
+                session.trodesLightOnFrame = lightInfo[1]
+                print("justlights file says trodes light frames {}, {} (/{})".format( session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
                 session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
                 session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
-                # playFrames(file_str + '.1.h264', session.trodesLightOffFrame -
-                #            20, session.trodesLightOffFrame + 20)
-                # playFrames(file_str + '.1.h264', session.trodesLightOnFrame -
-                #            20, session.trodesLightOnFrame + 20)
             else:
-                # was a separate metadatafile made?
-                positionMetadataFile = file_str + '.1.justLights'
-                if os.path.exists(positionMetadataFile):
-                    lightInfo = np.fromfile(positionMetadataFile, sep=",").astype(int)
-                    session.trodesLightOffFrame = lightInfo[0]
-                    session.trodesLightOnFrame = lightInfo[1]
-                    print(lightInfo)
-                    print(len(ts))
-                    session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
-                    session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
-                else:
-                    print("doing the lights")
-                    session.trodesLightOffFrame, session.trodesLightOnFrame = getTrodesLightTimes(
-                        file_str + '.1.h264', showVideo=False)
-                    print(session.trodesLightOffFrame, session.trodesLightOnFrame)
-                    print(len(ts))
-                    session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
-                    session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
+                print("doing the lights")
+                session.trodesLightOffFrame, session.trodesLightOnFrame = getTrodesLightTimes(
+                    file_str + '.1.h264', showVideo=False)
+                print("trodesLightFunc says trodes light frames {}, {} (/{})".format( session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
+                session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
+                session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
 
-            possibleDirectories = [
-                "/media/WDC6/{}/".format(animal_name), "/media/WDC7/{}/".format(animal_name)]
-            session.usbVidFile = getUSBVideoFile(session.name, possibleDirectories)
+        possibleDirectories = [
+            "/media/WDC6/{}/".format(animal_name), "/media/WDC7/{}/".format(animal_name)]
+        session.usbVidFile = getUSBVideoFile(session.name, possibleDirectories)
+        if session.usbVidFile is None:
+            print("??????? usb vid file not found for session ", session.name)
+        else:
             session.usbLightOffFrame, session.usbLightOnFrame = processUSBVideoData(
                 session.usbVidFile, overwriteMode="loadOld", showVideo=False)
 
+        if not JUST_EXTRACT_TRODES_DATA:
             clipsFileName = file_str + '.1.clips'
             if not os.path.exists(clipsFileName) and len(session.foundWells) > 0:
                 print("clips file not found, gonna launch clips generator")
@@ -574,8 +574,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 if session.probe_performed:
                     probe_time_clips = time_clips[1]
 
-            print(bt_time_clips)
-            print(len(ts))
+            print("clips: {} (/{})".format(bt_time_clips, len(ts)))
             bt_start_idx = np.searchsorted(ts, bt_time_clips[0])
             bt_end_idx = np.searchsorted(ts, bt_time_clips[1])
             session.bt_pos_xs = xs[bt_start_idx:bt_end_idx]
