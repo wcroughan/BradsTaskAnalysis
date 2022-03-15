@@ -3,7 +3,7 @@
 import io
 import ffmpeg
 import numpy as np
-import cv2
+# import cv2
 import struct
 import os
 import matplotlib.pyplot as plt
@@ -175,8 +175,15 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
                 npframe = np.frombuffer(frame, np.uint8).reshape((height, width, 3))
 
             # This should get rid of the pvc pipe at the corner taking over the tracking
-            # There's also some weird red pixels that are just stuck
             npframe[0:150, 0:150, :] = 0
+            npframe[0:400, 0:100, :] = 0
+            npframe[0:500, 0:50, :] = 0
+            npframe[0:25, 0:280, :] = 0
+            npframe[:, 1070:, :] = 0
+            npframe[0:100, 1010:, :] = 0
+            npframe[100:250, 1025:, :] = 0
+            npframe[250:450, 1045:, :] = 0
+            # There's also some weird red pixels that are just stuck
             npframe[200:220, 130:145, :] = 0
             npframe[780:790, 665:675, :] = 0
 
@@ -289,7 +296,7 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
                 # frameDur = 1 if currentState == STATE_START_LIGHTSON else 100
 
                 cv2.imshow("frame", npframe)
-                if currentState == STATE_START_LIGHTSON or currentState == STATE_START_LIGHTSOFF:
+                if True:
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         quitReq = True
                         break
@@ -382,6 +389,7 @@ def runAllBradTask():
 
 def rerunBradTaskVideos():
     animalNames = ["B13", "B14"]
+    # animalNames = ["B13"]
     allVids = []
     for animalName in animalNames:
         info = getInfoForAnimal(animalName)
@@ -389,9 +397,9 @@ def rerunBradTaskVideos():
             vidFile = getTrodesVideoFile(s, info.data_dir)
             allVids.append(vidFile)
 
-    for videoName in reversed(allVids):
+    for videoName in allVids:
         print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
-        # processRawTrodesVideo(videoName, overwriteMode="ask", showVideo=True, batchStart=2000)
+        # processRawTrodesVideo(videoName, overwriteMode="ask", showVideo=True)
         processRawTrodesVideo(videoName, overwriteMode="always")
 
 

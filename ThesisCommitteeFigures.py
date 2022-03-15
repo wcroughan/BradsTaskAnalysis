@@ -26,7 +26,7 @@ def makeThesisCommitteeFigs():
     SHOW_OUTPUT_PLOTS = False
     FIG_SCALE = 5
 
-    possibleDataDirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/home/wcroughan/data/"]
+    possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
     dataDir = None
     for dd in possibleDataDirs:
         if os.path.exists(dd):
@@ -37,7 +37,7 @@ def makeThesisCommitteeFigs():
         print("Couldnt' find data directory among any of these: {}".format(possibleDataDirs))
         exit()
 
-    globalOutputDir = os.path.join(dataDir, "figures", "thesisCommittee20220208")
+    globalOutputDir = os.path.join(dataDir, "figures", "20220315LabMeeting")
     if not os.path.exists(globalOutputDir):
         os.makedirs(globalOutputDir)
 
@@ -56,7 +56,8 @@ def makeThesisCommitteeFigs():
         elif an == "B14":
             dataFilename = os.path.join(dataDir, "B14/processed_data/B14_bradtask.dat")
         elif an == "Martin":
-            dataFilename = os.path.join(dataDir, "Martin/processed_data/martin_bradtask.dat")
+            # dataFilename = os.path.join(dataDir, "Martin/processed_data/martin_bradtask.dat")
+            dataFilename = "/media/WDC7/Martin/processed_data/martin_bradtask.dat"
         else:
             raise Exception("Unknown rat " + an)
         ratData = BTData()

@@ -38,7 +38,7 @@ SAVE_DONT_SHOW = True
 SHOW_CURVATURE_VIDEO = False
 SKIP_LFP = False
 SKIP_PREV_SESSION = True
-JUST_EXTRACT_TRODES_DATA = True
+JUST_EXTRACT_TRODES_DATA = False
 RUN_INTERACTIVE = True
 
 numExtracted = 0
@@ -549,8 +549,11 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         if session.usbVidFile is None:
             print("??????? usb vid file not found for session ", session.name)
         else:
+            print("Running USB light time analysis, file", session.usbVidFile)
             session.usbLightOffFrame, session.usbLightOnFrame = processUSBVideoData(
                 session.usbVidFile, overwriteMode="loadOld", showVideo=False)
+            if session.usbLightOffFrame is None or session.usbLightOnFrame  is None:
+                raise Exception("exclude me pls")
 
         if not JUST_EXTRACT_TRODES_DATA or RUN_INTERACTIVE:
             clipsFileName = file_str + '.1.clips'
@@ -739,7 +742,11 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=session.prebtMeanRipplePower, stdPower=session.prebtStdRipplePower, showPlot=showPlot)
         session.btRipStartIdxsPreStats, session.btRipLensPreStats, session.btRipPeakIdxsPreStats, session.btRipPeakAmpsPreStats, session.btRipCrossThreshIdxsPreStats = \
             detectRipples(ripple_power)
-        session.btRipStartTimestampsPreStats = lfp_timestamps[session.btRipStartIdxsPreStats + bt_lfp_start_idx]
+        # print(bt_lfp_start_idx, session.btRipStartIdxsPreStats)
+        if len(session.btRipStartIdxsPreStats) == 0:
+            session.btRipStartTimestampsPreStats  = np.array([])
+        else:
+            session.btRipStartTimestampsPreStats = lfp_timestamps[session.btRipStartIdxsPreStats + bt_lfp_start_idx]
 
         _, _, session.prebtMeanRipplePowerArtifactsRemoved, session.prebtStdRipplePowerArtifactsRemoved = getRipplePower(
             lfp_data[0:bt_lfp_start_idx], lfp_deflections=pre_bt_interruption_idxs)
