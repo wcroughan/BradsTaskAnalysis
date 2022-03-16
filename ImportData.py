@@ -40,6 +40,7 @@ SKIP_LFP = False
 SKIP_PREV_SESSION = True
 JUST_EXTRACT_TRODES_DATA = True
 RUN_INTERACTIVE = True
+MAKE_ALL_TRACKING_AUTO  = False
 
 numExtracted = 0
 numExcluded = 0
@@ -488,13 +489,13 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         position_data_metadata, position_data = readRawPositionData(
             file_str + '.1.videoPositionTracking')
 
-        if "source" not in position_data_metadata or "trodescameraextractor" not in position_data_metadata["source"]:
+        if MAKE_ALL_TRACKING_AUTO and ("source" not in position_data_metadata or "trodescameraextractor" not in position_data_metadata["source"]):
             # print(position_data_metadata)
             position_data = None
             os.rename(file_str + '.1.videoPositionTracking', file_str +
                       '.1.videoPositionTracking.manualOutput')
         else:
-            print("all good, from the source!!")
+            print("Got position tracking")
             session.frameTimes = position_data['timestamp']
     else:
         position_data = None
@@ -521,6 +522,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                   session.trodesLightOnFrame, len(ts)))
             session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
             session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
+            print("metadata file says trodes light timestamps {}, {} (/{})".format(
+                session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
             # playFrames(file_str + '.1.h264', session.trodesLightOffFrame -
             #            20, session.trodesLightOffFrame + 20)
             # playFrames(file_str + '.1.h264', session.trodesLightOnFrame -
@@ -530,20 +533,16 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             positionMetadataFile = file_str + '.1.justLights'
             if os.path.exists(positionMetadataFile):
                 lightInfo = np.fromfile(positionMetadataFile, sep=",").astype(int)
-                session.trodesLightOffFrame = lightInfo[0]
-                session.trodesLightOnFrame = lightInfo[1]
-                print("justlights file says trodes light frames {}, {} (/{})".format(
-                    session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
-                session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
-                session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
+                session.trodesLightOffTime = lightInfo[0]
+                session.trodesLightOnTime = lightInfo[1]
+                print("justlights file says trodes light timestamps {}, {} (/{})".format(
+                    session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
             else:
                 print("doing the lights")
-                session.trodesLightOffFrame, session.trodesLightOnFrame = getTrodesLightTimes(
+                session.trodesLightOffTime, session.trodesLightOnTime = getTrodesLightTimes(
                     file_str + '.1.h264', showVideo=False)
-                print("trodesLightFunc says trodes light frames {}, {} (/{})".format(
-                    session.trodesLightOffFrame, session.trodesLightOnFrame, len(ts)))
-                session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
-                session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
+                print("trodesLightFunc says trodes light Time {}, {} (/{})".format(
+                    session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
 
         possibleDirectories = [
             "/media/WDC6/{}/".format(animal_name), "/media/WDC7/{}/".format(animal_name)]

@@ -52,10 +52,26 @@ def getSingleFrame(videoFileName, frameIdx):
     return getFrameBatch(videoFileName, frameIdx, numFrames=1)
 
 
-def getTrodesLightTimes(videoFileName, initialSkipAmt=8, showVideo=False, outputFileName=None):
+def getTrodesLightTimes(videoFileName, timestampFileName=None, initialSkipAmt=8, showVideo=False, outputFileName=None):
     if outputFileName is None:
         outputFileName = '.'.join(videoFileName.split('.')[0:-1]) + '.justLights'
     initialFrameJump = np.power(2, initialSkipAmt)
+
+    if timestampFileName is None:
+        timestampFileName = '.'.join(videoFileName.split('.')[0:-1]) + '.videoTimeStamps'
+
+    with open(timestampFileName, "rb") as tsFile:
+        max_iter = 8
+        iter = 0
+        l = ''
+        while l != b'<end settings>\n':
+            l = tsFile.readline().lower()
+            # print(l)
+            iter += 1
+            if iter > max_iter:
+                raise Exception
+        timeStamps = np.fromfile(tsFile, np.uint32)
+
 
     # Step one: find left and right bound on light off and on time
     loffF1, loffF2, lonF1, lonF2 = findLightTimesLinearTrodes(
@@ -75,14 +91,17 @@ def getTrodesLightTimes(videoFileName, initialSkipAmt=8, showVideo=False, output
         videoFileName, lonF1, lonF2, 1, showVideo=showVideo, findLightOff=False)
     lightsOnFrame += lonF1
 
-    outputArr = np.array([lightsOffFrame, lightsOnFrame])
+    lightsOffTimestamp = timeStamps[lightsOffFrame]
+    lightsOnTimestamp = timeStamps[lightsOnFrame]
+
+    outputArr = np.array([lightsOffTimestamp, lightsOnTimestamp])
     outputArr.tofile(outputFileName, sep=",")
 
-    return lightsOffFrame, lightsOnFrame
+    return lightsOffTimestamp, lightsOnTimestamp
 
 
 def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThreshold=0.1,
-                          threshold=90, searchDist=150, showVideo=False, frameBatchSize=1000,
+                          threshold=90, searchDist=230, showVideo=False, frameBatchSize=1000,
                           maxNumBatches=None, outputFileName=None, batchStart=0,
                           overwriteMode="ask", lightOnThreshold=0.2):
     if outputFileName is None:
@@ -107,6 +126,12 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
     if "20211208_180352" in videoFileName:
         # This session has lights on -> off -> on -> off at the start
         minLightTimeStamp = (3600 * 3 + 60 * 51 + 10) * TRODES_SAMPLING_RATE
+    if "20220306_180235" in videoFileName:
+        # This session has lights on -> off -> on -> off at the start
+        minLightTimeStamp = (3600 * 0 + 60 * 1 + 39) * TRODES_SAMPLING_RATE
+    elif "20220201_181927" in videoFileName:
+        # lights off -> on -> off at start
+        minLightTimeStamp = (3600 * 2 + 60 * 24 + 37) * TRODES_SAMPLING_RATE
     else:
         minLightTimeStamp = 0
 
@@ -429,7 +454,9 @@ def rerunUSBVideos(showVideo=False):
         if showVideo:
             processUSBVideoData(videoName, overwriteMode="ask", showVideo=True)
         else:
-            processUSBVideoData(videoName, overwriteMode="always")
+            res = processUSBVideoData(videoName, overwriteMode="always")
+            if res[0] is None or res[1] is None:
+                print("================================================================================{} should be excluded==========================================".format(videoName))
 
 
 def getFrameColorHeuristic(frame, greyDiffThreshLow=25, greyDiffThreshHigh=200):
@@ -749,7 +776,7 @@ def runBatchTest():
 
 
 if __name__ == "__main__":
-    rerunUSBVideos(False)
+    # rerunUSBVideos(False)
     rerunTrodesVideos(False)
     # videoName = "/media/WDC6/B13/bradtasksessions/20220308_140707/20220308_140707.1.h264"
     # processRawTrodesVideo(videoName, overwriteMode="always", showVideo=True, batchStart=15*12*60)
