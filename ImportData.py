@@ -38,7 +38,7 @@ SAVE_DONT_SHOW = True
 SHOW_CURVATURE_VIDEO = False
 SKIP_LFP = False
 SKIP_PREV_SESSION = True
-JUST_EXTRACT_TRODES_DATA = False
+JUST_EXTRACT_TRODES_DATA = True
 RUN_INTERACTIVE = True
 
 numExtracted = 0
@@ -263,6 +263,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     # print(line)
                     # print(field_name, field_val)
                     # print(session.away_wells)
+                elif field_name.lower() == "foundwells":
+                    session.foundWells = [int(w) for w in field_val.strip().split(' ')]
                 elif field_name.lower() == "condition":
                     type_in = field_val.lower()
                     if 'ripple' in type_in or 'interruption' in type_in:
@@ -552,7 +554,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             print("Running USB light time analysis, file", session.usbVidFile)
             session.usbLightOffFrame, session.usbLightOnFrame = processUSBVideoData(
                 session.usbVidFile, overwriteMode="loadOld", showVideo=False)
-            if session.usbLightOffFrame is None or session.usbLightOnFrame  is None:
+            if session.usbLightOffFrame is None or session.usbLightOnFrame is None:
                 raise Exception("exclude me pls")
 
         if not JUST_EXTRACT_TRODES_DATA or RUN_INTERACTIVE:
@@ -744,7 +746,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             detectRipples(ripple_power)
         # print(bt_lfp_start_idx, session.btRipStartIdxsPreStats)
         if len(session.btRipStartIdxsPreStats) == 0:
-            session.btRipStartTimestampsPreStats  = np.array([])
+            session.btRipStartTimestampsPreStats = np.array([])
         else:
             session.btRipStartTimestampsPreStats = lfp_timestamps[session.btRipStartIdxsPreStats + bt_lfp_start_idx]
 

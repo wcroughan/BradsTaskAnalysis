@@ -3,14 +3,16 @@
 import io
 import ffmpeg
 import numpy as np
-# import cv2
 import struct
 import os
 import matplotlib.pyplot as plt
 import time
 import glob
 
-from UtilFunctions import readRawPositionData, processPosData, getInfoForAnimal, getTrodesVideoFile
+if __name__ == "__main__":
+    import cv2
+
+from UtilFunctions import readRawPositionData, processPosData, getInfoForAnimal, getTrodesVideoFile, getUSBVideoFile
 from consts import TRODES_SAMPLING_RATE
 from BTData import BTData
 
@@ -80,7 +82,7 @@ def getTrodesLightTimes(videoFileName, initialSkipAmt=8, showVideo=False, output
 
 
 def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThreshold=0.1,
-                          threshold=50, searchDist=150, showVideo=False, frameBatchSize=1000,
+                          threshold=90, searchDist=150, showVideo=False, frameBatchSize=1000,
                           maxNumBatches=None, outputFileName=None, batchStart=0,
                           overwriteMode="ask", lightOnThreshold=0.2):
     if outputFileName is None:
@@ -101,6 +103,12 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
         elif overwriteMode != "always":
             print("Unknown overwrite mode {}".format(overwriteMode))
             return outputFileName
+
+    if "20211208_180352" in videoFileName:
+        # This session has lights on -> off -> on -> off at the start
+        minLightTimeStamp = (3600 * 3 + 60 * 51 + 10) * TRODES_SAMPLING_RATE
+    else:
+        minLightTimeStamp = 0
 
     probe = ffmpeg.probe(videoFileName)
     video_stream = next(
@@ -195,17 +203,15 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
             if currentState == STATE_START_LIGHTSON:
                 # Just waiting for lights off
                 brightness = np.sum(npframe)
-                # print("{} (thresh = {})".format(brightness, lightOffThreshold))
-                # print("b", brightness)
-                # print("t", lightOffThreshold)
-                if brightness < lightOffThreshold:
-                    print("state start lighton --> start lightoff")
-                    currentState = STATE_START_LIGHTSOFF
-                    x1 = 0
-                    x2 = int(width / 2)
-                    y1 = 0
-                    y2 = int(height / 2)
-                    lightsOffFrame = videoFrame
+                if timeStamps[videoFrame] > minLightTimeStamp:
+                    if brightness < lightOffThreshold:
+                        print("state start lighton --> start lightoff")
+                        currentState = STATE_START_LIGHTSOFF
+                        x1 = 0
+                        x2 = int(width / 2)
+                        y1 = 0
+                        y2 = int(height / 2)
+                        lightsOffFrame = videoFrame
 
             elif currentState == STATE_START_LIGHTSOFF:
                 # Now just waiting for the rat
@@ -296,7 +302,7 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
                 # frameDur = 1 if currentState == STATE_START_LIGHTSON else 100
 
                 cv2.imshow("frame", npframe)
-                if True:
+                if False:
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         quitReq = True
                         break
@@ -317,15 +323,16 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
         if quitReq:
             break
 
-    print("saving to file {}...".format(outputFileName))
-    outputArray = outputArray[0:outputIdx]
-    with open(outputFileName, "wb") as outFile:
-        header = "<Start settings>\nsource: TrodesCameraExtractor.py\n" + \
-            "lightOnFrame: {}\n".format(lightsOnFrame) + \
-            "lightOffFrame: {}\n".format(lightsOffFrame) + \
-            "<End settings>\n"
-        outFile.write(bytes(header, 'utf-8'))
-        outputArray.tofile(outFile)
+    if not quitReq:
+        print("saving to file {}...".format(outputFileName))
+        outputArray = outputArray[0:outputIdx]
+        with open(outputFileName, "wb") as outFile:
+            header = "<Start settings>\nsource: TrodesCameraExtractor.py\n" + \
+                "lightOnFrame: {}\n".format(lightsOnFrame) + \
+                "lightOffFrame: {}\n".format(lightsOffFrame) + \
+                "<End settings>\n"
+            outFile.write(bytes(header, 'utf-8'))
+            outputArray.tofile(outFile)
 
     # process.wait()
     if showVideo:
@@ -387,20 +394,42 @@ def runAllBradTask():
         processRawTrodesVideo(videoName, overwriteMode="never")
 
 
-def rerunBradTaskVideos():
+def rerunTrodesVideos(showVideo=False):
     animalNames = ["B13", "B14"]
     # animalNames = ["B13"]
     allVids = []
     for animalName in animalNames:
         info = getInfoForAnimal(animalName)
-        for s in info.rerun_videos:
+        for s in info.rerun_trodes_videos:
             vidFile = getTrodesVideoFile(s, info.data_dir)
             allVids.append(vidFile)
 
     for videoName in allVids:
         print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
-        # processRawTrodesVideo(videoName, overwriteMode="ask", showVideo=True)
-        processRawTrodesVideo(videoName, overwriteMode="always")
+        if showVideo:
+            processRawTrodesVideo(videoName, overwriteMode="ask", showVideo=True)
+        else:
+            processRawTrodesVideo(videoName, overwriteMode="always")
+
+
+def rerunUSBVideos(showVideo=False):
+    animalNames = ["B13", "B14"]
+    # animalNames = ["B13"]
+    allVids = []
+    for animalName in animalNames:
+        info = getInfoForAnimal(animalName)
+        possibleDirectories = [
+            "/media/WDC6/{}/".format(animalName), "/media/WDC7/{}/".format(animalName)]
+        for s in info.rerun_usb_videos:
+            vidFile = getUSBVideoFile(s, possibleDirectories)
+            allVids.append(vidFile)
+
+    for videoName in allVids:
+        print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
+        if showVideo:
+            processUSBVideoData(videoName, overwriteMode="ask", showVideo=True)
+        else:
+            processUSBVideoData(videoName, overwriteMode="always")
 
 
 def getFrameColorHeuristic(frame, greyDiffThreshLow=25, greyDiffThreshHigh=200):
@@ -438,10 +467,19 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuri
         [heuristicFunction(frames[i, :, :, :].reshape(height, width, 3)) for i in range(nFrames)])
     # allFrameH = np.array([getFrameColorHeuristic(
     # frames[i, :, :, :].reshape(height, width, 3))[1][1] for i in range(nFrames)])
-    # print(allFrameH)
-    maxH = np.max(allFrameH)
-    minH = np.min(allFrameH)
-    thresh = (maxH + minH) / 2.0
+    if findLightOff and findLightOn:
+        nhalf = len(allFrameH) // 2
+        maxH1 = np.max(allFrameH[0:nhalf])
+        minH1 = np.min(allFrameH[0:nhalf])
+        maxH2 = np.max(allFrameH[nhalf:])
+        minH2 = np.min(allFrameH[nhalf:])
+        maxH = min(maxH1, maxH2)
+        minH = max(minH1, minH2)
+        thresh = (maxH + minH) / 2.0
+    else:
+        maxH = np.max(allFrameH)
+        minH = np.min(allFrameH)
+        thresh = (maxH + minH) / 2.0
 
     if lightOffThreshold is not None:
         lightOffThreshold *= 255 * width * height
@@ -471,6 +509,13 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuri
                 if cv2.waitKey() & 0xFF == ord('q'):
                     break
         cv2.destroyAllWindows()
+
+    if showVideo:
+        print(allFrameH)
+        if findLightOff:
+            print("loff thresh", lightOffThreshold)
+        if findLightOn:
+            print("lon thresh", lightOnThreshold)
 
     loffSet = False
     lonSet = False
@@ -580,13 +625,17 @@ def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
 
     # Step one: find left and right bound on light off and on time
     loffF1, loffF2, lonF1, lonF2 = findLightTimesLinearUSB(
-        videoFileName, 0, None, initialFrameJump, showVideo=showVideo)
+        videoFileName, batchStart, None, initialFrameJump, showVideo=showVideo)
     if loffF1 is None or loffF2 is None or lonF1 is None or lonF2 is None:
         return None, None
     loffF1 *= initialFrameJump
     loffF2 *= initialFrameJump
     lonF1 *= initialFrameJump
     lonF2 *= initialFrameJump
+    loffF1 += batchStart
+    loffF2 += batchStart
+    lonF1 += batchStart
+    lonF2 += batchStart
 
     print(loffF1, loffF2, lonF1, lonF2)
 
@@ -700,4 +749,7 @@ def runBatchTest():
 
 
 if __name__ == "__main__":
-    rerunBradTaskVideos()
+    rerunUSBVideos(False)
+    rerunTrodesVideos(False)
+    # videoName = "/media/WDC6/B13/bradtasksessions/20220308_140707/20220308_140707.1.h264"
+    # processRawTrodesVideo(videoName, overwriteMode="always", showVideo=True, batchStart=15*12*60)

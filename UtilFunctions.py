@@ -555,34 +555,31 @@ def getInfoForAnimal(animalName):
         ret.DEFAULT_RIP_DET_TET = 7
         ret.DEFAULT_RIP_BAS_TET = 2
 
-        # These sessions just have slightly weird stuff, so excluding them for now but should go back and figure out how to include them cause the data's still good
-        ret.excluded_sessions += ["20220131_2", "20220222_2"]
-        # this one just has light on -> off -> on -> off before the task, throwing off my autodetect code
-        ret.excluded_sessions += ["20211208_2"]
-        # Video tracking not working perfectly, fix later
-        # ret.excluded_sessions += ["20220125_2", "20220201_2", "20220217_1", "20220223_1",
-        #                           "20220225_1", "20220303_2", "20220304_2", "20220305_1",
-        #                           "20220306_1", "20220307_2", "20220308_1", "20220308_2",
-        #                           "20220309_2"]
-        # Something weird with the well order
-        ret.excluded_sessions += ["20220224_1", "20220303_1"]
+        # Messed up away well order, marked down 20 when he got 12. Ended up giving him reward at 12 twice
+        ret.excluded_sessions += ["20220131_2"]
+        # Made a custom foundwells field in the behaviornotes for this guy, but would need to update the rest of the import code (i.e. clips loading assumes alternation with home)
+        ret.excluded_sessions += ["20220222_2"]
+
+        # Tracking still not working, around 12.5mins into video it loses it near 7
         ret.excluded_sessions += ["20220308_1"]
         # USB light times not found
-        ret.excluded_sessions += ["20211209_1", "20220305_2", "20220306_2", "20220307_1", "20220309_1"]
+        ret.excluded_sessions += ["20211209_1", "20220305_2",
+                                  "20220306_2", "20220307_1", "20220309_1"]
         ret.excluded_sessions += ["20211216_1"]
 
         # Tracking didn't work at all
         ret.excluded_sessions += ["20220201_2"]
         ret.excluded_sessions += ["20220304_2"]
 
-        ret.rerun_videos = []
-        # ret.rerun_videos += ["20220125_2", "20220201_2", "20220217_1", "20220223_1",
-        #                      "20220225_1", "20220303_2", "20220304_2", "20220305_1",
-        #                      "20220306_1", "20220307_2", "20220308_1", "20220308_2",
-        #                      "20220309_2"]
+        ret.rerun_trodes_videos = []
+        ret.rerun_trodes_videos += ["20220308_1"]
+        ret.rerun_trodes_videos += ["20220201_2"]
+        ret.rerun_trodes_videos += ["20220304_2"]
 
-        # Just for testing the clips generator
-        # ret.minimum_date = "20220201"
+        ret.rerun_usb_videos = []
+        ret.rerun_usb_videos += ["20211209_1", "20220305_2",
+                                 "20220306_2", "20220307_1", "20220309_1"]
+        ret.rerun_usb_videos += ["20211216_1"]
 
     elif animalName == "B14":
         ret.X_START = 100
@@ -603,13 +600,6 @@ def getInfoForAnimal(animalName):
         # video skips
         ret.excluded_sessions += ["20220307_2"]
 
-        # Video tracking not working perfectly, fix later
-        # ret.excluded_sessions += ["20220222_1"]
-        # ret.excluded_sessions += ["20220304_2"]
-        # ret.excluded_sessions += ["20220305_2"]
-        # ret.excluded_sessions += ["20220307_1"]
-        # ret.excluded_sessions += ["20220308_1"]
-        # ret.excluded_sessions += ["20220309_1"]
         # Something weird with USB video
         ret.excluded_sessions += ["20220305_1"]
         ret.excluded_sessions += ["20220308_2"]
@@ -619,8 +609,15 @@ def getInfoForAnimal(animalName):
         # Video tracking didn't work at all
         ret.excluded_sessions += ["20220306_2"]
 
+        ret.rerun_usb_videos = []
+        ret.rerun_usb_videos += ["20220305_1"]
+        ret.rerun_usb_videos += ["20220308_2"]
+        ret.rerun_usb_videos += ["20220309_2"]
 
-        ret.rerun_videos = []
+        ret.rerun_trodes_videos = []
+        ret.rerun_trodes_videos += ["20220306_1"]
+        ret.rerun_trodes_videos += ["20220306_1"]
+        ret.rerun_trodes_videos += ["20220306_2"]
 
     else:
         raise Exception("Unknown animal name")
@@ -646,36 +643,52 @@ def generateFoundWells(home_well, away_wells, last_away_well, ended_on_home, fou
 
 def getUSBVideoFile(seshName, possibleDirectories):
     seshDate, seshTime = seshName.split("_")
-    seshTimeVal = float(seshTime[0:2]) * 3600 + \
-        float(seshTime[2:4]) * 60 + float(seshTime[4:6])
+    if len(seshTime) == 1:
+        # seshTime is actually session idx
+        seshIdx = int(seshTime) - 1
 
-    usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
-    possibleUSBVids = []
-    for pd in possibleDirectories:
-        gl = pd + "/" + usbDateStr + "*.mkv"
-        possibleUSBVids += glob.glob(gl)
+        usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
+        possibleUSBVids = []
+        for pd in possibleDirectories:
+            gl = pd + "/" + usbDateStr + "*.mkv"
+            possibleUSBVids += glob.glob(gl)
 
-    if len(possibleUSBVids) == 0:
-        return None
+        if len(possibleUSBVids) == 0:
+            return None
 
-    minDiff = 24 * 3600
-    usbVidFile = None
-    for uvi, uv in enumerate(sorted(possibleUSBVids)):
-        fname = uv.split("/")[-1]
-        if " " in fname:
-            timeStr = fname.split(" ")[1].split(".")[0]
-        else:
-            timeStr = fname.split("_")[1].split(".")[0]
-        timeVals = [float(v) for v in timeStr.split("-")]
-        usbTime = timeVals[0] * 3600 + timeVals[1] * 60 + timeVals[0]
+        possibleUSBVids = sorted(possibleUSBVids)
+        return possibleUSBVids[seshIdx]
+    else:
+        seshTimeVal = float(seshTime[0:2]) * 3600 + \
+            float(seshTime[2:4]) * 60 + float(seshTime[4:6])
 
-        diff = abs(usbTime - seshTimeVal)
-        if diff < minDiff:
-            minDiff = diff
-            usbVidFile = uv
-            seshWithinDay = uvi
+        usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
+        possibleUSBVids = []
+        for pd in possibleDirectories:
+            gl = pd + "/" + usbDateStr + "*.mkv"
+            possibleUSBVids += glob.glob(gl)
 
-    return usbVidFile
+        if len(possibleUSBVids) == 0:
+            return None
+
+        minDiff = 24 * 3600
+        usbVidFile = None
+        for uvi, uv in enumerate(sorted(possibleUSBVids)):
+            fname = uv.split("/")[-1]
+            if " " in fname:
+                timeStr = fname.split(" ")[1].split(".")[0]
+            else:
+                timeStr = fname.split("_")[1].split(".")[0]
+            timeVals = [float(v) for v in timeStr.split("-")]
+            usbTime = timeVals[0] * 3600 + timeVals[1] * 60 + timeVals[0]
+
+            diff = abs(usbTime - seshTimeVal)
+            if diff < minDiff:
+                minDiff = diff
+                usbVidFile = uv
+                seshWithinDay = uvi
+
+        return usbVidFile
 
 
 def getTrodesVideoFile(seshInfoFileName, data_dir):
