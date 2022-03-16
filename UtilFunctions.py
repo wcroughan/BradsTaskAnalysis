@@ -562,29 +562,19 @@ def getInfoForAnimal(animalName):
         # video skips
         ret.excluded_sessions += ["20220304_2"]
 
-        # Tracking still not working, around 12.5mins into video it loses it near 7
-        # ret.excluded_sessions += ["20220308_1"]
-        # USB light times not found
-        # ret.excluded_sessions += ["20211209_1", "20220305_2",
-        #                           "20220306_2", "20220307_1", "20220309_1"]
-        # ret.excluded_sessions += ["20211216_1"]
-
-        # Tracking didn't work at all
-        # ret.excluded_sessions += ["20220307_1"]
-
-        # Timing is off between trodes and USB video
+        # THE FOLLOWING SHOULD BE SALVAGABLE JUST NEED TO CLEAN IT
+        #  timing is off and/or tracking not working maybe
         ret.excluded_sessions += ["20220201_2"]
+        # timing a bit off, tracking not working
         ret.excluded_sessions += ["20220305_2"]
+        # tracking didn't work
         ret.excluded_sessions += ["20220306_2"]
         ret.excluded_sessions += ["20220309_1"]
+        # timing off
+        ret.excluded_sessions += ["20220307_1"]
 
         ret.rerun_trodes_videos = []
-        # ret.rerun_trodes_videos += ["20220201_2"]
-
         ret.rerun_usb_videos = []
-        ret.rerun_usb_videos += ["20211209_1", "20220305_2",
-                                 "20220306_2", "20220307_1", "20220309_1"]
-        ret.rerun_usb_videos += ["20211216_1"]
 
     elif animalName == "B14":
         ret.X_START = 100
@@ -605,33 +595,12 @@ def getInfoForAnimal(animalName):
         # video skips
         ret.excluded_sessions += ["20220307_2"]
 
-        # # Something weird with USB video
-        # ret.excluded_sessions += ["20220305_1"]
-        # ret.excluded_sessions += ["20220308_2"]
-        # ret.excluded_sessions += ["20220309_2"]
-        # # Something weird with listed found wells
-        # ret.excluded_sessions += ["20220306_1"]
-        # # Video tracking didn't work at all
-        # ret.excluded_sessions += ["20220306_2"]
-
-        # Tracking didn't work at all
-        ret.excluded_sessions += ["20220305_1"]
-        # ret.excluded_sessions += ["20220306_1"]
-        # ret.excluded_sessions += ["20220306_2"]
-        ret.excluded_sessions += ["20220308_2"]
-
-        # Timing is off between trodes and USB video
-        # ret.excluded_sessions += [""]
-
+        # THE FOLLOWING SHOULD BE SALVAGABLE JUST NEED TO CLEAN IT
+        # timing off
+        ret.excluded_sessions += ["20220306_2"]
 
         ret.rerun_usb_videos = []
-        ret.rerun_usb_videos += ["20220305_1"]
-        ret.rerun_usb_videos += ["20220308_2"]
-        ret.rerun_usb_videos += ["20220309_2"]
-
         ret.rerun_trodes_videos = []
-        ret.rerun_trodes_videos += ["20220306_1"]
-        ret.rerun_trodes_videos += ["20220306_2"]
 
     else:
         raise Exception("Unknown animal name")

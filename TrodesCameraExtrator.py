@@ -72,7 +72,6 @@ def getTrodesLightTimes(videoFileName, timestampFileName=None, initialSkipAmt=8,
                 raise Exception
         timeStamps = np.fromfile(tsFile, np.uint32)
 
-
     # Step one: find left and right bound on light off and on time
     loffF1, loffF2, lonF1, lonF2 = findLightTimesLinearTrodes(
         videoFileName, 0, None, initialFrameJump, showVideo=showVideo)
@@ -460,9 +459,10 @@ def rerunUSBVideos(showVideo=False):
 
 
 def getFrameColorHeuristic(frame, greyDiffThreshLow=25, greyDiffThreshHigh=200):
-    diff1 = frame[:, :, 0] - frame[:, :, 1]
-    diff2 = frame[:, :, 0] - frame[:, :, 2]
-    diff3 = frame[:, :, 1] - frame[:, :, 2]
+    i21, i22 = frame.shape[0] // 2, frame.shape[1] // 2
+    diff1 = frame[:i21, :i22, 0] - frame[:i21, :i22, 1]
+    diff2 = frame[:i21, :i22, 0] - frame[:i21, :i22, 2]
+    diff3 = frame[:i21, :i22, 1] - frame[:i21, :i22, 2]
     h1 = np.histogram(diff1, bins=[0, greyDiffThreshLow, greyDiffThreshHigh, 1000])
     h2 = np.histogram(diff2, bins=[0, greyDiffThreshLow, greyDiffThreshHigh, 1000])
     h3 = np.histogram(diff3, bins=[0, greyDiffThreshLow, greyDiffThreshHigh, 1000])
@@ -776,7 +776,7 @@ def runBatchTest():
 
 
 if __name__ == "__main__":
-    # rerunUSBVideos(False)
-    rerunTrodesVideos(False)
+    rerunUSBVideos(False)
+    # rerunTrodesVideos(False)
     # videoName = "/media/WDC6/B13/bradtasksessions/20220308_140707/20220308_140707.1.h264"
     # processRawTrodesVideo(videoName, overwriteMode="always", showVideo=True, batchStart=15*12*60)

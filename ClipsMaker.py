@@ -272,7 +272,7 @@ class USBVideoWidget(QWidget):
         startPositionUpdated = False
         if startTimestamp is not None:
             startFrame = self.tsToFrameFunc(startTimestamp)
-            newStartPosition = int(self.frameTimes[startFrame])
+            newStartPosition = int(self.frameTimes[min(startFrame, len(self.frameTimes)-1)])
             if self.startPosition != newStartPosition:
                 startPositionUpdated = True
             self.startPosition = newStartPosition
