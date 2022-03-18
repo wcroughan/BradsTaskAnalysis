@@ -1,10 +1,11 @@
 import numpy as np
-from consts import all_well_names, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
+from consts import allWellNames, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 import csv
 import glob
 from scipy import stats, signal
 from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
+from itertools import groupby
 
 
 def readWellCoordsFile(well_coords_file):
@@ -152,7 +153,7 @@ def getMedianDistToWell(xs, ys, wellx, welly, duration=-1, ts=np.array([])):
 
 def getMeanDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
     res = []
-    for wi in all_well_names:
+    for wi in allWellNames:
         wx, wy = getWellCoordinates(wi, well_coords)
         res.append(getMeanDistToWell(np.array(xs), np.array(
             ys), wx, wy, duration=duration, ts=np.array(ts)))
@@ -162,7 +163,7 @@ def getMeanDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
 
 def getMedianDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
     res = []
-    for wi in all_well_names:
+    for wi in allWellNames:
         wx, wy = getWellCoordinates(wi, well_coords)
         res.append(getMedianDistToWell(np.array(xs), np.array(
             ys), wx, wy, duration=duration, ts=np.array(ts)))
@@ -171,7 +172,7 @@ def getMedianDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
 
 
 # switchWellFactor of 0.8 means transition from well a -> b requires rat dist to b to be 0.8 * dist to a
-def getNearestWell(xs, ys, well_coords, well_idxs=all_well_names, switchWellFactor=0.8):
+def getNearestWell(xs, ys, well_coords, well_idxs=allWellNames, switchWellFactor=0.8):
     well_coords = np.array(
         [getWellCoordinates(i, well_coords) for i in well_idxs])
     tiled_x = np.tile(xs, (len(well_idxs), 1)).T  # each row is one time point
@@ -356,7 +357,7 @@ def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThres
     return ripStartIdxs, ripLens, ripPeakIdxs, ripPeakAmps, ripCrossThreshIdx
 
 
-def getWellEntryAndExitTimes(nearest_wells, ts, well_idxs=all_well_names, include_neighbors=False):
+def getWellEntryAndExitTimes(nearest_wells, ts, well_idxs=allWellNames, include_neighbors=False):
     entry_times = []
     exit_times = []
     entry_idxs = []
@@ -368,7 +369,7 @@ def getWellEntryAndExitTimes(nearest_wells, ts, well_idxs=all_well_names, includ
         # same for first point should count as entry, prepending
         if include_neighbors:
             neighbors = list({wi, wi-1, wi+1, wi-7, wi-8, wi-9,
-                              wi+7, wi+8, wi+9}.intersection(all_well_names))
+                              wi+7, wi+8, wi+9}.intersection(allWellNames))
             near_well = np.concatenate(
                 ([False], np.isin(nearest_wells, neighbors), [False]))
         else:
@@ -686,3 +687,13 @@ def getTrodesVideoFile(seshInfoFileName, data_dir):
     seshIdx = int(seshIdx) - 1
     possibleTrodesVids = sorted(possibleTrodesVids)
     return possibleTrodesVids[seshIdx]
+
+
+def numWellsVisited(nearestWells, countReturns=False, wellSubset=None):
+    g = groupby(nearestWells)
+    if wellSubset is None:
+        wellSubset = allWellNames
+    if countReturns:
+        return len([k for k, _ in g if k in wellSubset])
+    else:
+        return len(set([k for k, _ in g if k in wellSubset]))

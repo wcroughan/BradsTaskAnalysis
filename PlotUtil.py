@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
+from consts import allWellNames
+import matplotlib as mpl
 
 
 class PlotCtx:
@@ -22,7 +24,7 @@ class PlotCtx:
     def __enter__(self):
         return self.axs
 
-    def newFig(self, figName, subPlots=None):
+    def newFig(self, figName, subPlots=None, figScale=1.0):
         self.clearFig()
         self.figName = figName
 
@@ -30,11 +32,11 @@ class PlotCtx:
             assert len(subPlots) == 2
             self.axs = self.fig.subplots(*subPlots)
 
-            self.fig.set_figheight(self.figSizeY * subPlots[0])
-            self.fig.set_figwidth(self.figSizeX * subPlots[1])
+            self.fig.set_figheight(self.figSizeY * figScale * subPlots[0])
+            self.fig.set_figwidth(self.figSizeX * figScale * subPlots[1])
         else:
-            self.fig.set_figheight(self.figSizeY)
-            self.fig.set_figwidth(self.figSizeX)
+            self.fig.set_figheight(self.figSizeY * figScale)
+            self.fig.set_figwidth(self.figSizeX * figScale)
 
         return self
 
@@ -77,32 +79,49 @@ class PlotCtx:
             f.write(txt + suffix)
 
 
-def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAways=True, zorder=2):
+def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAways=True, zorder=2, outlineColors=None, wellSize=mpl.rcParams['lines.markersize']**2):
     if isinstance(axs, np.ndarray):
         axs = axs.flat
     elif not isinstance(axs, list):
         axs = [axs]
+
+    if outlineColors is not None:
+        if isinstance(outlineColors, np.ndarray):
+            outlineColors = outlineColors.flat
+        if not isinstance(outlineColors, list):
+            outlineColors = [outlineColors]
+
+        assert len(outlineColors) == len(axs)
+
     x1 = np.min(sesh.bt_pos_xs)
     x2 = np.max(sesh.bt_pos_xs)
     y1 = np.min(sesh.bt_pos_ys)
     y2 = np.max(sesh.bt_pos_ys)
-    for ax in axs:
+    for axi, ax in enumerate(axs):
         if showAllWells:
             for w in allWellNames:
                 wx, wy = sesh.well_coords_map[str(w)]
-                ax.scatter(wx, wy, c="black", zorder=zorder)
+                ax.scatter(wx, wy, c="black", zorder=zorder, s=wellSize)
         if showAways:
             for w in sesh.visited_away_wells:
                 wx, wy = sesh.well_coords_map[str(w)]
-                ax.scatter(wx, wy, c="blue", zorder=zorder)
+                ax.scatter(wx, wy, c="blue", zorder=zorder, s=wellSize)
         if showHome:
             wx, wy = sesh.well_coords_map[str(sesh.home_well)]
-            ax.scatter(wx, wy, c="red", zorder=zorder)
+            ax.scatter(wx, wy, c="red", zorder=zorder, s=wellSize)
 
         ax.set_xlim(x1, x2)
         ax.set_ylim(y1, y2)
         ax.tick_params(axis="both", which="both", label1On=False,
                        label2On=False, tick1On=False, tick2On=False)
+
+        if outlineColors is not None:
+            color = outlineColors[axi]
+            for v in ax.spines.values():
+                v.set_color(color)
+                v.set_linewidth(3)
+            # ax.setp(ax.spines.values(), color=color)
+            # ax.setp([ax.get_xticklines(), ax.get_yticklines()], color=color)
 
 
 def plotIndividualAndAverage(ax, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std", individualZOrder=1, averageZOrder=2):

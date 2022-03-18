@@ -43,8 +43,8 @@ def makeThesisCommitteeFigs():
 
     allWellNames = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 
-    animalNames = ["B13", "B14", "Martin"]
-    # animalNames = ["B13"]
+    # animalNames = ["B13", "B14", "Martin"]
+    animalNames = ["B13", "B14"]
     allSessions = []
     allSessionsByRat = {}
     allSessionsWithProbe = []
@@ -2636,9 +2636,6 @@ def makeThesisCommitteeFigs():
             axs = saveOrShow("probe_curvature_color", outputDir=seshOutputDir, statsFile=statsFile)
 
     for animalName in animalNames:
-        # if animalName != "B14" and animalName != "B13":
-        if animalName != "B14":
-            continue
         print("==========================\n" + animalName)
         animalOutputDir = os.path.join(globalOutputDir, animalName)
         sessions = allSessionsByRat[animalName]

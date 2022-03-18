@@ -5,15 +5,18 @@ from BTData import BTData
 from BTSession import BTSession
 import os
 import sys
-from UtilFunctions import getRipplePower
-from consts import TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
+from UtilFunctions import getRipplePower, numWellsVisited, onWall
+from consts import TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, allWellNames
+import math
+from matplotlib import cm
 
 MAKE_RAW_LFP_FIGS = False
 RUN_RIPPLE_DETECTION_COMPARISON = False
-RUN_RIPPLE_REFRAC_PERIOD_CHECK = True
-RUN_RIPPLE_BASELINE_TET_ANALYSIS = True
+RUN_RIPPLE_REFRAC_PERIOD_CHECK = False
+RUN_RIPPLE_BASELINE_TET_ANALYSIS = False
+MAKE_PROBE_EXPLORATION_OVER_TIME_FIGS = True
 
-possibleDataDirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/home/wcroughan/data/"]
+possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
 dataDir = None
 for dd in possibleDataDirs:
     if os.path.exists(dd):
@@ -57,6 +60,58 @@ for ratName in animalNames:
     pp.setOutputDir(os.path.join(globalOutputDir, ratName))
     sessions = allSessionsByRat[ratName]
     sessionsWithProbe = [sesh for sesh in sessions if sesh.probe_performed]
+    numSessionsWithProbe = len(sessionsWithProbe)
+
+    if MAKE_PROBE_EXPLORATION_OVER_TIME_FIGS:
+        numCols = math.ceil(math.sqrt(numSessionsWithProbe))
+        with pp.newFig("allProbeTraces", subPlots=(numCols, numCols), figScale=0.3) as axs:
+            for si, sesh in enumerate(sessionsWithProbe):
+                ax = axs[si // numCols, si % numCols]
+                ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                c = "orange" if sesh.isRippleInterruption else "cyan"
+                setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
+                ax.set_title(str(si))
+            for i in range(((numSessionsWithProbe-1) % numCols)+1, numCols):
+                axs[-1, i].cla()
+                axs[-1, i].tick_params(axis="both", which="both", label1On=False,
+                                       label2On=False, tick1On=False, tick2On=False)
+
+        with pp.newFig("probe_numVisitedOverTime_bysidx") as ax:
+            windowSlide = 5
+            t1Array = np.arange(windowSlide, 60*5, windowSlide)
+            numVisited = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisited[:] = np.nan
+            for si, sesh in enumerate(sessionsWithProbe):
+                t1s = t1Array * TRODES_SAMPLING_RATE + sesh.probe_pos_ts[0]
+                i1Array = np.searchsorted(sesh.probe_pos_ts, t1s)
+                for ii, i1 in enumerate(i1Array):
+                    numVisited[si, ii] = numWellsVisited(
+                        sesh.probe_nearest_wells[0:i1], countReturns=False)
+            # plotIndividualAndAverage(axs, numVisited, t1Array)
+            cmap = cm.get_cmap("coolwarm", numSessionsWithProbe)
+            for si in range(numSessionsWithProbe):
+                jitter = np.random.uniform(size=(numVisited.shape[1],)) * 0.5
+                ax.plot(t1Array, numVisited[si, :] + jitter, color=cmap(si))
+            ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+        with pp.newFig("probe_numVisitedOverTime_bysidx_offwall") as ax:
+            windowSlide = 5
+            t1Array = np.arange(windowSlide, 60*5, windowSlide)
+            numVisited = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisited[:] = np.nan
+            for si, sesh in enumerate(sessionsWithProbe):
+                t1s = t1Array * TRODES_SAMPLING_RATE + sesh.probe_pos_ts[0]
+                i1Array = np.searchsorted(sesh.probe_pos_ts, t1s)
+                for ii, i1 in enumerate(i1Array):
+                    numVisited[si, ii] = numWellsVisited(
+                        sesh.probe_nearest_wells[0:i1], countReturns=False,
+                        wellSubset=[w for w in allWellNames if not onWall(w)])
+            # plotIndividualAndAverage(axs, numVisited, t1Array)
+            cmap = cm.get_cmap("coolwarm", numSessionsWithProbe)
+            for si in range(numSessionsWithProbe):
+                jitter = np.random.uniform(size=(numVisited.shape[1],)) * 0.5
+                ax.plot(t1Array, numVisited[si, :] + jitter, color=cmap(si))
+            ax.set_xticks(np.arange(0, 60*5+1, 60))
 
     if RUN_RIPPLE_DETECTION_COMPARISON:
         preBTThreshs = np.array([sesh.prebtMeanRipplePower + 3.0 *
