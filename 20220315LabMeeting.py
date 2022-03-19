@@ -5,7 +5,7 @@ from BTData import BTData
 from BTSession import BTSession
 import os
 import sys
-from UtilFunctions import getRipplePower, numWellsVisited, onWall
+from UtilFunctions import getRipplePower, numWellsVisited, onWall, weekIdxForDateStr
 from consts import TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, allWellNames
 import math
 from matplotlib import cm
@@ -33,7 +33,7 @@ globalOutputDir = os.path.join(dataDir, "figures", "20220315_labmeeting")
 if len(sys.argv) >= 2:
     animalNames = sys.argv[1:]
 else:
-    animalNames = ['B13']
+    animalNames = ['B13', 'B14']
 print("Plotting data for animals ", animalNames)
 
 allSessionsByRat = {}
@@ -54,7 +54,7 @@ for an in animalNames:
     allSessionsWithProbeByRat[an] = ratData.getSessions(lambda s: s.probe_performed)
 
 
-pp = PlotCtx(globalOutputDir)
+pp = PlotCtx(globalOutputDir, priorityLevel=8)
 for ratName in animalNames:
     print("Running rat", ratName)
     pp.setOutputDir(os.path.join(globalOutputDir, ratName))
@@ -64,7 +64,7 @@ for ratName in animalNames:
 
     if MAKE_PROBE_EXPLORATION_OVER_TIME_FIGS:
         numCols = math.ceil(math.sqrt(numSessionsWithProbe))
-        with pp.newFig("allProbeTraces", subPlots=(numCols, numCols), figScale=0.3) as axs:
+        with pp.newFig("allProbeTraces", subPlots=(numCols, numCols), figScale=0.3, priority=8) as axs:
             for si, sesh in enumerate(sessionsWithProbe):
                 ax = axs[si // numCols, si % numCols]
                 ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
@@ -76,7 +76,7 @@ for ratName in animalNames:
                 axs[-1, i].tick_params(axis="both", which="both", label1On=False,
                                        label2On=False, tick1On=False, tick2On=False)
 
-        with pp.newFig("probe_numVisitedOverTime_bysidx") as ax:
+        with pp.newFig("probe_numVisitedOverTime_bysidx", priority=10) as ax:
             windowSlide = 5
             t1Array = np.arange(windowSlide, 60*5, windowSlide)
             numVisited = np.empty((numSessionsWithProbe, len(t1Array)))
@@ -94,7 +94,7 @@ for ratName in animalNames:
                 ax.plot(t1Array, numVisited[si, :] + jitter, color=cmap(si))
             ax.set_xticks(np.arange(0, 60*5+1, 60))
 
-        with pp.newFig("probe_numVisitedOverTime_bysidx_offwall") as ax:
+        with pp.newFig("probe_numVisitedOverTime_bysidx_offwall", priority=10) as ax:
             windowSlide = 5
             t1Array = np.arange(windowSlide, 60*5, windowSlide)
             numVisited = np.empty((numSessionsWithProbe, len(t1Array)))
@@ -112,6 +112,55 @@ for ratName in animalNames:
                 jitter = np.random.uniform(size=(numVisited.shape[1],)) * 0.5
                 ax.plot(t1Array, numVisited[si, :] + jitter, color=cmap(si))
             ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+        with pp.newFig("probe_numVisitedOverTime_byweek_offwall", priority=10) as ax:
+            windowSlide = 5
+            t1Array = np.arange(windowSlide, 60*5, windowSlide)
+            numVisited = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisited[:] = np.nan
+            weeks = np.empty((numSessionsWithProbe,), dtype=int)
+            for si, sesh in enumerate(sessionsWithProbe):
+                t1s = t1Array * TRODES_SAMPLING_RATE + sesh.probe_pos_ts[0]
+                i1Array = np.searchsorted(sesh.probe_pos_ts, t1s)
+                for ii, i1 in enumerate(i1Array):
+                    numVisited[si, ii] = numWellsVisited(
+                        sesh.probe_nearest_wells[0:i1], countReturns=False,
+                        wellSubset=[w for w in allWellNames if not onWall(w)])
+                weeks[si] = weekIdxForDateStr(sesh.name.split("_")[0])
+            weeks = weeks - np.min(weeks)
+            cmap = cm.get_cmap("coolwarm", np.max(weeks))
+            for si in range(numSessionsWithProbe):
+                jitter = np.random.uniform(size=(numVisited.shape[1],)) * 0.5
+                ax.plot(t1Array, numVisited[si, :] + jitter, color=cmap(weeks[si]))
+            ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+        weeks = np.empty((numSessionsWithProbe,), dtype=int)
+        for si, sesh in enumerate(sessionsWithProbe):
+            weeks[si] = weekIdxForDateStr(sesh.name.split("_")[0])
+        weeks = weeks - np.min(weeks)
+        numWeekGroups = np.count_nonzero(np.diff(weeks) >= 2) + 1
+        if numWeekGroups > 1:
+            with pp.newFig("probe_numVisitedOverTime_byweek_offwall_separate", priority=8, subPlots=(1, numWeekGroups)) as axs:
+                windowSlide = 5
+                t1Array = np.arange(windowSlide, 60*5, windowSlide)
+                numVisited = np.empty((numSessionsWithProbe, len(t1Array)))
+                numVisited[:] = np.nan
+                for si, sesh in enumerate(sessionsWithProbe):
+                    t1s = t1Array * TRODES_SAMPLING_RATE + sesh.probe_pos_ts[0]
+                    i1Array = np.searchsorted(sesh.probe_pos_ts, t1s)
+                    for ii, i1 in enumerate(i1Array):
+                        numVisited[si, ii] = numWellsVisited(
+                            sesh.probe_nearest_wells[0:i1], countReturns=False,
+                            wellSubset=[w for w in allWellNames if not onWall(w)])
+                cmap = cm.get_cmap("coolwarm", np.max(weeks))
+                for si in range(numSessionsWithProbe):
+                    jitter = np.random.uniform(size=(numVisited.shape[1],)) * 0.5
+                    wgi = np.count_nonzero(np.diff(weeks[:si]) >= 2)
+                    ax = axs[wgi]
+                    ax.plot(t1Array, numVisited[si, :] + jitter, color=cmap(weeks[si]))
+                for wgi in range(numWeekGroups):
+                    ax = axs[wgi]
+                    ax.set_xticks(np.arange(0, 60*5+1, 60))
 
     if RUN_RIPPLE_DETECTION_COMPARISON:
         preBTThreshs = np.array([sesh.prebtMeanRipplePower + 3.0 *

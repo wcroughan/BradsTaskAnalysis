@@ -7,7 +7,7 @@ import matplotlib as mpl
 
 
 class PlotCtx:
-    def __init__(self, outputDir="./"):
+    def __init__(self, outputDir="./", priorityLevel=None):
         self.figSizeX, self.figSizeY = 5, 5
         self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
         self.fig.clf()
@@ -21,15 +21,20 @@ class PlotCtx:
         self.setOutputDir(outputDir)
         self.figName = ""
 
+        self.priorityLevel = priorityLevel
+        self.priority = None
+
     def __enter__(self):
         return self.axs
 
-    def newFig(self, figName, subPlots=None, figScale=1.0):
+    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None):
         self.clearFig()
         self.figName = figName
+        self.priority = priority
 
         if subPlots is not None:
             assert len(subPlots) == 2
+            self.axs.remove()
             self.axs = self.fig.subplots(*subPlots)
 
             self.fig.set_figheight(self.figSizeY * figScale * subPlots[0])
@@ -40,16 +45,18 @@ class PlotCtx:
 
         return self
 
-    def continueFig(self, figName):
+    def continueFig(self, figName, priority=None):
         self.figName = figName
+        self.priority = priority
         return self
 
     def __exit__(self, *args):
-        if self.showPlot:
-            plt.show()
+        if self.priority is None or self.priorityLevel is None or self.priority <= self.priorityLevel:
+            if self.showPlot:
+                plt.show()
 
-        if self.savePlot:
-            self.saveFig()
+            if self.savePlot:
+                self.saveFig()
 
     def setFigSize(self, width, height):
         pass
@@ -64,7 +71,7 @@ class PlotCtx:
 
     def clearFig(self):
         self.fig.clf()
-        self.axs = self.fig.subplots()
+        self.axs = self.fig.subplots(1,1)
         self.axs.cla()
 
     def setOutputDir(self, outputDir):

@@ -6,6 +6,7 @@ from scipy import stats, signal
 from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 from itertools import groupby
+from datetime import date
 
 
 def readWellCoordsFile(well_coords_file):
@@ -697,3 +698,7 @@ def numWellsVisited(nearestWells, countReturns=False, wellSubset=None):
         return len([k for k, _ in g if k in wellSubset])
     else:
         return len(set([k for k, _ in g if k in wellSubset]))
+
+def weekIdxForDateStr(datestr, d0=date(2016, 1, 4)):
+    d = date(int(datestr[0:4]), int(datestr[4:6]), int(datestr[6:8]))
+    return (d - d0).days // 7
