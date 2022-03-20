@@ -6,7 +6,7 @@ from BTSession import BTSession
 import os
 import sys
 from UtilFunctions import getRipplePower, numWellsVisited, onWall, weekIdxForDateStr
-from consts import TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, allWellNames
+from consts import TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, allWellNames, offWallWellNames
 import math
 from matplotlib import cm
 
@@ -14,7 +14,8 @@ MAKE_RAW_LFP_FIGS = False
 RUN_RIPPLE_DETECTION_COMPARISON = False
 RUN_RIPPLE_REFRAC_PERIOD_CHECK = False
 RUN_RIPPLE_BASELINE_TET_ANALYSIS = False
-MAKE_PROBE_EXPLORATION_OVER_TIME_FIGS = True
+MAKE_PROBE_EXPLORATION_OVER_TIME_FIGS = False
+MAKE_PROBE_OFFWALL_TIME_FIGS = True
 
 possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
 dataDir = None
@@ -62,6 +63,39 @@ for ratName in animalNames:
     sessionsWithProbe = [sesh for sesh in sessions if sesh.probe_performed]
     numSessionsWithProbe = len(sessionsWithProbe)
 
+    pp.setStatCategory("rat", ratName)
+
+    if MAKE_PROBE_OFFWALL_TIME_FIGS:
+        with pp.newFig("probe_propOffWallTimeNearWell", priority=8, withStats=True) as (ax, yvals, cats):
+            wellCat = []
+            seshCat = []
+            propWellTime = []
+            for sesh in sessionsWithProbe:
+                totalOffWallTime = np.sum([sesh.total_dwell_time(True, w) for w in offWallWellNames])
+                if totalOffWallTime == 0:
+                    print("no off wall time for session {} ({})".format(sesh.name, "SWR" if sesh.isRippleInterruption else "Ctrl"))
+                wellCat.append("home")
+                seshCat.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                propWellTime.append(sesh.total_dwell_time(True, sesh.home_well) / totalOffWallTime)
+
+                for aw in sesh.visited_away_wells:
+                    if onWall(aw):
+                        continue
+                    wellCat.append("away")
+                    seshCat.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                    propWellTime.append(sesh.total_dwell_time(True, aw) / totalOffWallTime)
+            wellCat = np.array(wellCat)
+            seshCat = np.array(seshCat)
+            propWellTime = np.array(propWellTime)
+            boxPlot(ax, yvals=propWellTime, categories=seshCat, categories2=wellCat,
+                axesNames=["Condition", "frac off-wall time at well", "Well Type"], violin=True, doStats=False)
+
+            yvals["probe_propOffWallTimeNearWell"] = propWellTime
+            cats["well"] = wellCat
+            cats["condition"] = seshCat
+
+
+
     if MAKE_PROBE_EXPLORATION_OVER_TIME_FIGS:
         numCols = math.ceil(math.sqrt(numSessionsWithProbe))
         with pp.newFig("allProbeTraces", subPlots=(numCols, numCols), figScale=0.3, priority=8) as axs:
@@ -71,10 +105,22 @@ for ratName in animalNames:
                 c = "orange" if sesh.isRippleInterruption else "cyan"
                 setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
                 ax.set_title(str(si))
-            for i in range(((numSessionsWithProbe-1) % numCols)+1, numCols):
-                axs[-1, i].cla()
-                axs[-1, i].tick_params(axis="both", which="both", label1On=False,
+            for si in range(numSessionsWithProbe, numCols*numCols):
+                ax = axs[si // numCols, si % numCols]
+                ax.cla()
+                ax.tick_params(axis="both", which="both", label1On=False,
                                        label2On=False, tick1On=False, tick2On=False)
+
+        with pp.newFig("probe_totalOffWallTime_bysidx", priority=10, withStats=True) as (ax, yvals, cats):
+            x = np.arange(numSessionsWithProbe)
+            totalOffWallTime = np.array([np.sum([sesh.total_dwell_time(True, w) for w in offWallWellNames])
+                for sesh in sessionsWithProbe])
+            # color = ["orange" if sesh.isRippleInterruption else "cyan" for sesh in sessionsWithProbe]
+            swrIdx = np.array([sesh.isRippleInterruption for sesh in sessionsWithProbe])
+            ax.scatter(x[swrIdx], totalOffWallTime[swrIdx], color="orange")
+            ax.scatter(x[~swrIdx], totalOffWallTime[~swrIdx], color="cyan")
+
+            yvals["totalOffWallTime"] = totalOffWallTime
 
         with pp.newFig("probe_numVisitedOverTime_bysidx", priority=10) as ax:
             windowSlide = 5
@@ -140,7 +186,7 @@ for ratName in animalNames:
         weeks = weeks - np.min(weeks)
         numWeekGroups = np.count_nonzero(np.diff(weeks) >= 2) + 1
         if numWeekGroups > 1:
-            with pp.newFig("probe_numVisitedOverTime_byweek_offwall_separate", priority=8, subPlots=(1, numWeekGroups)) as axs:
+            with pp.newFig("probe_numVisitedOverTime_byweek_offwall_separate", priority=10, subPlots=(1, numWeekGroups)) as axs:
                 windowSlide = 5
                 t1Array = np.arange(windowSlide, 60*5, windowSlide)
                 numVisited = np.empty((numSessionsWithProbe, len(t1Array)))
@@ -310,3 +356,5 @@ for ratName in animalNames:
                 sesh.ITIMeanRipplePower, sesh.ITIStdRipplePower))
             pp.writeToInfoFile("probemean={}\nprobeStd={}".format(
                 sesh.probeMeanRipplePower, sesh.probeStdRipplePower))
+
+pp.runShuffles()

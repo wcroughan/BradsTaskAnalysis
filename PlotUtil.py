@@ -4,6 +4,9 @@ import os
 from datetime import datetime
 from consts import allWellNames
 import matplotlib as mpl
+import pandas as pd
+import seaborn as sns
+import warnings
 
 
 class PlotCtx:
@@ -24,13 +27,23 @@ class PlotCtx:
         self.priorityLevel = priorityLevel
         self.priority = None
 
-    def __enter__(self):
-        return self.axs
+        self.persistentCategories = {}
+        self.savedYVals = {}
+        self.savedCategories = {}
 
-    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None):
+    def __enter__(self):
+        if self.withStats:
+            return (self.axs, self.yvals, self.categories)
+        else:
+            return self.axs
+
+    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None, withStats=False):
         self.clearFig()
         self.figName = figName
         self.priority = priority
+        self.withStats = withStats
+        self.yvals = {}
+        self.categories = {}
 
         if subPlots is not None:
             assert len(subPlots) == 2
@@ -48,16 +61,51 @@ class PlotCtx:
     def continueFig(self, figName, priority=None):
         self.figName = figName
         self.priority = priority
+        self.yvals = {}
+        self.categories = {}
         return self
 
+    def setStatCategory(self, category, value):
+        self.persistentCategories[category] = value
+
     def __exit__(self, *args):
+        if self.withStats:
+            statsName = self.figName.split("/")[-1]
+            assert len(self.yvals) > 0
+            assert len(self.persistentCategories) + len(self.categories) > 0
+
+            l = None
+            for k in self.yvals:
+                if l is None:
+                    l = len(self.yvals[k])
+                else:
+                    assert len(self.yvals[k]) == l
+            for k in self.categories:
+                assert len(self.categories[k]) == l
+
+            for k in self.persistentCategories:
+                if k not in self.categories:
+                    self.categories[k] = [self.persistentCategories[k]] * l
+                else:
+                    print("warning: overlap between persistent category and this-plot category, both named {}".format(k))
+
+            if statsName in self.savedYVals:
+                savedYVals = self.savedYVals[statsName]
+                for k in savedYVals:
+                    savedYVals[k] = np.append(savedYVals[k], self.yvals[k])
+                savedCategories = self.savedCategories[statsName]
+                for k in savedCategories:
+                    savedCategories[k] = np.append(savedCategories[k] , self.categories[k])
+            else:
+                self.savedYVals[statsName] = self.yvals
+                self.savedCategories[statsName] = self.categories
+
         if self.priority is None or self.priorityLevel is None or self.priority <= self.priorityLevel:
             if self.showPlot:
                 plt.show()
 
             if self.savePlot:
                 self.saveFig()
-
     def setFigSize(self, width, height):
         pass
 
@@ -84,6 +132,121 @@ class PlotCtx:
     def writeToInfoFile(self, txt, suffix="\n"):
         with open(self.txtOutputFName, "a") as f:
             f.write(txt + suffix)
+        
+    def runShuffles(self):
+        for plotName in self.savedCategories:
+            categories = self.savedCategories[plotName]
+            yvals = self.savedYVals[plotName]
+            print("========================================\nRunning shuffles from plot", plotName)
+            print("Evaluating {} yvals:".format(len(yvals)))
+            for yvalName in yvals:
+                print("\t{}".format(yvalName))
+            print("Shuffling {} categories:".format(len(categories)))
+            for catName in categories:
+                print("\t{}\t{}".format(catName, set(categories[catName])))
+
+            for yvalName in yvals:
+                yv = yvals[yvalName]
+                r, rr = self._doShuffle(yv, yvalName, categories)
+                for k in r:
+                    print(k)
+                    v = r[k]
+                    for i in v:
+                        print("\t", i, v[i])
+
+
+            # For cats A1, A2,...Ak yvals Y:
+            # If just A1:
+                # for possible values v in A1:
+                    # metric[v] = mean(data[A1 == v]) - mean(data[A1 != v])
+                # Run shuffles on A1 label
+                # return:
+                    # metric: metric[v] is actual diff
+                    # pctile: pctile[v] is frac of shufs metric was greater than
+            # If A1, A2:
+                # for possible values v in A1:
+                    # globalmetrics[v] = mean(data[A1 == v]) - mean(data[A1 != v])
+                # Run shuffles on A1 label
+                # globalmetrics[v] is actual diff, globalpctile[v]
+                # 
+                # for possible values v in A1:
+                    # withinmetrics[v,:], withinpctile[v,:] = run recursively on just data where A1==v
+                # run shuffle on A1, get distribution of withinmetrics[v,:] for all v
+                    # interactionmetrics[v,v2] = mean(withinmetrics[v,v2]) - mean(withinmetrics[!v,v2])
+                    # get this for all shuffles of A1
+            # if more, for A1, ... Ai:
+                # run A1, A2 thing above, but v2 is vector representing all Ai>1 values 
+        
+    def _doShuffle(self, yvals, dataName, categories, valSet=None, numShuffles=4):
+        if len(categories) == 1:
+            # print(dataName, categories)
+            # print(yvals, dataName, categories, valSet)
+            catName = list(categories.keys())[0]
+            catVals = categories[catName]
+            if valSet is None:
+                thisCatValSet = sorted(list(set(catVals)))
+                print(yvals)
+                print(categories)
+            else:
+                thisCatValSet = valSet[catName]
+            df = pd.DataFrame(data={dataName: yvals, catName: catVals})
+
+            meanDiff = np.empty((len(thisCatValSet),1))
+            for vi, val in enumerate(thisCatValSet):
+                groupMean = df[df[catName] == val][dataName].mean()
+                otherMean = df[df[catName] != val][dataName].mean()
+                meanDiff[vi,] = groupMean - otherMean
+
+            sdf = df.copy()
+            shuffleValues = np.empty((len(thisCatValSet), numShuffles))
+            for si in range(numShuffles):
+                sdf[catName] = sdf[catName].sample(frac=1, random_state=1).reset_index(drop=True)
+                for vi, val in enumerate(thisCatValSet):
+                    groupMean = sdf[sdf[catName] == val][dataName].mean()
+                    otherMean = sdf[sdf[catName] != val][dataName].mean()
+                    shuffleValues[vi,si] = groupMean - otherMean
+
+            pctile = np.count_nonzero(shuffleValues < meanDiff, axis=1) / numShuffles
+            # print(pctile)
+            retMeanDiff = {catName: meanDiff}
+            retPctile = {catName: pctile}
+            return retMeanDiff, retPctile
+
+        else:
+            if valSet is None:
+                valSet = {}
+                for k in categories:
+                    valSet[k] = sorted(list(set(categories[k])))
+                print("generated valset,", valSet)
+                print(yvals)
+                print(categories)
+
+            retMeanDiff = {}
+            retPctile = {}
+            for catName in categories:
+                catVals = categories[catName]
+                print("within", catName)
+                catMeanDiff = {}
+                catPctile = {}
+                for v in valSet[catName]:
+                    subYVals = yvals[catVals == v]
+                    subCats = categories.copy()
+                    del subCats[catName]
+                    for subCatName in subCats:
+                        subCats[subCatName] = subCats[subCatName][catVals == v]
+                
+                    meanDiff, pctile = self._doShuffle(subYVals, dataName, subCats, valSet=valSet, numShuffles=numShuffles)
+                    catMeanDiff[v] = meanDiff
+                    catPctile[v] = pctile
+
+                    # print("\t", meanDiff, pctile)
+                retMeanDiff[catName] = catMeanDiff
+                retPctile[catName] = catPctile
+
+            return retMeanDiff, retPctile
+
+
+
 
 
 def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAways=True, zorder=2, outlineColors=None, wellSize=mpl.rcParams['lines.markersize']**2):
@@ -448,13 +611,24 @@ def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=Fals
 
 
 if __name__ == "__main__":
-    pp = PlotCtx("/media/WDC7/figures/test")
+    # pp = PlotCtx("/media/WDC7/figures/test")
+    pp = PlotCtx("/home/wcroughan/data/figures/test")
 
-    with pp.newFig("test") as axs:
-        axs.plot(np.arange(5), np.arange(5))
+    # with pp.newFig("test") as axs:
+    #     axs.plot(np.arange(5), np.arange(5))
 
-    with pp.continueFig("nothertest") as axs:
-        axs.plot(np.arange(3, 6), np.arange(3, 6))
+    # with pp.continueFig("nothertest") as axs:
+    #     axs.plot(np.arange(3, 6), np.arange(3, 6))
 
-    with pp.newFig("nothernothertest") as axs:
-        axs.plot(np.arange(3, 6), np.arange(3, 6))
+    # with pp.newFig("nothernothertest") as axs:
+    #     axs.plot(np.arange(3, 6), np.arange(3, 6))
+
+    for pcat in range(3):
+        # pp.setStatCategory("pcat", pcat)
+        with pp.newFig("testStats", withStats=True) as (ax, yvals, cats):
+            yvals["v1"] = np.array([0, 0, 0, 1, 1, 1])
+            # yvals["v2"] = np.linspace(0, 1, 6)
+            cats["c1"] = np.array(["0", "0", "0", "1", "1", "1"])
+            cats["c2"] = np.array(["0", "1", "2", "0", "1", "2"])
+
+    pp.runShuffles()
