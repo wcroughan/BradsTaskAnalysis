@@ -44,6 +44,7 @@ class ShuffSpec:
         WITHIN = auto()
         ACROSS = auto()
         INTERACTION = auto()
+        RECURSIVE_ALL = auto()  # includes interaction, across, and within
 
         def __repr__(self):
             return self.name
@@ -52,9 +53,20 @@ class ShuffSpec:
             return self.name[0:3]
 
     def __init__(self, shuffType=ShuffType.UNSPECIFIED, categoryName="", value=None):
+        """
+        if type is WITHIN, GLOBAL, or INTERACTION, value is a single value
+        if type is ACROSS or RECURSIVE_ALL, value is None
+        """
         self.shuffType = shuffType
         self.categoryName = categoryName
         self.value = value
+
+    def copy(self):
+        ret = ShuffSpec()
+        ret.shuffType = self.shuffType
+        ret.categoryName = self.categoryName
+        ret.value = self.value
+        return ret
 
     def __str__(self):
         return "{} {} ({})".format(self.shuffType, self.categoryName, self.value)
@@ -78,8 +90,35 @@ class ShuffSpec:
         return self.value < other.value
 
 
+class ShuffleResult:
+    def __init__(self, specs=[], diff=np.nan, shuffleDiffs=None):
+        self.specs = specs
+        self.diff = diff
+        self.shuffleDiffs = shuffleDiffs
+
+    def copy(self):
+        ret = ShuffleResult()
+        ret.diff = self.diff
+        if self.shuffleDiffs is not None:
+            ret.shuffleDiffs = np.copy(self.shuffleDiffs)
+        ret.specs = [s.copy() for s in self.specs]
+        return ret
+
+    def __str__(self):
+        if self.shuffleDiffs is None:
+            return "{}: {}".format(self.specs, self.diff)
+        else:
+            return "{}: {} ({}, {})".format(self.specs, self.diff, np.min(self.shuffleDiffs), np.max(self.shuffleDiffs))
+
+    def __repr__(self):
+        if self.shuffleDiffs is None:
+            return "{}: {}".format(self.specs, self.diff)
+        else:
+            return "{}: {} ({}-{})".format(self.specs, self.diff, np.min(self.shuffleDiffs), np.max(self.shuffleDiffs))
+
+
 class PlotCtx:
-    def __init__(self, outputDir="./", priorityLevel=None):
+    def __init__(self, outputDir="./", priorityLevel=None, randomSeed=None):
         self.figSizeX, self.figSizeY = 5, 5
         self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
         self.fig.clf()
@@ -99,6 +138,9 @@ class PlotCtx:
         self.persistentCategories = {}
         self.savedYVals = {}
         self.savedCategories = {}
+        self.numShuffles = 0
+
+        self.rng = np.random.default_rng(seed=randomSeed)
 
     def __enter__(self):
         if self.withStats:
@@ -208,6 +250,7 @@ class PlotCtx:
         print("\n".join([str(v) for v in sorted(results)]))
 
     def runShuffles(self, numShuffles=4):
+        self.numShuffles = numShuffles
         for plotName in self.savedCategories:
             categories = self.savedCategories[plotName]
             yvals = self.savedYVals[plotName]
@@ -231,6 +274,8 @@ class PlotCtx:
             ss = [len(s) for s in specs]
             specs = [x for _, x in sorted(zip(ss, specs))]
             print("\n".join([str(s) for s in specs]))
+            for yvalName in yvals:
+                self._doShuffles(df, specs, yvalName)
 
             # for yvalName in yvals:
             #     yv = np.array(yvals[yvalName])
@@ -429,27 +474,153 @@ class PlotCtx:
             otherCols = [c for c in columnsToShuffle if c != col]
             rec = self.getAllShuffleSpecs(df, otherCols)
             for r in rec:
-                for val in valSet[col]:
-                    ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.WITHIN,
-                               categoryName=col, value=val)] + r)
-                    ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.INTERACTION,
-                               categoryName=col, value=val)] + r)
-                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.ACROSS,
+                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL,
                            categoryName=col, value=None)] + r)
 
         return ret
 
-    def _doShuffleSpec(self, df, spec):
+    def _doOneWayShuffle(self, df, spec, dataNames):
+        assert isinstance(spec, ShuffSpec) and \
+            spec.shuffType == ShuffSpec.ShuffType.GLOBAL
+
+        ret = ShuffleResult([spec])
+
+        withinIdx = df[spec.categoryName] == spec.value
+        ret.diff = df[withinIdx][dataNames].mean() - df[~withinIdx][dataNames].mean()
+
+        ret.shuffleDiffs = np.empty((self.numShuffles,))
+        sdf = df.copy().reset_index(drop=True)
+        for si in range(self.numShuffles):
+            sdf[spec.categoryName] = sdf[spec.categoryName].sample(
+                frac=1, random_state=self.rng).reset_index(drop=True)
+            # print(sdf)
+            withinIdx = sdf[spec.categoryName] == spec.value
+            ret.shuffleDiffs[si] = sdf[withinIdx][dataNames].mean() - \
+                sdf[~withinIdx][dataNames].mean()
+
+        return ret
+
+    def _doShuffleSpec(self, df, spec, valSet, dataNames):
         assert isinstance(spec, list)
-        for s in spec:
+        for si, s in enumerate(spec):
             assert isinstance(s, ShuffSpec)
             assert s.shuffType != ShuffSpec.ShuffType.UNSPECIFIED
-        assert spec[-1].shuffType == ShuffSpec.ShuffType.GLOBAL
+            assert s.shuffType != ShuffSpec.ShuffType.GLOBAL or si == len(spec)-1
 
-    def _doShuffle(self, df, specs):
-        # wait no ... think about how to optimize calls so across and withins use same data, and interactions need that too!
+        # print(df)
+        # print(spec)
+
+        s = spec[0]
+        if s.shuffType == ShuffSpec.ShuffType.GLOBAL:
+            return [self._doOneWayShuffle(df, s, dataNames)]
+
+        if s.shuffType == ShuffSpec.ShuffType.WITHIN:
+            withinIdx = df[s.categoryName] == s.value
+            recres = self._doShuffleSpec(df.loc[withinIdx], spec[1:], valSet, dataNames)
+            for r in recres:
+                r.specs = [s] + r.specs
+            return recres
+
+        if s.shuffType == ShuffSpec.ShuffType.INTERACTION:
+            withinIdx = df[s.categoryName] == s.value
+            withoutIdx = ~ withinIdx
+            rin = self._doShuffleSpec(df.loc[withinIdx], spec[1:], valSet, dataNames)
+            rout = self._doShuffleSpec(df.loc[withoutIdx], spec[1:], valSet, dataNames)
+            ret = []
+            for reti, (i, o) in enumerate(zip(rin, rout)):
+                r = i.copy()
+                r.specs = [s] + i.specs
+                r.diff = i.diff - o.diff
+                r.shuffleDiffs = i.shuffleDiffs - o.shuffleDiffs
+                ret.append(r)
+            return ret
+
+        if s.shuffType == ShuffSpec.ShuffType.ACROSS:
+            vals = valSet[s.categoryName]
+            withinRes = []
+            for val in vals:
+                withinIdx = df[s.categoryName] == val
+                withinRes.append(self._doShuffleSpec(
+                    df.loc[withinIdx], spec[1:], valSet, dataNames))
+
+            numEffects = len(withinRes[0])
+            ret = []
+            for ei in range(numEffects):
+                r = withinRes[0][ei].copy()
+                r.specs = [s] + r.specs
+                r.diff = 0
+                r.shuffleDiffs = np.zeros((self.numShuffles,))
+                for vi in range(len(vals)):
+                    r.diff += withinRes[vi][ei].diff
+                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs
+                ret.append(r)
+            return ret
+
+        if s.shuffType == ShuffSpec.ShuffType.RECURSIVE_ALL:
+            # all the recursive calls needed
+            vals = valSet[s.categoryName]
+            withinRes = []
+            withoutRes = []
+            for val in vals:
+                withinIdx = df[s.categoryName] == val
+                withinRes.append(self._doShuffleSpec(
+                    df.loc[withinIdx], spec[1:], valSet, dataNames))
+                withoutIdx = ~ withinIdx
+                withoutRes.append(self._doShuffleSpec(
+                    df.loc[withoutIdx], spec[1:], valSet, dataNames))
+
+            ret = []
+            # within effects
+            for vi, val in enumerate(vals):
+                wr = withinRes[vi]
+                for ei, effect in enumerate(wr):
+                    r = effect.copy()
+                    ss = s.copy()
+                    ss.shuffType = ShuffSpec.ShuffType.WITHIN
+                    ss.value = val
+                    r.specs = [ss] + r.specs
+                    ret.append(r)
+
+            # across effect
+            numEffects = len(withinRes[0])
+            for ei in range(numEffects):
+                r = withinRes[0][ei].copy()
+                ss = s.copy()
+                ss.shuffType = ShuffSpec.ShuffType.ACROSS
+                r.specs = [ss] + r.specs
+                r.diff = 0
+                r.shuffleDiffs = np.zeros((self.numShuffles,))
+                for vi in range(len(vals)):
+                    r.diff += withinRes[vi][ei].diff
+                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs
+                ret.append(r)
+
+            # interaction effects
+            for vi, val in enumerate(vals):
+                wr = withinRes[vi]
+                wor = withoutRes[vi]
+                for ei, (rin, rout) in enumerate(zip(wr, wor)):
+                    ss = s.copy()
+                    ss.shuffType = ShuffSpec.ShuffType.INTERACTION
+                    ss.value = val
+                    r = ShuffleResult([ss] + rin.specs)
+                    r.diff = rin.diff - rout.diff
+                    r.shuffleDiffs = rin.shuffleDiffs - rout.shuffleDiffs
+                    ret.append(r)
+
+            return ret
+
+    def _doShuffles(self, df, specs, dataNames):
+        print(df)
+        valSet = {}
+        for col in df.columns:
+            valSet[col] = set(df[col])
+        print("created valset:", valSet)
+
         for spec in specs:
-            self._doShuffleSpec(df, spec)
+            print("\n", spec)
+            res = self._doShuffleSpec(df, spec, valSet, dataNames)
+            print("\n".join([str(r) for r in res]))
 
 
 def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAways=True, zorder=2, outlineColors=None, wellSize=mpl.rcParams['lines.markersize']**2):
@@ -847,6 +1018,90 @@ def testShuffles():
 
     # res[:, 1] = np.diff(np.array(ts))
     # print(res)
+
+
+def testIndividualShuffleSpecs():
+    pp = PlotCtx("/home/wcroughan/data/figures/test")
+    pp.numShuffles = 5
+
+    df = pd.DataFrame(data={"c1": [0, 0, 0, 0, 1, 1, 1, 1],
+                            "c2": [10, 10, 20, 20, 10, 10, 20, 20],
+                            "y":  np.linspace(0, 1, 8)})
+
+    valSet = {}
+    for col in df.columns:
+        valSet[col] = set(df[col])
+
+    print("===============================\n")
+    spec = [ShuffSpec(shuffType=ShuffSpec.ShuffType.WITHIN, categoryName="c1", value=1),
+            ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="c2", value=10), ]
+    res = pp._doShuffleSpec(df, spec, valSet, "y")
+    print("\n".join([str(r) for r in res]))
+    print("===============================\n")
+
+    spec = [ShuffSpec(shuffType=ShuffSpec.ShuffType.WITHIN, categoryName="c2", value=10),
+            ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="c1", value=1), ]
+    res = pp._doShuffleSpec(df, spec, valSet, "y")
+    print("\n".join([str(r) for r in res]))
+    print("===============================\n")
+
+    spec = [ShuffSpec(shuffType=ShuffSpec.ShuffType.WITHIN, categoryName="c1", value=0),
+            ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="c2", value=20), ]
+    res = pp._doShuffleSpec(df, spec, valSet, "y")
+    print("\n".join([str(r) for r in res]))
+    print("===============================\n")
+
+    spec = [ShuffSpec(shuffType=ShuffSpec.ShuffType.ACROSS, categoryName="c1", value=None),
+            ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="c2", value=20), ]
+    res = pp._doShuffleSpec(df, spec, valSet, "y")
+    print("\n".join([str(r) for r in res]))
+    print("===============================\n")
+
+    spec = [ShuffSpec(shuffType=ShuffSpec.ShuffType.INTERACTION, categoryName="c1", value=0),
+            ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="c2", value=20), ]
+    res = pp._doShuffleSpec(df, spec, valSet, "y")
+    print("\n".join([str(r) for r in res]))
+    print("===============================\n")
+
+    spec = [ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL, categoryName="c1", value=None),
+            ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="c2", value=20), ]
+    res = pp._doShuffleSpec(df, spec, valSet, "y")
+    print("\n".join([str(r) for r in res]))
+    print("===============================\n")
+
+
+def testAcross():
+    pp = PlotCtx("/home/wcroughan/data/figures/test")
+    pp.numShuffles = 500
+    c1 = np.array([0] * 8 + [1] * 8)
+    c2 = np.array(([10] * 2 + [20] * 2) * 4)
+    y = c1 + 50 * c2 + np.random.uniform() * 0.2
+    df = pd.DataFrame(data={"c1": c1, "c2": c2, "y":  y})
+    valSet = {}
+    for col in df.columns:
+        valSet[col] = set(df[col])
+
+    print("testing where c1 has small effect, c2 has big effect")
+    print("===============================\n")
+    print("First just global c1")
+    spec = [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="c1", value=0)]
+    res = pp._doShuffleSpec(df, spec, valSet, "y")
+    print("\n".join([str(r) for r in res]))
+
+    print("===============================\n")
+    print("global c2")
+    spec = [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="c2", value=10)]
+    res = pp._doShuffleSpec(df, spec, valSet, "y")
+    print("\n".join([str(r) for r in res]))
+
+    print("===============================\n")
+    print("Now across c2, global c1")
+    spec = [ShuffSpec(shuffType=ShuffSpec.ShuffType.ACROSS, categoryName="c2", value=None),
+            ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="c1", value=0), ]
+    res = pp._doShuffleSpec(df, spec, valSet, "y")
+    print("\n".join([str(r) for r in res]))
+    r = res[0]
+    print("p =", np.count_nonzero(r.shuffleDiffs <= r.diff) / len(r.shuffleDiffs))
 
 
 if __name__ == "__main__":
