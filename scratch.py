@@ -1,25 +1,52 @@
-class TestManager:
-    def __init__(self):
-        self.count = 0
+import os
+import sys
+from BTData import BTData
+from BTSession import BTSession
 
-    def __enter__(self):
-        print("enter", self.count)
-        return self
+possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
+dataDir = None
+for dd in possibleDataDirs:
+    if os.path.exists(dd):
+        dataDir = dd
+        break
 
-    def __exit__(self, *args):
-        print("exit", self.count)
-        self.count += 1
+if dataDir == None:
+    print("Couldnt' find data directory among any of these: {}".format(possibleDataDirs))
+    exit()
+
+globalOutputDir = os.path.join(dataDir, "figures", "20220315_labmeeting")
 
 
-t = TestManager()
+if len(sys.argv) >= 2:
+    animalNames = sys.argv[1:]
+else:
+    animalNames = ['B13', 'B14']
+print("Plotting data for animals ", animalNames)
 
-with t as tt:
-    print("hello!")
-    print(tt.count)
-    print(t.count)
+for an in animalNames:
+    if an == "B13":
+        dataFilename = os.path.join(dataDir, "B13/processed_data/B13_bradtask.dat")
+    elif an == "B14":
+        dataFilename = os.path.join(dataDir, "B14/processed_data/B14_bradtask.dat")
+    elif an == "Martin":
+        dataFilename = os.path.join(dataDir, "Martin/processed_data/martin_bradtask.dat")
+    else:
+        raise Exception("Unknown rat " + an)
+    ratData = BTData()
+    ratData.loadFromFile(dataFilename)
+    swp = ratData.getSessions()
 
-with t:
-    print("hello again!", t.count)
+    print("==========================")
+    print(an)
+    lastDate = None
+    for s in swp:
+        d = s.name.split("_")[0]
+        if d != lastDate:
+            print()
+        lastDate = d
+        print("{}\t{}\t{}".format(s.name, "SWR" if s.isRippleInterruption else "Ctrl",
+              s.infoFileName.split("_")[-1]))
+
 
 # data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
 # data_filename = "/media/WDC7/B13/processed_data/B13_bradtask.dat"

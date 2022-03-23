@@ -53,6 +53,9 @@ class BTSession:
         # name of raw data folder in which probe part of session was recorded. May be missing (empty string). May be same as bt_dir
         self.probe_dir = ""
 
+        self.infoFileName = ""
+        self.conditionGroup = -1
+
         # Some flags indicated whether ITI was recorded and whether ITI and probe are in the same rec file or not
         self.separate_iti_file = False
         self.recorded_iti = False

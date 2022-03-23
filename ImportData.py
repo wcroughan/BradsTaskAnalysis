@@ -344,6 +344,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     session.probe_ended_at_well = int(field_val)
                 elif field_name.lower() == "weight":
                     session.weight = float(field_val)
+                elif field_name.lower() == "conditiongroup":
+                    session.conditionGroup = int(field_val)
                 else:
                     session.notes.append(line)
 
@@ -355,6 +357,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             if not (session.last_away_well == session.away_wells[-1] and session.ended_on_home) and session.bt_ended_at_well is None:
                 raise Exception(
                     "Didn't find all the wells but task end well not marked for session {}".format(session.name))
+
+        session.infoFileName = info_file
 
     except FileNotFoundError as err:
         print(err)
