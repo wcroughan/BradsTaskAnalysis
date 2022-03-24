@@ -5,6 +5,7 @@ import seaborn as sns
 import pandas as pd
 
 from PlotUtil import PlotCtx, conditionShuffle
+from FakeData import collapseAndCombineData, generateRatData
 
 def exampleFigure1(pc):
     with pc.newFig("fig1") as ax:
@@ -53,115 +54,31 @@ def exampleFigure5(pc):
         ax.scatter(x,y)
 
 
-def exampleFigure6(pc, data, axesNames, figName="statsFig"):
+def exampleFigure6(pc, data, figName="statsFig"):
     pal = sns.color_palette(palette=["cyan", "orange"])
     with pc.newFig(figName, subPlots=(2,1)) as axs:
-        sns.violinplot(ax=axs[0], hue=axesNames[3], y=axesNames[0], x=axesNames[2],
+        sns.violinplot(ax=axs[0], hue="Condition", y="Dwell_Time", x="Well_Type",
             data=data, palette=pal, linewidth=0.2, zorder=1)
-        sns.swarmplot(ax=axs[0], hue=axesNames[3], y=axesNames[0], x=axesNames[2],
+        sns.swarmplot(ax=axs[0], hue="Condition", y="Dwell_Time", x="Well_Type",
             data=data, color="0.25", zorder=3, dodge=True, size=2)
         axs[0].set_title("fake data!")
-        sns.violinplot(ax=axs[1], hue=axesNames[3], y=axesNames[1], x=axesNames[2],
+        sns.violinplot(ax=axs[1], hue="Condition", y="Curvature", x="Well_Type",
             data=data, palette=pal, linewidth=0.2, zorder=1)
-        sns.swarmplot(ax=axs[1], hue=axesNames[3], y=axesNames[1], x=axesNames[2],
+        sns.swarmplot(ax=axs[1], hue="Condition", y="Curvature", x="Well_Type",
             data=data, color="0.25", zorder=3, dodge=True, size=2)
 
 
-def generateRatData(rng):
-    condition = []
-    wellType = []
-    dwellTime = []
-    curvature = []
-    conditionGroup = []
-
-    ratFactor = rng.random() * 10
-    homeFactor = rng.random() * 5
-    conditionFactor = rng.random()
-    baseDwell = 1
-
-    numSessions = rng.integers(10, 30)
-    # numSessions = rng.integers(2, 5)
-    for si in range(numSessions):
-        numAwaysFound = rng.integers(4, 10)
-        c = 1 if rng.random() > 0.5 else 0
-
-        # Add home data point
-        v = baseDwell + ratFactor + homeFactor * (1 - c * conditionFactor)
-        dwellTime.append(v + rng.random() * 0.5)
-        curvature.append(v + rng.random() * 0.5)
-        wellType.append("home")
-        condition.append("SWR" if c == 1 else "Ctrl")
-        conditionGroup.append(si // 4)
-
-        # Add away data points
-        for ai in range(numAwaysFound):
-            v = baseDwell + ratFactor 
-            dwellTime.append(v + rng.random() * 0.5)
-            curvature.append(v + rng.random() * 0.5)
-            wellType.append("away")
-            condition.append("SWR" if c == 1 else "Ctrl")
-            conditionGroup.append(si // 4)
-
-    sortList = ["{}{}".format(a,0 if b == "home" else 1) for a,b in zip(condition, wellType)]
-    dwellTime = [v for _,v in sorted(zip(sortList, dwellTime))]
-    curvature = [v for _,v in sorted(zip(sortList, curvature))]
-    wellType = [v for _,v in sorted(zip(sortList, wellType))]
-    condition = [v for _,v in sorted(zip(sortList, condition))]
-    conditionGroup = [v for _,v in sorted(zip(sortList, conditionGroup))]
-
-    measureNames = ["Dwell Time", "Curvature", "Well Type", "Condition", "conditionGroup"]
-    measureNamesNoSpaces = [a.replace(" ", "_") for a in measureNames]
-    data = pd.Series([dwellTime, curvature, wellType, condition, conditionGroup], index=measureNamesNoSpaces)
-    return data, measureNamesNoSpaces
-
-def collapseAndCombineData(data, measureNames, rats):
-    combinedData = pd.Series(index=measureNames, dtype=object)
-    for mn in measureNames:
-        combinedData[mn] = []
-    collapsedData = pd.Series(index=measureNames[:-1], dtype=object)
-    for mn in measureNames[:-1]:
-        collapsedData[mn] = []
-    
-    for rat in rats:
-        d = data[rat]
-        for mn in measureNames:
-            # if mn in combinedData.index:
-            #     combinedData[mn] += d[mn]
-            # else:
-            #     combinedData[mn] = d[mn]
-            combinedData[mn] += d[mn]
-
-        dd = {}
-        for i in d.index:
-            dd[i] = d[i]
-        df = pd.DataFrame(data=dd)
-        cols = list(df.columns)
-        ma = df.groupby(cols[2:4]).mean()
-        for i in ma.index:
-            collapsedData[measureNames[2]].append(i[0])
-            collapsedData[measureNames[3]].append(i[1])
-            collapsedData[measureNames[0]].append(ma.loc[i][measureNames[0]])
-            collapsedData[measureNames[1]].append(ma.loc[i][measureNames[1]])
-
-
-    sortList = ["{}{}".format(a,0 if b == "home" else 1) for a,b in zip(collapsedData["Condition"], collapsedData["Well_Type"])]
-    for i in collapsedData.index:
-        collapsedData[i] = [v for _,v in sorted(zip(sortList, collapsedData[i]))]
-
-    return collapsedData, combinedData
-
-
-def exampleFigure7(pc, data, axesNames):
+def exampleFigure7(pc, data):
     pal = sns.color_palette(palette=["cyan", "orange"])
     with pc.newFig("statsFig", subPlots=(2,1), withStats=True) as (axs, yvals, categories, info):
-        sns.violinplot(ax=axs[0], hue=axesNames[3], y=axesNames[0], x=axesNames[2],
+        sns.violinplot(ax=axs[0], hue="Condition", y="Dwell_Time", x="Well_Type",
             data=data, palette=pal, linewidth=0.2, zorder=1)
-        sns.swarmplot(ax=axs[0], hue=axesNames[3], y=axesNames[0], x=axesNames[2],
+        sns.swarmplot(ax=axs[0], hue="Condition", y="Dwell_Time", x="Well_Type",
             data=data, color="0.25", zorder=3, dodge=True, size=2)
         axs[0].set_title("fake data!")
-        sns.violinplot(ax=axs[1], hue=axesNames[3], y=axesNames[1], x=axesNames[2],
+        sns.violinplot(ax=axs[1], hue="Condition", y="Curvature", x="Well_Type",
             data=data, palette=pal, linewidth=0.2, zorder=1)
-        sns.swarmplot(ax=axs[1], hue=axesNames[3], y=axesNames[1], x=axesNames[2],
+        sns.swarmplot(ax=axs[1], hue="Condition", y="Curvature", x="Well_Type",
             data=data, color="0.25", zorder=3, dodge=True, size=2)
 
         yvals["Dwell_Time"] = data["Dwell_Time"]
@@ -169,12 +86,12 @@ def exampleFigure7(pc, data, axesNames):
         categories["Well_Type"] = data["Well_Type"]
         categories["Condition"] = data["Condition"]
 
-def exampleFigure8(pc, data, axesNames):
+def exampleFigure8(pc, data):
     pal = sns.color_palette(palette=["cyan", "orange"])
     with pc.newFig("statsFig", subPlots=(2,1), withStats=True) as (axs, yvals, categories, info):
-        sns.violinplot(ax=axs[0], hue=axesNames[3], y=axesNames[0], x=axesNames[2],
+        sns.violinplot(ax=axs[0], hue="Condition", y="Dwell_Time", x="Well_Type",
             data=data, palette=pal, linewidth=0.2, zorder=1)
-        sns.swarmplot(ax=axs[0], hue=axesNames[3], y=axesNames[0], x=axesNames[2],
+        sns.swarmplot(ax=axs[0], hue="Condition", y="Dwell_Time", x="Well_Type",
             data=data, color="0.25", zorder=3, dodge=True, size=2)
 
                     # p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
@@ -182,9 +99,9 @@ def exampleFigure8(pc, data, axesNames):
                     # p2 = sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
                     #                    y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", size=swarmDotSize, dodge=True, zorder=3)
         axs[0].set_title("fake data!")
-        sns.violinplot(ax=axs[1], hue=axesNames[3], y=axesNames[1], x=axesNames[2],
+        sns.violinplot(ax=axs[1], hue="Condition", y="Curvature", x="Well_Type",
             data=data, palette=pal, linewidth=0.2)
-        sns.swarmplot(ax=axs[1], hue=axesNames[3], y=axesNames[1], x=axesNames[2],
+        sns.swarmplot(ax=axs[1], hue="Condition", y="Curvature", x="Well_Type",
             data=data, color="0.25", zorder=3, dodge=True, size=2)
 
         yvals["Dwell_Time"] = data["Dwell_Time"]
@@ -221,23 +138,21 @@ if __name__ == "__main__":
     randomGen = np.random.default_rng(seed)
     data = {}
     for rat in rats:
-        d, measureNames = generateRatData(randomGen)
+        d = generateRatData(randomGen)
         # print(len(d["Condition"]))
         data[rat] = d
 
-        
     for rat in rats:
         pc.setOutputSubDir(rat)
-        exampleFigure6(pc, data[rat], measureNames)
+        exampleFigure6(pc, data[rat])
     pc.setOutputSubDir("")
 
     # for rat in rats:
     #     pc.setOutputSubDir(rat)
     #     pc.setStatCategory("Rat", rat)
-    #     exampleFigure8(pc, data[rat], measureNames)
+    #     exampleFigure8(pc, data[rat])
 
     # pc.runShuffles(numShuffles=50)
-    collapsedData, combinedData = collapseAndCombineData(data, measureNames, rats)
-    print("hi")
-    exampleFigure6(pc, collapsedData, measureNames, figName="Collapsed")
-    exampleFigure6(pc, combinedData, measureNames, figName="Combined")
+    collapsedData, combinedData = collapseAndCombineData(data,  ["Curvature", "Dwell_Time"],["Condition", "Well_Type"], "Rat")
+    exampleFigure6(pc, collapsedData, figName="Collapsed")
+    exampleFigure6(pc, combinedData, figName="Combined")
