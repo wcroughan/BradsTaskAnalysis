@@ -109,10 +109,12 @@ class ShuffleResult:
     def getFullInfoString(self, linePfx=""):
         sdmin = np.min(self.shuffleDiffs, axis=0)
         sdmax = np.max(self.shuffleDiffs, axis=0)
-        pvals = np.count_nonzero(self.diff.T < self.shuffleDiffs,
+        pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
                                  axis=0) / self.shuffleDiffs.shape[0]
-        ret = ["{}:".format(self.specs)] + [linePfx + "{}: {} ({}, {}) p = {}".format(self.dataNames[i], float(self.diff[i]),
-                                                                                      sdmin[i], sdmax[i], pvals[i]) for i in range(len(self.diff))]
+        pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
+                                 axis=0) / self.shuffleDiffs.shape[0]
+        ret = ["{}:".format(self.specs)] + [linePfx + "{}: {} ({}, {}) p1 = {}\tp2 = {}".format(self.dataNames[i], float(self.diff[i]),
+                                                                                      sdmin[i], sdmax[i], pvals1[i], pvals2[i]) for i in range(len(self.diff))]
         return "\n".join(ret)
 
     def __str__(self):
@@ -140,6 +142,7 @@ class PlotCtx:
         self.showPlot = False
 
         self.timeStr = datetime.now().strftime("%Y%m%d_%H%M%S_info.txt")
+        self.outputSubDir = ""
         self.setOutputDir(outputDir)
         self.figName = ""
 
@@ -263,7 +266,7 @@ class PlotCtx:
 
     def saveFig(self):
         if self.figName[0] != "/":
-            fname = os.path.join(self.outputDir, self.figName)
+            fname = os.path.join(self.outputDir, self.outputSubDir, self.figName)
         else:
             fname = self.figName
         plt.savefig(fname, bbox_inches="tight", dpi=200)
@@ -276,10 +279,15 @@ class PlotCtx:
 
     def setOutputDir(self, outputDir):
         self.outputDir = outputDir
-        if not os.path.exists(outputDir):
-            os.makedirs(outputDir)
+        if not os.path.exists(os.path.join(outputDir, self.outputSubDir)):
+            os.makedirs(os.path.join(outputDir, self.outputSubDir))
         self.txtOutputFName = os.path.join(
             outputDir, self.timeStr)
+
+    def setOutputSubDir(self, outputSubDir):
+        self.outputSubDir = outputSubDir
+        if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
+            os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
 
     def writeToInfoFile(self, txt, suffix="\n"):
         with open(self.txtOutputFName, "a") as f:
