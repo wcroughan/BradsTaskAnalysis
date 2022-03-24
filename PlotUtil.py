@@ -147,6 +147,7 @@ class PlotCtx:
         self.priority = None
 
         self.persistentCategories = {}
+        self.persistentInfoValues = {}
         self.savedYVals = {}
         self.savedCategories = {}
         self.savedInfoVals = {}
@@ -195,8 +196,14 @@ class PlotCtx:
     def setStatCategory(self, category, value):
         self.persistentCategories[category] = value
 
+    def setStatInfo(self, infoCategory, value):
+        self.persistentInfoValues[infoCategory] = values
+
     def setCustomShuffleFunction(self, category, func):
         self.customShuffleFunctions[category] = func
+
+    def setPriorityLevel(self, priorityLevel):
+        self.priorityLevel = priorityLevel
 
     def __exit__(self, *args):
         if self.withStats:
@@ -221,6 +228,13 @@ class PlotCtx:
                 else:
                     print(
                         "WARNING: overlap between persistent category and this-plot category, both named {}".format(k))
+
+            for k in self.persistentInfoValues:
+                if k not in self.infoVals:
+                    self.infoVals[k] = [self.persistentInfoValues[k]] * l
+                else:
+                    print(
+                        "WARNING: overlap between persistent info category and this-plot category, both named {}".format(k))
 
             if statsName in self.savedYVals:
                 savedYVals = self.savedYVals[statsName]
@@ -654,11 +668,13 @@ class PlotCtx:
             valSet[col] = set(df[col])
         print("created valset:", valSet)
 
-        for spec in specs:
-            print("\n", spec)
-            res = self._doShuffleSpec(df, spec, valSet, dataNames)
-            for r in res:
-                print(r.getFullInfoString(linePfx="\t"))
+        with open(self.txtOutputFName, "a") as f:
+            for spec in specs:
+                print(spec)
+                res = self._doShuffleSpec(df, spec, valSet, dataNames)
+                for r in res:
+                    # print(r.getFullInfoString(linePfx="\t"))
+                    f.write(r.getFullInfoString(linePfx="\t") + "\n")
 
     def getUniqueInfoValue(self):
         self.uniqueInfoValue += 1
