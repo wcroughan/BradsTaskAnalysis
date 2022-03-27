@@ -148,6 +148,7 @@ for session_idx, session_dir in enumerate(all_data_dirs):
 print("\n".join(filtered_data_dirs))
 
 parent_app = QApplication(sys.argv)
+foundConditionGroups = False
 
 for session_idx, session_dir in enumerate(filtered_data_dirs):
 
@@ -346,6 +347,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     session.weight = float(field_val)
                 elif field_name.lower() == "conditiongroup":
                     session.conditionGroup = int(field_val)
+                    foundConditionGroups  = True
                 else:
                     session.notes.append(line)
 
@@ -519,46 +521,49 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         xs, ys, ts = processPosData(position_data, xLim=(
             animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
 
-        if "lightonframe" in position_data_metadata:
-            session.trodesLightOnFrame = int(position_data_metadata['lightonframe'])
-            session.trodesLightOffFrame = int(position_data_metadata['lightoffframe'])
-            print("metadata says trodes light frames {}, {} (/{})".format(session.trodesLightOffFrame,
-                  session.trodesLightOnFrame, len(ts)))
-            session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
-            session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
-            print("metadata file says trodes light timestamps {}, {} (/{})".format(
-                session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
-            # playFrames(file_str + '.1.h264', session.trodesLightOffFrame -
-            #            20, session.trodesLightOffFrame + 20)
-            # playFrames(file_str + '.1.h264', session.trodesLightOnFrame -
-            #            20, session.trodesLightOnFrame + 20)
-        else:
-            # was a separate metadatafile made?
-            positionMetadataFile = file_str + '.1.justLights'
-            if os.path.exists(positionMetadataFile):
-                lightInfo = np.fromfile(positionMetadataFile, sep=",").astype(int)
-                session.trodesLightOffTime = lightInfo[0]
-                session.trodesLightOnTime = lightInfo[1]
-                print("justlights file says trodes light timestamps {}, {} (/{})".format(
-                    session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
-            else:
-                print("doing the lights")
-                session.trodesLightOffTime, session.trodesLightOnTime = getTrodesLightTimes(
-                    file_str + '.1.h264', showVideo=False)
-                print("trodesLightFunc says trodes light Time {}, {} (/{})".format(
-                    session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
 
-        possibleDirectories = [
-            "/media/WDC6/{}/".format(animal_name), "/media/WDC7/{}/".format(animal_name)]
-        session.usbVidFile = getUSBVideoFile(session.name, possibleDirectories)
-        if session.usbVidFile is None:
-            print("??????? usb vid file not found for session ", session.name)
-        else:
-            print("Running USB light time analysis, file", session.usbVidFile)
-            session.usbLightOffFrame, session.usbLightOnFrame = processUSBVideoData(
-                session.usbVidFile, overwriteMode="loadOld", showVideo=False)
-            if session.usbLightOffFrame is None or session.usbLightOnFrame is None:
-                raise Exception("exclude me pls")
+        if animal_name != "Martin":
+            if "lightonframe" in position_data_metadata:
+                session.trodesLightOnFrame = int(position_data_metadata['lightonframe'])
+                session.trodesLightOffFrame = int(position_data_metadata['lightoffframe'])
+                print("metadata says trodes light frames {}, {} (/{})".format(session.trodesLightOffFrame,
+                    session.trodesLightOnFrame, len(ts)))
+                session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
+                session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
+                print("metadata file says trodes light timestamps {}, {} (/{})".format(
+                    session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
+                # playFrames(file_str + '.1.h264', session.trodesLightOffFrame -
+                #            20, session.trodesLightOffFrame + 20)
+                # playFrames(file_str + '.1.h264', session.trodesLightOnFrame -
+                #            20, session.trodesLightOnFrame + 20)
+            else:
+                # was a separate metadatafile made?
+                positionMetadataFile = file_str + '.1.justLights'
+                if os.path.exists(positionMetadataFile):
+                    lightInfo = np.fromfile(positionMetadataFile, sep=",").astype(int)
+                    session.trodesLightOffTime = lightInfo[0]
+                    session.trodesLightOnTime = lightInfo[1]
+                    print("justlights file says trodes light timestamps {}, {} (/{})".format(
+                        session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
+                else:
+                    print("doing the lights")
+                    session.trodesLightOffTime, session.trodesLightOnTime = getTrodesLightTimes(
+                        file_str + '.1.h264', showVideo=False)
+                    print("trodesLightFunc says trodes light Time {}, {} (/{})".format(
+                        session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
+
+        if animal_name != "Martin":
+            possibleDirectories = [
+                "/media/WDC6/{}/".format(animal_name), "/media/WDC7/{}/".format(animal_name)]
+            session.usbVidFile = getUSBVideoFile(session.name, possibleDirectories)
+            if session.usbVidFile is None:
+                print("??????? usb vid file not found for session ", session.name)
+            else:
+                print("Running USB light time analysis, file", session.usbVidFile)
+                session.usbLightOffFrame, session.usbLightOnFrame = processUSBVideoData(
+                    session.usbVidFile, overwriteMode="loadOld", showVideo=False)
+                if session.usbLightOffFrame is None or session.usbLightOnFrame is None:
+                    raise Exception("exclude me pls")
 
         if not JUST_EXTRACT_TRODES_DATA or RUN_INTERACTIVE:
             clipsFileName = file_str + '.1.clips'
@@ -658,7 +663,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         session.ripple_baseline_tetrode = animalInfo.DEFAULT_RIP_BAS_TET
 
     # I think Martin didn't have this baseline tetrode? Need to check
-    if session.ripple_baseline_tetrode is None:
+    if session.ripple_baseline_tetrode is not None:
         lfpdir = file_str + ".LFP"
         if not os.path.exists(lfpdir):
             print(lfpdir, "doesn't exists, gonna try and extract the LFP")
@@ -711,9 +716,11 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         showPlot = False
         print("{} interruptions detected".format(len(session.bt_interruption_pos_idxs)))
         if len(session.bt_interruption_pos_idxs) < 50:
-            if (session.isRippleInterruption):
-                print(
-                    "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER THAN 50 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
+            if session.isRippleInterruption and len(session.bt_interruption_pos_idxs) > 0:
+                # print( "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER THAN 50 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
+                raise Exception("SAW FEWER THAN 50 INTERRUPTIONS ON A CONTROL SESSION: {} on session {}".format(len(session.bt_interruption_pos_idxs), session.name))
+            elif len(session.bt_interruption_pos_idxs) == 0:
+                print( "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING 0 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
             else:
                 print(
                     "WARNING: very few interruptions. This was a delay control but is basically a no-stim control")
@@ -1813,6 +1820,10 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 if JUST_EXTRACT_TRODES_DATA:
     print("extracted: {}\nexcluded: {}".format(numExtracted, numExcluded))
 else:
+    if not foundConditionGroups:
+        for si, sesh in enumerate(dataob.allSessions):
+            sesh.conditionGroup = si
+
     # save all sessions to disk
     print("Saving to file: {}".format(animalInfo.out_filename))
     dataob.saveToFile(os.path.join(animalInfo.output_dir, animalInfo.out_filename))

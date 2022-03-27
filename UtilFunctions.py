@@ -8,6 +8,14 @@ import matplotlib.pyplot as plt
 from itertools import groupby
 from datetime import date
 
+def findDataDir(possibleDataDirs=["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]):
+    for dd in possibleDataDirs:
+        if os.path.exists(dd):
+            return dd
+
+    return None
+
+
 
 def readWellCoordsFile(well_coords_file):
     # For some reason json saving and loading turns the keys into strings, just going to change that here so it's consistent
@@ -460,7 +468,7 @@ def getInfoForAnimal(animalName):
         ret.Y_FINISH = 1275
         ret.data_dir = '/media/WDC1/martindata/bradtask/'
         ret.output_dir = '/media/WDC7/Martin/processed_data/'
-        ret.fig_output_dir = output_dir
+        ret.fig_output_dir = ret.output_dir
         ret.out_filename = "martin_bradtask.dat"
 
         ret.excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
@@ -474,6 +482,10 @@ def getInfoForAnimal(animalName):
         ret.excluded_dates += ["20200604"]
         ret.excluded_dates += ["20200608"]
         ret.excluded_dates += ["20200609"]
+
+        # Too few interruptions to really call this an interruption session probably:
+        ret.excluded_dates += ["20200607"]
+
 
         ret.DEFAULT_RIP_DET_TET = 37
         ret.DEFAULT_RIP_BAS_TET = None

@@ -93,11 +93,6 @@ def exampleFigure8(pc, data):
             data=data, palette=pal, linewidth=0.2, zorder=1)
         sns.swarmplot(ax=axs[0], hue="Condition", y="Dwell_Time", x="Well_Type",
             data=data, color="0.25", zorder=3, dodge=True, size=2)
-
-                    # p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
-                    #                     y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
-                    # p2 = sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
-                    #                    y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", size=swarmDotSize, dodge=True, zorder=3)
         axs[0].set_title("fake data!")
         sns.violinplot(ax=axs[1], hue="Condition", y="Curvature", x="Well_Type",
             data=data, palette=pal, linewidth=0.2)
@@ -118,34 +113,38 @@ def exampleFigure8(pc, data):
 if __name__ == "__main__":
     globalOutputDir = "/home/wcroughan/data/figures/examples/"
     pc = PlotCtx(globalOutputDir)
-    # exampleFigure1(pc)
+    exampleFigure1(pc)
     # exampleFigure2(pc)
     # exampleFigure3(pc)
     # exampleFigure4(pc)
 
-    # # pc.setPriorityLevel(5)
+    # pc.setPriorityLevel(5)
     # exampleFigure5(pc)
 
-    rats = ["ratA", "ratB", "ratC"]
+    # rats = ["ratA", "ratB", "ratC"]
     # for rat in rats:
     #     pc.setOutputSubDir(rat)
     #     exampleFigure1(pc)
 
 
-    # seed = int(time.perf_counter())
-    # print("random seed =", seed)
-    seed = 6160
-    randomGen = np.random.default_rng(seed)
-    data = {}
-    for rat in rats:
-        d = generateRatData(randomGen)
-        # print(len(d["Condition"]))
-        data[rat] = d
+    # # seed = int(time.perf_counter())
+    # # print("random seed =", seed)
+    # seed = 6160
+    # randomGen = np.random.default_rng(seed)
+    # data = {}
+    # for rat in rats:
+    #     d = generateRatData(randomGen)
+    #     data[rat] = d
 
-    for rat in rats:
-        pc.setOutputSubDir(rat)
-        exampleFigure6(pc, data[rat])
-    pc.setOutputSubDir("")
+    # for rat in rats:
+    #     pc.setOutputSubDir(rat)
+    #     exampleFigure6(pc, data[rat])
+    # pc.setOutputSubDir("")
+
+    # for rat in rats:
+    #     pc.setOutputSubDir(rat)
+    #     pc.setStatCategory("Rat", rat)
+    #     exampleFigure7(pc, data[rat])
 
     # for rat in rats:
     #     pc.setOutputSubDir(rat)
@@ -153,6 +152,3 @@ if __name__ == "__main__":
     #     exampleFigure8(pc, data[rat])
 
     # pc.runShuffles(numShuffles=50)
-    collapsedData, combinedData = collapseAndCombineData(data,  ["Curvature", "Dwell_Time"],["Condition", "Well_Type"], "Rat")
-    exampleFigure6(pc, collapsedData, figName="Collapsed")
-    exampleFigure6(pc, combinedData, figName="Combined")

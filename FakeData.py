@@ -137,14 +137,32 @@ def shuffleMyData(df, shuffleColumns, groupColumns, rng):
             df.loc[idx,sc] = vals
         
 
-def shufflePlot(pc, data, shufi, figName="statsFig"):
+def shufflePlot(pc, data, shufi=None, figName="statsFig"):
     pal = sns.color_palette(palette=["cyan", "orange"])
-    with pc.newFig(figName + str(shufi)) as ax:
+    with pc.newFig(figName + str(shufi) if shufi is not None else figName) as ax:
         sns.violinplot(ax=ax, hue="Condition", y="Dwell_Time", x="Well_Type",
             data=data, palette=pal, linewidth=0.2, zorder=1)
         sns.swarmplot(ax=ax, hue="Condition", y="Dwell_Time", x="Well_Type",
             data=data, color="0.25", zorder=3, dodge=True, size=2)
         ax.set_title("fake data!")
+
+def twoWayPlots(pc, data):
+    pal = sns.color_palette(palette=["cyan", "orange"])
+    pal2 = sns.color_palette(palette=["violet", "yellow"])
+    with pc.newFig("FD_glo_cond") as ax:
+        sns.violinplot(ax=ax, x="Condition", y="Dwell_Time", data=data,
+            palette=pal, linewidth=0.2, zorder=1)
+        sns.swarmplot(ax=ax, x="Condition", y="Dwell_Time", data=data,
+            color="0.25", zorder=3, dodge=True, size=2)
+        ax.set_title("fake data!")
+
+    with pc.newFig("FD_glo_well_type") as ax:
+        sns.violinplot(ax=ax, x="Well_Type", y="Dwell_Time", data=data,
+            palette=pal2, linewidth=0.2, zorder=1)
+        sns.swarmplot(ax=ax, x="Well_Type", y="Dwell_Time", data=data,
+            color="0.25", zorder=3, dodge=True, size=2)
+        ax.set_title("fake data!")
+
 
 
 if __name__ == "__main__":
@@ -158,21 +176,17 @@ if __name__ == "__main__":
         d = generateRatData(randomGen)
         data[rat] = d
 
-    print(dataToDf(data["ratB"]))
-    exit()
-
     collapsedData, combinedData = collapseAndCombineData(data,  ["Curvature", "Dwell_Time"],["Condition", "Well_Type"], "Rat")
-    # print(collapsedData)
-    print(dataToDf(combinedData))
-    exit()
-    df = dataToDf(combinedData)
+    shufflePlot(pc, collapsedData, figName="collapsed")
+    shufflePlot(pc, combinedData, figName="combined")
 
-    for i in range(5):
-        shuffleMyData(df, ["Condition"], ["Rat", "Well_Type"], randomGen)
+    # df = dataToDf(combinedData)
+    # for i in range(5):
+    #     shuffleMyData(df, ["Condition"], ["Rat", "Well_Type"], randomGen)
+    #     for rat in rats:
+    #         d = dfToData(df.loc[df["Rat"] == rat])
+    #         pc.setOutputSubDir(rat)
+    #         shufflePlot(pc, d, shufi=i)
+    #     pc.setOutputSubDir("")
 
-        for rat in rats:
-            d = dfToData(df.loc[df["Rat"] == rat])
-            pc.setOutputSubDir(rat)
-            shufflePlot(pc, d, i)
-        pc.setOutputSubDir("")
-
+    twoWayPlots(pc, data["ratB"])

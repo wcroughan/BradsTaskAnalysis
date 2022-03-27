@@ -561,7 +561,7 @@ class PlotCtx:
             assert s.shuffType != ShuffSpec.ShuffType.GLOBAL or si == len(spec)-1
 
         # print(df)
-        # print(spec)
+        # print("\t", spec)
 
         s = spec[0]
         if s.shuffType == ShuffSpec.ShuffType.GLOBAL:
@@ -673,7 +673,10 @@ class PlotCtx:
         print(df)
         valSet = {}
         for col in columnsToShuffle:
-            valSet[col] = set(df[col])
+            vs = set(df[col])
+            if len(vs) <= 1:
+                raise Exception("Only one value {} for category {}".format(vs, col))
+            valSet[col] = vs
         print("created valset:", valSet)
 
         with open(self.txtOutputFName, "a") as f:
