@@ -8,13 +8,13 @@ import matplotlib.pyplot as plt
 from itertools import groupby
 from datetime import date
 
+
 def findDataDir(possibleDataDirs=["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]):
     for dd in possibleDataDirs:
         if os.path.exists(dd):
             return dd
 
     return None
-
 
 
 def readWellCoordsFile(well_coords_file):
@@ -486,7 +486,6 @@ def getInfoForAnimal(animalName):
         # Too few interruptions to really call this an interruption session probably:
         ret.excluded_dates += ["20200607"]
 
-
         ret.DEFAULT_RIP_DET_TET = 37
         ret.DEFAULT_RIP_BAS_TET = None
 
@@ -608,10 +607,16 @@ def getInfoForAnimal(animalName):
         ret.DEFAULT_RIP_BAS_TET = 2
         # video skips
         ret.excluded_sessions += ["20220307_2"]
+        # forgot to turn stim on until after first home well
+        ret.excluded_sessions += ["20220311_1"]
 
         # THE FOLLOWING SHOULD BE SALVAGABLE JUST NEED TO CLEAN IT
         # timing off
         ret.excluded_sessions += ["20220306_2"]
+        # tracking didn't work
+        ret.excluded_sessions += ["20220310_1"]
+        ret.excluded_sessions += ["20220310_2"]
+        ret.excluded_sessions += ["20220311_2"]
 
         ret.rerun_usb_videos = []
         ret.rerun_trodes_videos = []
@@ -710,6 +715,7 @@ def numWellsVisited(nearestWells, countReturns=False, wellSubset=None):
         return len([k for k, _ in g if k in wellSubset])
     else:
         return len(set([k for k, _ in g if k in wellSubset]))
+
 
 def weekIdxForDateStr(datestr, d0=date(2016, 1, 4)):
     d = date(int(datestr[0:4]), int(datestr[4:6]), int(datestr[6:8]))

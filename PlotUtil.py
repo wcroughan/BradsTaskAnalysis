@@ -110,11 +110,11 @@ class ShuffleResult:
         sdmin = np.min(self.shuffleDiffs, axis=0)
         sdmax = np.max(self.shuffleDiffs, axis=0)
         pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
-                                 axis=0) / self.shuffleDiffs.shape[0]
+                                  axis=0) / self.shuffleDiffs.shape[0]
         pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
-                                 axis=0) / self.shuffleDiffs.shape[0]
+                                  axis=0) / self.shuffleDiffs.shape[0]
         ret = ["{}:".format(self.specs)] + [linePfx + "{}: {} ({}, {}) p1 = {}\tp2 = {}".format(self.dataNames[i], float(self.diff[i]),
-                                                                                      sdmin[i], sdmax[i], pvals1[i], pvals2[i]) for i in range(len(self.diff))]
+                                                                                                sdmin[i], sdmax[i], pvals1[i], pvals2[i]) for i in range(len(self.diff))]
         return "\n".join(ret)
 
     def __str__(self):
@@ -131,7 +131,7 @@ class ShuffleResult:
 
 
 class PlotCtx:
-    def __init__(self, outputDir="./", priorityLevel=None, randomSeed=None):
+    def __init__(self, outputDir="./", priorityLevel=None, randomSeed=None, verbosity=3):
         self.figSizeX, self.figSizeY = 5, 5
         self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
         self.fig.clf()
@@ -140,6 +140,7 @@ class PlotCtx:
         self.savePlot = True
         # Show when exiting context?
         self.showPlot = False
+        self.verbosity = verbosity
 
         self.timeStr = datetime.now().strftime("%Y%m%d_%H%M%S_info.txt")
         self.outputSubDir = ""
@@ -271,6 +272,8 @@ class PlotCtx:
             fname = self.figName
         plt.savefig(fname, bbox_inches="tight", dpi=200)
         self.writeToInfoFile("wrote file {}".format(fname))
+        if self.verbosity >= 3:
+            print("wrote file {}".format(fname))
 
     def clearFig(self):
         self.fig.clf()

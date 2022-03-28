@@ -5,20 +5,21 @@ from BTData import BTData
 from BTSession import BTSession
 import os
 import sys
-from UtilFunctions import getRipplePower, numWellsVisited, onWall, weekIdxForDateStr, getInfoForAnimal
+from UtilFunctions import getRipplePower, numWellsVisited, onWall, weekIdxForDateStr, getInfoForAnimal, detectRipples
 from consts import TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, allWellNames, offWallWellNames
 import math
 from matplotlib import cm
+import pandas as pd
 
 MAKE_RAW_LFP_FIGS = False
-RUN_RIPPLE_DETECTION_COMPARISON = False
-RUN_RIPPLE_REFRAC_PERIOD_CHECK = False
-RUN_RIPPLE_BASELINE_TET_ANALYSIS = False
-MAKE_PROBE_EXPLORATION_OVER_TIME_FIGS = False
-MAKE_PROBE_TRACES_FIGS = False
+RUN_RIPPLE_DETECTION_COMPARISON = True
+RUN_RIPPLE_REFRAC_PERIOD_CHECK = True
+RUN_RIPPLE_BASELINE_TET_ANALYSIS = True
+MAKE_PROBE_EXPLORATION_OVER_TIME_FIGS = True
+MAKE_PROBE_TRACES_FIGS = True
 MAKE_PROBE_OFFWALL_TIME_FIGS = True
-MAKE_NORMAL_PERSEV_MEASURES_FIGS = False
-MAKE_PERSEV_WITH_EXPLORATION_CUTOFF_FIGS = False
+MAKE_NORMAL_PERSEV_MEASURES_FIGS = True
+MAKE_PERSEV_WITH_EXPLORATION_CUTOFF_FIGS = True
 
 possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
 dataDir = None
@@ -44,6 +45,7 @@ allSessionsByRat = {}
 allSessionsWithProbeByRat = {}
 
 for an in animalNames:
+    print("loading {}".format(an))
     animalInfo = getInfoForAnimal(an)
     # print(animalInfo)
     dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
@@ -172,7 +174,7 @@ for ratName in animalNames:
                 ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
                 c = "orange" if sesh.isRippleInterruption else "cyan"
                 setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
-                ax.set_title(str(si))
+                ax.set_title(sesh.name)
             for si in range(numSessionsWithProbe, numCols*numCols):
                 ax = axs[si // numCols, si % numCols]
                 ax.cla()
@@ -475,16 +477,63 @@ for ratName in animalNames:
             baselfpV = lfpData[1]['voltage']
             baselfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
 
-            # TODO in when getting power: grab probe stats (need to remake foor baseline tetrode), use those here
-            # rawRipplePower, zRipplePower, _, _ = getRipplePower(
-            #     btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=session.prebtMeanRipplePower, stdPower=session.prebtStdRipplePower, showPlot=showPlot)
-            # session.btRipStartIdxsPreStats, session.btRipLensPreStats, session.btRipPeakIdxsPreStats, session.btRipPeakAmpsPreStats, session.btRipCrossThreshIdxsPreStats = \
-            #     detectRipples(ripple_power)
+            btLFPData = lfpV[sesh.bt_lfp_start_idx:sesh.bt_lfp_end_idx]
+            _, btRipPower, _, _ = getRipplePower(
+                btLFPData, lfp_deflections=sesh.bt_lfp_artifact_idxs, meanPower=sesh.probeMeanRipplePower, stdPower=sesh.probeStdRipplePower, showPlot=False)
 
-            # Run detection with and without subtracting baseline power
-            # Make simple 2x2 confusion matrix
-            #   col 1: detected without baseline, how many also detected vs not with baseline
-            #   col 2: detected with baseline, how many also detected vs not
+            baselineProbeLFPData = baselfpV[sesh.probeLfpStart_idx:sesh.probeLfpEnd_idx]
+            _, _, baselineProbeMeanRipplePower, baselineProbeStdRipplePower = getRipplePower(
+                baselineProbeLFPData, omit_artifacts=False)
+            btBaselineLFPData = baselfpV[sesh.bt_lfp_start_idx:sesh.bt_lfp_end_idx]
+            _, btBaselineRipplePower, _, _ = getRipplePower(
+                btBaselineLFPData, lfp_deflections=sesh.bt_lfp_artifact_idxs, meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower, showPlot=False)
+
+            withBaseRipStartIdx, withBaseRipLens, withBaseRipPeakIdx, withBaseRipPeakAmps, withBaseRipCrossThreshIdxs = detectRipples(
+                btRipPower - btBaselineRipplePower)
+
+            cfn = np.zeros((2, 2))
+            # How many without base were detected with base?
+            nextWithBase = np.searchsorted(withBaseRipStartIdx, sesh.btRipStartIdxsProbeStats)
+            prevWithBase = nextWithBase - 1
+            prevWithBase[prevWithBase == -1] = 0
+            nextWithBase[nextWithBase == len(withBaseRipStartIdx)] = len(withBaseRipStartIdx) - 1
+            for ri, rs in enumerate(sesh.btRipStartIdxsProbeStats):
+                wbStartNext = withBaseRipStartIdx[nextWithBase[ri]]
+                wbLenNext = withBaseRipLens[nextWithBase[ri]]
+                wbStartPrev = withBaseRipStartIdx[prevWithBase[ri]]
+                wbLenPrev = withBaseRipLens[prevWithBase[ri]]
+                l = sesh.btRipLensProbeStats[ri]
+                if (rs + l > wbStartPrev and wbStartPrev + wbLenPrev > rs) or \
+                        (rs + l > wbStartNext and wbStartNext + wbLenNext > rs):
+                    # overlapping
+                    cfn[0, 0] += 1
+                else:
+                    cfn[0, 1] += 1
+
+            # How many with base were detected without base?
+            nextWithoutBase = np.searchsorted(sesh.btRipStartIdxsProbeStats, withBaseRipStartIdx)
+            prevWithoutBase = nextWithoutBase - 1
+            prevWithoutBase[prevWithoutBase == -1] = 0
+            nextWithoutBase[nextWithoutBase == len(sesh.btRipStartIdxsProbeStats)] = len(
+                sesh.btRipStartIdxsProbeStats) - 1
+            for ri, rs in enumerate(withBaseRipStartIdx):
+                wbStartNext = sesh.btRipStartIdxsProbeStats[nextWithoutBase[ri]]
+                wbLenNext = sesh.btRipStartIdxsProbeStats[nextWithoutBase[ri]]
+                wbStartPrev = sesh.btRipStartIdxsProbeStats[prevWithoutBase[ri]]
+                wbLenPrev = sesh.btRipStartIdxsProbeStats[prevWithoutBase[ri]]
+                l = sesh.btRipLensProbeStats[ri]
+                if (rs + l > wbStartPrev and wbStartPrev + wbLenPrev > rs) or \
+                        (rs + l > wbStartNext and wbStartNext + wbLenNext > rs):
+                    # overlapping
+                    cfn[1, 0] += 1
+                else:
+                    cfn[1, 1] += 1
+
+            df = pd.DataFrame(data={"detected by other": cfn[:, 0], "not detected": cfn[:, 1]}, index=[
+                              "Without baseline", "With Baseline"])
+            print(df)
+            with pp.newFig("lfp_basenobasecfn") as ax:
+                ax.imshow(cfn)
 
         if MAKE_RAW_LFP_FIGS:
             lfpFName = sesh.bt_lfp_fnames[-1]

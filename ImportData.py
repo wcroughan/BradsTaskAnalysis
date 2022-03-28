@@ -743,6 +743,9 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         # bt_lfp_artifact_idxs = lfp_artifact_idxs - bt_lfp_start_idx
         bt_lfp_artifact_idxs = interruption_idxs - bt_lfp_start_idx
         bt_lfp_artifact_idxs = bt_lfp_artifact_idxs[bt_lfp_artifact_idxs > 0]
+        session.bt_lfp_artifact_idxs = bt_lfp_artifact_idxs 
+        session.bt_lfp_start_idx = bt_lfp_start_idx 
+        session.bt_lfp_end_idx = bt_lfp_end_idx 
 
         pre_bt_interruption_idxs = interruption_idxs[interruption_idxs < bt_lfp_start_idx]
         pre_bt_interruption_idxs_first_half = interruption_idxs[interruption_idxs < int(
@@ -798,6 +801,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             session.probeRippleIdxOffset = probeLfpStart_idx
             session.probeLfpStart_ts = probeLfpStart_ts
             session.probeLfpEnd_ts = probeLfpEnd_ts
+            session.probeLfpStart_idx = probeLfpStart_idx 
+            session.probeLfpEnd_idx = probeLfpEnd_idx 
 
             _, ripple_power, session.probeMeanRipplePower, session.probeStdRipplePower = getRipplePower(
                 probeLFPData, omit_artifacts=False)

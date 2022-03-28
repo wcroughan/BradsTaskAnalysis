@@ -3,6 +3,8 @@ import sys
 from BTData import BTData
 from BTSession import BTSession
 
+from UtilFunctions import getInfoForAnimal
+
 possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
 dataDir = None
 for dd in possibleDataDirs:
@@ -20,18 +22,12 @@ globalOutputDir = os.path.join(dataDir, "figures", "20220315_labmeeting")
 if len(sys.argv) >= 2:
     animalNames = sys.argv[1:]
 else:
-    animalNames = ['B13', 'B14']
+    animalNames = ['B13', 'B14', 'Martin']
 print("Plotting data for animals ", animalNames)
 
 for an in animalNames:
-    if an == "B13":
-        dataFilename = os.path.join(dataDir, "B13/processed_data/B13_bradtask.dat")
-    elif an == "B14":
-        dataFilename = os.path.join(dataDir, "B14/processed_data/B14_bradtask.dat")
-    elif an == "Martin":
-        dataFilename = os.path.join(dataDir, "Martin/processed_data/martin_bradtask.dat")
-    else:
-        raise Exception("Unknown rat " + an)
+    animalInfo = getInfoForAnimal(an)
+    dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
     ratData = BTData()
     ratData.loadFromFile(dataFilename)
     swp = ratData.getSessions()
@@ -40,12 +36,12 @@ for an in animalNames:
     print(an)
     lastDate = None
     for s in swp:
-        d = s.name.split("_")[0]
-        if d != lastDate:
-            print()
-        lastDate = d
-        print("{}\t{}\t{}".format(s.name, "SWR" if s.isRippleInterruption else "Ctrl",
-              s.infoFileName.split("_")[-1]))
+        # d = s.name.split("_")[0]
+        # if d != lastDate:
+        #     print()
+        # lastDate = d
+        print("{}\t{}\t{}\t{}\t{}".format(s.name, "SWR" if s.isRippleInterruption else "Ctrl",
+              s.infoFileName.split("_")[-1], s.conditionGroup, s.probe_performed))
 
 
 # data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
