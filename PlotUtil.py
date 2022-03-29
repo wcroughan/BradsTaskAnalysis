@@ -141,6 +141,7 @@ class PlotCtx:
         # Show when exiting context?
         self.showPlot = False
         self.verbosity = verbosity
+        self.showedLastFig = False
 
         self.timeStr = datetime.now().strftime("%Y%m%d_%H%M%S_info.txt")
         self.outputSubDir = ""
@@ -167,7 +168,7 @@ class PlotCtx:
         else:
             return self.axs
 
-    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None, withStats=False):
+    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None, withStats=False, showPlot=None, savePlot=None):
         self.clearFig()
         self.figName = figName
         self.priority = priority
@@ -175,6 +176,9 @@ class PlotCtx:
         self.yvals = {}
         self.categories = {}
         self.infoVals = {}
+
+        self.temporaryShowPlot = showPlot
+        self.temporarySavePlot = savePlot
 
         if subPlots is not None:
             assert len(subPlots) == 2
@@ -189,7 +193,12 @@ class PlotCtx:
 
         return self
 
-    def continueFig(self, figName, priority=None):
+    def continueFig(self, figName, priority=None, showPlot=None, savePlot=None):
+        if self.showedLastFig:
+            raise Exception("currently unable to show a figure and then continue it")
+
+        self.temporaryShowPlot = showPlot
+        self.temporarySavePlot = savePlot
         self.figName = figName
         self.priority = priority
         self.yvals = {}
@@ -256,11 +265,15 @@ class PlotCtx:
                 self.savedInfoVals[statsName] = self.infoVals
 
         if self.priority is None or self.priorityLevel is None or self.priority <= self.priorityLevel:
-            if self.showPlot:
-                plt.show()
-
-            if self.savePlot:
+            if (self.temporarySavePlot is not None and self.temporarySavePlot) or (self.temporarySavePlot is None and self.savePlot):
                 self.saveFig()
+
+            if (self.temporaryShowPlot is not None and self.temporaryShowPlot) or (self.temporaryShowPlot is None and self.showPlot):
+                self.showedLastFig = True
+                plt.show()
+                self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
+            else:
+                self.showedLastFig = False
 
     def setFigSize(self, width, height):
         pass

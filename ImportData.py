@@ -347,7 +347,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     session.weight = float(field_val)
                 elif field_name.lower() == "conditiongroup":
                     session.conditionGroup = int(field_val)
-                    foundConditionGroups  = True
+                    foundConditionGroups = True
                 else:
                     session.notes.append(line)
 
@@ -521,13 +521,12 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         xs, ys, ts = processPosData(position_data, xLim=(
             animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
 
-
         if animal_name != "Martin":
             if "lightonframe" in position_data_metadata:
                 session.trodesLightOnFrame = int(position_data_metadata['lightonframe'])
                 session.trodesLightOffFrame = int(position_data_metadata['lightoffframe'])
                 print("metadata says trodes light frames {}, {} (/{})".format(session.trodesLightOffFrame,
-                    session.trodesLightOnFrame, len(ts)))
+                                                                              session.trodesLightOnFrame, len(ts)))
                 session.trodesLightOnTime = session.frameTimes[session.trodesLightOnFrame]
                 session.trodesLightOffTime = session.frameTimes[session.trodesLightOffFrame]
                 print("metadata file says trodes light timestamps {}, {} (/{})".format(
@@ -718,9 +717,11 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         if len(session.bt_interruption_pos_idxs) < 50:
             if session.isRippleInterruption and len(session.bt_interruption_pos_idxs) > 0:
                 # print( "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER THAN 50 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
-                raise Exception("SAW FEWER THAN 50 INTERRUPTIONS ON A CONTROL SESSION: {} on session {}".format(len(session.bt_interruption_pos_idxs), session.name))
+                raise Exception("SAW FEWER THAN 50 INTERRUPTIONS ON A CONTROL SESSION: {} on session {}".format(
+                    len(session.bt_interruption_pos_idxs), session.name))
             elif len(session.bt_interruption_pos_idxs) == 0:
-                print( "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING 0 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
+                print(
+                    "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING 0 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
             else:
                 print(
                     "WARNING: very few interruptions. This was a delay control but is basically a no-stim control")
@@ -743,9 +744,9 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         # bt_lfp_artifact_idxs = lfp_artifact_idxs - bt_lfp_start_idx
         bt_lfp_artifact_idxs = interruption_idxs - bt_lfp_start_idx
         bt_lfp_artifact_idxs = bt_lfp_artifact_idxs[bt_lfp_artifact_idxs > 0]
-        session.bt_lfp_artifact_idxs = bt_lfp_artifact_idxs 
-        session.bt_lfp_start_idx = bt_lfp_start_idx 
-        session.bt_lfp_end_idx = bt_lfp_end_idx 
+        session.bt_lfp_artifact_idxs = bt_lfp_artifact_idxs
+        session.bt_lfp_start_idx = bt_lfp_start_idx
+        session.bt_lfp_end_idx = bt_lfp_end_idx
 
         pre_bt_interruption_idxs = interruption_idxs[interruption_idxs < bt_lfp_start_idx]
         pre_bt_interruption_idxs_first_half = interruption_idxs[interruption_idxs < int(
@@ -801,8 +802,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             session.probeRippleIdxOffset = probeLfpStart_idx
             session.probeLfpStart_ts = probeLfpStart_ts
             session.probeLfpEnd_ts = probeLfpEnd_ts
-            session.probeLfpStart_idx = probeLfpStart_idx 
-            session.probeLfpEnd_idx = probeLfpEnd_idx 
+            session.probeLfpStart_idx = probeLfpStart_idx
+            session.probeLfpEnd_idx = probeLfpEnd_idx
 
             _, ripple_power, session.probeMeanRipplePower, session.probeStdRipplePower = getRipplePower(
                 probeLFPData, omit_artifacts=False)
@@ -826,6 +827,39 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 detectRipples(btRipplePowerProbeStats)
             session.btRipStartTimestampsProbeStats = lfp_timestamps[
                 session.btRipStartIdxsProbeStats + bt_lfp_start_idx]
+
+            if session.bt_lfp_baseline_fname is not None:
+                # With baseline tetrode, calculated the way activelink does it
+                lfpData = MountainViewIO.loadLFP(data_file=session.bt_lfp_baseline_fname)
+                baselfpV = lfpData[1]['voltage']
+                baselfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
+
+                btRipPower, _, _, _ = getRipplePower(
+                    btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=session.probeMeanRipplePower, stdPower=session.probeStdRipplePower, showPlot=showPlot)
+                probeRipPower, _, _, _ = getRipplePower(probeLFPData, omit_artifacts=False)
+
+                baselineProbeLFPData = baselfpV[probeLfpStart_idx:probeLfpEnd_idx]
+                probeBaselinePower, _, baselineProbeMeanRipplePower, baselineProbeStdRipplePower = getRipplePower(
+                    baselineProbeLFPData, omit_artifacts=False)
+                btBaselineLFPData = baselfpV[bt_lfp_start_idx:bt_lfp_end_idx]
+                btBaselineRipplePower, _, _, _ = getRipplePower(
+                    btBaselineLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower, showPlot=showPlot)
+
+                probeRawPowerDiff = probeRipPower - probeBaselinePower
+                zmean = np.nanmean(probeRawPowerDiff)
+                zstd = np.nanstd(probeRawPowerDiff)
+
+                rawPowerDiff = btRipPower - btBaselineRipplePower
+                zPowerDiff = (rawPowerDiff - zmean) / zstd
+
+                session.btWithBaseRipStartIdx, session.btWithBaseRipLens, session.btWithBaseRipPeakIdx, session.btWithBaseRipPeakAmps, session.btWithBaseRipCrossThreshIdxs = detectRipples(
+                    zPowerDiff)
+                if len(session.btWithBaseRipStartIdx) > 0:
+                    session.btWithBaseRipStartTimestamps = lfp_timestamps[
+                        session.btWithBaseRipStartIdx + bt_lfp_start_idx]
+                else:
+                    session.btWithBaseRipStartTimestamps = np.array([])
+
     # ripple_power = getRipplePower(lfp_data, omit_artifacts=True,
     #                                 causal_smoothing=False, lfp_deflections=lfp_artifact_idxs)
 
