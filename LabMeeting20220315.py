@@ -12,6 +12,34 @@ from matplotlib import cm
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# NOTES AFTER MEETING:
+# STATS:
+# Can change "global" to "main" to be in line with usual stats nomenclature
+#
+# BEHAVIOR:
+# Look at interaction effect instead of just home
+# Even better, for each session define a variable to be the different b/w home measure and all the away measures for that session
+#
+# Some data points can be gathered far from home: orientation toward home, nearness to home along wall, direction vector crossed with dir to home
+#
+# Should look at gravity of home well (how often when passing by is it visited)
+#
+# LFP:
+# Size of ripples all small that are making it through detection in SWR condition?
+#
+# DBL check LFP output from exportLFP is referenced or not? Also is the data activelink gets referenced or not?
+#
+# Baseline is one way to weed out noise, but most offline detection uses other ways like min/max duration. Am I looking at those? If not, do.
+#
+# Ripple power stim artifact might carry over past 100ms refrac period?
+#
+# Just plot LFP and power with different criteria and check it out by eye. See where the differences are
+#
+# Run same stats just on the data that was presented during thesis committee
+#
+# GENERAL:
+# Treat this data set as a data-mining expedition since have lots of rats coming. Want to establish hypotheses here, look at all the variations, then test them rigorously on future rats
+
 
 def makeFigures():
     MAKE_RAW_LFP_FIGS = False
@@ -102,7 +130,7 @@ def makeFigures():
                 t0 = np.array(np.hstack(([sesh.bt_pos_ts[0]], sesh.away_well_leave_times)))
                 if not sesh.ended_on_home:
                     t0 = t0[0:-1]
-                times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
+                times = (t1 - t0) / TRODES_SAMPLING_RATE
                 homeFindTimes[si, 0:sesh.num_home_found] = times
 
             awayFindTimes = np.empty((numSessions, 10))
@@ -112,7 +140,7 @@ def makeFigures():
                 t0 = np.array(sesh.home_well_leave_times)
                 if sesh.ended_on_home:
                     t0 = t0[0:-1]
-                times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
+                times = (t1 - t0) / TRODES_SAMPLING_RATE
                 awayFindTimes[si, 0:sesh.num_away_found] = times
 
             swrIdx = np.array([sesh.isRippleInterruption for sesh in sessions])
