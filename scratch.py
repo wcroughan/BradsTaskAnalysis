@@ -4,44 +4,53 @@ from BTData import BTData
 from BTSession import BTSession
 
 from UtilFunctions import getInfoForAnimal
-
-possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
-dataDir = None
-for dd in possibleDataDirs:
-    if os.path.exists(dd):
-        dataDir = dd
-        break
-
-if dataDir == None:
-    print("Couldnt' find data directory among any of these: {}".format(possibleDataDirs))
-    exit()
-
-globalOutputDir = os.path.join(dataDir, "figures", "20220315_labmeeting")
+from PlotUtil import PlotCtx
 
 
-if len(sys.argv) >= 2:
-    animalNames = sys.argv[1:]
-else:
-    animalNames = ['B13', 'B14', 'Martin']
-print("Plotting data for animals ", animalNames)
+pp = PlotCtx(priorityLevel=4)
 
-for an in animalNames:
-    animalInfo = getInfoForAnimal(an)
-    dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
-    ratData = BTData()
-    ratData.loadFromFile(dataFilename)
-    swp = ratData.getSessions()
+with pp.newFig("figName", priority=10, savePlot=False, showPlot=False) as ax:
+    print("hello")
 
-    print("==========================")
-    print(an)
-    lastDate = None
-    for s in swp:
-        # d = s.name.split("_")[0]
-        # if d != lastDate:
-        #     print()
-        # lastDate = d
-        print("{}\t{}\t{}\t{}\t{}".format(s.name, "SWR" if s.isRippleInterruption else "Ctrl",
-              s.infoFileName.split("_")[-1], s.conditionGroup, s.probe_performed))
+
+
+# possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
+# dataDir = None
+# for dd in possibleDataDirs:
+#     if os.path.exists(dd):
+#         dataDir = dd
+#         break
+
+# if dataDir == None:
+#     print("Couldnt' find data directory among any of these: {}".format(possibleDataDirs))
+#     exit()
+
+# globalOutputDir = os.path.join(dataDir, "figures", "20220315_labmeeting")
+
+
+# if len(sys.argv) >= 2:
+#     animalNames = sys.argv[1:]
+# else:
+#     animalNames = ['B13', 'B14', 'Martin']
+# print("Plotting data for animals ", animalNames)
+
+# for an in animalNames:
+#     animalInfo = getInfoForAnimal(an)
+#     dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
+#     ratData = BTData()
+#     ratData.loadFromFile(dataFilename)
+#     swp = ratData.getSessions()
+
+#     print("==========================")
+#     print(an)
+#     lastDate = None
+#     for s in swp:
+#         # d = s.name.split("_")[0]
+#         # if d != lastDate:
+#         #     print()
+#         # lastDate = d
+#         print("{}\t{}\t{}\t{}\t{}".format(s.name, "SWR" if s.isRippleInterruption else "Ctrl",
+#               s.infoFileName.split("_")[-1], s.conditionGroup, s.probe_performed))
 
 
 # data_filename = "/media/WDC7/B14/processed_data/B14_bradtask.dat"
