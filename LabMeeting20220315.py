@@ -28,6 +28,7 @@ import matplotlib.pyplot as plt
 # Size of ripples all small that are making it through detection in SWR condition?
 #
 # DBL check LFP output from exportLFP is referenced or not? Also is the data activelink gets referenced or not?
+#   -- activelink gets referenced data
 #
 # Baseline is one way to weed out noise, but most offline detection uses other ways like min/max duration. Am I looking at those? If not, do.
 #

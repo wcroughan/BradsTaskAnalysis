@@ -7,6 +7,8 @@ from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 from itertools import groupby
 from datetime import date
+import sys
+import os
 
 
 def findDataDir(possibleDataDirs=["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]):
@@ -15,6 +17,12 @@ def findDataDir(possibleDataDirs=["/media/WDC6/", "/media/fosterlab/WDC6/", "/ho
             return dd
 
     return None
+
+def parseCmdLineAnimalNames(default=None):
+    if len(sys.argv) >= 2:
+        return sys.argv[1:]
+    else:
+        return default
 
 
 def readWellCoordsFile(well_coords_file):
