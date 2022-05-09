@@ -27,6 +27,7 @@ import time
 def makeFigures():
     MAKE_EARLY_LATE_SESSION_BASIC_MEASURES = True
     MAKE_BASIC_MEASURE_PLOTS = True
+    MAKE_WITHIN_SESSION_MEASURE_PLOTS = True
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "20220524_labmeeting")
@@ -68,6 +69,14 @@ def makeFigures():
             seshDateCat = []
             numEntries = []
 
+            avgDwellDifference = []
+            avgDwellDifference90 = []
+            curvatureDifference = []
+            curvatureDifference90 = []
+            numEntriesDifference = []
+            seshCatBySession = []
+            seshDateCatBySession = []
+
             for si, sesh in enumerate(sessionsWithProbe):
                 towt = np.sum([sesh.total_dwell_time(True, w)
                                for w in offWallWellNames])
@@ -84,6 +93,9 @@ def makeFigures():
                 # seshConditionGroup.append(sesh.conditionGroup)
                 seshDateCat.append("early" if int(sesh.date_str[0:4]) < 2022 else "late")
 
+                seshCatBySession.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                seshDateCatBySession.append("early" if int(sesh.date_str[0:4]) < 2022 else "late")
+
                 for aw in sesh.visited_away_wells:
                     if onWall(aw):
                         continue
@@ -99,6 +111,32 @@ def makeFigures():
                     # seshConditionGroup.append(sesh.conditionGroup)
                     seshDateCat.append("early" if int(sesh.date_str[0:4]) < 2022 else "late")
 
+                if any([not onWall(aw) for aw in sesh.visited_away_wells]):
+                    homeAvgDwell = sesh.avg_dwell_time(True, sesh.home_well)
+                    homeAvgDwell90 = sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 90])
+                    homeCurvature = sesh.avg_curvature_at_well(True, sesh.home_well)
+                    homeCurvature90 = sesh.avg_curvature_at_well(True, sesh.home_well, timeInterval=[0, 90])
+                    homeNumEntries = sesh.num_well_entries(True, sesh.home_well)
+
+                    awayAvgDwell = np.nanmean([sesh.avg_dwell_time(True, aw) for aw in sesh.visited_away_wells if not onWall(aw)])
+                    awayAvgDwell90 = np.nanmean([sesh.avg_dwell_time(True, aw, timeInterval=[0, 90]) for aw in sesh.visited_away_wells if not onWall(aw)])
+                    awayCurvature = np.nanmean([sesh.avg_curvature_at_well(True, aw) for aw in sesh.visited_away_wells if not onWall(aw)])
+                    awayCurvature90 = np.nanmean([sesh.avg_curvature_at_well(True, aw, timeInterval=[0, 90]) for aw in sesh.visited_away_wells if not onWall(aw)])
+                    awayNumEntries = np.nanmean([sesh.num_well_entries(True, aw) for aw in sesh.visited_away_wells if not onWall(aw)])
+
+                    avgDwellDifference.append(homeAvgDwell - awayAvgDwell)
+                    avgDwellDifference90.append(homeAvgDwell90 - awayAvgDwell90)
+                    curvatureDifference.append(homeCurvature - awayCurvature)
+                    curvatureDifference90.append(homeCurvature90 - awayCurvature90)
+                    numEntriesDifference.append(homeNumEntries - awayNumEntries)
+                else:
+                    print("sesh {}, rat never found any off wall away wells")
+                    avgDwellDifference.append(np.nan)
+                    avgDwellDifference90.append(np.nan)
+                    curvatureDifference.append(np.nan)
+                    curvatureDifference90.append(np.nan)
+                    numEntriesDifference.append(np.nan)
+
             wellCat = np.array(wellCat)
             seshCat = np.array(seshCat)
             # seshConditionGroup = np.array(seshConditionGroup)
@@ -108,6 +146,14 @@ def makeFigures():
             curvature90 = np.array(curvature90)
             numEntries = np.array(numEntries)
             seshDateCat = np.array(seshDateCat)
+
+            avgDwellDifference = np.array(avgDwellDifference)
+            avgDwellDifference90 = np.array(avgDwellDifference90)
+            curvatureDifference = np.array(curvatureDifference)
+            curvatureDifference90 = np.array(curvatureDifference90)
+            numEntriesDifference = np.array(numEntriesDifference)
+            seshCatBySession = np.array(seshCatBySession)
+            seshDateCatBySession = np.array(seshDateCatBySession)
 
             earlyIdx = seshDateCat == "early"
             lateIdx = seshDateCat == "late"
@@ -287,6 +333,36 @@ def makeFigures():
                 # info["conditionGroup"] = seshConditionGroup[lateIdx]
                 # pp.setCustomShuffleFunction("condition", conditionShuffle)
 
+        if not MAKE_WITHIN_SESSION_MEASURE_PLOTS:
+            print("warning: skipping within session measure plots")
+        else:
+            with pp.newFig("probe_avgdwell_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=avgDwellDifference, categories=seshCatBySession, axesNames=["Condition", "Avg Dwell Difference"], violin=True, doStats=False)
+                yvals["probe_avgdwell_difference_offwall"] = avgDwellDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_avgdwell90_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=avgDwellDifference90, categories=seshCatBySession, axesNames=["Condition", "Avg Dwell Difference 90sec"], violin=True, doStats=False)
+                yvals["probe_avgdwell90_difference_offwall"] = avgDwellDifference
+                cats["condition"] = seshCatBySession
+                print(avgDwellDifference90, seshCatBySession)
+
+            with pp.newFig("probe_curvature_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=curvatureDifference, categories=seshCatBySession, axesNames=["Condition", "Curvature Difference"], violin=True, doStats=False)
+                yvals["probe_curvature_difference_offwall"] = curvatureDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_curvature90_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=curvatureDifference90, categories=seshCatBySession, axesNames=["Condition", "Curvature Difference 90sec"], violin=True, doStats=False)
+                yvals["probe_curvature90_difference_offwall"] = curvatureDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_numEntries_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=numEntriesDifference, categories=seshCatBySession, axesNames=["Condition", "Num Entries Difference"], violin=True, doStats=False)
+                yvals["probe_numEntries_difference_offwall"] = numEntriesDifference
+                cats["condition"] = seshCatBySession
+
+            
 
 
 
