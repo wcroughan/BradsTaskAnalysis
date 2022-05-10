@@ -984,3 +984,22 @@ class BTSession:
             ripPosIdxs = np.searchsorted(self.bt_pos_ts, self.btRipStartTimestampsPreStats)
             nw = np.array(self.bt_nearest_wells)
             return np.count_nonzero(wellName == nw[ripPosIdxs])
+
+    def gravityOfWell(self, inProbe, wellName, timeInterval=None, fromWells=all_well_names, emptyVal=np.nan):
+        neighborWells = np.array([-9, -8, -7, -1, 1, 7, 8, 9]) + wellName
+        neighborWells = [w for w in neighborWells if (w in fromWells)]
+        neighborExitIdxs = []
+        for nw in neighborWells:
+            neighborExitIdxs += list(self.entry_exit_times(inProbe, nw, timeInterval=timeInterval, returnIdxs=True)[1])
+
+        if len(neighborExitIdxs) == 0:
+            return emptyVal
+
+        wellEntryIdxs = self.entry_exit_times(inProbe, wellName, timeInterval=timeInterval, returnIdxs=True)[0] - 1
+
+        # print(neighborExitIdxs)
+        # print(wellEntryIdxs)
+        ret = len([nwei for nwei in neighborExitIdxs if nwei in wellEntryIdxs]) / len(neighborExitIdxs)
+        # print(ret)
+
+        return ret
