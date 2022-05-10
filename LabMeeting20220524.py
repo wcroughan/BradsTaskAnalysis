@@ -26,10 +26,14 @@ import time
 # Is exportLFP output referenced?
 
 def makeFigures():
-    MAKE_EARLY_LATE_SESSION_BASIC_MEASURES = True
-    MAKE_BASIC_MEASURE_PLOTS = True
-    MAKE_WITHIN_SESSION_MEASURE_PLOTS = True
-    MAKE_GRAVITY_PLOTS = True
+    MAKE_EARLY_LATE_SESSION_BASIC_MEASURES = False
+    MAKE_BASIC_MEASURE_PLOTS = False
+    MAKE_WITHIN_SESSION_MEASURE_PLOTS = False
+    MAKE_GRAVITY_PLOTS = False
+    MAKE_RAW_LFP_POWER_PLOTS = False
+    MAKE_PROBE_TRACES_FIGS = False
+    MAKE_TASK_BEHAVIOR_PLOTS = False
+    MAKE_PROBE_BEHAVIOR_PLOTS = True
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "20220524_labmeeting")
@@ -52,13 +56,25 @@ def makeFigures():
         sessionsWithProbe = [sesh for sesh in sessions if sesh.probe_performed]
         sessionsEarly = [sesh for sesh in sessions if int(sesh.date_str[0:4]) < 2022]
         sessionsLate = [sesh for sesh in sessions if int(sesh.date_str[0:4]) >= 2022]
+        ctrlSessionsWithProbe = [sesh for sesh in sessions if (
+            not sesh.isRippleInterruption) and sesh.probe_performed]
+        swrSessionsWithProbe = [
+            sesh for sesh in sessions if sesh.isRippleInterruption and sesh.probe_performed]
+        nCtrlWithProbe = len(ctrlSessionsWithProbe)
+        nSWRWithProbe = len(swrSessionsWithProbe)
+        numSessionsWithProbe = len(sessionsWithProbe)
+        sessionWithProbeIsInterruption = np.zeros((numSessionsWithProbe,)).astype(bool)
+        for i in range(numSessionsWithProbe):
+            if sessionsWithProbe[i].isRippleInterruption:
+                sessionWithProbeIsInterruption[i] = True
+
 
         pp.setOutputSubDir(ratName)
         if len(animalNames) > 1:
             pp.setStatCategory("rat", ratName)
     
         # Here be plots
-        if not (MAKE_EARLY_LATE_SESSION_BASIC_MEASURES or MAKE_BASIC_MEASURE_PLOTS or MAKE_WITHIN_SESSION_MEASURE_PLOTS or MAKE_GRAVITY_PLOTS):
+        if False and not (MAKE_EARLY_LATE_SESSION_BASIC_MEASURES or MAKE_BASIC_MEASURE_PLOTS or MAKE_WITHIN_SESSION_MEASURE_PLOTS or MAKE_GRAVITY_PLOTS):
             pass
         else:
             wellCat = []
@@ -464,6 +480,223 @@ def makeFigures():
                 boxPlot(ax, yvals=gravityFromOffWallDifference, categories=seshCatBySession, axesNames=["Condition", "gravityFromOffWall Difference"], violin=True, doStats=False)
                 yvals["probe_gravityFromOffWall_difference_offwall"] = gravityFromOffWallDifference
                 cats["condition"] = seshCatBySession
+
+        if not MAKE_RAW_LFP_POWER_PLOTS:
+            print("warning: skipping raw LFP power plots")
+        else:
+            pass
+
+        if not MAKE_PROBE_TRACES_FIGS:
+            print("warning: skipping raw probe trace plots")
+        else:
+            numCols = math.ceil(math.sqrt(numSessionsWithProbe))
+            with pp.newFig("allProbeTraces", subPlots=(numCols, numCols), figScale=0.3, priority=10) as axs:
+                for si, sesh in enumerate(sessionsWithProbe):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                    c = "orange" if sesh.isRippleInterruption else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
+                    ax.set_title(sesh.name, fontdict={'fontsize':8})
+                    # ax.set_title(str(si))
+                for si in range(numSessionsWithProbe, numCols*numCols):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.cla()
+                    ax.tick_params(axis="both", which="both", label1On=False,
+                                   label2On=False, tick1On=False, tick2On=False)
+
+
+            numCols = math.ceil(math.sqrt(nCtrlWithProbe))
+            with pp.newFig("allProbeTraces_ctrl", subPlots=(numCols, numCols), figScale=0.3, priority=10) as axs:
+                for si, sesh in enumerate(ctrlSessionsWithProbe):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                    c = "orange" if sesh.isRippleInterruption else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
+                    # ax.set_title(str(si))
+                    ax.set_title(sesh.name, fontdict={'fontsize':8})
+                for si in range(nCtrlWithProbe, numCols*numCols):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.cla()
+                    ax.tick_params(axis="both", which="both", label1On=False,
+                                   label2On=False, tick1On=False, tick2On=False)
+
+            numCols = math.ceil(math.sqrt(nSWRWithProbe))
+            with pp.newFig("allProbeTraces_SWR", subPlots=(numCols, numCols), figScale=0.3, priority=10) as axs:
+                for si, sesh in enumerate(swrSessionsWithProbe):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                    c = "orange" if sesh.isRippleInterruption else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
+                    # ax.set_title(str(si))
+                    ax.set_title(sesh.name, fontdict={'fontsize':8})
+                for si in range(nSWRWithProbe, numCols*numCols):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.cla()
+                    ax.tick_params(axis="both", which="both", label1On=False,
+                                   label2On=False, tick1On=False, tick2On=False)
+
+        if not MAKE_TASK_BEHAVIOR_PLOTS:
+            print("warning: skipping task behavior plots")
+        else:
+            numSessions = len(sessions)
+            sessionIsInterruption = np.zeros((numSessions,)).astype(bool)
+            for i in range(numSessions):
+                if sessions[i].isRippleInterruption:
+                    sessionIsInterruption[i] = True
+
+            homeFindLatencies = np.empty((numSessions, 10))
+            homeFindLatencies[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                t1 = np.array(sesh.home_well_find_times)
+                t0 = np.array(np.hstack(([sesh.bt_pos_ts[0]], sesh.away_well_leave_times)))
+                if not sesh.ended_on_home:
+                    t0 = t0[0:-1]
+                times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
+                homeFindLatencies[si, 0:sesh.num_home_found] = times
+
+            awayFindLatencies = np.empty((numSessions, 10))
+            awayFindLatencies[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                t1 = np.array(sesh.away_well_find_times)
+                t0 = np.array(sesh.home_well_leave_times)
+                if sesh.ended_on_home:
+                    t0 = t0[0:-1]
+                times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
+                awayFindLatencies[si, 0:sesh.num_away_found] = times
+
+            
+            ymax = 100
+            swrHomeFindLatencies = homeFindLatencies[sessionIsInterruption, :]
+            ctrlHomeFindLatencies = homeFindLatencies[np.logical_not(sessionIsInterruption), :]
+            swrAwayFindLatencies = awayFindLatencies[sessionIsInterruption, :]
+            ctrlAwayFindLatencies = awayFindLatencies[np.logical_not(sessionIsInterruption), :]
+            pltx = np.arange(10)+1
+
+            with pp.newFig("task_latency_to_home_by_condition", priority=5) as ax:
+                plotIndividualAndAverage(ax, swrHomeFindLatencies, pltx,
+                                        individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, ctrlHomeFindLatencies, pltx,
+                                        individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_ylim(0, ymax)
+                ax.set_xlim(1, 10)
+                ax.set_xticks(np.arange(0, 10, 2) + 1)
+
+            with pp.newFig("task_latency_to_away_by_condition", priority=5) as ax:
+                plotIndividualAndAverage(ax, swrAwayFindLatencies, pltx,
+                                        individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, ctrlAwayFindLatencies, pltx,
+                                        individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_ylim(0, ymax)
+                ax.set_xlim(1, 10)
+                ax.set_xticks(np.arange(0, 10, 2) + 1)
+
+            numAwaysFound = np.array([sesh.num_away_found for sesh in sessions])
+            condition = np.array([("SWR" if sesh.isRippleInterruption else "Ctrl") for sesh in sessions])
+            dateCat = np.array([("early" if int(sesh.date_str[0:4]) < 2022 else "late") for sesh in sessions])
+            earlyIdxAllSessions = dateCat == "early"
+            lateIdxAllSessions = dateCat == "late"
+            with pp.newFig("task_num_aways_found", priority=5) as ax:
+                boxPlot(ax, yvals=numAwaysFound, categories=condition,
+                        axesNames=["Condition", "num aways found"], violin=True, doStats=False)
+
+            if len(sessionsEarly) > 0 and len(sessionsLate) > 0:
+                with pp.newFig("task_num_aways_found_early", priority=5) as ax:
+                    boxPlot(ax, yvals=numAwaysFound[earlyIdxAllSessions], categories=condition[earlyIdxAllSessions],
+                            axesNames=["Condition", "num aways found"], violin=True, doStats=False)
+
+                with pp.newFig("task_num_aways_found_late", priority=5) as ax:
+                    boxPlot(ax, yvals=numAwaysFound[lateIdxAllSessions], categories=condition[lateIdxAllSessions],
+                            axesNames=["Condition", "num aways found"], violin=True, doStats=False)
+
+        if not MAKE_PROBE_BEHAVIOR_PLOTS:
+            print("warning: skipping probe behavior plots")
+        else:
+            # =============
+            # average vel in probe
+            windowSize = 30
+            windowsSlide = 6
+            t0Array = np.arange(0, 60*5-windowSize+windowsSlide, windowsSlide)
+
+            avgVels = np.empty((numSessionsWithProbe, len(t0Array)))
+            avgVels[:] = np.nan
+            fracExplores = np.empty((numSessionsWithProbe, len(t0Array)))
+            fracExplores[:] = np.nan
+
+            for si, sesh in enumerate(sessionsWithProbe):
+                for ti, t0 in enumerate(t0Array):
+                    avgVels[si, ti] = sesh.mean_vel(True, timeInterval=[t0, t0+windowSize])
+                    fracExplores[si, ti] = sesh.prop_time_in_bout_state(
+                        True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[t0, t0+windowSize])
+
+            with pp.newFig("probe_avg_vel", priority=5) as ax:
+                plotIndividualAndAverage(ax, avgVels, t0Array)
+                ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+            with pp.newFig("probe_avg_vel_by_cond", priority=5) as ax:
+                plotIndividualAndAverage(ax, avgVels[sessionWithProbeIsInterruption,:], t0Array,
+                                        individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, avgVels[~ sessionWithProbeIsInterruption, :], t0Array,
+                                        individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+            with pp.newFig("probe_frac_explore", priority=5) as ax:
+                plotIndividualAndAverage(ax, fracExplores, t0Array)
+                ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+            with pp.newFig("probe_frac_explore_by_cond", priority=5) as ax:
+                plotIndividualAndAverage(ax, fracExplores[sessionWithProbeIsInterruption,:], t0Array,
+                                        individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, fracExplores[~ sessionWithProbeIsInterruption, :], t0Array,
+                                        individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+            # =============
+            # probe num wells visited by condition
+            numVisited = [numWellsVisited(s.probe_nearest_wells) for s in sessionsWithProbe]
+            numVisitedOffWall = [numWellsVisited(s.probe_nearest_wells, wellSubset=offWallWellNames) for s in sessionsWithProbe]
+            with pp.newFig("probe_num_wells_visited_by_condition", priority=5) as ax:
+                boxPlot(ax, numVisited, seshCatBySession, axesNames=["Condition", "Number of wells visited in probe"], doStats=False)
+            with pp.newFig("probe_num_wells_visited_offwall_by_condition", priority=5) as ax:
+                boxPlot(ax, numVisited, seshCatBySession, axesNames=["Condition", "Number of wells visited in probe"], doStats=False)
+
+            windowSlide = 5
+            t1Array = np.arange(windowSlide, 60*5, windowSlide)
+            numVisitedOverTime = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisitedOverTime[:] = np.nan
+            numVisitedOverTimeOffWall = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisitedOverTimeOffWall[:] = np.nan
+            for si, sesh in enumerate(sessionsWithProbe):
+                t1s = t1Array * BTSession.TRODES_SAMPLING_RATE + sesh.probe_pos_ts[0]
+                i1Array = np.searchsorted(sesh.probe_pos_ts, t1s)
+                for ii, i1 in enumerate(i1Array):
+                    numVisitedOverTime[si, ii] = numWellsVisited(
+                        sesh.probe_nearest_wells[0:i1], countReturns=False)
+                    numVisitedOverTimeOffWall[si, ii] = numWellsVisited(
+                        sesh.probe_nearest_wells[0:i1], countReturns=False,
+                        wellSubset=offWallWellNames)
+
+            with pp.newFig("probe_cumulative_num_wells_visited", priority=5) as ax:
+                plotIndividualAndAverage(ax, numVisitedOverTime, t1Array)
+                ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+            with pp.newFig("probe_cumulative_num_wells_visited_by_condition", priority=5) as ax:
+                plotIndividualAndAverage(ax, numVisitedOverTime[sessionWithProbeIsInterruption,:], t1Array,
+                                        individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, numVisitedOverTime[~ sessionWithProbeIsInterruption, :], t1Array,
+                                        individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+            with pp.newFig("probe_cumulative_num_wells_visited_offwall", priority=5) as ax:
+                plotIndividualAndAverage(ax, numVisitedOverTimeOffWall, t1Array)
+                ax.set_xticks(np.arange(0, 60*5+1, 60))
+
+            with pp.newFig("probe_cumulative_num_wells_visited_by_condition_offwall", priority=5) as ax:
+                plotIndividualAndAverage(ax, numVisitedOverTimeOffWall[sessionWithProbeIsInterruption,:], t1Array,
+                                        individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, numVisitedOverTimeOffWall[~ sessionWithProbeIsInterruption, :], t1Array,
+                                        individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_xticks(np.arange(0, 60*5+1, 60))
+
 
 
 
