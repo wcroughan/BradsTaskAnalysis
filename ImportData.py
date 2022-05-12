@@ -78,7 +78,7 @@ VEL_THRESH = 10  # cm/s
 PIXELS_PER_CM = 5.0
 
 # Typical observed amplitude of LFP deflection on stimulation
-DEFLECTION_THRESHOLD_HI = 10000.0
+DEFLECTION_THRESHOLD_HI = 6000.0
 DEFLECTION_THRESHOLD_LO = 2000.0
 MIN_ARTIFACT_DISTANCE = int(0.05 * LFP_SAMPLING_RATE)
 
@@ -699,8 +699,11 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         lfp_timestamps = all_lfp_data[0][0]['time']
 
         # Deflections represent interruptions from stimulation, artifacts include these and also weird noise
-        lfp_deflections = signal.find_peaks(-lfp_data, height=DEFLECTION_THRESHOLD_HI,
-                                            distance=MIN_ARTIFACT_DISTANCE)
+        # Although maybe not really ... 2022-5-11 replacing this
+        # lfp_deflections = signal.find_peaks(-lfp_data, height=DEFLECTION_THRESHOLD_HI,
+        # distance=MIN_ARTIFACT_DISTANCE)
+        lfp_deflections = signal.find_peaks(np.abs(
+            np.diff(lfp_data, prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_HI, distance=MIN_ARTIFACT_DISTANCE)
         interruption_idxs = lfp_deflections[0]
         session.interruption_timestamps = lfp_timestamps[interruption_idxs]
         session.interruptionIdxs = interruption_idxs
@@ -717,7 +720,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         if len(session.bt_interruption_pos_idxs) < 50:
             if session.isRippleInterruption and len(session.bt_interruption_pos_idxs) > 0:
                 # print( "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER THAN 50 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
-                raise Exception("SAW FEWER THAN 50 INTERRUPTIONS ON A CONTROL SESSION: {} on session {}".format(
+                raise Exception("SAW FEWER THAN 50 INTERRUPTIONS ON AN INTERRUPTION SESSION: {} on session {}".format(
                     len(session.bt_interruption_pos_idxs), session.name))
             elif len(session.bt_interruption_pos_idxs) == 0:
                 print(
@@ -789,7 +792,10 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 itiLFPData, lfp_deflections=itiStimIdxs)
             session.ITIRipStartIdxs, session.ITIRipLens, session.ITIRipPeakIdxs, session.ITIRipPeakAmps, session.ITIRipCrossThreshIdxs = \
                 detectRipples(ripple_power)
-            session.ITIRipStartTimestamps = lfp_timestamps[session.ITIRipStartIdxs + itiLfpStart_idx]
+            if len(session.ITIRipStartIdxs) > 0:
+                session.ITIRipStartTimestamps = lfp_timestamps[session.ITIRipStartIdxs + itiLfpStart_idx]
+            else:
+                session.ITIRipStartTimestamps = np.array([])
 
             session.ITIDuration = (itiLfpEnd_ts - itiLfpStart_ts) / \
                 BTSession.TRODES_SAMPLING_RATE
@@ -809,7 +815,10 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 probeLFPData, omit_artifacts=False)
             session.probeRipStartIdxs, session.probeRipLens, session.probeRipPeakIdxs, session.probeRipPeakAmps, session.probeRipCrossThreshIdxs = \
                 detectRipples(ripple_power)
-            session.probeRipStartTimestamps = lfp_timestamps[session.probeRipStartIdxs + probeLfpStart_idx]
+            if len(session.probeRipStartIdxs) > 0:
+                session.probeRipStartTimestamps = lfp_timestamps[session.probeRipStartIdxs + probeLfpStart_idx]
+            else:
+                session.probeRipStartTimestamps = np.array([])
 
             session.probeDuration = (probeLfpEnd_ts - probeLfpStart_ts) / \
                 BTSession.TRODES_SAMPLING_RATE
@@ -818,15 +827,21 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 itiLFPData, lfp_deflections=itiStimIdxs, meanPower=session.probeMeanRipplePower, stdPower=session.probeStdRipplePower)
             session.ITIRipStartIdxsProbeStats, session.ITIRipLensProbeStats, session.ITIRipPeakIdxsProbeStats, session.ITIRipPeakAmpsProbeStats, session.ITIRipCrossThreshIdxsProbeStats = \
                 detectRipples(itiRipplePowerProbeStats)
-            session.ITIRipStartTimestampsProbeStats = lfp_timestamps[
-                session.ITIRipStartIdxsProbeStats + itiLfpStart_idx]
+            if len(session.ITIRipStartIdxsProbeStats) > 0:
+                session.ITIRipStartTimestampsProbeStats = lfp_timestamps[
+                    session.ITIRipStartIdxsProbeStats + itiLfpStart_idx]
+            else:
+                session.ITIRipStartTimestampsProbeStats = np.array([])
 
             _, btRipplePowerProbeStats, _, _ = getRipplePower(
                 btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=session.probeMeanRipplePower, stdPower=session.probeStdRipplePower, showPlot=showPlot)
             session.btRipStartIdxsProbeStats, session.btRipLensProbeStats, session.btRipPeakIdxsProbeStats, session.btRipPeakAmpsProbeStats, session.btRipCrossThreshIdxsProbeStats = \
                 detectRipples(btRipplePowerProbeStats)
-            session.btRipStartTimestampsProbeStats = lfp_timestamps[
-                session.btRipStartIdxsProbeStats + bt_lfp_start_idx]
+            if len(session.btRipStartIdxsProbeStats) > 0:
+                session.btRipStartTimestampsProbeStats = lfp_timestamps[
+                    session.btRipStartIdxsProbeStats + bt_lfp_start_idx]
+            else:
+                session.btRipStartTimestampsProbeStats = np.array([])
 
             if session.bt_lfp_baseline_fname is not None:
                 # With baseline tetrode, calculated the way activelink does it

@@ -2,16 +2,34 @@ import os
 import sys
 from BTData import BTData
 from BTSession import BTSession
+import numpy as np
 
 from UtilFunctions import getInfoForAnimal
+from consts import TRODES_SAMPLING_RATE
 from PlotUtil import PlotCtx
+import MountainViewIO
 
 
-pp = PlotCtx(priorityLevel=4)
+# lfpFName = "/home/wcroughan/20220511_142645/20220511_142645.LFP/20220511_142645.LFP_nt6ch1.dat"
+# print("LFP data from file {}".format(lfpFName))
+# lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
+# lfpV = lfpData[1]['voltage']
+# lfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
 
-with pp.newFig("figName", priority=10, savePlot=False, showPlot=False) as ax:
-    print("hello")
+# pp = PlotCtx()
+# with pp.newFig("lfp", showPlot=True, savePlot=False) as ax:
+#     ax.plot(lfpT, lfpV)
 
+
+# lfpFName = "/home/wcroughan/20220511_142645/20220511_142645.LFP/20220511_142645.LFP_nt3ch1.dat"
+# print("LFP data from file {}".format(lfpFName))
+# lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
+# lfpV = lfpData[1]['voltage']
+# lfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
+
+# pp = PlotCtx()
+# with pp.newFig("lfp", showPlot=True, savePlot=False) as ax:
+#     ax.plot(lfpT, lfpV)
 
 
 # possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
@@ -62,16 +80,16 @@ with pp.newFig("figName", priority=10, savePlot=False, showPlot=False) as ax:
 
 # for sesh in alldata.getSessions(lambda s: s.probe_performed):
 #     print(sesh.name, sesh.home_well, sesh.isRippleInterruption)
-    # 1918 35, quick check
-    # 1315 13, good check, pause before sniff
-    # 1514 21, longer check at 13 just before (also pause b4 sniff again at 13 but not at 21)
-    # 1517 37, quick passing check
-    # 1615 36, longer than a quick check, but also searched a bunch at other wells first
-    # 1717 30, checked a few previous home wells for a good bit, but spent even longer at 30
-    # 2014 20, went straight for the well but then got a bit distracted while next to it maybe heard something. Gave it a quick sniff after that and then moved on
-    # 2018 30, clearly very long check
-    # 2114 12, long check, went pretty directly there
-    # 2117 29, never visited the home. Spent a while at 21
+# 1918 35, quick check
+# 1315 13, good check, pause before sniff
+# 1514 21, longer check at 13 just before (also pause b4 sniff again at 13 but not at 21)
+# 1517 37, quick passing check
+# 1615 36, longer than a quick check, but also searched a bunch at other wells first
+# 1717 30, checked a few previous home wells for a good bit, but spent even longer at 30
+# 2014 20, went straight for the well but then got a bit distracted while next to it maybe heard something. Gave it a quick sniff after that and then moved on
+# 2018 30, clearly very long check
+# 2114 12, long check, went pretty directly there
+# 2117 29, never visited the home. Spent a while at 21
 
 # for sesh in alldata.getSessions(lambda s: s.probe_performed):
 #     lfpFName = sesh.bt_lfp_fnames[-1]

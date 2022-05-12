@@ -18,6 +18,7 @@ def findDataDir(possibleDataDirs=["/media/WDC6/", "/media/fosterlab/WDC6/", "/ho
 
     return None
 
+
 def parseCmdLineAnimalNames(default=None):
     if len(sys.argv) >= 2:
         return sys.argv[1:]
@@ -728,3 +729,17 @@ def numWellsVisited(nearestWells, countReturns=False, wellSubset=None):
 def weekIdxForDateStr(datestr, d0=date(2016, 1, 4)):
     d = date(int(datestr[0:4]), int(datestr[4:6]), int(datestr[6:8]))
     return (d - d0).days // 7
+
+
+def fillCounts(dest, src, t0, t1, windowSize):
+    """
+    t0, t1, src all in trodes timestamp units
+    windowSize in seconds
+    """
+    ts = np.array(src)
+    ts = ts[(ts > t0) & (ts < t1)] - t0
+    ts /= TRODES_SAMPLING_RATE
+    bins = np.arange(0, (t1-t0)/TRODES_SAMPLING_RATE + windowSize, windowSize)
+    h = np.histogram(ts, bins=bins)
+    dest[0:len(bins)-1] = h[0]
+    dest[len(bins)-1:] = np.nan
