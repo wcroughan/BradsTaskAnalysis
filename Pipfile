@@ -10,8 +10,6 @@ scipy = "*"
 pyqt5 = "*"
 pandas = "*"
 seaborn = "*"
-pylint = "*"
-autopep8 = "*"
 sortednp = "*"
 statsmodels = "*"
 mountainlab-pytools = "*"
@@ -20,6 +18,8 @@ ffms2 = "*"
 opencv-python = "*"
 ffmpeg-python = "*"
 timer = "*"
+flake8 = "*"
+autopep8 = "*"
 
 [dev-packages]
 

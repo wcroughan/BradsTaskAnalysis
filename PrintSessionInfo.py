@@ -24,14 +24,18 @@ for animalName in animalNames:
 
     nCtrl = np.count_nonzero([not sesh.isRippleInterruption for sesh in sessions])
     nSWR = np.count_nonzero([sesh.isRippleInterruption for sesh in sessions])
-    nCtrlWithProbe = np.count_nonzero([(not sesh.isRippleInterruption) and sesh.probe_performed for sesh in sessions])
-    nSWRWithProbe = np.count_nonzero([sesh.isRippleInterruption and sesh.probe_performed for sesh in sessions])
+    nCtrlWithProbe = np.count_nonzero(
+        [(not sesh.isRippleInterruption) and sesh.probe_performed for sesh in sessions])
+    nSWRWithProbe = np.count_nonzero(
+        [sesh.isRippleInterruption and sesh.probe_performed for sesh in sessions])
 
     d = {"# sessions": [nCtrl, nSWR],
-         "# sessions w/ probe": [nCtrlWithProbe, nSWRWithProbe] }
+         "# sessions w/ probe": [nCtrlWithProbe, nSWRWithProbe]}
     df1 = pd.DataFrame(data=d, index=["Ctrl", "SWR"])
 
     print("==========================")
     print(animalName)
     print(df1)
 
+    for si, sesh in enumerate(sessions):
+        print("{}\t{}\t{}".format(si, sesh.name, "SWR" if sesh.isRippleInterruption else "Ctrl"))

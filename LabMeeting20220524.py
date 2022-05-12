@@ -1,10 +1,9 @@
 import numpy as np
-from PlotUtil import PlotCtx, plotIndividualAndAverage, setupBehaviorTracePlot, boxPlot, conditionShuffle
+from PlotUtil import PlotCtx, plotIndividualAndAverage, setupBehaviorTracePlot, boxPlot
 import MountainViewIO
 from BTData import BTData
 from BTSession import BTSession
 import os
-import sys
 from UtilFunctions import getRipplePower, numWellsVisited, onWall, getInfoForAnimal, detectRipples, findDataDir, parseCmdLineAnimalNames, fillCounts
 from consts import TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, allWellNames, offWallWellNames
 import math
@@ -14,6 +13,7 @@ import matplotlib.pyplot as plt
 import time
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
+from matplotlib.markers import MarkerStyle
 
 # GOALS and TODOS:
 # BEHAVIOR:
@@ -25,7 +25,7 @@ from matplotlib.collections import PatchCollection
 #
 # LFP:
 # Look at raw LFP and ripple power using different detection criteria (baseline, referenced, etc). What is difference?
-#   OK a few takeaways from first look:
+#   - OK a few takeaways from first look:
 #       - Quite a few stims aren't getting excluded and are instead labeled as ripples with high power. Need to adjust stim detection
 #       - After most stims the baseline tetrode signal actually stays way offset for about 40-80ms and then there's another artifact and it returns to mostly baseline
 #               For one example, see B13, session 20220222_165339, around 755.7 seconds in
@@ -33,19 +33,29 @@ from matplotlib.collections import PatchCollection
 #               e.x. happens to both separately one after another in B13 session 20220222_165339, 811.7 seconds in
 #       - There's another very consistent post stim aspect of the baseline tetrode voltage where it returns to normal slowly, like the PSTH seen on the reference tet but slightly bigger and different shape
 # Is exportLFP output referenced?
-#   yes, it is
+#   - yes, it is
+
+# 2022-5-12
+# No obvious differences in behavior between conditions during task. Need to follow up on what looks like B13 not visiting home at all more often in later interruption sessions
+# For LFP, fixed artifact detection (although maybe doesn't work for Martin now). Need to check difference between baseline and non-baseline detction.  Specifically:
+#   Is there ripple power on the baseline tetrode?
+#   With no baseline, is more junk getting through? Are ripples also getting through?
+# There are more sessions with numEntries > 1 than are appearing in the curvature/LFP correlation plots
+#   -Ah I think cause the nan values that are added in at various points
 
 
 def makeFigures():
     MAKE_EARLY_LATE_SESSION_BASIC_MEASURES = False
     MAKE_BASIC_MEASURE_PLOTS = False
     MAKE_WITHIN_SESSION_MEASURE_PLOTS = False
-    MAKE_GRAVITY_PLOTS = False
+    MAKE_GRAVITY_PLOTS = True
     MAKE_PROBE_TRACES_FIGS = False
     MAKE_TASK_BEHAVIOR_PLOTS = False
     MAKE_PROBE_BEHAVIOR_PLOTS = False
     MAKE_RAW_LFP_POWER_PLOTS = False
-    MAKE_CUMULATIVE_LFP_PLOTS = True
+    MAKE_CUMULATIVE_LFP_PLOTS = False
+    MAKE_LFP_PERSEV_CORRELATION_PLOTS = True
+    RUN_SHUFFLES = False
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "20220524_labmeeting")
@@ -87,7 +97,9 @@ def makeFigures():
             pp.setStatCategory("rat", ratName)
 
         # Here be plots
-        if not MAKE_EARLY_LATE_SESSION_BASIC_MEASURES or MAKE_BASIC_MEASURE_PLOTS or MAKE_WITHIN_SESSION_MEASURE_PLOTS or MAKE_GRAVITY_PLOTS or MAKE_TASK_BEHAVIOR_PLOTS or MAKE_PROBE_BEHAVIOR_PLOTS:
+        if not (MAKE_EARLY_LATE_SESSION_BASIC_MEASURES or MAKE_BASIC_MEASURE_PLOTS or
+                MAKE_WITHIN_SESSION_MEASURE_PLOTS or MAKE_GRAVITY_PLOTS or
+                MAKE_TASK_BEHAVIOR_PLOTS or MAKE_PROBE_BEHAVIOR_PLOTS or MAKE_LFP_PERSEV_CORRELATION_PLOTS):
             pass
         else:
             wellCat = []
@@ -101,6 +113,8 @@ def makeFigures():
             numEntries = []
             gravity = []
             gravityFromOffWall = []
+            taskGravity = []
+            taskGravityFromOffWall = []
 
             avgDwellDifference = []
             avgDwellDifference90 = []
@@ -111,10 +125,12 @@ def makeFigures():
             seshDateCatBySession = []
             gravityDifference = []
             gravityFromOffWallDifference = []
+            taskGravityDifference = []
+            taskGravityFromOffWallDifference = []
 
             for si, sesh in enumerate(sessionsWithProbe):
-                towt = np.sum([sesh.total_dwell_time(True, w)
-                               for w in offWallWellNames])
+                # towt = np.sum([sesh.total_dwell_time(True, w)
+                #                for w in offWallWellNames])
 
                 avgDwell.append(sesh.avg_dwell_time(True, sesh.home_well))
                 avgDwell90.append(sesh.avg_dwell_time(True, sesh.home_well, timeInterval=[0, 90]))
@@ -125,6 +141,9 @@ def makeFigures():
                 gravity.append(sesh.gravityOfWell(True, sesh.home_well))
                 gravityFromOffWall.append(sesh.gravityOfWell(
                     True, sesh.home_well, fromWells=offWallWellNames))
+                taskGravity.append(sesh.gravityOfWell(False, sesh.home_well))
+                taskGravityFromOffWall.append(sesh.gravityOfWell(
+                    False, sesh.home_well, fromWells=offWallWellNames))
 
                 wellCat.append("home")
                 seshCat.append("SWR" if sesh.isRippleInterruption else "Ctrl")
@@ -146,6 +165,9 @@ def makeFigures():
                     gravity.append(sesh.gravityOfWell(True, aw))
                     gravityFromOffWall.append(sesh.gravityOfWell(
                         True, aw, fromWells=offWallWellNames))
+                    taskGravity.append(sesh.gravityOfWell(False, aw))
+                    taskGravityFromOffWall.append(sesh.gravityOfWell(
+                        False, aw, fromWells=offWallWellNames))
 
                     wellCat.append("away")
                     seshCat.append("SWR" if sesh.isRippleInterruption else "Ctrl")
@@ -162,6 +184,9 @@ def makeFigures():
                     homeGravity = sesh.gravityOfWell(True, sesh.home_well)
                     homeGravityFromOffWall = sesh.gravityOfWell(
                         True, sesh.home_well, fromWells=offWallWellNames)
+                    homeTaskGravity = sesh.gravityOfWell(False, sesh.home_well)
+                    homeTaskGravityFromOffWall = sesh.gravityOfWell(
+                        False, sesh.home_well, fromWells=offWallWellNames)
 
                     awayAvgDwell = np.nanmean([sesh.avg_dwell_time(True, aw)
                                               for aw in sesh.visited_away_wells if not onWall(aw)])
@@ -177,6 +202,10 @@ def makeFigures():
                                              for aw in sesh.visited_away_wells if not onWall(aw)])
                     awayGravityFromOffWall = np.nanmean(
                         [sesh.gravityOfWell(True, aw) for aw in sesh.visited_away_wells if not onWall(aw)])
+                    awayTaskGravity = np.nanmean([sesh.gravityOfWell(False, aw)
+                                                  for aw in sesh.visited_away_wells if not onWall(aw)])
+                    awayTaskGravityFromOffWall = np.nanmean(
+                        [sesh.gravityOfWell(False, aw) for aw in sesh.visited_away_wells if not onWall(aw)])
 
                     avgDwellDifference.append(homeAvgDwell - awayAvgDwell)
                     avgDwellDifference90.append(homeAvgDwell90 - awayAvgDwell90)
@@ -186,15 +215,24 @@ def makeFigures():
                     gravityDifference.append(homeGravity - awayGravity)
                     gravityFromOffWallDifference.append(
                         homeGravityFromOffWall - awayGravityFromOffWall)
+                    taskGravityDifference.append(homeTaskGravity - awayTaskGravity)
+                    taskGravityFromOffWallDifference.append(
+                        homeTaskGravityFromOffWall - awayTaskGravityFromOffWall)
                 else:
-                    print("sesh {}, rat never found any off wall away wells")
+                    print("sesh {}, rat never found any off wall away wells".format(sesh.name))
+                    if np.isnan(curvature[-1]):
+                        print("also never found home in probe")
+                    else:
+                        print("found home in probe")
                     avgDwellDifference.append(np.nan)
                     avgDwellDifference90.append(np.nan)
                     curvatureDifference.append(np.nan)
                     curvatureDifference90.append(np.nan)
-                    numEntriesDifference.append(np.nan)
+                    numEntriesDifference.append(sesh.num_well_entries(True, sesh.home_well))
                     gravityDifference.append(np.nan)
                     gravityFromOffWallDifference.append(np.nan)
+                    taskGravityDifference.append(np.nan)
+                    taskGravityFromOffWallDifference.append(np.nan)
 
             wellCat = np.array(wellCat)
             seshCat = np.array(seshCat)
@@ -207,6 +245,8 @@ def makeFigures():
             seshDateCat = np.array(seshDateCat)
             gravity = np.array(gravity)
             gravityFromOffWall = np.array(gravityFromOffWall)
+            taskGravity = np.array(taskGravity)
+            taskGravityFromOffWall = np.array(taskGravityFromOffWall)
 
             avgDwellDifference = np.array(avgDwellDifference)
             avgDwellDifference90 = np.array(avgDwellDifference90)
@@ -217,6 +257,8 @@ def makeFigures():
             seshDateCatBySession = np.array(seshDateCatBySession)
             gravityDifference = np.array(gravityDifference)
             gravityFromOffWallDifference = np.array(gravityFromOffWallDifference)
+            taskGravityDifference = np.array(taskGravityDifference)
+            taskGravityFromOffWallDifference = np.array(taskGravityFromOffWallDifference)
 
             earlyIdx = seshDateCat == "early"
             lateIdx = seshDateCat == "late"
@@ -492,6 +534,32 @@ def makeFigures():
         if not MAKE_GRAVITY_PLOTS:
             print("warning: skipping gravity plots")
         else:
+            with pp.newFig("bt_gravity_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=taskGravity, categories=seshCat, categories2=wellCat,
+                        axesNames=["Condition", "gravity", "Well Type"], violin=True, doStats=False)
+                yvals["bt_gravity_offwall"] = taskGravity
+                cats["well"] = wellCat
+                cats["condition"] = seshCat
+
+            with pp.newFig("bt_gravityFromOffWall_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=taskGravityFromOffWall, categories=seshCat, categories2=wellCat,
+                        axesNames=["Condition", "gravityFromOffWall", "Well Type"], violin=True, doStats=False)
+                yvals["bt_gravityFromOffWall_offwall"] = taskGravityFromOffWall
+                cats["well"] = wellCat
+                cats["condition"] = seshCat
+
+            with pp.newFig("bt_gravity_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=taskGravityDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "Gravity Difference"], violin=True, doStats=False)
+                yvals["bt_gravity_difference_offwall"] = taskGravityDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("bt_gravityFromOffWall_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=taskGravityFromOffWallDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "gravityFromOffWall Difference"], violin=True, doStats=False)
+                yvals["bt_gravityFromOffWall_difference_offwall"] = taskGravityFromOffWallDifference
+                cats["condition"] = seshCatBySession
+
             with pp.newFig("probe_gravity_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=gravity, categories=seshCat, categories2=wellCat,
                         axesNames=["Condition", "gravity", "Well Type"], violin=True, doStats=False)
@@ -517,6 +585,7 @@ def makeFigures():
                         "Condition", "gravityFromOffWall Difference"], violin=True, doStats=False)
                 yvals["probe_gravityFromOffWall_difference_offwall"] = gravityFromOffWallDifference
                 cats["condition"] = seshCatBySession
+
         if not MAKE_PROBE_TRACES_FIGS:
             print("warning: skipping raw probe trace plots")
         else:
@@ -529,7 +598,7 @@ def makeFigures():
                     setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
                     ax.set_title(sesh.name, fontdict={'fontsize': 8})
                     # ax.set_title(str(si))
-                for si in range(numSessionsWithProbe, numCols*numCols):
+                for si in range(numSessionsWithProbe, numCols * numCols):
                     ax = axs[si // numCols, si % numCols]
                     ax.cla()
                     ax.tick_params(axis="both", which="both", label1On=False,
@@ -544,7 +613,7 @@ def makeFigures():
                     setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
                     # ax.set_title(str(si))
                     ax.set_title(sesh.name, fontdict={'fontsize': 8})
-                for si in range(nCtrlWithProbe, numCols*numCols):
+                for si in range(nCtrlWithProbe, numCols * numCols):
                     ax = axs[si // numCols, si % numCols]
                     ax.cla()
                     ax.tick_params(axis="both", which="both", label1On=False,
@@ -559,7 +628,7 @@ def makeFigures():
                     setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
                     # ax.set_title(str(si))
                     ax.set_title(sesh.name, fontdict={'fontsize': 8})
-                for si in range(nSWRWithProbe, numCols*numCols):
+                for si in range(nSWRWithProbe, numCols * numCols):
                     ax = axs[si // numCols, si % numCols]
                     ax.cla()
                     ax.tick_params(axis="both", which="both", label1On=False,
@@ -598,7 +667,7 @@ def makeFigures():
             ctrlHomeFindLatencies = homeFindLatencies[np.logical_not(sessionIsInterruption), :]
             swrAwayFindLatencies = awayFindLatencies[sessionIsInterruption, :]
             ctrlAwayFindLatencies = awayFindLatencies[np.logical_not(sessionIsInterruption), :]
-            pltx = np.arange(10)+1
+            pltx = np.arange(10) + 1
 
             with pp.newFig("task_latency_to_home_by_condition", priority=5) as ax:
                 plotIndividualAndAverage(ax, swrHomeFindLatencies, pltx,
@@ -645,7 +714,7 @@ def makeFigures():
             # average vel in probe
             windowSize = 30
             windowsSlide = 6
-            t0Array = np.arange(0, 60*5-windowSize+windowsSlide, windowsSlide)
+            t0Array = np.arange(0, 60 * 5 - windowSize + windowsSlide, windowsSlide)
 
             avgVels = np.empty((numSessionsWithProbe, len(t0Array)))
             avgVels[:] = np.nan
@@ -654,31 +723,31 @@ def makeFigures():
 
             for si, sesh in enumerate(sessionsWithProbe):
                 for ti, t0 in enumerate(t0Array):
-                    avgVels[si, ti] = sesh.mean_vel(True, timeInterval=[t0, t0+windowSize])
+                    avgVels[si, ti] = sesh.mean_vel(True, timeInterval=[t0, t0 + windowSize])
                     fracExplores[si, ti] = sesh.prop_time_in_bout_state(
-                        True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[t0, t0+windowSize])
+                        True, BTSession.BOUT_STATE_EXPLORE, timeInterval=[t0, t0 + windowSize])
 
             with pp.newFig("probe_avg_vel", priority=5) as ax:
                 plotIndividualAndAverage(ax, avgVels, t0Array)
-                ax.set_xticks(np.arange(0, 60*5+1, 60))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
             with pp.newFig("probe_avg_vel_by_cond", priority=5) as ax:
                 plotIndividualAndAverage(ax, avgVels[sessionWithProbeIsInterruption, :], t0Array,
                                          individualColor="orange", avgColor="orange", spread="sem")
                 plotIndividualAndAverage(ax, avgVels[~ sessionWithProbeIsInterruption, :], t0Array,
                                          individualColor="cyan", avgColor="cyan", spread="sem")
-                ax.set_xticks(np.arange(0, 60*5+1, 60))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
             with pp.newFig("probe_frac_explore", priority=5) as ax:
                 plotIndividualAndAverage(ax, fracExplores, t0Array)
-                ax.set_xticks(np.arange(0, 60*5+1, 60))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
             with pp.newFig("probe_frac_explore_by_cond", priority=5) as ax:
                 plotIndividualAndAverage(ax, fracExplores[sessionWithProbeIsInterruption, :], t0Array,
                                          individualColor="orange", avgColor="orange", spread="sem")
                 plotIndividualAndAverage(ax, fracExplores[~ sessionWithProbeIsInterruption, :], t0Array,
                                          individualColor="cyan", avgColor="cyan", spread="sem")
-                ax.set_xticks(np.arange(0, 60*5+1, 60))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
             # =============
             # probe num wells visited by condition
@@ -687,13 +756,13 @@ def makeFigures():
                 s.probe_nearest_wells, wellSubset=offWallWellNames) for s in sessionsWithProbe]
             with pp.newFig("probe_num_wells_visited_by_condition", priority=5) as ax:
                 boxPlot(ax, numVisited, seshCatBySession, axesNames=[
-                        "Condition", "Number of wells visited in probe"], doStats=False)
+                        "Condition", "Number of wells visited in probe"], doStats=False, violin=True)
             with pp.newFig("probe_num_wells_visited_offwall_by_condition", priority=5) as ax:
-                boxPlot(ax, numVisited, seshCatBySession, axesNames=[
-                        "Condition", "Number of wells visited in probe"], doStats=False)
+                boxPlot(ax, numVisitedOffWall, seshCatBySession, axesNames=[
+                        "Condition", "Number of off wall wells visited in probe"], doStats=False, violin=True)
 
             windowSlide = 5
-            t1Array = np.arange(windowSlide, 60*5, windowSlide)
+            t1Array = np.arange(windowSlide, 60 * 5, windowSlide)
             numVisitedOverTime = np.empty((numSessionsWithProbe, len(t1Array)))
             numVisitedOverTime[:] = np.nan
             numVisitedOverTimeOffWall = np.empty((numSessionsWithProbe, len(t1Array)))
@@ -710,30 +779,30 @@ def makeFigures():
 
             with pp.newFig("probe_cumulative_num_wells_visited", priority=5) as ax:
                 plotIndividualAndAverage(ax, numVisitedOverTime, t1Array)
-                ax.set_xticks(np.arange(0, 60*5+1, 60))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
             with pp.newFig("probe_cumulative_num_wells_visited_by_condition", priority=5) as ax:
                 plotIndividualAndAverage(ax, numVisitedOverTime[sessionWithProbeIsInterruption, :], t1Array,
                                          individualColor="orange", avgColor="orange", spread="sem")
                 plotIndividualAndAverage(ax, numVisitedOverTime[~ sessionWithProbeIsInterruption, :], t1Array,
                                          individualColor="cyan", avgColor="cyan", spread="sem")
-                ax.set_xticks(np.arange(0, 60*5+1, 60))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
             with pp.newFig("probe_cumulative_num_wells_visited_offwall", priority=5) as ax:
                 plotIndividualAndAverage(ax, numVisitedOverTimeOffWall, t1Array)
-                ax.set_xticks(np.arange(0, 60*5+1, 60))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
             with pp.newFig("probe_cumulative_num_wells_visited_by_condition_offwall", priority=5) as ax:
                 plotIndividualAndAverage(ax, numVisitedOverTimeOffWall[sessionWithProbeIsInterruption, :], t1Array,
                                          individualColor="orange", avgColor="orange", spread="sem")
                 plotIndividualAndAverage(ax, numVisitedOverTimeOffWall[~ sessionWithProbeIsInterruption, :], t1Array,
                                          individualColor="cyan", avgColor="cyan", spread="sem")
-                ax.set_xticks(np.arange(0, 60*5+1, 60))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
         if not MAKE_RAW_LFP_POWER_PLOTS:
             print("warning: skipping raw LFP power plots")
         else:
-            firstSeshToView = 25
+            firstSeshToView = 32
             for seshi, sesh in enumerate(sessionsWithProbe):
                 if seshi < firstSeshToView:
                     continue
@@ -747,7 +816,7 @@ def makeFigures():
 
                 lfpData = MountainViewIO.loadLFP(data_file=sesh.bt_lfp_baseline_fname)
                 baselfpV = lfpData[1]['voltage']
-                baselfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
+                # baselfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
 
                 # get ripple power for both
                 btLFPData = lfpV[sesh.bt_lfp_start_idx:sesh.bt_lfp_end_idx]
@@ -783,46 +852,47 @@ def makeFigures():
                 sourceIdx = np.array([], dtype=int)
                 sourceNumPts = {}
 
-                INCLUDE_RAW_POWER_DETECTIONS = True
+                INCLUDE_RAW_POWER_DETECTIONS = False
                 INCLUDE_ZDIFF_POWER_DETECTIONS = True
                 INCLUDE_DEFLECTIONS = False
                 if INCLUDE_DEFLECTIONS:
-                    l = len(sesh.bt_lfp_artifact_idxs)
+                    numPts = len(sesh.bt_lfp_artifact_idxs)
                     ripStarts = np.concatenate((ripStarts, sesh.bt_lfp_artifact_idxs))
-                    ripLens = np.concatenate((ripLens, 3*np.ones((l,)).astype(int)))
+                    ripLens = np.concatenate((ripLens, 3 * np.ones((numPts,)).astype(int)))
                     ripPeakIdxs = np.concatenate((ripPeakIdxs, sesh.bt_lfp_artifact_idxs + 2))
-                    ripPeakAmps = np.concatenate((ripPeakAmps, np.ones((l,))))
+                    ripPeakAmps = np.concatenate((ripPeakAmps, np.ones((numPts,))))
                     crossThreshIdxs = np.concatenate(
                         (crossThreshIdxs, sesh.bt_lfp_artifact_idxs + 1))
-                    source = np.concatenate((source, np.array(["deflection"] * l)))
-                    sourceIdx = np.concatenate((sourceIdx, np.arange(l)))
-                    sourceNumPts["deflection"] = l
+                    source = np.concatenate((source, np.array(["deflection"] * numPts)))
+                    sourceIdx = np.concatenate((sourceIdx, np.arange(numPts)))
+                    sourceNumPts["deflection"] = numPts
                 if INCLUDE_RAW_POWER_DETECTIONS:
-                    l = len(sesh.btRipStartIdxsProbeStats)
+                    numPts = len(sesh.btRipStartIdxsProbeStats)
                     ripStarts = np.concatenate((ripStarts, sesh.btRipStartIdxsProbeStats))
                     ripLens = np.concatenate((ripLens, sesh.btRipLensProbeStats))
                     ripPeakIdxs = np.concatenate((ripPeakIdxs, sesh.btRipPeakIdxsProbeStats))
                     ripPeakAmps = np.concatenate((ripPeakAmps, sesh.btRipPeakAmpsProbeStats))
                     crossThreshIdxs = np.concatenate(
                         (crossThreshIdxs, sesh.btRipCrossThreshIdxsProbeStats))
-                    source = np.concatenate((source, np.array(["rawz"] * l)))
-                    sourceIdx = np.concatenate((sourceIdx, np.arange(l)))
-                    sourceNumPts["rawz"] = l
+                    source = np.concatenate((source, np.array(["rawz"] * numPts)))
+                    sourceIdx = np.concatenate((sourceIdx, np.arange(numPts)))
+                    sourceNumPts["rawz"] = numPts
                 if INCLUDE_ZDIFF_POWER_DETECTIONS:
-                    l = len(sesh.btWithBaseRipStartIdx)
+                    numPts = len(sesh.btWithBaseRipStartIdx)
                     ripStarts = np.concatenate((ripStarts, sesh.btWithBaseRipStartIdx))
                     ripLens = np.concatenate((ripLens, sesh.btWithBaseRipLens))
                     ripPeakIdxs = np.concatenate((ripPeakIdxs, sesh.btWithBaseRipPeakIdx))
                     ripPeakAmps = np.concatenate((ripPeakAmps, sesh.btWithBaseRipPeakAmps))
                     crossThreshIdxs = np.concatenate(
                         (crossThreshIdxs, sesh.btWithBaseRipCrossThreshIdxs))
-                    source = np.concatenate((source, np.array(["zdiff"] * l)))
-                    sourceIdx = np.concatenate((sourceIdx, np.arange(l)))
-                    sourceNumPts["zdiff"] = l
+                    source = np.concatenate((source, np.array(["zdiff"] * numPts)))
+                    sourceIdx = np.concatenate((sourceIdx, np.arange(numPts)))
+                    sourceNumPts["zdiff"] = numPts
 
                 # ripStarts = np.concatenate(
                 #     (sesh.btWithBaseRipStartIdx, sesh.btRipStartIdxsProbeStats))
-                sortInd = ripStarts.argsort()
+                # sortInd = ripStarts.argsort()
+                sortInd = ripPeakAmps.argsort()[::-1]
                 ripStarts = ripStarts[sortInd]
                 ripLens = ripLens[sortInd]
                 ripPeakIdxs = ripPeakIdxs[sortInd]
@@ -839,8 +909,13 @@ def makeFigures():
                 # crossThreshIdxs = np.concatenate(
                 #     (sesh.btWithBaseRipCrossThreshIdxs, sesh.btRipCrossThreshIdxsProbeStats))[sortInd]
 
-                MARGIN_SEC = 0.25
-                MARGIN_PTS = int(MARGIN_SEC * 1500)
+                USE_MARGIN = False
+                if USE_MARGIN:
+                    MARGIN_SEC = 0.25
+                    MARGIN_PTS = int(MARGIN_SEC * 1500)
+                else:
+                    TOTAL_DISP_LEN_SEC = 0.4
+                    TOTAL_DISP_LEN_PTS = int(TOTAL_DISP_LEN_SEC * 1500)
                 btT = lfpT[sesh.bt_lfp_start_idx:sesh.bt_lfp_end_idx]
 
                 for i in range(len(ripStarts)):
@@ -851,43 +926,57 @@ def makeFigures():
                     crossThreshIdx = crossThreshIdxs[i]
                     print(ripStart, ripLen, ripPeakIdx, ripPeakAmp, crossThreshIdx)
 
-                    i0 = max(0, ripStart - MARGIN_PTS)
-                    i1 = min(ripStart + ripLen + MARGIN_PTS, len(btT)-1)
+                    if USE_MARGIN:
+                        i0 = max(0, ripStart - MARGIN_PTS)
+                        i1 = min(ripStart + ripLen + MARGIN_PTS, len(btT) - 1)
+                    else:
+                        imid = int(ripStart + ripLen / 2)
+                        i0 = imid - int(TOTAL_DISP_LEN_PTS / 2)
+                        i1 = imid + int(TOTAL_DISP_LEN_PTS / 2)
                     rawX = btT[i0:i1]
-                    rawY = np.diff(btLFPData[i0:i1] / 70.0, prepend=0)
+                    rawY = btLFPData[i0:i1] / 70.0
+                    # rawY = np.diff(btLFPData[i0:i1] / 70.0, prepend=0)
 
                     rawBaseY = btBaselineLFPData[i0:i1] / 70.0
 
-                    rect = Rectangle((btT[ripStart], min(rawY)), btT[ripStart+ripLen] -
-                                     btT[ripStart], max(rawY)-min(rawY))
+                    rect = Rectangle((btT[ripStart], min(rawY)), btT[ripStart + ripLen] -
+                                     btT[ripStart], max(rawY) - min(rawY))
                     pc = PatchCollection([rect], facecolor="grey", alpha=0.5)
+                    pc2 = PatchCollection([rect], facecolor="grey", alpha=0.5)
 
                     crossX = btT[crossThreshIdx]
                     crossY = ripPeakAmp
                     peakX = btT[ripPeakIdx]
                     peakY = ripPeakAmp
 
-                    with pp.newFig("rawLFP_{}".format(i), priority=10, showPlot=True, savePlot=False, figScale=2) as ax:
-                        ax.add_collection(pc)
-                        ax.plot(rawX, rawY, label="raw detection LFP", linewidth=1.5)
-                        ax.plot(rawX, rawBaseY, label="raw baseline LFP", linewidth=1.5)
-                        ax.plot(rawX, zPowerDiff[i0:i1], label="diff z pow")
-                        ax.plot(rawX, btRipZPower[i0:i1], label="detection tet zpow")
-                        ax.plot([crossX, peakX], [crossY, peakY],
-                                linewidth=3, label="Cross to peak")
+                    with pp.newFig("rawLFP_{}".format(i), priority=10, showPlot=True, savePlot=False, figScale=2, subPlots=(2, 1)) as axs:
+                        axs[0].add_collection(pc)
+                        axs[1].add_collection(pc2)
+                        axs[0].plot(rawX, rawY, label="raw detection LFP", linewidth=1.5)
+                        axs[0].plot(rawX, btRipZPower[i0:i1], label="detection tet zpow")
+                        axs[0].plot([crossX, peakX], [crossY, peakY],
+                                    linewidth=3, label="Cross to peak")
+                        axs[1].plot([crossX, peakX], [crossY, peakY],
+                                    linewidth=3, label="Cross to peak")
+                        axs[1].plot(rawX, rawBaseY, label="raw baseline LFP", linewidth=1.5)
+                        axs[1].plot(rawX, zPowerDiff[i0:i1], label="diff z pow")
+
+                        axs[0].set_ylim(-40, 40)
+                        axs[1].set_ylim(-40, 40)
 
                         # handles, labels = ax.get_legend_handles_labels()
                         # ax.legend(handles[1:3], labels[1:3], fontsize=6).set_zorder(2)
-                        ax.legend()
-                        ax.set_title(
-                            "{}: {}/{}".format(source[i], sourceIdx[i], sourceNumPts[source[i]]))
+                        axs[0].legend()
+                        axs[1].legend()
+                        axs[0].set_title(
+                            "{} ({})   {}: {}/{}".format(sesh.name, "SWR" if sesh.isRippleInterruption else "Ctrl", source[i], sourceIdx[i], sourceNumPts[source[i]]))
 
         if not MAKE_CUMULATIVE_LFP_PLOTS:
             print("warning: skipping LFP cumulative rate plots")
         else:
             windowSize = 5
             # note these will have a big tail of nans that I could chop off if it becomes an issue
-            taskL = 60*30 // windowSize
+            taskL = 60 * 30 // windowSize
             itiL = 60 * 5 // windowSize
             probeL = 60 * 10 // windowSize
             stimCounts = np.empty((numSessions, taskL))
@@ -948,12 +1037,12 @@ def makeFigures():
             swrProbeIdx = [s.probe_performed and s.isRippleInterruption for s in sessions]
             ctrlProbeIdx = [s.probe_performed and not s.isRippleInterruption for s in sessions]
             swrNoProbeIdx = [(not s.probe_performed) and s.isRippleInterruption for s in sessions]
-            ctrlNoProbeIdx = [(not s.probe_performed)
-                              and not s.isRippleInterruption for s in sessions]
+            ctrlNoProbeIdx = [(not s.probe_performed) and
+                              not s.isRippleInterruption for s in sessions]
 
-            taskX = np.arange(windowSize, taskL*windowSize+windowSize/2, windowSize)
-            itiX = np.arange(windowSize, itiL*windowSize+windowSize/2, windowSize)
-            probeX = np.arange(windowSize, probeL*windowSize+windowSize/2, windowSize)
+            taskX = np.arange(windowSize, taskL * windowSize + windowSize / 2, windowSize)
+            itiX = np.arange(windowSize, itiL * windowSize + windowSize / 2, windowSize)
+            probeX = np.arange(windowSize, probeL * windowSize + windowSize / 2, windowSize)
 
             with pp.newFig("lfp_task_cumStimCounts") as ax:
                 ax.plot(taskX, stimCounts[swrProbeIdx, :].T, color="orange")
@@ -1003,6 +1092,116 @@ def makeFigures():
                 ax.plot(probeX, probeRippleCounts[swrNoProbeIdx, :].T, '--', color="orange")
                 ax.plot(probeX, probeRippleCounts[ctrlProbeIdx, :].T, color="cyan")
                 ax.plot(probeX, probeRippleCounts[ctrlNoProbeIdx, :].T, '--', color="cyan")
+
+            with pp.newFig("lfp_totalRipCount_baseNoBase") as ax:
+                ymax = max(np.nanmax(rippleCounts), np.nanmax(rippleCountsWithBaseline))
+                ax.plot([0, ymax], [0, ymax])
+                # can skip noprobes since those vals are all nans here
+                ax.scatter(np.nanmax(rippleCountsProbeStats[swrProbeIdx, :], axis=1),
+                           np.nanmax(rippleCountsWithBaseline[swrProbeIdx, :], axis=1),
+                           color="orange", marker=MarkerStyle(marker='o', fillstyle='full'))
+                ax.scatter(np.nanmax(rippleCountsProbeStats[ctrlProbeIdx, :], axis=1),
+                           np.nanmax(rippleCountsWithBaseline[ctrlProbeIdx, :], axis=1),
+                           color="cyan", marker=MarkerStyle(marker='o', fillstyle='full'))
+
+                ax.set_xlabel("No baseline")
+                ax.set_ylabel("With baseline")
+
+            with pp.newFig("lfp_ripCountBaselineDifference_bycondition", withStats=True) as (ax, yvals, cats, info):
+                diffs = np.nanmax(rippleCountsProbeStats, axis=1) - \
+                    np.nanmax(rippleCountsWithBaseline, axis=1)
+                condition = np.array([("SWR" if sesh.isRippleInterruption else "Ctrl")
+                                      for sesh in sessions])
+                boxPlot(ax, yvals=diffs, categories=condition,
+                        axesNames=["Condition", "baseline rip count diff"], violin=True, doStats=False)
+
+                yvals["lfp_ripCountBaselineDifference_bycondition"] = diffs
+                cats["condition"] = condition
+
+        if not MAKE_LFP_PERSEV_CORRELATION_PLOTS:
+            print("warning: skipping LFP persev corr plots")
+        else:
+            numRips = [len(sesh.btRipStartIdxsProbeStats) for sesh in sessionsWithProbe]
+            numStims = [len(sesh.bt_lfp_artifact_idxs) for sesh in sessionsWithProbe]
+            colorBySessionWithProbe = [
+                "orange" if sesh.isRippleInterruption else "cyan" for sesh in sessionsWithProbe]
+
+            with pp.newFig("probe_lfp_avgDwellDifference_numTaskRips") as ax:
+                ax.scatter(numRips, avgDwellDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# ripples")
+                ax.set_ylabel("avg dwell diff")
+            with pp.newFig("probe_lfp_avgDwellDifference_numTaskStims") as ax:
+                ax.scatter(numStims, avgDwellDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# stims")
+                ax.set_ylabel("avg dwell diff")
+            with pp.newFig("probe_lfp_avgDwellDifference90_numTaskRips") as ax:
+                ax.scatter(numRips, avgDwellDifference90, color=colorBySessionWithProbe)
+                ax.set_xlabel("# ripples")
+                ax.set_ylabel("avg dwell diff 90sec")
+            with pp.newFig("probe_lfp_avgDwellDifference90_numTaskStims") as ax:
+                ax.scatter(numStims, avgDwellDifference90, color=colorBySessionWithProbe)
+                ax.set_xlabel("# stims")
+                ax.set_ylabel("avg dwell diff 90sec")
+            with pp.newFig("probe_lfp_curvatureDifference_numTaskRips") as ax:
+                ax.scatter(numRips, curvatureDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# ripples")
+                ax.set_ylabel("curvature diff")
+            with pp.newFig("probe_lfp_curvatureDifference_numTaskStims") as ax:
+                ax.scatter(numStims, curvatureDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# stims")
+                ax.set_ylabel("curvature diff")
+            with pp.newFig("probe_lfp_curvatureDifference90_numTaskRips") as ax:
+                ax.scatter(numRips, curvatureDifference90, color=colorBySessionWithProbe)
+                ax.set_xlabel("# ripples")
+                ax.set_ylabel("curvature diff 90 sec")
+            with pp.newFig("probe_lfp_curvatureDifference90_numTaskStims") as ax:
+                ax.scatter(numStims, curvatureDifference90, color=colorBySessionWithProbe)
+                ax.set_xlabel("# stims")
+                ax.set_ylabel("curvature diff 90 sec")
+            with pp.newFig("probe_lfp_numEntriesDifference_numTaskRips") as ax:
+                ax.scatter(numRips, numEntriesDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# ripples")
+                ax.set_ylabel("num entries diff")
+            with pp.newFig("probe_lfp_numEntriesDifference_numTaskStims") as ax:
+                ax.scatter(numStims, numEntriesDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# stims")
+                ax.set_ylabel("num entries diff")
+            with pp.newFig("probe_lfp_gravityDifference_numTaskRips") as ax:
+                ax.scatter(numRips, gravityDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# ripples")
+                ax.set_ylabel("gravity diff")
+            with pp.newFig("probe_lfp_gravityDifference_numTaskStims") as ax:
+                ax.scatter(numStims, gravityDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# stims")
+                ax.set_ylabel("gravity diff")
+            with pp.newFig("probe_lfp_gravityFromOffWallDifference_numTaskRips") as ax:
+                ax.scatter(numRips, gravityFromOffWallDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# ripples")
+                ax.set_ylabel("gravity from off wall diff")
+            with pp.newFig("probe_lfp_gravityFromOffWallDifference_numTaskStims") as ax:
+                ax.scatter(numStims, gravityFromOffWallDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# stims")
+                ax.set_ylabel("gravity from off wall diff")
+            with pp.newFig("bt_lfp_taskGravityDifference_numTaskRips") as ax:
+                ax.scatter(numRips, taskGravityDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# ripples")
+                ax.set_ylabel("taskGravity diff")
+            with pp.newFig("bt_lfp_taskGravityDifference_numTaskStims") as ax:
+                ax.scatter(numStims, taskGravityDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# stims")
+                ax.set_ylabel("taskGravity diff")
+            with pp.newFig("bt_lfp_taskGravityFromOffWallDifference_numTaskRips") as ax:
+                ax.scatter(numRips, taskGravityFromOffWallDifference, color=colorBySessionWithProbe)
+                ax.set_xlabel("# ripples")
+                ax.set_ylabel("taskGravity from off wall diff")
+            with pp.newFig("bt_lfp_taskGravityFromOffWallDifference_numTaskStims") as ax:
+                ax.scatter(numStims, taskGravityFromOffWallDifference,
+                           color=colorBySessionWithProbe)
+                ax.set_xlabel("# stims")
+                ax.set_ylabel("taskGravity from off wall diff")
+
+    if RUN_SHUFFLES:
+        pp.runShuffles(numShuffles=100)
 
 
 if __name__ == "__main__":
