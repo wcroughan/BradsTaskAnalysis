@@ -100,7 +100,7 @@ def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
     xp = position_data['timestamp']
     x_pos = np.interp(x, xp, position_data['x1'])
     y_pos = np.interp(x, xp, position_data['y1'])
-    position_sampling_frequency = TRODES_SAMPLING_RATE/np.diff(x)[0]
+    position_sampling_frequency = TRODES_SAMPLING_RATE / np.diff(x)[0]
     # Interpolated Timestamps:
     # position_data['timestamp'] = x
 
@@ -269,8 +269,8 @@ def getRipplePower(lfp_data, omit_artifacts=True, causal_smoothing=False,
             1 - (np.count_nonzero(lfp_mask) / len(lfp_mask))))
 
     nyq_freq = LFP_SAMPLING_RATE * 0.5
-    lo_cutoff = rippleFilterBand[0]/nyq_freq
-    hi_cutoff = rippleFilterBand[1]/nyq_freq
+    lo_cutoff = rippleFilterBand[0] / nyq_freq
+    hi_cutoff = rippleFilterBand[1] / nyq_freq
     pl, ph = signal.butter(rippleFilterOrder, [lo_cutoff, hi_cutoff], btype='band')
     if causal_smoothing:
         ripple_amplitude = signal.lfilter(pl, ph, lfp_data_copy)
@@ -291,8 +291,8 @@ def getRipplePower(lfp_data, omit_artifacts=True, causal_smoothing=False,
         ripple_amplitude_copy = ripple_amplitude.copy()
 
         half_smoothing_signal = \
-            np.exp(-np.square(np.linspace(0, -4*smoothing_window_length, 4 *
-                                          smoothing_window_length))/(2*smoothing_window_length * smoothing_window_length))
+            np.exp(-np.square(np.linspace(0, -4 * smoothing_window_length, 4 *
+                                          smoothing_window_length)) / (2 * smoothing_window_length * smoothing_window_length))
         smoothing_signal = np.concatenate(
             (np.zeros_like(half_smoothing_signal), half_smoothing_signal), axis=0)
         ripple_power = signal.convolve(np.abs(ripple_amplitude_copy),
@@ -305,19 +305,19 @@ def getRipplePower(lfp_data, omit_artifacts=True, causal_smoothing=False,
     if meanPower is None:
         meanPower = np.nanmean(ripple_power)
         stdPower = np.nanstd(ripple_power)
-    zpower = (ripple_power-meanPower)/stdPower
+    zpower = (ripple_power - meanPower) / stdPower
 
     if showPlot:
         lc = lfp_data.copy()
         lc = lc / np.nanmax(np.abs(lc)) * 10
         rc = np.array([min(10, p) for p in zpower])
-        ts = np.linspace(0, len(lc)/1500, len(lc))
+        ts = np.linspace(0, len(lc) / 1500, len(lc))
         plt.plot(ts, rc, c="orange", zorder=0)
         plt.plot(ts, lc, c="blue", zorder=1)
         # plt.plot(np.diff(lc), c="red")
         # plt.plot([0, len(lc)], [3, 3], color="red", zorder=-1)
         if lfp_deflections is not None:
-            plt.scatter(lfp_deflections / 1500, [0]*len(lfp_deflections), zorder=2, c="red")
+            plt.scatter(lfp_deflections / 1500, [0] * len(lfp_deflections), zorder=2, c="red")
 
         plt.show()
 
@@ -386,8 +386,8 @@ def getWellEntryAndExitTimes(nearest_wells, ts, well_idxs=allWellNames, include_
         # last data point should count as an exit, so appending a false
         # same for first point should count as entry, prepending
         if include_neighbors:
-            neighbors = list({wi, wi-1, wi+1, wi-7, wi-8, wi-9,
-                              wi+7, wi+8, wi+9}.intersection(allWellNames))
+            neighbors = list({wi, wi - 1, wi + 1, wi - 7, wi - 8, wi - 9,
+                              wi + 7, wi + 8, wi + 9}.intersection(allWellNames))
             near_well = np.concatenate(
                 ([False], np.isin(nearest_wells, neighbors), [False]))
         else:
@@ -476,12 +476,12 @@ def getInfoForAnimal(animalName):
         ret.Y_START = 20
         ret.Y_FINISH = 1275
         ret.data_dir = '/media/WDC1/martindata/bradtask/'
-        ret.output_dir = '/media/WDC7/Martin/processed_data/'
+        ret.output_dir = '/media/WDC6/Martin/processed_data/'
         ret.fig_output_dir = ret.output_dir
         ret.out_filename = "martin_bradtask.dat"
 
         ret.excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
-        ret.excluded_dates += ["20200531",  "20200603", "20200602",
+        ret.excluded_dates += ["20200531", "20200603", "20200602",
                                "20200606", "20200605", "20200601"]
         ret.excluded_dates += ["20200526"]
         ret.excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
@@ -739,7 +739,7 @@ def fillCounts(dest, src, t0, t1, windowSize):
     ts = np.array(src)
     ts = ts[(ts > t0) & (ts < t1)] - t0
     ts /= TRODES_SAMPLING_RATE
-    bins = np.arange(0, (t1-t0)/TRODES_SAMPLING_RATE + windowSize, windowSize)
+    bins = np.arange(0, (t1 - t0) / TRODES_SAMPLING_RATE + windowSize, windowSize)
     h = np.histogram(ts, bins=bins)
-    dest[0:len(bins)-1] = h[0]
-    dest[len(bins)-1:] = np.nan
+    dest[0:len(bins) - 1] = h[0]
+    dest[len(bins) - 1:] = np.nan
