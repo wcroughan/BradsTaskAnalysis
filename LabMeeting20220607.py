@@ -4,12 +4,10 @@ import MountainViewIO
 from BTData import BTData
 from BTSession import BTSession
 import os
-from UtilFunctions import getRipplePower, numWellsVisited, onWall, getInfoForAnimal, detectRipples, findDataDir, parseCmdLineAnimalNames, fillCounts
-from consts import TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, allWellNames, offWallWellNames
+from UtilFunctions import getRipplePower, numWellsVisited, onWall, getInfoForAnimal, findDataDir, \
+    parseCmdLineAnimalNames, fillCounts
+from consts import TRODES_SAMPLING_RATE, offWallWellNames
 import math
-from matplotlib import cm
-import pandas as pd
-import matplotlib.pyplot as plt
 import time
 from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
@@ -21,23 +19,30 @@ from matplotlib.markers import MarkerStyle
 # -Look at home v away difference and other measures within session
 # Look at away-from-home measures like where on the wall he was, orientation to home, dir crossed with dir to home
 # -Look at gravity of home well
-# Looks like there's more interruption sessions where B13 doesn't visit home at all in probe, look at behavior and see what underlying pattern is, best way to quantify
+# Looks like there's more interruption sessions where B13 doesn't visit home at all in probe, look at behavior and see
+# what underlying pattern is, best way to quantify
 #
 # LFP:
 # Look at raw LFP and ripple power using different detection criteria (baseline, referenced, etc). What is difference?
 #   - OK a few takeaways from first look:
-#       - Quite a few stims aren't getting excluded and are instead labeled as ripples with high power. Need to adjust stim detection
-#       - After most stims the baseline tetrode signal actually stays way offset for about 40-80ms and then there's another artifact and it returns to mostly baseline
+#       - Quite a few stims aren't getting excluded and are instead labeled as ripples with high power. Need to adjust
+# stim detection
+#       - After most stims the baseline tetrode signal actually stays way offset for about 40-80ms and then there's
+# another artifact and it returns to mostly baseline
 #               For one example, see B13, session 20220222_165339, around 755.7 seconds in
-#       - Also happens to the detection tetrode sometimes, though it seems like less often and for less time when it happens
+#       - Also happens to the detection tetrode sometimes, though it seems like less often and for less time when it
+# happens
 #               e.x. happens to both separately one after another in B13 session 20220222_165339, 811.7 seconds in
-#       - There's another very consistent post stim aspect of the baseline tetrode voltage where it returns to normal slowly, like the PSTH seen on the reference tet but slightly bigger and different shape
+#       - There's another very consistent post stim aspect of the baseline tetrode voltage where it returns to normal
+# slowly, like the PSTH seen on the reference tet but slightly bigger and different shape
 # Is exportLFP output referenced?
 #   - yes, it is
 
 # 2022-5-12
-# No obvious differences in behavior between conditions during task. Need to follow up on what looks like B13 not visiting home at all more often in later interruption sessions
-# For LFP, fixed artifact detection (although maybe doesn't work for Martin now). Need to check difference between baseline and non-baseline detction.  Specifically:
+# No obvious differences in behavior between conditions during task. Need to follow up on what looks like B13 not
+# visiting home at all more often in later interruption sessions
+# For LFP, fixed artifact detection (although maybe doesn't work for Martin now). Need to check difference between
+# baseline and non-baseline detction.  Specifically:
 #   Is there ripple power on the baseline tetrode?
 #   With no baseline, is more junk getting through? Are ripples also getting through?
 # There are more sessions with numEntries > 1 than are appearing in the curvature/LFP correlation plots
@@ -48,13 +53,13 @@ def makeFigures():
     MAKE_EARLY_LATE_SESSION_BASIC_MEASURES = False
     MAKE_BASIC_MEASURE_PLOTS = False
     MAKE_WITHIN_SESSION_MEASURE_PLOTS = False
-    MAKE_GRAVITY_PLOTS = True
+    MAKE_GRAVITY_PLOTS = False
     MAKE_PROBE_TRACES_FIGS = False
-    MAKE_TASK_BEHAVIOR_PLOTS = False
+    MAKE_TASK_BEHAVIOR_PLOTS = True
     MAKE_PROBE_BEHAVIOR_PLOTS = False
     MAKE_RAW_LFP_POWER_PLOTS = False
     MAKE_CUMULATIVE_LFP_PLOTS = False
-    MAKE_LFP_PERSEV_CORRELATION_PLOTS = True
+    MAKE_LFP_PERSEV_CORRELATION_PLOTS = False
     RUN_SHUFFLES = False
 
     dataDir = findDataDir()
@@ -63,12 +68,15 @@ def makeFigures():
     print("random seed =", rseed)
     pp = PlotCtx(outputDir=globalOutputDir, randomSeed=rseed)
 
-    animalNames = parseCmdLineAnimalNames(default=["B13", "B14"])
+    animalNames = parseCmdLineAnimalNames(default=["B13", "B14", "Martin"])
     allSessionsByRat = {}
     for animalName in animalNames:
         animalInfo = getInfoForAnimal(animalName)
         # dataFilename = os.path.join(dataDir, animalName, "processed_data", animalInfo.out_filename)
         dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
+        if not os.path.exists(dataFilename):
+            dataFilename = os.path.join("/home/wcroughan/data", animalName,
+                                        "processed_data", animalInfo.out_filename)
         ratData = BTData()
         ratData.loadFromFile(dataFilename)
         allSessionsByRat[animalName] = ratData.getSessions()
@@ -637,6 +645,9 @@ def makeFigures():
         if not MAKE_TASK_BEHAVIOR_PLOTS:
             print("warning: skipping task behavior plots")
         else:
+            # =================================
+            # LATENCY
+            # =================================
             sessionIsInterruption = np.zeros((numSessions,)).astype(bool)
             for i in range(numSessions):
                 if sessions[i].isRippleInterruption:
@@ -649,7 +660,7 @@ def makeFigures():
                 t0 = np.array(np.hstack(([sesh.bt_pos_ts[0]], sesh.away_well_leave_times)))
                 if not sesh.ended_on_home:
                     t0 = t0[0:-1]
-                times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
+                times = (t1 - t0) / TRODES_SAMPLING_RATE
                 homeFindLatencies[si, 0:sesh.num_home_found] = times
 
             awayFindLatencies = np.empty((numSessions, 10))
@@ -659,7 +670,7 @@ def makeFigures():
                 t0 = np.array(sesh.home_well_leave_times)
                 if sesh.ended_on_home:
                     t0 = t0[0:-1]
-                times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
+                times = (t1 - t0) / TRODES_SAMPLING_RATE
                 awayFindLatencies[si, 0:sesh.num_away_found] = times
 
             ymax = 100
@@ -687,6 +698,9 @@ def makeFigures():
                 ax.set_xlim(1, 10)
                 ax.set_xticks(np.arange(0, 10, 2) + 1)
 
+            # =================================
+            # num aways found
+            # =================================
             numAwaysFound = np.array([sesh.num_away_found for sesh in sessions])
             condition = np.array([("SWR" if sesh.isRippleInterruption else "Ctrl")
                                  for sesh in sessions])
@@ -706,6 +720,89 @@ def makeFigures():
                 with pp.newFig("task_num_aways_found_late", priority=5) as ax:
                     boxPlot(ax, yvals=numAwaysFound[lateIdxAllSessions], categories=condition[lateIdxAllSessions],
                             axesNames=["Condition", "num aways found"], violin=True, doStats=False)
+
+            # =================================
+            # path optimality
+            # =================================
+            homeFindOptimalities = np.empty((numSessions, 10))
+            homeFindOptimalities[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                t1 = np.array(sesh.home_well_find_times)
+                t0 = np.array(np.hstack(([sesh.bt_pos_ts[0]], sesh.away_well_leave_times)))
+                if not sesh.ended_on_home:
+                    t0 = t0[0:-1]
+                ts0 = (t0 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                ts1 = (t1 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                homeFindOptimalities[si, 0:sesh.num_home_found] = [sesh.path_optimality(False,
+                                                                                        timeInterval=[ti0, ti1]) for ti0, ti1 in zip(ts0, ts1)]
+
+            awayFindOptimalities = np.empty((numSessions, 10))
+            awayFindOptimalities[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                t1 = np.array(sesh.away_well_find_times)
+                t0 = np.array(sesh.home_well_leave_times)
+                if sesh.ended_on_home:
+                    t0 = t0[0:-1]
+                ts0 = (t0 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                ts1 = (t1 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                awayFindOptimalities[si, 0:sesh.num_away_found] = [sesh.path_optimality(False,
+                                                                                        timeInterval=[ti0, ti1]) for ti0, ti1 in zip(ts0, ts1)]
+
+            ymax = 100
+            swrHomeFindOptimalities = homeFindOptimalities[sessionIsInterruption, :]
+            ctrlHomeFindOptimalities = homeFindOptimalities[np.logical_not(
+                sessionIsInterruption), :]
+            swrAwayFindOptimalities = awayFindOptimalities[sessionIsInterruption, :]
+            ctrlAwayFindOptimalities = awayFindOptimalities[np.logical_not(
+                sessionIsInterruption), :]
+            pltx = np.arange(10) + 1
+
+            with pp.newFig("task_optimality_to_home_by_condition", priority=5) as ax:
+                plotIndividualAndAverage(ax, swrHomeFindOptimalities, pltx,
+                                         individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, ctrlHomeFindOptimalities, pltx,
+                                         individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_ylim(0, ymax)
+                ax.set_xlim(1, 10)
+                ax.set_xticks(np.arange(0, 10, 2) + 1)
+
+            with pp.newFig("task_optimality_to_away_by_condition", priority=5) as ax:
+                plotIndividualAndAverage(ax, swrAwayFindOptimalities, pltx,
+                                         individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, ctrlAwayFindOptimalities, pltx,
+                                         individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_ylim(0, ymax)
+                ax.set_xlim(1, 10)
+                ax.set_xticks(np.arange(0, 10, 2) + 1)
+
+            # =================================
+            # num home visits during away
+            # =================================
+
+            homeVisitsDuringAway = np.empty((numSessions, 10))
+            homeVisitsDuringAway[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                t1 = np.array(sesh.away_well_find_times)
+                t0 = np.array(sesh.home_well_leave_times)
+                if sesh.ended_on_home:
+                    t0 = t0[0:-1]
+                ts0 = (t0 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                ts1 = (t1 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                homeVisitsDuringAway[si, 0:sesh.num_away_found] = \
+                    [sesh.num_well_entries(False, sesh.home_well, timeInterval=[ti0, ti1])
+                     for ti0, ti1 in zip(ts0, ts1)]
+
+            swrHomeVisitsDuringAway = homeVisitsDuringAway[sessionIsInterruption, :]
+            ctrlHomeVisitsDuringAway = homeVisitsDuringAway[np.logical_not(
+                sessionIsInterruption), :]
+
+            with pp.newFig("task_num_home_entries_during_away", priority=5) as ax:
+                plotIndividualAndAverage(ax, swrHomeVisitsDuringAway, pltx,
+                                         individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, ctrlHomeVisitsDuringAway, pltx,
+                                         individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_xlim(1, 10)
+                ax.set_xticks(np.arange(0, 10, 2) + 1)
 
         if not MAKE_PROBE_BEHAVIOR_PLOTS:
             print("warning: skipping probe behavior plots")
@@ -830,7 +927,8 @@ def makeFigures():
                     baselineProbeLFPData, omit_artifacts=False)
                 btBaselineLFPData = baselfpV[sesh.bt_lfp_start_idx:sesh.bt_lfp_end_idx]
                 btBaselineRipplePower, _, _, _ = getRipplePower(
-                    btBaselineLFPData, lfp_deflections=sesh.bt_lfp_artifact_idxs, meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower)
+                    btBaselineLFPData, lfp_deflections=sesh.bt_lfp_artifact_idxs,
+                    meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower)
 
                 probeRawPowerDiff = probeRipPower - probeBaselinePower
                 zmean = np.nanmean(probeRawPowerDiff)
@@ -840,8 +938,10 @@ def makeFigures():
                 zPowerDiff = (rawPowerDiff - zmean) / zstd
 
                 # Go through places detected by either and look at raw lfp, power by both measures
-                # session.btWithBaseRipStartIdx, session.btWithBaseRipLens, session.btWithBaseRipPeakIdx, session.btWithBaseRipPeakAmps, session.btWithBaseRipCrossThreshIdxs = detectRipples(
-                # session.btRipStartIdxsProbeStats, session.btRipLensProbeStats, session.btRipPeakIdxsProbeStats, session.btRipPeakAmpsProbeStats, session.btRipCrossThreshIdxsProbeStats = \
+                # session.btWithBaseRipStartIdx, session.btWithBaseRipLens, session.btWithBaseRipPeakIdx, session.btWithBaseRipPeakAmps,
+                # session.btWithBaseRipCrossThreshIdxs = detectRipples(
+                # session.btRipStartIdxsProbeStats, session.btRipLensProbeStats, session.btRipPeakIdxsProbeStats,
+                # session.btRipPeakAmpsProbeStats, session.btRipCrossThreshIdxsProbeStats = \
 
                 ripStarts = np.array([], dtype=int)
                 ripLens = np.array([], dtype=int)
@@ -969,7 +1069,8 @@ def makeFigures():
                         axs[0].legend()
                         axs[1].legend()
                         axs[0].set_title(
-                            "{} ({})   {}: {}/{}".format(sesh.name, "SWR" if sesh.isRippleInterruption else "Ctrl", source[i], sourceIdx[i], sourceNumPts[source[i]]))
+                            "{} ({})   {}: {}/{}".format(sesh.name, "SWR" if sesh.isRippleInterruption else "Ctrl",
+                                                         source[i], sourceIdx[i], sourceNumPts[source[i]]))
 
         if not MAKE_CUMULATIVE_LFP_PLOTS:
             print("warning: skipping LFP cumulative rate plots")

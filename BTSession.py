@@ -1,5 +1,6 @@
 import numpy as np
 import scipy
+from consts import TRODES_SAMPLING_RATE
 
 
 class BTSession:
@@ -23,8 +24,6 @@ class BTSession:
     EXCURSION_STATE_ON_WALL = 1
 
     all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
-
-    TRODES_SAMPLING_RATE = 30000
 
     PIXELS_PER_CM = 5.0
 
@@ -333,7 +332,7 @@ class BTSession:
         if timeInterval is not None:
             assert xs.shape == ts.shape
             dur_idx = np.searchsorted(ts, np.array(
-                [ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE]))
+                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
             xs = xs[dur_idx[0]:dur_idx[1]]
             ys = ys[dur_idx[0]:dur_idx[1]]
 
@@ -347,7 +346,8 @@ class BTSession:
         """
         return self.avg_dist_to_well(inProbe, self.home_well, timeInterval=timeInterval, moveFlag=moveFlag, avgFunc=avgFunc)
 
-    def entry_exit_times(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False, returnIdxs=False, includeEdgeOverlap=True, subtractT0=False):
+    def entry_exit_times(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False, returnIdxs=False,
+                         includeEdgeOverlap=True, subtractT0=False):
         """
         return units: trodes timestamps, unless returnIdxs==True
         """
@@ -469,8 +469,8 @@ class BTSession:
             else:
                 ts = self.bt_pos_ts
 
-            mint = ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE
-            maxt = ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE
+            mint = ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE
+            maxt = ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE
             if returnIdxs:
                 mint = np.searchsorted(ts, mint)
                 maxt = np.searchsorted(ts, maxt)
@@ -622,10 +622,12 @@ class BTSession:
         # note this method is slightly different from original (but better!)
         # original would count entire visit to well as long as entry was before cutoff point
 
-        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag, avgFunc=avgFunc, includeNeighbors=includeNeighbors)
+        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag,
+                                                   avgFunc=avgFunc, includeNeighbors=includeNeighbors)
 
     def avg_ballisticity_at_home_well(self, inProbe, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, includeNeighbors=False):
-        return self.avg_ballisticity_at_well(inProbe, self.home_well, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag, avgFunc=avgFunc, includeNeighbors=includeNeighbors)
+        return self.avg_ballisticity_at_well(inProbe, self.home_well, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag,
+                                             avgFunc=avgFunc, includeNeighbors=includeNeighbors)
 
     def avg_curvature_at_well(self, inProbe, wellName, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, includeNeighbors=False):
         if inProbe:
@@ -635,10 +637,12 @@ class BTSession:
         # note this method is slightly different from original (but better!)
         # original would count entire visit to well as long as entry was before cutoff point
 
-        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag, avgFunc=avgFunc, includeNeighbors=includeNeighbors)
+        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag, avgFunc=avgFunc,
+                                                   includeNeighbors=includeNeighbors)
 
     def avg_curvature_at_home_well(self, inProbe, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, includeNeighbors=False):
-        return self.avg_curvature_at_well(inProbe, self.home_well, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag, avgFunc=avgFunc, includeNeighbors=includeNeighbors)
+        return self.avg_curvature_at_well(inProbe, self.home_well, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag, avgFunc=avgFunc,
+                                          includeNeighbors=includeNeighbors)
 
     def dwell_times(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
         """
@@ -661,8 +665,8 @@ class BTSession:
         # now we have ents, exts, t0
         # should filter for timeInterval
         if timeInterval is not None:
-            mint = t0 + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE
-            maxt = t0 + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE
+            mint = t0 + timeInterval[0] * TRODES_SAMPLING_RATE
+            maxt = t0 + timeInterval[1] * TRODES_SAMPLING_RATE
             ents = ents[np.logical_and(ents > mint, ents < maxt)]
 
         return ents.size
@@ -671,7 +675,8 @@ class BTSession:
         """
         return units: seconds
         """
-        return np.sum(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors) / BTSession.TRODES_SAMPLING_RATE)
+        return np.sum(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward,
+                                       includeNeighbors=includeNeighbors) / TRODES_SAMPLING_RATE)
 
     def total_converted_dwell_time(self, inProbe, wellName):
         """
@@ -695,7 +700,7 @@ class BTSession:
             return emptyVal
         else:
             # print("ret is {} for well {}".format(ret, wellName))
-            return avgFunc(ret / BTSession.TRODES_SAMPLING_RATE)
+            return avgFunc(ret / TRODES_SAMPLING_RATE)
 
     def num_sniffs(self, inProbe, wellName, timeInterval=None, excludeReward=False):
         # Just for now, hacking in excluded rewards
@@ -748,8 +753,8 @@ class BTSession:
             ts = self.bt_pos_ts
 
         if timeInterval is not None:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE)
+            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
+            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
             lbls = lbls[imin:imax]
 
         return len(set(lbls) - set([0]))
@@ -790,7 +795,8 @@ class BTSession:
         if denom == 0:
             return np.nan
 
-        return self.num_bouts_where_well_was_visited(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors) / denom
+        return self.num_bouts_where_well_was_visited(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward,
+                                                     includeNeighbors=includeNeighbors) / denom
 
     def prop_time_in_bout_state(self, inProbe, boutState, timeInterval=None):
         if inProbe:
@@ -804,8 +810,8 @@ class BTSession:
             imin = 0
             imax = len(ts)
         else:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE)
+            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
+            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
 
         cats = cats[imin:imax]
         if float(cats.size) == 0:
@@ -830,8 +836,8 @@ class BTSession:
             imin = 0
             imax = len(ts)
         else:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE)
+            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
+            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
 
         vel = vel[imin:imax]
         if onlyMoving:
@@ -843,29 +849,36 @@ class BTSession:
         return 49 - wellName
 
     def path_optimality(self, inProbe, timeInterval=None, wellName=None, emptyVal=np.nan):
-        if timeInterval is None and wellName is None:
-            raise Exception("Gimme a time interval or a well name plz")
-
-        if timeInterval is not None:
-            raise Exception("Unimplemented")
+        if (timeInterval is None) == (wellName is None):
+            raise Exception("Gimme a time interval or a well name plz (but not both)")
 
         if inProbe:
             xs = self.probe_pos_xs
             ys = self.probe_pos_ys
+            ts = self.probe_pos_ts
         else:
             xs = self.bt_pos_xs
             ys = self.bt_pos_ys
+            ts = self.bt_pos_ts
 
-        ents = self.entry_exit_times(inProbe, wellName, returnIdxs=True)[0]
-        if len(ents) == 0:
-            return emptyVal
-        ei = ents[0]
-        displacement_x = xs[ei] - xs[0]
-        displacement_y = ys[ei] - ys[0]
+        if wellName is not None:
+            ents = self.entry_exit_times(inProbe, wellName, returnIdxs=True)[0]
+            if len(ents) == 0:
+                return emptyVal
+            ei = ents[0]
+            displacement_x = xs[ei] - xs[0]
+            displacement_y = ys[ei] - ys[0]
+            dx = np.diff(xs[0:ei])
+            dy = np.diff(ys[0:ei])
+
+        if timeInterval is not None:
+            idxs = np.searchsorted(ts, np.array(timeInterval) * TRODES_SAMPLING_RATE + ts[0])
+            displacement_x = xs[idxs[1]] - xs[idxs[0]]
+            displacement_y = ys[idxs[1]] - ys[idxs[0]]
+            dx = np.diff(xs[idxs[0]:idxs[1]])
+            dy = np.diff(ys[idxs[0]:idxs[1]])
+
         displacement = np.sqrt(displacement_x*displacement_x + displacement_y*displacement_y)
-
-        dx = np.diff(xs[0:ei])
-        dy = np.diff(ys[0:ei])
         distance = np.sum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
 
         return distance / displacement
@@ -917,7 +930,7 @@ class BTSession:
         if timeInterval is not None:
             assert xs.shape == ts.shape
             dur_idx = np.searchsorted(ts, np.array(
-                [ts[0] + timeInterval[0] * BTSession.TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * BTSession.TRODES_SAMPLING_RATE]))
+                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
             xs = xs[dur_idx[0]:dur_idx[1]]
             ys = ys[dur_idx[0]:dur_idx[1]]
             ts = ts[dur_idx[0]:dur_idx[1]]
@@ -961,7 +974,7 @@ class BTSession:
                 res -= self.bt_pos_ts[0]
 
             if returnSeconds:
-                res /= BTSession.TRODES_SAMPLING_RATE
+                res /= TRODES_SAMPLING_RATE
 
         return res
 
@@ -990,16 +1003,19 @@ class BTSession:
         neighborWells = [w for w in neighborWells if (w in fromWells)]
         neighborExitIdxs = []
         for nw in neighborWells:
-            neighborExitIdxs += list(self.entry_exit_times(inProbe, nw, timeInterval=timeInterval, returnIdxs=True)[1])
+            neighborExitIdxs += list(self.entry_exit_times(inProbe, nw,
+                                     timeInterval=timeInterval, returnIdxs=True)[1])
 
         if len(neighborExitIdxs) == 0:
             return emptyVal
 
-        wellEntryIdxs = self.entry_exit_times(inProbe, wellName, timeInterval=timeInterval, returnIdxs=True)[0] - 1
+        wellEntryIdxs = self.entry_exit_times(
+            inProbe, wellName, timeInterval=timeInterval, returnIdxs=True)[0] - 1
 
         # print(neighborExitIdxs)
         # print(wellEntryIdxs)
-        ret = len([nwei for nwei in neighborExitIdxs if nwei in wellEntryIdxs]) / len(neighborExitIdxs)
+        ret = len([nwei for nwei in neighborExitIdxs if nwei in wellEntryIdxs]) / \
+            len(neighborExitIdxs)
         # print(ret)
 
         return ret

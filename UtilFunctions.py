@@ -579,7 +579,8 @@ def getInfoForAnimal(animalName):
 
         # Messed up away well order, marked down 20 when he got 12. Ended up giving him reward at 12 twice
         ret.excluded_sessions += ["20220131_2"]
-        # Made a custom foundwells field in the behaviornotes for this guy, but would need to update the rest of the import code (i.e. clips loading assumes alternation with home)
+        # Made a custom foundwells field in the behaviornotes for this guy, but would need to update the rest of the import code
+        # (i.e. clips loading assumes alternation with home)
         ret.excluded_sessions += ["20220222_2"]
         # video skips
         ret.excluded_sessions += ["20220304_2"]
