@@ -13,41 +13,6 @@ from matplotlib.patches import Rectangle
 from matplotlib.collections import PatchCollection
 from matplotlib.markers import MarkerStyle
 
-# GOALS and TODOS:
-# BEHAVIOR:
-# -Look at just old data and just newer data. Why did the effect go away? Washed out or reveresed?
-# -Look at home v away difference and other measures within session
-# Look at away-from-home measures like where on the wall he was, orientation to home, dir crossed with dir to home
-# -Look at gravity of home well
-# Looks like there's more interruption sessions where B13 doesn't visit home at all in probe, look at behavior and see
-# what underlying pattern is, best way to quantify
-#
-# LFP:
-# Look at raw LFP and ripple power using different detection criteria (baseline, referenced, etc). What is difference?
-#   - OK a few takeaways from first look:
-#       - Quite a few stims aren't getting excluded and are instead labeled as ripples with high power. Need to adjust
-# stim detection
-#       - After most stims the baseline tetrode signal actually stays way offset for about 40-80ms and then there's
-# another artifact and it returns to mostly baseline
-#               For one example, see B13, session 20220222_165339, around 755.7 seconds in
-#       - Also happens to the detection tetrode sometimes, though it seems like less often and for less time when it
-# happens
-#               e.x. happens to both separately one after another in B13 session 20220222_165339, 811.7 seconds in
-#       - There's another very consistent post stim aspect of the baseline tetrode voltage where it returns to normal
-# slowly, like the PSTH seen on the reference tet but slightly bigger and different shape
-# Is exportLFP output referenced?
-#   - yes, it is
-
-# 2022-5-12
-# No obvious differences in behavior between conditions during task. Need to follow up on what looks like B13 not
-# visiting home at all more often in later interruption sessions
-# For LFP, fixed artifact detection (although maybe doesn't work for Martin now). Need to check difference between
-# baseline and non-baseline detction.  Specifically:
-#   Is there ripple power on the baseline tetrode?
-#   With no baseline, is more junk getting through? Are ripples also getting through?
-# There are more sessions with numEntries > 1 than are appearing in the curvature/LFP correlation plots
-#   -Ah I think cause the nan values that are added in at various points
-
 
 def makeFigures():
     MAKE_EARLY_LATE_SESSION_BASIC_MEASURES = False
@@ -63,7 +28,7 @@ def makeFigures():
     RUN_SHUFFLES = False
 
     dataDir = findDataDir()
-    globalOutputDir = os.path.join(dataDir, "figures", "20220524_labmeeting")
+    globalOutputDir = os.path.join(dataDir, "figures", "20220607_labmeeting")
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
     pp = PlotCtx(outputDir=globalOutputDir, randomSeed=rseed)
@@ -342,7 +307,7 @@ def makeFigures():
                         axesNames=["Condition", "avg dwell (s)", "Well Type"], violin=True, doStats=False)
                 ax.set_ylim(0, 30)
 
-                yvals["probe_avgdwell_ofwall"] = avgDwell[earlyIdx]
+                yvals["probe_avgdwell_ofwall_early"] = avgDwell[earlyIdx]
                 cats["well"] = wellCat[earlyIdx]
                 cats["condition"] = seshCat[earlyIdx]
                 # info["conditionGroup"] = seshConditionGroup[earlyIdx]
@@ -353,7 +318,7 @@ def makeFigures():
                         axesNames=["Condition", "avg dwell (s), 90sec", "Well Type"], violin=True, doStats=False)
                 ax.set_ylim(0, 30)
 
-                yvals["probe_avgdwell_90sec_ofwall"] = avgDwell90[earlyIdx]
+                yvals["probe_avgdwell_90sec_ofwall_early"] = avgDwell90[earlyIdx]
                 cats["well"] = wellCat[earlyIdx]
                 cats["condition"] = seshCat[earlyIdx]
                 # info["conditionGroup"] = seshConditionGroup[earlyIdx]
@@ -364,7 +329,7 @@ def makeFigures():
                         axesNames=["Condition", "avg curvature", "Well Type"], violin=True, doStats=False)
                 ax.set_ylim(0, 3)
 
-                yvals["probe_curvature_offwall"] = curvature[earlyIdx]
+                yvals["probe_curvature_offwall_early"] = curvature[earlyIdx]
                 cats["well"] = wellCat[earlyIdx]
                 cats["condition"] = seshCat[earlyIdx]
                 # info["conditionGroup"] = seshConditionGroup[earlyIdx]
@@ -375,7 +340,7 @@ def makeFigures():
                         axesNames=["Condition", "avg curvature, 90sec", "Well Type"], violin=True, doStats=False)
                 ax.set_ylim(0, 3)
 
-                yvals["probe_curvature_90sec_offwall"] = curvature90[earlyIdx]
+                yvals["probe_curvature_90sec_offwall_early"] = curvature90[earlyIdx]
                 cats["well"] = wellCat[earlyIdx]
                 cats["condition"] = seshCat[earlyIdx]
                 # info["conditionGroup"] = seshConditionGroup[earlyIdx]
@@ -385,40 +350,44 @@ def makeFigures():
                 boxPlot(ax, yvals=numEntries[earlyIdx], categories=seshCat[earlyIdx], categories2=wellCat[earlyIdx],
                         axesNames=["Condition", "num entries", "Well Type"], violin=True, doStats=False)
 
-                yvals["probe_num_entries_offwall"] = numEntries[earlyIdx]
+                yvals["probe_num_entries_offwall_early"] = numEntries[earlyIdx]
                 cats["well"] = wellCat[earlyIdx]
                 cats["condition"] = seshCat[earlyIdx]
                 # info["conditionGroup"] = seshConditionGroup[earlyIdx]
                 # pp.setCustomShuffleFunction("condition", conditionShuffle)
 
             with pp.newFig("probe_avgdwell_difference_offwall_early", priority=5, withStats=True) as (ax, yvals, cats, info):
-                boxPlot(ax, yvals=avgDwellDifference[earlyIdxBySession], categories=seshDateCatBySession[earlyIdxBySession], axesNames=[
+                boxPlot(ax, yvals=avgDwellDifference[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
                         "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
-                yvals["probe_avgdwell_difference_offwall"] = avgDwellDifference[earlyIdxBySession]
-                cats["condition"] = seshDateCatBySession[earlyIdxBySession]
+                yvals["probe_avgdwell_difference_offwall_early"] = avgDwellDifference[earlyIdxBySession]
+                cats["condition"] = seshCatBySession[earlyIdxBySession]
+                ax.set_ylim(-6.5, 5)
 
             with pp.newFig("probe_avgdwell90_difference_offwall_early", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwellDifference90[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
                         "Condition", "Avg Dwell Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_avgdwell90_difference_offwall"] = avgDwellDifference[earlyIdxBySession]
+                yvals["probe_avgdwell90_difference_offwall_early"] = avgDwellDifference[earlyIdxBySession]
                 cats["condition"] = seshCatBySession[earlyIdxBySession]
+                ax.set_ylim(-6.5, 5)
 
             with pp.newFig("probe_curvature_difference_offwall_early", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=curvatureDifference[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
                         "Condition", "Curvature Difference"], violin=True, doStats=False)
-                yvals["probe_curvature_difference_offwall"] = curvatureDifference[earlyIdxBySession]
+                yvals["probe_curvature_difference_offwall_early"] = curvatureDifference[earlyIdxBySession]
                 cats["condition"] = seshCatBySession[earlyIdxBySession]
+                ax.set_ylim(-1, 2.5)
 
             with pp.newFig("probe_curvature90_difference_offwall_early", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=curvatureDifference90[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
                         "Condition", "Curvature Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_curvature90_difference_offwall"] = curvatureDifference[earlyIdxBySession]
+                yvals["probe_curvature90_difference_offwall_early"] = curvatureDifference[earlyIdxBySession]
                 cats["condition"] = seshCatBySession[earlyIdxBySession]
+                ax.set_ylim(-1, 2.5)
 
             with pp.newFig("probe_numEntries_difference_offwall_early", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=numEntriesDifference[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
                         "Condition", "Num Entries Difference"], violin=True, doStats=False)
-                yvals["probe_numEntries_difference_offwall"] = numEntriesDifference[earlyIdxBySession]
+                yvals["probe_numEntries_difference_offwall_early"] = numEntriesDifference[earlyIdxBySession]
                 cats["condition"] = seshCatBySession[earlyIdxBySession]
 
             # late
@@ -427,7 +396,7 @@ def makeFigures():
                         axesNames=["Condition", "avg dwell (s)", "Well Type"], violin=True, doStats=False)
                 ax.set_ylim(0, 30)
 
-                yvals["probe_avgdwell_ofwall"] = avgDwell[lateIdx]
+                yvals["probe_avgdwell_ofwall_late"] = avgDwell[lateIdx]
                 cats["well"] = wellCat[lateIdx]
                 cats["condition"] = seshCat[lateIdx]
                 # info["conditionGroup"] = seshConditionGroup[lateIdx]
@@ -438,7 +407,7 @@ def makeFigures():
                         axesNames=["Condition", "avg dwell (s), 90sec", "Well Type"], violin=True, doStats=False)
                 ax.set_ylim(0, 30)
 
-                yvals["probe_avgdwell_90sec_ofwall"] = avgDwell90[lateIdx]
+                yvals["probe_avgdwell_90sec_ofwall_late"] = avgDwell90[lateIdx]
                 cats["well"] = wellCat[lateIdx]
                 cats["condition"] = seshCat[lateIdx]
                 # info["conditionGroup"] = seshConditionGroup[lateIdx]
@@ -449,7 +418,7 @@ def makeFigures():
                         axesNames=["Condition", "avg curvature", "Well Type"], violin=True, doStats=False)
                 ax.set_ylim(0, 3)
 
-                yvals["probe_curvature_offwall"] = curvature[lateIdx]
+                yvals["probe_curvature_offwall_late"] = curvature[lateIdx]
                 cats["well"] = wellCat[lateIdx]
                 cats["condition"] = seshCat[lateIdx]
                 # info["conditionGroup"] = seshConditionGroup[lateIdx]
@@ -460,7 +429,7 @@ def makeFigures():
                         axesNames=["Condition", "avg curvature, 90sec", "Well Type"], violin=True, doStats=False)
                 ax.set_ylim(0, 3)
 
-                yvals["probe_curvature_90sec_offwall"] = curvature90[lateIdx]
+                yvals["probe_curvature_90sec_offwall_late"] = curvature90[lateIdx]
                 cats["well"] = wellCat[lateIdx]
                 cats["condition"] = seshCat[lateIdx]
                 # info["conditionGroup"] = seshConditionGroup[lateIdx]
@@ -470,40 +439,44 @@ def makeFigures():
                 boxPlot(ax, yvals=numEntries[lateIdx], categories=seshCat[lateIdx], categories2=wellCat[lateIdx],
                         axesNames=["Condition", "num entries", "Well Type"], violin=True, doStats=False)
 
-                yvals["probe_num_entries_offwall"] = numEntries[lateIdx]
+                yvals["probe_num_entries_offwall_late"] = numEntries[lateIdx]
                 cats["well"] = wellCat[lateIdx]
                 cats["condition"] = seshCat[lateIdx]
                 # info["conditionGroup"] = seshConditionGroup[lateIdx]
                 # pp.setCustomShuffleFunction("condition", conditionShuffle)
 
             with pp.newFig("probe_avgdwell_difference_offwall_late", priority=5, withStats=True) as (ax, yvals, cats, info):
-                boxPlot(ax, yvals=avgDwellDifference[lateIdxBySession], categories=seshDateCatBySession[lateIdxBySession], axesNames=[
+                boxPlot(ax, yvals=avgDwellDifference[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
                         "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
-                yvals["probe_avgdwell_difference_offwall"] = avgDwellDifference[lateIdxBySession]
-                cats["condition"] = seshDateCatBySession[lateIdxBySession]
+                yvals["probe_avgdwell_difference_offwall_late"] = avgDwellDifference[lateIdxBySession]
+                cats["condition"] = seshCatBySession[lateIdxBySession]
+                ax.set_ylim(-6.5, 5)
 
             with pp.newFig("probe_avgdwell90_difference_offwall_late", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwellDifference90[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
                         "Condition", "Avg Dwell Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_avgdwell90_difference_offwall"] = avgDwellDifference[lateIdxBySession]
+                yvals["probe_avgdwell90_difference_offwall_late"] = avgDwellDifference[lateIdxBySession]
                 cats["condition"] = seshCatBySession[lateIdxBySession]
+                ax.set_ylim(-6.5, 5)
 
             with pp.newFig("probe_curvature_difference_offwall_late", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=curvatureDifference[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
                         "Condition", "Curvature Difference"], violin=True, doStats=False)
-                yvals["probe_curvature_difference_offwall"] = curvatureDifference[lateIdxBySession]
+                yvals["probe_curvature_difference_offwall_late"] = curvatureDifference[lateIdxBySession]
                 cats["condition"] = seshCatBySession[lateIdxBySession]
+                ax.set_ylim(-1, 2.5)
 
             with pp.newFig("probe_curvature90_difference_offwall_late", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=curvatureDifference90[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
                         "Condition", "Curvature Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_curvature90_difference_offwall"] = curvatureDifference[lateIdxBySession]
+                yvals["probe_curvature90_difference_offwall_late"] = curvatureDifference[lateIdxBySession]
                 cats["condition"] = seshCatBySession[lateIdxBySession]
+                ax.set_ylim(-1, 2.5)
 
             with pp.newFig("probe_numEntries_difference_offwall_late", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=numEntriesDifference[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
                         "Condition", "Num Entries Difference"], violin=True, doStats=False)
-                yvals["probe_numEntries_difference_offwall"] = numEntriesDifference[lateIdxBySession]
+                yvals["probe_numEntries_difference_offwall_late"] = numEntriesDifference[lateIdxBySession]
                 cats["condition"] = seshCatBySession[lateIdxBySession]
 
         if not MAKE_WITHIN_SESSION_MEASURE_PLOTS:
@@ -514,24 +487,28 @@ def makeFigures():
                         "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
                 yvals["probe_avgdwell_difference_offwall"] = avgDwellDifference
                 cats["condition"] = seshCatBySession
+                ax.set_ylim(-6.5, 5)
 
             with pp.newFig("probe_avgdwell90_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwellDifference90, categories=seshCatBySession, axesNames=[
                         "Condition", "Avg Dwell Difference 90sec"], violin=True, doStats=False)
                 yvals["probe_avgdwell90_difference_offwall"] = avgDwellDifference
                 cats["condition"] = seshCatBySession
+                ax.set_ylim(-6.5, 5)
 
             with pp.newFig("probe_curvature_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=curvatureDifference, categories=seshCatBySession, axesNames=[
                         "Condition", "Curvature Difference"], violin=True, doStats=False)
                 yvals["probe_curvature_difference_offwall"] = curvatureDifference
                 cats["condition"] = seshCatBySession
+                ax.set_ylim(-1, 2.5)
 
             with pp.newFig("probe_curvature90_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=curvatureDifference90, categories=seshCatBySession, axesNames=[
                         "Condition", "Curvature Difference 90sec"], violin=True, doStats=False)
                 yvals["probe_curvature90_difference_offwall"] = curvatureDifference
                 cats["condition"] = seshCatBySession
+                ax.set_ylim(-1, 2.5)
 
             with pp.newFig("probe_numEntries_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=numEntriesDifference, categories=seshCatBySession, axesNames=[
@@ -804,6 +781,22 @@ def makeFigures():
                 ax.set_xlim(1, 10)
                 ax.set_xticks(np.arange(0, 10, 2) + 1)
 
+            # =================================
+            # Before first well found:
+            # num times checked old home well
+            # latency/optimality to old home
+            # =================================
+
+            # =================================
+            # How often checked immediately previous away on next away trial?
+            # =================================
+
+            # =================================
+            # Most checked off-wall away vs home behavior
+            # (in probe and task)
+            # Just restricting all measures to best away instead of average away
+            # =================================
+
         if not MAKE_PROBE_BEHAVIOR_PLOTS:
             print("warning: skipping probe behavior plots")
         else:
@@ -865,7 +858,7 @@ def makeFigures():
             numVisitedOverTimeOffWall = np.empty((numSessionsWithProbe, len(t1Array)))
             numVisitedOverTimeOffWall[:] = np.nan
             for si, sesh in enumerate(sessionsWithProbe):
-                t1s = t1Array * BTSession.TRODES_SAMPLING_RATE + sesh.probe_pos_ts[0]
+                t1s = t1Array * TRODES_SAMPLING_RATE + sesh.probe_pos_ts[0]
                 i1Array = np.searchsorted(sesh.probe_pos_ts, t1s)
                 for ii, i1 in enumerate(i1Array):
                     numVisitedOverTime[si, ii] = numWellsVisited(
@@ -1307,3 +1300,39 @@ def makeFigures():
 
 if __name__ == "__main__":
     makeFigures()
+
+
+# GOALS and TODOS:
+# BEHAVIOR:
+# -Look at just old data and just newer data. Why did the effect go away? Washed out or reveresed?
+# -Look at home v away difference and other measures within session
+# Look at away-from-home measures like where on the wall he was, orientation to home, dir crossed with dir to home
+# -Look at gravity of home well
+# Looks like there's more interruption sessions where B13 doesn't visit home at all in probe, look at behavior and see
+# what underlying pattern is, best way to quantify
+#
+# LFP:
+# Look at raw LFP and ripple power using different detection criteria (baseline, referenced, etc). What is difference?
+#   - OK a few takeaways from first look:
+#       - Quite a few stims aren't getting excluded and are instead labeled as ripples with high power. Need to adjust
+# stim detection
+#       - After most stims the baseline tetrode signal actually stays way offset for about 40-80ms and then there's
+# another artifact and it returns to mostly baseline
+#               For one example, see B13, session 20220222_165339, around 755.7 seconds in
+#       - Also happens to the detection tetrode sometimes, though it seems like less often and for less time when it
+# happens
+#               e.x. happens to both separately one after another in B13 session 20220222_165339, 811.7 seconds in
+#       - There's another very consistent post stim aspect of the baseline tetrode voltage where it returns to normal
+# slowly, like the PSTH seen on the reference tet but slightly bigger and different shape
+# Is exportLFP output referenced?
+#   - yes, it is
+
+# 2022-5-12
+# No obvious differences in behavior between conditions during task. Need to follow up on what looks like B13 not
+# visiting home at all more often in later interruption sessions
+# For LFP, fixed artifact detection (although maybe doesn't work for Martin now). Need to check difference between
+# baseline and non-baseline detction.  Specifically:
+#   Is there ripple power on the baseline tetrode?
+#   With no baseline, is more junk getting through? Are ripples also getting through?
+# There are more sessions with numEntries > 1 than are appearing in the curvature/LFP correlation plots
+#   -Ah I think cause the nan values that are added in at various points

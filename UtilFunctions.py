@@ -47,17 +47,17 @@ def readRawPositionData(data_filename):
         with open(data_filename, 'rb') as datafile:
             dt = np.dtype([('timestamp', np.uint32), ('x1', np.uint16),
                            ('y1', np.uint16), ('x2', np.uint16), ('y2', np.uint16)])
-            l = ""
+            lineText = ""
             max_iter = 8
             iter = 0
             settings = {}
-            while l != b'<end settings>\n':
-                l = datafile.readline().lower()
-                if l != b'<end settings>\n' and l != b'<start settings>\n':
-                    ss = str(l).split(":")
+            while lineText != b'<end settings>\n':
+                lineText = datafile.readline().lower()
+                if lineText != b'<end settings>\n' and lineText != b'<start settings>\n':
+                    ss = str(lineText).split(":")
                     if len(ss) == 2:
                         settings[str(ss[0])[2:].strip()] = str(ss[1])[0:-3].strip()
-                # print(l)
+                # print(lineText)
                 iter += 1
                 if iter > max_iter:
                     raise Exception
@@ -100,7 +100,7 @@ def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
     xp = position_data['timestamp']
     x_pos = np.interp(x, xp, position_data['x1'])
     y_pos = np.interp(x, xp, position_data['y1'])
-    position_sampling_frequency = TRODES_SAMPLING_RATE / np.diff(x)[0]
+    # position_sampling_frequency = TRODES_SAMPLING_RATE / np.diff(x)[0]
     # Interpolated Timestamps:
     # position_data['timestamp'] = x
 
@@ -698,7 +698,7 @@ def getUSBVideoFile(seshName, possibleDirectories):
             if diff < minDiff:
                 minDiff = diff
                 usbVidFile = uv
-                seshWithinDay = uvi
+                # seshWithinDay = uvi
 
         return usbVidFile
 

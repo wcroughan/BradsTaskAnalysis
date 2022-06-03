@@ -787,9 +787,9 @@ class BTSession:
                 bout_ends = self.bt_explore_bout_ends
 
             if len(bout_ends) >= boutsInterval[1]:
-                timeInterval = [bout_starts[boutsInterval[0]], bout_ends[boutsInterval[1]-1]]
+                timeInterval = [bout_starts[boutsInterval[0]], bout_ends[boutsInterval[1] - 1]]
             else:
-                timeInterval = [bout_starts[boutsInterval[0]], bout_ends[len(bout_ends)-1]]
+                timeInterval = [bout_starts[boutsInterval[0]], bout_ends[len(bout_ends) - 1]]
 
         denom = self.num_bouts(inProbe, timeInterval=timeInterval)
         if denom == 0:
@@ -878,7 +878,7 @@ class BTSession:
             dx = np.diff(xs[idxs[0]:idxs[1]])
             dy = np.diff(ys[idxs[0]:idxs[1]])
 
-        displacement = np.sqrt(displacement_x*displacement_x + displacement_y*displacement_y)
+        displacement = np.sqrt(displacement_x * displacement_x + displacement_y * displacement_y)
         distance = np.sum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
 
         return distance / displacement

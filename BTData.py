@@ -59,8 +59,8 @@ class BTData:
 
             for bi in range(0, len(self.allSessions)):
                 if bi > 0:
-                    self.allSessions[bi].prevSession = self.allSessions[bi-1]
-                    self.allSessions[bi-1].nextSession = self.allSessions[bi]
+                    self.allSessions[bi].prevSession = self.allSessions[bi - 1]
+                    self.allSessions[bi - 1].nextSession = self.allSessions[bi]
 
             for rsi, rs in enumerate(self.allRestSessions):
                 sn = rs.btwpSessionName

@@ -11,6 +11,8 @@ import random
 import time
 from enum import IntEnum, auto
 from contextlib import contextmanager
+import matplotlib
+import textwrap as twp
 
 
 class ShufRes:
@@ -211,7 +213,7 @@ class PlotCtx:
         self.persistentCategories[category] = value
 
     def setStatInfo(self, infoCategory, value):
-        self.persistentInfoValues[infoCategory] = values
+        self.persistentInfoValues[infoCategory] = value
 
     def setCustomShuffleFunction(self, category, func):
         self.customShuffleFunctions[category] = func
@@ -225,27 +227,27 @@ class PlotCtx:
             assert len(self.yvals) > 0
             assert len(self.persistentCategories) + len(self.categories) > 0
 
-            l = None
+            savedLen = None
             for k in self.yvals:
-                if l is None:
-                    l = len(self.yvals[k])
+                if savedLen is None:
+                    savedLen = len(self.yvals[k])
                 else:
-                    assert len(self.yvals[k]) == l
+                    assert len(self.yvals[k]) == savedLen
             for k in self.categories:
-                assert len(self.categories[k]) == l
+                assert len(self.categories[k]) == savedLen
             for k in self.infoVals:
-                assert len(self.infoVals[k]) == l
+                assert len(self.infoVals[k]) == savedLen
 
             for k in self.persistentCategories:
                 if k not in self.categories:
-                    self.categories[k] = [self.persistentCategories[k]] * l
+                    self.categories[k] = [self.persistentCategories[k]] * savedLen
                 else:
                     print(
                         "WARNING: overlap between persistent category and this-plot category, both named {}".format(k))
 
             for k in self.persistentInfoValues:
                 if k not in self.infoVals:
-                    self.infoVals[k] = [self.persistentInfoValues[k]] * l
+                    self.infoVals[k] = [self.persistentInfoValues[k]] * savedLen
                 else:
                     print(
                         "WARNING: overlap between persistent info category and this-plot category, both named {}".format(k))
@@ -332,11 +334,22 @@ class PlotCtx:
             for yvalName in yvals:
                 assert yvalName not in categories
 
-            cats = list(categories.keys())
+            catsToShuffle = list(categories.keys())
+            todel = set()
+            for cat in catsToShuffle:
+                vals = set(categories[cat])
+                if len(vals) <= 1:
+                    todel.add(cat)
+                    print("Category {} has only one val ({}). Not including in shuffle for plot {}".format(
+                        cat, vals, plotName))
+
+            for td in todel:
+                catsToShuffle.remove(td)
+
             categories.update(yvals)
             categories.update(infoVals)
             df = pd.DataFrame(data=categories)
-            specs = self.getAllShuffleSpecs(df, columnsToShuffle=cats)
+            specs = self.getAllShuffleSpecs(df, columnsToShuffle=catsToShuffle)
             ss = [len(s) for s in specs]
             specs = [x for _, x in sorted(zip(ss, specs))]
             print("\n".join([str(s) for s in specs]))
@@ -408,7 +421,7 @@ class PlotCtx:
                 dd[dataName] = yvals
                 print(pd.DataFrame(data=dd))
 
-            recInfo = ", ".join([k for k in categories])
+            # recInfo = ", ".join([k for k in categories])
 
             ret = []
             for catName in categories:
@@ -444,7 +457,7 @@ class PlotCtx:
                         yvals[np.logical_not(withinIdx)], dataName, subCats, valSet=valSet, numShuffles=0))
 
                 interactions = []
-                dprime = np.empty((len(valSet[catName]),))
+                # dprime = np.empty((len(valSet[catName]),))
                 for vi, val in enumerate(valSet[catName]):
                     wrj = withinRet[vi]
                     worj = withoutRet[vi]
@@ -503,7 +516,7 @@ class PlotCtx:
                         assert inti == len(darray)
 
                     # print(darray, shufRes)
-                    pctiles = np.count_nonzero(darray > shufRes,  axis=1) / numShuffles
+                    pctiles = np.count_nonzero(darray > shufRes, axis=1) / numShuffles
                     # print(pctiles)
 
                 for ii in range(len(interactions)):
@@ -575,7 +588,7 @@ class PlotCtx:
         for si, s in enumerate(spec):
             assert isinstance(s, ShuffSpec)
             assert s.shuffType != ShuffSpec.ShuffType.UNSPECIFIED
-            assert s.shuffType != ShuffSpec.ShuffType.GLOBAL or si == len(spec)-1
+            assert s.shuffType != ShuffSpec.ShuffType.GLOBAL or si == len(spec) - 1
 
         # print(df)
         # print("\t", spec)
@@ -698,11 +711,12 @@ class PlotCtx:
 
         with open(self.txtOutputFName, "a") as f:
             for spec in specs:
-                print(spec)
+                print(f'\r{spec}                 ', end='')
                 res = self._doShuffleSpec(df, spec, valSet, dataNames)
                 for r in res:
                     # print(r.getFullInfoString(linePfx="\t"))
                     f.write(r.getFullInfoString(linePfx="\t") + "\n")
+        print("")
 
     def getUniqueInfoValue(self):
         self.uniqueInfoValue += 1
@@ -1006,8 +1020,8 @@ def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=Fals
                 try:
                     p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
                                         y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
-                    p2 = sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
-                                       y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", size=swarmDotSize, dodge=True, zorder=3)
+                    sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
+                                  y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", size=swarmDotSize, dodge=True, zorder=3)
                     # print("worked")
                     plotWorked = True
                 except UserWarning as e:
@@ -1019,8 +1033,8 @@ def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=Fals
     else:
         p1 = sns.boxplot(
             ax=ax, hue=axesNamesNoSpaces[0], y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, zorder=1)
-        p2 = sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
-                           y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", dodge=True, zorder=3)
+        sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
+                      y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", dodge=True, zorder=3)
 
     if cat2IsFake:
         p1.set(xticklabels=[])
@@ -1041,7 +1055,7 @@ def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=Fals
                 statsAx.remove()
                 r = matplotlib.patches.Rectangle((0, 0), 1, 1, fill=False, edgecolor='none',
                                                  visible=False)
-                pvalDisplay = str(min(pval, 1.0-pval))
+                pvalDisplay = str(min(pval, 1.0 - pval))
                 if len(pvalDisplay) > 5:
                     pvalDisplay = pvalDisplay[:5]
 
@@ -1063,7 +1077,7 @@ def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=Fals
                 for li, (ll, lp) in enumerate(reversed(list(zip([twp.fill(str(s), txtwidth) for s in statsDict.keys()], [
                         twp.fill(str(s), txtwidth) for s in statsDict.values()])))):
 
-                    pvalDisplay = str(min(float(lp), 1.0-float(lp)))
+                    pvalDisplay = str(min(float(lp), 1.0 - float(lp)))
                     if len(pvalDisplay) > 5:
                         pvalDisplay = pvalDisplay[:5]
                     yp = (li + 0.75) / (len(statsDict) + 0.5)
@@ -1125,7 +1139,7 @@ def testIndividualShuffleSpecs():
 
     df = pd.DataFrame(data={"c1": [0, 0, 0, 0, 1, 1, 1, 1],
                             "c2": [10, 10, 20, 20, 10, 10, 20, 20],
-                            "y":  np.linspace(0, 1, 8)})
+                            "y": np.linspace(0, 1, 8)})
 
     valSet = {}
     for col in df.columns:
@@ -1175,7 +1189,7 @@ def testAcross():
     c1 = np.array([0] * 8 + [1] * 8)
     c2 = np.array(([10] * 2 + [20] * 2) * 4)
     y = c1 + 50 * c2 + np.random.uniform() * 0.2
-    df = pd.DataFrame(data={"c1": c1, "c2": c2, "y":  y})
+    df = pd.DataFrame(data={"c1": c1, "c2": c2, "y": y})
     valSet = {}
     for col in df.columns:
         valSet[col] = set(df[col])
@@ -1210,7 +1224,7 @@ def testCustomShuffleFunction():
     c2 = np.array(([10] * 2 + [20] * 2) * 4)
     y = c1 + 50 * c2 + np.random.uniform() * 0.2
     info = (np.random.uniform(size=y.shape) > 0.5).astype(int)
-    df = pd.DataFrame(data={"c1": c1, "c2": c2, "y":  y, "i": info})
+    df = pd.DataFrame(data={"c1": c1, "c2": c2, "y": y, "i": info})
     valSet = {}
     for col in df.columns:
         valSet[col] = set(df[col])
@@ -1237,7 +1251,7 @@ def testConditionShuffle():
     conditionGroup = np.array([0] * 8 + [1] * 8)
     condition = ["SWR", "Ctrl"] * 8
     y = np.linspace(0, 1, len(condition))
-    df = pd.DataFrame(data={"conditionGroup": conditionGroup, "condition": condition, "y":  y})
+    df = pd.DataFrame(data={"conditionGroup": conditionGroup, "condition": condition, "y": y})
     valSet = {}
     for col in df.columns:
         valSet[col] = set(df[col])
