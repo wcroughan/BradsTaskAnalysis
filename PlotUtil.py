@@ -150,6 +150,7 @@ class PlotCtx:
         self.outputSubDir = ""
         self.setOutputDir(outputDir)
         self.figName = ""
+        self.createdPlots = set()
 
         self.priorityLevel = priorityLevel
         self.priority = None
@@ -171,7 +172,13 @@ class PlotCtx:
         else:
             return self.axs
 
-    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None, withStats=False, showPlot=None, savePlot=None):
+    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None, withStats=False,
+               showPlot=None, savePlot=None, enableOverwriteSameName=False):
+
+        fname = os.path.join(self.outputDir, self.outputSubDir, figName)
+        if fname in self.createdPlots and not enableOverwriteSameName:
+            raise Exception("Would overwrite file {} that was just made!".format(fname))
+
         self.clearFig()
         self.figName = figName
         self.priority = priority
@@ -196,7 +203,7 @@ class PlotCtx:
 
         return self
 
-    def continueFig(self, figName, priority=None, showPlot=None, savePlot=None):
+    def continueFig(self, figName, priority=None, showPlot=None, savePlot=None, enableOverwriteSameName=False):
         if self.showedLastFig:
             raise Exception("currently unable to show a figure and then continue it")
 
@@ -222,52 +229,52 @@ class PlotCtx:
         self.priorityLevel = priorityLevel
 
     def __exit__(self, *args):
-        if self.withStats:
-            statsName = self.figName.split("/")[-1]
-            assert len(self.yvals) > 0
-            assert len(self.persistentCategories) + len(self.categories) > 0
-
-            savedLen = None
-            for k in self.yvals:
-                if savedLen is None:
-                    savedLen = len(self.yvals[k])
-                else:
-                    assert len(self.yvals[k]) == savedLen
-            for k in self.categories:
-                assert len(self.categories[k]) == savedLen
-            for k in self.infoVals:
-                assert len(self.infoVals[k]) == savedLen
-
-            for k in self.persistentCategories:
-                if k not in self.categories:
-                    self.categories[k] = [self.persistentCategories[k]] * savedLen
-                else:
-                    print(
-                        "WARNING: overlap between persistent category and this-plot category, both named {}".format(k))
-
-            for k in self.persistentInfoValues:
-                if k not in self.infoVals:
-                    self.infoVals[k] = [self.persistentInfoValues[k]] * savedLen
-                else:
-                    print(
-                        "WARNING: overlap between persistent info category and this-plot category, both named {}".format(k))
-
-            if statsName in self.savedYVals:
-                savedYVals = self.savedYVals[statsName]
-                for k in savedYVals:
-                    savedYVals[k] = np.append(savedYVals[k], self.yvals[k])
-                savedCategories = self.savedCategories[statsName]
-                for k in savedCategories:
-                    savedCategories[k] = np.append(savedCategories[k], self.categories[k])
-                savedInfoVals = self.savedInfoVals[statsName]
-                for k in savedInfoVals:
-                    savedInfoVals[k] = np.append(savedInfoVals[k], self.infoVals[k])
-            else:
-                self.savedYVals[statsName] = self.yvals
-                self.savedCategories[statsName] = self.categories
-                self.savedInfoVals[statsName] = self.infoVals
-
         if self.priority is None or self.priorityLevel is None or self.priority <= self.priorityLevel:
+            if self.withStats:
+                statsName = self.figName.split("/")[-1]
+                assert len(self.yvals) > 0
+                assert len(self.persistentCategories) + len(self.categories) > 0
+
+                savedLen = None
+                for k in self.yvals:
+                    if savedLen is None:
+                        savedLen = len(self.yvals[k])
+                    else:
+                        assert len(self.yvals[k]) == savedLen
+                for k in self.categories:
+                    assert len(self.categories[k]) == savedLen
+                for k in self.infoVals:
+                    assert len(self.infoVals[k]) == savedLen
+
+                for k in self.persistentCategories:
+                    if k not in self.categories:
+                        self.categories[k] = [self.persistentCategories[k]] * savedLen
+                    else:
+                        print(
+                            "WARNING: overlap between persistent category and this-plot category, both named {}".format(k))
+
+                for k in self.persistentInfoValues:
+                    if k not in self.infoVals:
+                        self.infoVals[k] = [self.persistentInfoValues[k]] * savedLen
+                    else:
+                        print(
+                            "WARNING: overlap between persistent info category and this-plot category, both named {}".format(k))
+
+                if statsName in self.savedYVals:
+                    savedYVals = self.savedYVals[statsName]
+                    for k in savedYVals:
+                        savedYVals[k] = np.append(savedYVals[k], self.yvals[k])
+                    savedCategories = self.savedCategories[statsName]
+                    for k in savedCategories:
+                        savedCategories[k] = np.append(savedCategories[k], self.categories[k])
+                    savedInfoVals = self.savedInfoVals[statsName]
+                    for k in savedInfoVals:
+                        savedInfoVals[k] = np.append(savedInfoVals[k], self.infoVals[k])
+                else:
+                    self.savedYVals[statsName] = self.yvals
+                    self.savedCategories[statsName] = self.categories
+                    self.savedInfoVals[statsName] = self.infoVals
+
             if (self.temporarySavePlot is not None and self.temporarySavePlot) or (self.temporarySavePlot is None and self.savePlot):
                 self.saveFig()
 
@@ -290,6 +297,7 @@ class PlotCtx:
         self.writeToInfoFile("wrote file {}".format(fname))
         if self.verbosity >= 3:
             print("wrote file {}".format(fname))
+        self.createdPlots.add(fname)
 
     def clearFig(self):
         self.fig.clf()

@@ -956,25 +956,29 @@ class BTSession:
         else:
             return res.total_seconds()
 
-    def getLatencyToWell(self, inProbe, wellName, returnIdxs=False, returnSeconds=False, emptyVal=np.nan):
+    def getLatencyToWell(self, inProbe, wellName, startTime=None, returnIdxs=False, returnSeconds=False, emptyVal=np.nan):
         """
         units are trodes timestamps or idxs or seconds
+        startTime should be in the same units expected for return
         """
         assert not (returnIdxs and returnSeconds)
 
-        ts = self.entry_exit_times(inProbe, wellName, returnIdxs=returnIdxs)
-        if len(ts[0]) == 0:
+        ts = self.entry_exit_times(inProbe, wellName, returnIdxs=returnIdxs)[0]
+
+        if len(ts) == 0:
             return emptyVal
 
-        res = ts[0][0]
-        if not returnIdxs:
-            if inProbe:
-                res -= self.probe_pos_ts[0]
-            else:
-                res -= self.bt_pos_ts[0]
+        res = ts[0]
+        if returnIdxs:
+            return res
 
-            if returnSeconds:
-                res /= TRODES_SAMPLING_RATE
+        if inProbe:
+            res -= self.probe_pos_ts[0]
+        else:
+            res -= self.bt_pos_ts[0]
+
+        if returnSeconds:
+            res /= TRODES_SAMPLING_RATE
 
         return res
 

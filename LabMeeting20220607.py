@@ -25,13 +25,14 @@ def makeFigures():
     MAKE_RAW_LFP_POWER_PLOTS = False
     MAKE_CUMULATIVE_LFP_PLOTS = False
     MAKE_LFP_PERSEV_CORRELATION_PLOTS = False
-    RUN_SHUFFLES = False
+    MAKE_FAV_AWAY_PLOTS = False
+    RUN_SHUFFLES = True
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "20220607_labmeeting")
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
-    pp = PlotCtx(outputDir=globalOutputDir, randomSeed=rseed)
+    pp = PlotCtx(outputDir=globalOutputDir, randomSeed=rseed, priorityLevel=1)
 
     animalNames = parseCmdLineAnimalNames(default=["B13", "B14", "Martin"])
     allSessionsByRat = {}
@@ -72,11 +73,14 @@ def makeFigures():
         # Here be plots
         if not (MAKE_EARLY_LATE_SESSION_BASIC_MEASURES or MAKE_BASIC_MEASURE_PLOTS or
                 MAKE_WITHIN_SESSION_MEASURE_PLOTS or MAKE_GRAVITY_PLOTS or
-                MAKE_TASK_BEHAVIOR_PLOTS or MAKE_PROBE_BEHAVIOR_PLOTS or MAKE_LFP_PERSEV_CORRELATION_PLOTS):
+                MAKE_TASK_BEHAVIOR_PLOTS or MAKE_PROBE_BEHAVIOR_PLOTS or MAKE_LFP_PERSEV_CORRELATION_PLOTS or
+                MAKE_FAV_AWAY_PLOTS):
             pass
         else:
             wellCat = []
             seshCat = []
+            favAwayWellCatTotalDwell = []
+            favAwayWellCatNumEntries = []
             # seshConditionGroup = []
             avgDwell = []
             avgDwell90 = []
@@ -88,6 +92,7 @@ def makeFigures():
             gravityFromOffWall = []
             taskGravity = []
             taskGravityFromOffWall = []
+            latencyToWell = []
 
             avgDwellDifference = []
             avgDwellDifference90 = []
@@ -100,6 +105,27 @@ def makeFigures():
             gravityFromOffWallDifference = []
             taskGravityDifference = []
             taskGravityFromOffWallDifference = []
+            latencyToWellDifference = []
+
+            favANEavgDwellDifference = []
+            favANEavgDwellDifference90 = []
+            favANEcurvatureDifference = []
+            favANEcurvatureDifference90 = []
+            favANEnumEntriesDifference = []
+            favANEgravityDifference = []
+            favANEgravityFromOffWallDifference = []
+            favANEtaskGravityDifference = []
+            favANEtaskGravityFromOffWallDifference = []
+
+            favATDavgDwellDifference = []
+            favATDavgDwellDifference90 = []
+            favATDcurvatureDifference = []
+            favATDcurvatureDifference90 = []
+            favATDnumEntriesDifference = []
+            favATDgravityDifference = []
+            favATDgravityFromOffWallDifference = []
+            favATDtaskGravityDifference = []
+            favATDtaskGravityFromOffWallDifference = []
 
             for si, sesh in enumerate(sessionsWithProbe):
                 # towt = np.sum([sesh.total_dwell_time(True, w)
@@ -117,14 +143,28 @@ def makeFigures():
                 taskGravity.append(sesh.gravityOfWell(False, sesh.home_well))
                 taskGravityFromOffWall.append(sesh.gravityOfWell(
                     False, sesh.home_well, fromWells=offWallWellNames))
+                latencyToWell.append(sesh.getLatencyToWell(
+                    True, sesh.home_well, returnSeconds=True))
 
                 wellCat.append("home")
+                favAwayWellCatTotalDwell.append("away")
+                favAwayWellCatNumEntries.append("away")
                 seshCat.append("SWR" if sesh.isRippleInterruption else "Ctrl")
                 # seshConditionGroup.append(sesh.conditionGroup)
                 seshDateCat.append("early" if int(sesh.date_str[0:4]) < 2022 else "late")
 
                 seshCatBySession.append("SWR" if sesh.isRippleInterruption else "Ctrl")
                 seshDateCatBySession.append("early" if int(sesh.date_str[0:4]) < 2022 else "late")
+
+                aways = np.array([aw for aw in sesh.visited_away_wells if not onWall(aw)])
+                if len(aways) > 0:
+                    awayNumEntries = np.array([sesh.num_well_entries(False, aw) for aw in aways])
+                    favAwayNumEntries = aways[np.argmax(awayNumEntries)]
+                    awayTotalDwell = np.array([sesh.total_dwell_time(False, aw) for aw in aways])
+                    favAwayTotalDwell = aways[np.argmax(awayTotalDwell)]
+                else:
+                    favAwayNumEntries = None
+                    favAwayTotalDwell = None
 
                 for aw in sesh.visited_away_wells:
                     if onWall(aw):
@@ -141,11 +181,21 @@ def makeFigures():
                     taskGravity.append(sesh.gravityOfWell(False, aw))
                     taskGravityFromOffWall.append(sesh.gravityOfWell(
                         False, aw, fromWells=offWallWellNames))
+                    latencyToWell.append(sesh.getLatencyToWell(True, aw, returnSeconds=True))
 
                     wellCat.append("away")
                     seshCat.append("SWR" if sesh.isRippleInterruption else "Ctrl")
                     # seshConditionGroup.append(sesh.conditionGroup)
                     seshDateCat.append("early" if int(sesh.date_str[0:4]) < 2022 else "late")
+
+                    if aw == favAwayNumEntries:
+                        favAwayWellCatNumEntries.append("home")
+                    else:
+                        favAwayWellCatNumEntries.append("away")
+                    if aw == favAwayTotalDwell:
+                        favAwayWellCatTotalDwell.append("home")
+                    else:
+                        favAwayWellCatTotalDwell.append("away")
 
                 if any([not onWall(aw) for aw in sesh.visited_away_wells]):
                     homeAvgDwell = sesh.avg_dwell_time(True, sesh.home_well)
@@ -160,7 +210,7 @@ def makeFigures():
                     homeTaskGravity = sesh.gravityOfWell(False, sesh.home_well)
                     homeTaskGravityFromOffWall = sesh.gravityOfWell(
                         False, sesh.home_well, fromWells=offWallWellNames)
-
+                    homeLatency = sesh.getLatencyToWell(True, sesh.home_well, returnSeconds=True)
                     awayAvgDwell = np.nanmean([sesh.avg_dwell_time(True, aw)
                                               for aw in sesh.visited_away_wells if not onWall(aw)])
                     awayAvgDwell90 = np.nanmean([sesh.avg_dwell_time(True, aw, timeInterval=[
@@ -179,7 +229,8 @@ def makeFigures():
                                                   for aw in sesh.visited_away_wells if not onWall(aw)])
                     awayTaskGravityFromOffWall = np.nanmean(
                         [sesh.gravityOfWell(False, aw) for aw in sesh.visited_away_wells if not onWall(aw)])
-
+                    awayLatency = np.nanmean([sesh.getLatencyToWell(True, aw, returnSeconds=True)
+                                              for aw in sesh.visited_away_wells if not onWall(aw)])
                     avgDwellDifference.append(homeAvgDwell - awayAvgDwell)
                     avgDwellDifference90.append(homeAvgDwell90 - awayAvgDwell90)
                     curvatureDifference.append(homeCurvature - awayCurvature)
@@ -191,6 +242,80 @@ def makeFigures():
                     taskGravityDifference.append(homeTaskGravity - awayTaskGravity)
                     taskGravityFromOffWallDifference.append(
                         homeTaskGravityFromOffWall - awayTaskGravityFromOffWall)
+                    latencyToWellDifference.append(homeLatency - awayLatency)
+
+                    if favAwayNumEntries is not None:
+                        favANEAvgDwell = sesh.avg_dwell_time(True, favAwayNumEntries)
+                        favANEAvgDwell90 = sesh.avg_dwell_time(
+                            True, favAwayNumEntries, timeInterval=[0, 90])
+                        favANECurvature = sesh.avg_curvature_at_well(True, favAwayNumEntries)
+                        favANECurvature90 = sesh.avg_curvature_at_well(
+                            True, favAwayNumEntries, timeInterval=[0, 90])
+                        favANENumEntries = sesh.num_well_entries(True, favAwayNumEntries)
+                        favANEGravity = sesh.gravityOfWell(True, favAwayNumEntries)
+                        favANEGravityFromOffWall = sesh.gravityOfWell(
+                            True, favAwayNumEntries, fromWells=offWallWellNames)
+                        favANETaskGravity = sesh.gravityOfWell(False, favAwayNumEntries)
+                        favANETaskGravityFromOffWall = sesh.gravityOfWell(
+                            False, favAwayNumEntries, fromWells=offWallWellNames)
+                        favANEavgDwellDifference.append(homeAvgDwell - favANEAvgDwell)
+                        favANEavgDwellDifference90.append(homeAvgDwell90 - favANEAvgDwell90)
+                        favANEcurvatureDifference.append(homeCurvature - favANECurvature)
+                        favANEcurvatureDifference90.append(homeCurvature90 - favANECurvature90)
+                        favANEnumEntriesDifference.append(homeNumEntries - favANENumEntries)
+                        favANEgravityDifference.append(homeGravity - favANEGravity)
+                        favANEgravityFromOffWallDifference.append(
+                            homeGravityFromOffWall - favANEGravityFromOffWall)
+                        favANEtaskGravityDifference.append(homeTaskGravity - favANETaskGravity)
+                        favANEtaskGravityFromOffWallDifference.append(
+                            homeTaskGravityFromOffWall - favANETaskGravityFromOffWall)
+                    else:
+                        favANEavgDwellDifference.append(np.nan)
+                        favANEavgDwellDifference90.append(np.nan)
+                        favANEcurvatureDifference.append(np.nan)
+                        favANEcurvatureDifference90.append(np.nan)
+                        favANEnumEntriesDifference.append(np.nan)
+                        favANEgravityDifference.append(np.nan)
+                        favANEgravityFromOffWallDifference.append(np.nan)
+                        favANEtaskGravityDifference.append(np.nan)
+                        favANEtaskGravityFromOffWallDifference.append(np.nan)
+
+                    if favAwayTotalDwell is not None:
+                        favATDAvgDwell = sesh.avg_dwell_time(True, favAwayTotalDwell)
+                        favATDAvgDwell90 = sesh.avg_dwell_time(
+                            True, favAwayTotalDwell, timeInterval=[0, 90])
+                        favATDCurvature = sesh.avg_curvature_at_well(True, favAwayTotalDwell)
+                        favATDCurvature90 = sesh.avg_curvature_at_well(
+                            True, favAwayTotalDwell, timeInterval=[0, 90])
+                        favATDNumEntries = sesh.num_well_entries(True, favAwayTotalDwell)
+                        favATDGravity = sesh.gravityOfWell(True, favAwayTotalDwell)
+                        favATDGravityFromOffWall = sesh.gravityOfWell(
+                            True, favAwayTotalDwell, fromWells=offWallWellNames)
+                        favATDTaskGravity = sesh.gravityOfWell(False, favAwayTotalDwell)
+                        favATDTaskGravityFromOffWall = sesh.gravityOfWell(
+                            False, favAwayTotalDwell, fromWells=offWallWellNames)
+                        favATDavgDwellDifference.append(homeAvgDwell - favATDAvgDwell)
+                        favATDavgDwellDifference90.append(homeAvgDwell90 - favATDAvgDwell90)
+                        favATDcurvatureDifference.append(homeCurvature - favATDCurvature)
+                        favATDcurvatureDifference90.append(homeCurvature90 - favATDCurvature90)
+                        favATDnumEntriesDifference.append(homeNumEntries - favATDNumEntries)
+                        favATDgravityDifference.append(homeGravity - favATDGravity)
+                        favATDgravityFromOffWallDifference.append(
+                            homeGravityFromOffWall - favATDGravityFromOffWall)
+                        favATDtaskGravityDifference.append(homeTaskGravity - favATDTaskGravity)
+                        favATDtaskGravityFromOffWallDifference.append(
+                            homeTaskGravityFromOffWall - favATDTaskGravityFromOffWall)
+                    else:
+                        favATDavgDwellDifference.append(np.nan)
+                        favATDavgDwellDifference90.append(np.nan)
+                        favATDcurvatureDifference.append(np.nan)
+                        favATDcurvatureDifference90.append(np.nan)
+                        favATDnumEntriesDifference.append(np.nan)
+                        favATDgravityDifference.append(np.nan)
+                        favATDgravityFromOffWallDifference.append(np.nan)
+                        favATDtaskGravityDifference.append(np.nan)
+                        favATDtaskGravityFromOffWallDifference.append(np.nan)
+
                 else:
                     print("sesh {}, rat never found any off wall away wells".format(sesh.name))
                     if np.isnan(curvature[-1]):
@@ -206,9 +331,30 @@ def makeFigures():
                     gravityFromOffWallDifference.append(np.nan)
                     taskGravityDifference.append(np.nan)
                     taskGravityFromOffWallDifference.append(np.nan)
+                    favATDavgDwellDifference.append(np.nan)
+                    favATDavgDwellDifference90.append(np.nan)
+                    favATDcurvatureDifference.append(np.nan)
+                    favATDcurvatureDifference90.append(np.nan)
+                    favATDnumEntriesDifference.append(sesh.num_well_entries(True, sesh.home_well))
+                    favATDgravityDifference.append(np.nan)
+                    favATDgravityFromOffWallDifference.append(np.nan)
+                    favATDtaskGravityDifference.append(np.nan)
+                    favATDtaskGravityFromOffWallDifference.append(np.nan)
+                    favANEavgDwellDifference.append(np.nan)
+                    favANEavgDwellDifference90.append(np.nan)
+                    favANEcurvatureDifference.append(np.nan)
+                    favANEcurvatureDifference90.append(np.nan)
+                    favANEnumEntriesDifference.append(sesh.num_well_entries(True, sesh.home_well))
+                    favANEgravityDifference.append(np.nan)
+                    favANEgravityFromOffWallDifference.append(np.nan)
+                    favANEtaskGravityDifference.append(np.nan)
+                    favANEtaskGravityFromOffWallDifference.append(np.nan)
+                    latencyToWellDifference.append(np.nan)
 
             wellCat = np.array(wellCat)
             seshCat = np.array(seshCat)
+            favAwayWellCatNumEntries = np.array(favAwayWellCatNumEntries)
+            favAwayWellCatTotalDwell = np.array(favAwayWellCatTotalDwell)
             # seshConditionGroup = np.array(seshConditionGroup)
             avgDwell = np.array(avgDwell)
             avgDwell90 = np.array(avgDwell90)
@@ -220,6 +366,7 @@ def makeFigures():
             gravityFromOffWall = np.array(gravityFromOffWall)
             taskGravity = np.array(taskGravity)
             taskGravityFromOffWall = np.array(taskGravityFromOffWall)
+            latencyToWell = np.array(latencyToWell)
 
             avgDwellDifference = np.array(avgDwellDifference)
             avgDwellDifference90 = np.array(avgDwellDifference90)
@@ -232,6 +379,29 @@ def makeFigures():
             gravityFromOffWallDifference = np.array(gravityFromOffWallDifference)
             taskGravityDifference = np.array(taskGravityDifference)
             taskGravityFromOffWallDifference = np.array(taskGravityFromOffWallDifference)
+            latencyToWellDifference = np.array(latencyToWellDifference)
+
+            favANEavgDwellDifference = np.array(favANEavgDwellDifference)
+            favANEavgDwellDifference90 = np.array(favANEavgDwellDifference90)
+            favANEcurvatureDifference = np.array(favANEcurvatureDifference)
+            favANEcurvatureDifference90 = np.array(favANEcurvatureDifference90)
+            favANEnumEntriesDifference = np.array(favANEnumEntriesDifference)
+            favANEgravityDifference = np.array(favANEgravityDifference)
+            favANEgravityFromOffWallDifference = np.array(favANEgravityFromOffWallDifference)
+            favANEtaskGravityDifference = np.array(favANEtaskGravityDifference)
+            favANEtaskGravityFromOffWallDifference = np.array(
+                favANEtaskGravityFromOffWallDifference)
+
+            favATDavgDwellDifference = np.array(favATDavgDwellDifference)
+            favATDavgDwellDifference90 = np.array(favATDavgDwellDifference90)
+            favATDcurvatureDifference = np.array(favATDcurvatureDifference)
+            favATDcurvatureDifference90 = np.array(favATDcurvatureDifference90)
+            favATDnumEntriesDifference = np.array(favATDnumEntriesDifference)
+            favATDgravityDifference = np.array(favATDgravityDifference)
+            favATDgravityFromOffWallDifference = np.array(favATDgravityFromOffWallDifference)
+            favATDtaskGravityDifference = np.array(favATDtaskGravityDifference)
+            favATDtaskGravityFromOffWallDifference = np.array(
+                favATDtaskGravityFromOffWallDifference)
 
             earlyIdx = seshDateCat == "early"
             lateIdx = seshDateCat == "late"
@@ -252,6 +422,14 @@ def makeFigures():
                 cats["condition"] = seshCat
                 # info["conditionGroup"] = seshConditionGroup
                 # pp.setCustomShuffleFunction("condition", conditionShuffle)
+
+            with pp.newFig("probe_latency_offwall", priority=2, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=latencyToWell, categories=seshCat, categories2=wellCat,
+                        axesNames=["Condition", "latency (s)", "Well Type"], violin=True, doStats=False)
+
+                yvals["probe_latency_offwall"] = latencyToWell
+                cats["well"] = wellCat
+                cats["condition"] = seshCat
 
             with pp.newFig("probe_avgdwell_90sec_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwell90, categories=seshCat, categories2=wellCat,
@@ -302,6 +480,13 @@ def makeFigures():
             print("warning: no early or late sessions, skipping early/late plots")
         else:
             # early
+            with pp.newFig("probe_latency_early", priority=2, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=latencyToWell[earlyIdx], categories=seshCat[earlyIdx], categories2=wellCat[earlyIdx],
+                        axesNames=["Condition", "latency (s)", "Well Type"], violin=True, doStats=False)
+                yvals["probe_latency_early"] = latencyToWell[earlyIdx]
+                cats["well"] = wellCat[earlyIdx]
+                cats["condition"] = seshCat[earlyIdx]
+
             with pp.newFig("probe_avgdwell_offwall_early", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwell[earlyIdx], categories=seshCat[earlyIdx], categories2=wellCat[earlyIdx],
                         axesNames=["Condition", "avg dwell (s)", "Well Type"], violin=True, doStats=False)
@@ -356,6 +541,12 @@ def makeFigures():
                 # info["conditionGroup"] = seshConditionGroup[earlyIdx]
                 # pp.setCustomShuffleFunction("condition", conditionShuffle)
 
+            with pp.newFig("probe_latency_difference_offwall_early", priority=2, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=latencyToWellDifference[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
+                        "Condition", "latency Difference"], violin=True, doStats=False)
+                yvals["probe_latency_difference_offwall_early"] = latencyToWellDifference[earlyIdxBySession]
+                cats["condition"] = seshCatBySession[earlyIdxBySession]
+
             with pp.newFig("probe_avgdwell_difference_offwall_early", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwellDifference[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
                         "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
@@ -366,7 +557,7 @@ def makeFigures():
             with pp.newFig("probe_avgdwell90_difference_offwall_early", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwellDifference90[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
                         "Condition", "Avg Dwell Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_avgdwell90_difference_offwall_early"] = avgDwellDifference[earlyIdxBySession]
+                yvals["probe_avgdwell90_difference_offwall_early"] = avgDwellDifference90[earlyIdxBySession]
                 cats["condition"] = seshCatBySession[earlyIdxBySession]
                 ax.set_ylim(-6.5, 5)
 
@@ -380,7 +571,7 @@ def makeFigures():
             with pp.newFig("probe_curvature90_difference_offwall_early", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=curvatureDifference90[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
                         "Condition", "Curvature Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_curvature90_difference_offwall_early"] = curvatureDifference[earlyIdxBySession]
+                yvals["probe_curvature90_difference_offwall_early"] = curvatureDifference90[earlyIdxBySession]
                 cats["condition"] = seshCatBySession[earlyIdxBySession]
                 ax.set_ylim(-1, 2.5)
 
@@ -391,6 +582,13 @@ def makeFigures():
                 cats["condition"] = seshCatBySession[earlyIdxBySession]
 
             # late
+            with pp.newFig("probe_latency_late", priority=2, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=latencyToWell[lateIdx], categories=seshCat[lateIdx], categories2=wellCat[lateIdx],
+                        axesNames=["Condition", "latency (s)", "Well Type"], violin=True, doStats=False)
+                yvals["probe_latency_late"] = latencyToWell[lateIdx]
+                cats["well"] = wellCat[lateIdx]
+                cats["condition"] = seshCat[lateIdx]
+
             with pp.newFig("probe_avgdwell_offwall_late", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwell[lateIdx], categories=seshCat[lateIdx], categories2=wellCat[lateIdx],
                         axesNames=["Condition", "avg dwell (s)", "Well Type"], violin=True, doStats=False)
@@ -445,6 +643,12 @@ def makeFigures():
                 # info["conditionGroup"] = seshConditionGroup[lateIdx]
                 # pp.setCustomShuffleFunction("condition", conditionShuffle)
 
+            with pp.newFig("probe_latency_difference_offwall_late", priority=2, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=latencyToWellDifference[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
+                        "Condition", "latency Difference"], violin=True, doStats=False)
+                yvals["probe_latency_difference_offwall_late"] = latencyToWellDifference[lateIdxBySession]
+                cats["condition"] = seshCatBySession[lateIdxBySession]
+
             with pp.newFig("probe_avgdwell_difference_offwall_late", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwellDifference[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
                         "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
@@ -455,7 +659,7 @@ def makeFigures():
             with pp.newFig("probe_avgdwell90_difference_offwall_late", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwellDifference90[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
                         "Condition", "Avg Dwell Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_avgdwell90_difference_offwall_late"] = avgDwellDifference[lateIdxBySession]
+                yvals["probe_avgdwell90_difference_offwall_late"] = avgDwellDifference90[lateIdxBySession]
                 cats["condition"] = seshCatBySession[lateIdxBySession]
                 ax.set_ylim(-6.5, 5)
 
@@ -469,7 +673,7 @@ def makeFigures():
             with pp.newFig("probe_curvature90_difference_offwall_late", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=curvatureDifference90[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
                         "Condition", "Curvature Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_curvature90_difference_offwall_late"] = curvatureDifference[lateIdxBySession]
+                yvals["probe_curvature90_difference_offwall_late"] = curvatureDifference90[lateIdxBySession]
                 cats["condition"] = seshCatBySession[lateIdxBySession]
                 ax.set_ylim(-1, 2.5)
 
@@ -482,6 +686,12 @@ def makeFigures():
         if not MAKE_WITHIN_SESSION_MEASURE_PLOTS:
             print("warning: skipping within session measure plots")
         else:
+            with pp.newFig("probe_latency_difference_offwall", priority=2, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=latencyToWellDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "latency Difference"], violin=True, doStats=False)
+                yvals["probe_latency_difference_offwall"] = latencyToWellDifference
+                cats["condition"] = seshCatBySession
+
             with pp.newFig("probe_avgdwell_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwellDifference, categories=seshCatBySession, axesNames=[
                         "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
@@ -492,7 +702,7 @@ def makeFigures():
             with pp.newFig("probe_avgdwell90_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=avgDwellDifference90, categories=seshCatBySession, axesNames=[
                         "Condition", "Avg Dwell Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_avgdwell90_difference_offwall"] = avgDwellDifference
+                yvals["probe_avgdwell90_difference_offwall"] = avgDwellDifference90
                 cats["condition"] = seshCatBySession
                 ax.set_ylim(-6.5, 5)
 
@@ -506,7 +716,7 @@ def makeFigures():
             with pp.newFig("probe_curvature90_difference_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
                 boxPlot(ax, yvals=curvatureDifference90, categories=seshCatBySession, axesNames=[
                         "Condition", "Curvature Difference 90sec"], violin=True, doStats=False)
-                yvals["probe_curvature90_difference_offwall"] = curvatureDifference
+                yvals["probe_curvature90_difference_offwall"] = curvatureDifference90
                 cats["condition"] = seshCatBySession
                 ax.set_ylim(-1, 2.5)
 
@@ -699,6 +909,30 @@ def makeFigures():
                             axesNames=["Condition", "num aways found"], violin=True, doStats=False)
 
             # =================================
+            # num aways found
+            # =================================
+            taskDuration = np.array([sesh.bt_pos_ts[-1] - sesh.bt_pos_ts[0]
+                                    for sesh in sessions]) / TRODES_SAMPLING_RATE
+            with pp.newFig("task_duration", priority=1, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=taskDuration, categories=condition,
+                        axesNames=["Condition", "Task Duration (s)"], violin=True, doStats=False)
+                yvals["task_duration"] = taskDuration
+                cats["condition"] = condition
+
+            if len(sessionsEarly) > 0 and len(sessionsLate) > 0:
+                with pp.newFig("task_duration_early", priority=1, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=taskDuration[earlyIdxAllSessions], categories=condition[earlyIdxAllSessions],
+                            axesNames=["Condition", "duration"], violin=True, doStats=False)
+                    yvals["task_duration_early"] = taskDuration[earlyIdxAllSessions]
+                    cats["condition"] = condition[earlyIdxAllSessions]
+
+                with pp.newFig("task_duration_late", priority=1, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=taskDuration[lateIdxAllSessions], categories=condition[lateIdxAllSessions],
+                            axesNames=["Condition", "duration"], violin=True, doStats=False)
+                    yvals["task_duration_late"] = taskDuration[lateIdxAllSessions]
+                    cats["condition"] = condition[lateIdxAllSessions]
+
+            # =================================
             # path optimality
             # =================================
             homeFindOptimalities = np.empty((numSessions, 10))
@@ -788,14 +1022,250 @@ def makeFigures():
             # =================================
 
             # =================================
-            # How often checked immediately previous away on next away trial?
+            # task num wells visited by condition
             # =================================
+            numVisited = [numWellsVisited(s.bt_nearest_wells) for s in sessions]
+            numVisitedOffWall = [numWellsVisited(
+                s.bt_nearest_wells, wellSubset=offWallWellNames) for s in sessions]
+            with pp.newFig("task_num_wells_visited_by_condition", priority=5) as ax:
+                boxPlot(ax, numVisited, condition, axesNames=[
+                        "Condition", "Number of wells visited in task"], doStats=False, violin=True)
+            with pp.newFig("task_num_wells_visited_offwall_by_condition", priority=5) as ax:
+                boxPlot(ax, numVisitedOffWall, condition, axesNames=[
+                        "Condition", "Number of off wall wells visited in task"], doStats=False, violin=True)
+
+            windowSlide = 30
+            t1Array = np.arange(windowSlide, 60 * 20, windowSlide)
+            numVisitedOverTime = np.empty((numSessions, len(t1Array)))
+            numVisitedOverTime[:] = np.nan
+            numVisitedOverTimeOffWall = np.empty((numSessions, len(t1Array)))
+            numVisitedOverTimeOffWall[:] = np.nan
+            for si, sesh in enumerate(sessions):
+                t1s = t1Array * TRODES_SAMPLING_RATE + sesh.bt_pos_ts[0]
+                i1Array = np.searchsorted(sesh.bt_pos_ts, t1s)
+                for ii, i1 in enumerate(i1Array):
+                    numVisitedOverTime[si, ii] = numWellsVisited(
+                        sesh.bt_nearest_wells[0:i1], countReturns=False)
+                    numVisitedOverTimeOffWall[si, ii] = numWellsVisited(
+                        sesh.bt_nearest_wells[0:i1], countReturns=False,
+                        wellSubset=offWallWellNames)
+
+            with pp.newFig("task_cumulative_num_wells_visited", priority=5) as ax:
+                plotIndividualAndAverage(ax, numVisitedOverTime, t1Array)
+                ax.set_xticks(np.arange(0, 60 * 20 + 1, 60))
+
+            with pp.newFig("task_cumulative_num_wells_visited_by_condition", priority=5) as ax:
+                plotIndividualAndAverage(ax, numVisitedOverTime[sessionIsInterruption, :], t1Array,
+                                         individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, numVisitedOverTime[~ sessionIsInterruption, :], t1Array,
+                                         individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_xticks(np.arange(0, 60 * 20 + 1, 60))
+
+            with pp.newFig("task_cumulative_num_wells_visited_offwall", priority=5) as ax:
+                plotIndividualAndAverage(ax, numVisitedOverTimeOffWall, t1Array)
+                ax.set_xticks(np.arange(0, 60 * 20 + 1, 60))
+
+            with pp.newFig("task_cumulative_num_wells_visited_by_condition_offwall", priority=5) as ax:
+                plotIndividualAndAverage(ax, numVisitedOverTimeOffWall[sessionIsInterruption, :], t1Array,
+                                         individualColor="orange", avgColor="orange", spread="sem")
+                plotIndividualAndAverage(ax, numVisitedOverTimeOffWall[~ sessionIsInterruption, :], t1Array,
+                                         individualColor="cyan", avgColor="cyan", spread="sem")
+                ax.set_xticks(np.arange(0, 60 * 20 + 1, 60))
 
             # =================================
-            # Most checked off-wall away vs home behavior
-            # (in probe and task)
-            # Just restricting all measures to best away instead of average away
+            # per trial measures for next few plot sections
             # =================================
+            trialCat = []
+            seshCatByTrial = []
+            numWellsVisitedNoRepeats = []
+            numWellsVisitedWithRepeats = []
+            numRepeatsVisited = []
+            numEntriesPrevReward = []
+            numEntriesPrevRewardOffWall = []
+            numRepeatsVisitedDifference = []
+            numEntriesPrevRewardDifference = []
+            numEntriesPrevRewardOffWallDifference = []
+
+            numPrevAwayVisitsOffWall = []
+            justAwaySeshCat = []
+
+            for si, sesh in enumerate(sessions):
+                t1 = np.array(sesh.home_well_find_pos_idxs)
+                t0 = np.array(np.hstack(([0], sesh.away_well_leave_pos_idxs)))
+                if not sesh.ended_on_home:
+                    t0 = t0[0:-1]
+                assert len(t1) == len(t0)
+
+                homeNumRepeatsVisited = []
+                homeNumEntriesPrevReward = []
+                homeNumEntriesPrevRewardOffWall = []
+                for ii, (i0, i1) in enumerate(zip(t0, t1)):
+                    trialCat.append("home")
+                    seshCatByTrial.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                    numWellsVisitedNoRepeats.append(numWellsVisited(
+                        sesh.bt_nearest_wells[i0:i1], countReturns=False))
+                    numWellsVisitedWithRepeats.append(numWellsVisited(
+                        sesh.bt_nearest_wells[i0:i1], countReturns=True))
+                    numRepeatsVisited.append(
+                        numWellsVisitedWithRepeats[-1] - numWellsVisitedNoRepeats[-1])
+                    homeNumRepeatsVisited.append(
+                        numWellsVisitedWithRepeats[-1] - numWellsVisitedNoRepeats[-1])
+
+                    if ii == 0:
+                        numEntriesPrevReward.append(np.nan)
+                        numEntriesPrevRewardOffWall.append(np.nan)
+                        homeNumEntriesPrevReward.append(np.nan)
+                        homeNumEntriesPrevRewardOffWall.append(np.nan)
+                    else:
+                        aw = sesh.visited_away_wells[ii - 1]
+                        ti0 = (sesh.bt_pos_ts[i0] - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                        ti1 = (sesh.bt_pos_ts[i1] - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                        val = sesh.num_well_entries(False, aw, timeInterval=[ti0, ti1])
+                        numEntriesPrevReward.append(val)
+                        homeNumEntriesPrevReward.append(val)
+                        if onWall(aw):
+                            numEntriesPrevRewardOffWall.append(np.nan)
+                            homeNumEntriesPrevRewardOffWall.append(np.nan)
+                        else:
+                            numEntriesPrevRewardOffWall.append(val)
+                            homeNumEntriesPrevRewardOffWall.append(val)
+
+                t1 = np.array(sesh.away_well_find_pos_idxs)
+                t0 = np.array(sesh.home_well_leave_pos_idxs)
+                if sesh.ended_on_home:
+                    t0 = t0[0:-1]
+                assert len(t1) == len(t0)
+                awayNumRepeatsVisited = []
+                awayNumEntriesPrevReward = []
+                awayNumEntriesPrevRewardOffWall = []
+                for ii, (i0, i1) in enumerate(zip(t0, t1)):
+                    trialCat.append("away")
+                    seshCatByTrial.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                    numWellsVisitedNoRepeats.append(numWellsVisited(
+                        sesh.bt_nearest_wells[i0:i1], countReturns=False))
+                    numWellsVisitedWithRepeats.append(numWellsVisited(
+                        sesh.bt_nearest_wells[i0:i1], countReturns=True))
+                    numRepeatsVisited.append(
+                        numWellsVisitedWithRepeats[-1] - numWellsVisitedNoRepeats[-1])
+                    awayNumRepeatsVisited.append(
+                        numWellsVisitedWithRepeats[-1] - numWellsVisitedNoRepeats[-1])
+
+                    ti0 = (sesh.bt_pos_ts[i0] - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                    ti1 = (sesh.bt_pos_ts[i1] - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
+                    val = sesh.num_well_entries(False, sesh.home_well, timeInterval=[ti0, ti1])
+                    numEntriesPrevReward.append(val)
+                    numEntriesPrevRewardOffWall.append(val)
+                    awayNumEntriesPrevReward.append(val)
+                    awayNumEntriesPrevRewardOffWall.append(val)
+
+                    justAwaySeshCat.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                    if ii == 0 or onWall(sesh.visited_away_wells[ii - 1]):
+                        numPrevAwayVisitsOffWall.append(np.nan)
+                    else:
+                        numPrevAwayVisitsOffWall.append(sesh.num_well_entries(
+                            False, sesh.visited_away_wells[ii - 1], timeInterval=[ti0, ti1]))
+
+                homeAvgNumRepeatsVisited = np.nanmean(homeNumRepeatsVisited)
+                homeAvgNumEntriesPrevReward = np.nanmean(homeNumEntriesPrevReward)
+                homeAvgNumEntriesPrevRewardOffWall = np.nanmean(homeNumEntriesPrevRewardOffWall)
+                awayAvgNumRepeatsVisited = np.nanmean(awayNumRepeatsVisited)
+                awayAvgNumEntriesPrevReward = np.nanmean(awayNumEntriesPrevReward)
+                awayAvgNumEntriesPrevRewardOffWall = np.nanmean(awayNumEntriesPrevRewardOffWall)
+                numRepeatsVisitedDifference.append(
+                    homeAvgNumRepeatsVisited - awayAvgNumRepeatsVisited)
+                numEntriesPrevRewardDifference.append(
+                    homeAvgNumEntriesPrevReward - awayAvgNumEntriesPrevReward)
+                numEntriesPrevRewardOffWallDifference.append(
+                    homeAvgNumEntriesPrevRewardOffWall - awayAvgNumEntriesPrevRewardOffWall)
+
+            trialCat = np.array(trialCat)
+            seshCatByTrial = np.array(seshCatByTrial)
+            numWellsVisitedNoRepeats = np.array(numWellsVisitedNoRepeats)
+            numWellsVisitedWithRepeats = np.array(numWellsVisitedWithRepeats)
+            numRepeatsVisited = np.array(numRepeatsVisited)
+            numEntriesPrevReward = np.array(numEntriesPrevReward)
+            numEntriesPrevRewardOffWall = np.array(numEntriesPrevRewardOffWall)
+            numRepeatsVisitedDifference = np.array(numRepeatsVisitedDifference)
+            numEntriesPrevRewardDifference = np.array(numEntriesPrevRewardDifference)
+            numEntriesPrevRewardOffWallDifference = np.array(numEntriesPrevRewardOffWallDifference)
+            numPrevAwayVisitsOffWall = np.array(numPrevAwayVisitsOffWall)
+            justAwaySeshCat = np.array(justAwaySeshCat)
+
+            # =================================
+            # task num repeats visited by condition
+            # =================================
+            with pp.newFig("task_num_wells_visited_per_trial", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, numWellsVisitedNoRepeats, categories=seshCatByTrial, categories2=trialCat, axesNames=[
+                        "Condition", "Number of wells visited", "trial type"], doStats=False, violin=True)
+                yvals["task_num_wells_visited_per_trial"] = numWellsVisitedNoRepeats
+                cats["condition"] = seshCatByTrial
+                cats["trialType"] = trialCat
+
+            with pp.newFig("task_num_wells_visited_per_trial_with_repeats", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, numWellsVisitedWithRepeats, categories=seshCatByTrial, categories2=trialCat, axesNames=[
+                        "Condition", "Number of wells visited with repeats", "trial type"], doStats=False, violin=True)
+                yvals["task_num_wells_visited_per_trial_with_repeats"] = numWellsVisitedWithRepeats
+                cats["condition"] = seshCatByTrial
+                cats["trialType"] = trialCat
+
+            with pp.newFig("task_num_repeats_visited_per_trials", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, numRepeatsVisited, categories=seshCatByTrial, categories2=trialCat, axesNames=[
+                        "Condition", "Number of repeat wells visited", "trial type"], doStats=False, violin=True)
+                yvals["task_num_repeats_visited_per_trials"] = numRepeatsVisited
+                cats["condition"] = seshCatByTrial
+                cats["trialType"] = trialCat
+
+            # =================================
+            # How often checked immediately previous well or previous away on next away trial?
+            # =================================
+            with pp.newFig("task_num_entries_prev_reward", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, numEntriesPrevReward, categories=seshCatByTrial, categories2=trialCat, axesNames=[
+                        "Condition", "Number of entries to prev reward", "trial type"], doStats=False, violin=True)
+                yvals["task_num_entries_prev_reward"] = numEntriesPrevReward
+                cats["condition"] = seshCatByTrial
+                cats["trialType"] = trialCat
+
+            with pp.newFig("task_num_entries_prev_reward_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, numEntriesPrevRewardOffWall, categories=seshCatByTrial, categories2=trialCat, axesNames=[
+                        "Condition", "Number of entries to prev reward (offwall only)", "trial type"], doStats=False, violin=True)
+                yvals["task_num_entries_prev_reward_offwall"] = numEntriesPrevRewardOffWall
+                cats["condition"] = seshCatByTrial
+                cats["trialType"] = trialCat
+
+            with pp.newFig("task_num_entries_prev_away_offwall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, numPrevAwayVisitsOffWall, categories=justAwaySeshCat, axesNames=[
+                        "Condition", "Number of entries to prev away on away trial (offwall only)"], doStats=False, violin=True)
+                yvals["task_num_entries_prev_away_offwall"] = numPrevAwayVisitsOffWall
+                cats["condition"] = justAwaySeshCat
+
+            # =================================
+            # Within session differences
+            # =================================
+            with pp.newFig("task_num_repeats_visited_difference_clipped", priority=5, withStats=True) as (ax, yvals, cats, info):
+                yclip = np.copy(numRepeatsVisitedDifference)
+                yclip[yclip > 20] = np.nan
+                boxPlot(ax, yclip, categories=condition, axesNames=[
+                        "Condition", "Num repeats visited difference (clipped)"], doStats=False, violin=True)
+                yvals["task_num_repeats_visited_difference_clipped"] = yclip
+                cats["condition"] = condition
+
+            with pp.newFig("task_num_repeats_visited_difference", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, numRepeatsVisitedDifference, categories=condition, axesNames=[
+                        "Condition", "Num repeats visited difference"], doStats=False, violin=True)
+                yvals["task_num_repeats_visited_difference"] = numRepeatsVisitedDifference
+                cats["condition"] = condition
+
+            with pp.newFig("task_num_entries_prev_reward_difference", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, numEntriesPrevRewardDifference, categories=condition, axesNames=[
+                        "Condition", "Num entries prev reward difference"], doStats=False, violin=True)
+                yvals["task_num_entries_prev_reward_difference"] = numEntriesPrevRewardDifference
+                cats["condition"] = condition
+
+            with pp.newFig("task_num_entries_prev_reward_offwall_difference", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, numEntriesPrevRewardOffWallDifference, categories=condition, axesNames=[
+                        "Condition", "Num entries prev reward difference"], doStats=False, violin=True)
+                yvals["task_num_entries_prev_reward_offwall_difference"] = numEntriesPrevRewardOffWallDifference
+                cats["condition"] = condition
 
         if not MAKE_PROBE_BEHAVIOR_PLOTS:
             print("warning: skipping probe behavior plots")
@@ -1293,6 +1763,182 @@ def makeFigures():
                            color=colorBySessionWithProbe)
                 ax.set_xlabel("# stims")
                 ax.set_ylabel("taskGravity from off wall diff")
+
+        if not MAKE_FAV_AWAY_PLOTS:
+            print("warning: skipping fav away plots")
+        else:
+            with pp.newFig("probe_favTDdiff_avgdwell", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favATDavgDwellDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
+                yvals["probe_favTDdiff_avgdwell"] = favATDavgDwellDifference
+                cats["condition"] = seshCatBySession
+                # ax.set_ylim(-6.5, 5)
+
+            with pp.newFig("probe_favTDdiff_avgdwell90", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favATDavgDwellDifference90, categories=seshCatBySession, axesNames=[
+                        "Condition", "Avg Dwell Difference 90"], violin=True, doStats=False)
+                yvals["probe_favTDdiff_avgdwell90"] = favATDavgDwellDifference90
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favTDdiff_curvature", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favATDcurvatureDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "curvature Difference"], violin=True, doStats=False)
+                yvals["probe_favTDdiff_curvature"] = favATDcurvatureDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favTDdiff_curvature90", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favATDcurvatureDifference90, categories=seshCatBySession, axesNames=[
+                        "Condition", "curvature Difference 90"], violin=True, doStats=False)
+                yvals["probe_favTDdiff_curvature90"] = favATDcurvatureDifference90
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favTDdiff_numentries", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favATDnumEntriesDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "num entries"], violin=True, doStats=False)
+                yvals["probe_favTDdiff_numentries"] = favATDnumEntriesDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favTDdiff_gravity", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favATDgravityDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "gravity"], violin=True, doStats=False)
+                yvals["probe_favTDdiff_gravity"] = favATDgravityDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favTDdiff_gravityFromOffWall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favATDgravityFromOffWallDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "gravityFromOffWall"], violin=True, doStats=False)
+                yvals["probe_favTDdiff_gravityFromOffWall"] = favATDgravityFromOffWallDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favTDdiff_task_gravity", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favATDtaskGravityDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "task gravity"], violin=True, doStats=False)
+                yvals["probe_favTDdiff_task_gravity"] = favATDtaskGravityDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favTDdiff_task_gravityFromOffWall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favATDtaskGravityFromOffWallDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", " task gravityFromOffWall"], violin=True, doStats=False)
+                yvals["probe_favTDdiff_task_gravityFromOffWall"] = favATDtaskGravityFromOffWallDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favNEdiff_avgdwell", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favANEavgDwellDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
+                yvals["probe_favNEdiff_avgdwell"] = favANEavgDwellDifference
+                cats["condition"] = seshCatBySession
+                # ax.set_ylim(-6.5, 5)
+
+            with pp.newFig("probe_favNEdiff_avgdwell90", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favANEavgDwellDifference90, categories=seshCatBySession, axesNames=[
+                        "Condition", "Avg Dwell Difference 90"], violin=True, doStats=False)
+                yvals["probe_favNEdiff_avgdwell90"] = favANEavgDwellDifference90
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favNEdiff_curvature", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favANEcurvatureDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "curvature Difference"], violin=True, doStats=False)
+                yvals["probe_favNEdiff_curvature"] = favANEcurvatureDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favNEdiff_curvature90", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favANEcurvatureDifference90, categories=seshCatBySession, axesNames=[
+                        "Condition", "curvature Difference 90"], violin=True, doStats=False)
+                yvals["probe_favNEdiff_curvature90"] = favANEcurvatureDifference90
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favNEdiff_numentries", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favANEnumEntriesDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "num entries"], violin=True, doStats=False)
+                yvals["probe_favNEdiff_numentries"] = favANEnumEntriesDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favNEdiff_gravity", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favANEgravityDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "gravity"], violin=True, doStats=False)
+                yvals["probe_favNEdiff_gravity"] = favANEgravityDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favNEdiff_gravityFromOffWall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favANEgravityFromOffWallDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "gravityFromOffWall"], violin=True, doStats=False)
+                yvals["probe_favNEdiff_gravityFromOffWall"] = favANEgravityFromOffWallDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favNEdiff_task_gravity", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favANEtaskGravityDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", "task gravity"], violin=True, doStats=False)
+                yvals["probe_favNEdiff_task_gravity"] = favANEtaskGravityDifference
+                cats["condition"] = seshCatBySession
+
+            with pp.newFig("probe_favNEdiff_task_gravityFromOffWall", priority=5, withStats=True) as (ax, yvals, cats, info):
+                boxPlot(ax, yvals=favANEtaskGravityFromOffWallDifference, categories=seshCatBySession, axesNames=[
+                        "Condition", " task gravityFromOffWall"], violin=True, doStats=False)
+                yvals["probe_favNEdiff_task_gravityFromOffWall"] = favANEtaskGravityFromOffWallDifference
+                cats["condition"] = seshCatBySession
+
+            if len(sessionsEarly) == 0 or len(sessionsLate) == 0:
+                print("warning: no early or late sessions, skipping early/late plots")
+            else:
+                with pp.newFig("probe_favNEdiff_avgwell_early", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEavgDwellDifference[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
+                            "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_avgwell_early"] = favANEavgDwellDifference[earlyIdxBySession]
+                    cats["condition"] = seshCatBySession[earlyIdxBySession]
+
+                with pp.newFig("probe_favNEdiff_avgdwell90_early", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEavgDwellDifference90[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
+                            "Condition", "Avg Dwell Difference, 90"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_avgdwell90_early"] = favANEavgDwellDifference90[earlyIdxBySession]
+                    cats["condition"] = seshCatBySession[earlyIdxBySession]
+
+                with pp.newFig("probe_favNEdiff_curvature_early", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEcurvatureDifference[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
+                            "Condition", "curvature Difference"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_curvature_early"] = favANEcurvatureDifference[earlyIdxBySession]
+                    cats["condition"] = seshCatBySession[earlyIdxBySession]
+
+                with pp.newFig("probe_favNEdiff_curvature90_early", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEcurvatureDifference90[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
+                            "Condition", "curvature Difference, 90"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_curvature90_early"] = favANEcurvatureDifference90[earlyIdxBySession]
+                    cats["condition"] = seshCatBySession[earlyIdxBySession]
+
+                with pp.newFig("probe_favNEdiff_numEntries_early", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEnumEntriesDifference[earlyIdxBySession], categories=seshCatBySession[earlyIdxBySession], axesNames=[
+                            "Condition", "num entries Difference, 90"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_numEntries_early"] = favANEnumEntriesDifference[earlyIdxBySession]
+                    cats["condition"] = seshCatBySession[earlyIdxBySession]
+
+                with pp.newFig("probe_favNEdiff_avgwell_late", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEavgDwellDifference[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
+                            "Condition", "Avg Dwell Difference"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_avgwell_late"] = favANEavgDwellDifference[lateIdxBySession]
+                    cats["condition"] = seshCatBySession[lateIdxBySession]
+
+                with pp.newFig("probe_favNEdiff_avgdwell90_late", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEavgDwellDifference90[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
+                            "Condition", "Avg Dwell Difference, 90"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_avgdwell90_late"] = favANEavgDwellDifference90[lateIdxBySession]
+                    cats["condition"] = seshCatBySession[lateIdxBySession]
+
+                with pp.newFig("probe_favNEdiff_curvature_late", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEcurvatureDifference[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
+                            "Condition", "curvature Difference"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_curvature_late"] = favANEcurvatureDifference[lateIdxBySession]
+                    cats["condition"] = seshCatBySession[lateIdxBySession]
+
+                with pp.newFig("probe_favNEdiff_curvature90_late", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEcurvatureDifference90[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
+                            "Condition", "curvature Difference, 90"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_curvature90_late"] = favANEcurvatureDifference90[lateIdxBySession]
+                    cats["condition"] = seshCatBySession[lateIdxBySession]
+
+                with pp.newFig("probe_favNEdiff_numEntries_late", priority=5, withStats=True) as (ax, yvals, cats, info):
+                    boxPlot(ax, yvals=favANEnumEntriesDifference[lateIdxBySession], categories=seshCatBySession[lateIdxBySession], axesNames=[
+                            "Condition", "num entries Difference, 90"], violin=True, doStats=False)
+                    yvals["probe_favNEdiff_numEntries_late"] = favANEnumEntriesDifference[lateIdxBySession]
+                    cats["condition"] = seshCatBySession[lateIdxBySession]
 
     if RUN_SHUFFLES:
         pp.runShuffles(numShuffles=100)
