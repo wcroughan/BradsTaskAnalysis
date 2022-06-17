@@ -1,0 +1,17 @@
+Home: 35
+Aways: 7 19 26 37 12 11 10 31 29
+Condition: Delayed
+Thresh: Low
+Last Away: 
+Last well: 
+ITI Stim On: 
+Probe Stim On: 
+Weight: 
+
+
+......
+.a.a..
+a..a.a
+.a....
+aaa...
+.....a

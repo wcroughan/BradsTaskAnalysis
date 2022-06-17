@@ -11,40 +11,47 @@ TASK_VERSION = 0
 RUNS_PER_DAY = 2
 NUM_DAYS = 4
 START_WITH_TODAY = True
+OVERWRITE_FILES_NO_CONFIRM = False
 if START_WITH_TODAY:
     first_day = datetime.now()
 else:
-    raise Exception
+    first_day = datetime.now() + timedelta(days=-1)
 
 # skipDays = [0] * NUM_DAYS
 skipDays = [0, 0, 0, 0]
 
-output_dir = "./behavior_notes/B13/"
+output_dir = "./behavior_notes/B16-20/"
 # output_dir = "./"
 # output_dir = "/media/fosterlab/WDC4/B8/behavior_notes/"
+ratNames = ["B16", "B17", "B18", "B19", "B20"]
 
 REST_OF_FILE = "\nThresh: Low\nLast Away: \nLast well: \nITI Stim On: \nProbe Stim On: \nWeight: \n"
 PRINT_WELLS = True
+PRINT_PROBE_FILL_TIME = True
+PRINT_RAT_ORDER = True
 SAVE_TO_FILE = True
-PRINT_WELL_GRID = True
+PRINT_WELL_GRID = False
 PRINT_DAY_WELL_GRID = True
 
 all_wells = [i + 1 for i in range(48) if not i % 8 in [0, 7]]
 broken_wells = []
+# broken_wells = [38, 11, 7]
 # broken_wells = [2, 4, 6, 7, 18, 20, 42, 29, 31, 39, 37, 47, 27]
 # broken_wells = [2, 3, 4, 20, 42, 34]
 # broken_wells = [34, 15, 21, 22, 28, 29, 44, 38, 35]
 # broken_wells = [12, 6, 14]
 working_wells = set(all_wells) - set(broken_wells)
 
+probeFillTimes = np.linspace(60, 60*4, 4)
+
 def quadrant(well):
-    if i < 25:
-        if i % 8 in [2, 3, 4]:
+    if well < 25:
+        if well % 8 in [2, 3, 4]:
             return 1
         else:
             return 2
     else:
-        if i % 8 in [2, 3, 4]:
+        if well % 8 in [2, 3, 4]:
             return 3
         else:
             return 4
@@ -80,6 +87,8 @@ if TASK_VERSION == 1:
     exit()
 
 def approveHomeWells(home_wells):
+    # if quadrant(home_wells[0]) != 1 or quadrant(home_wells[1]) != 4:
+    #     return False
     i = 0
     while i < len(home_wells) - 1:
         if quadrant(home_wells[i]) == quadrant(home_wells[i+1]):
@@ -95,6 +104,7 @@ def approveHomeWells(home_wells):
 
 if TASK_VERSION == 0:
     thisday = first_day
+    ratOrder = [v for v in ratNames]
 
     NUM_AWAY_WELLS_PER_SESSION = 9
 
@@ -108,7 +118,8 @@ if TASK_VERSION == 0:
 
         n = math.ceil(NUM_DAYS * RUNS_PER_DAY / 4)
         home_wells = rd.sample(OFFWALLQ1, n) + rd.sample(OFFWALLQ2, n) + rd.sample(OFFWALLQ3, n) + rd.sample(OFFWALLQ4, n)  
-        rd.shuffle(home_wells)
+        while not approveHomeWells(home_wells):
+            rd.shuffle(home_wells)
         home_wells = home_wells[0:NUM_DAYS * RUNS_PER_DAY]
 
     else:
@@ -116,6 +127,15 @@ if TASK_VERSION == 0:
 
     day_condition_order = [0, 1, 2, 3]
     for di in range(NUM_DAYS):
+        if di % 4 == 0:
+            ctrlFillTimeIdx = 0
+            swrFillTimeIdx = 0
+            ctrlFillTimes = np.copy(probeFillTimes)
+            swrFillTimes = np.copy(probeFillTimes)
+            rd.shuffle(ctrlFillTimes)
+            rd.shuffle(swrFillTimes)
+
+
         if di % 4 in [0, 2]:
             tf = rd.random() < 0.5
             this_day_condition_order = [tf]
@@ -128,6 +148,8 @@ if TASK_VERSION == 0:
         #     rd.shuffle(day_condition_order)
         # dc = day_condition_order[di % 4]
         # this_day_condition_order = [not (dc & 1), not (dc & 2)]
+
+        rd.shuffle(ratOrder)
 
         daywells = set()
 
@@ -152,24 +174,37 @@ if TASK_VERSION == 0:
             # wells = [str(x) for x in [39, 7, 22, 31, 2, 27, 43, 13, 37, 4]]
             if this_day_condition_order[ri]:
                 condition = "Interruption"
+                probeFillTime = ctrlFillTimes[ctrlFillTimeIdx]
+                ctrlFillTimeIdx += 1
             else:
                 condition = "Delayed"
+                probeFillTime = swrFillTimes[swrFillTimeIdx]
+                swrFillTimeIdx += 1
+
+            if PRINT_RAT_ORDER:
+                print(ratOrder)
+
             outstr1 = "Home: " + wells[0] + "\nAways: " + " ".join(wells[1:])
             if PRINT_WELLS:
                 print(outstr1)
                 print(condition)
 
+            if PRINT_PROBE_FILL_TIME:
+                print(f"fill probe at {probeFillTime}s")
+
             if PRINT_WELL_GRID:
                 print(wellGridString(wells[0], wells[1:]))
 
-            if PRINT_DAY_WELL_GRID:
-                daywells = daywells | set(wells)
+
+            # if PRINT_DAY_WELL_GRID:
+            daywells = daywells | set(wells)
 
             if SAVE_TO_FILE:
-                outstr = outstr1 + "\nCondition: " + condition + REST_OF_FILE
+                outstr = "Order: " + str(ratOrder) + "\n" + outstr1 + "\nCondition: " + condition + \
+                    f"\nfill probe at {probeFillTime}s" + REST_OF_FILE
                 fname = os.path.join(output_dir, thisday.strftime(
                     "%Y%m%d_{}.txt".format(ri + 1)))
-                if os.path.exists(fname):
+                if os.path.exists(fname) and not OVERWRITE_FILES_NO_CONFIRM:
                     con = "a"
                     while not (con in ["y", "n"]):
                         con = input("File {} exists, overwrite? (y/n):".format(fname))
@@ -180,7 +215,12 @@ if TASK_VERSION == 0:
 
                 with open(fname, "w") as f:
                     f.write(outstr)
-                    f.write("\n\n" + wellGridString(None, daywells) + "\n")
+                    f.write("\n\n" + wellGridString(None, set(wells)) + "\n")
+                    if set(wells) != daywells:
+                        f.write("\n\n" + wellGridString(None, set(daywells)) + "\n")
+                        for _ in range(3):
+                            f.write("\n")
+
 
         if PRINT_DAY_WELL_GRID:
             print("DAY GRID: {}".format(thisday.strftime("%Y%m%d")))

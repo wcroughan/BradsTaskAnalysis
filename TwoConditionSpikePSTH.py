@@ -1,4 +1,5 @@
 import sys
+import math
 import numpy as np
 import os
 import matplotlib.pyplot as plt
@@ -8,7 +9,8 @@ from SpikeCalibration import MUAClusterFunc, runTheThing, makeClusterFuncFromFil
 
 
 def makePSTH(animal_name):
-    possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/"]
+    possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/media/WDC6/", "/media/fosterlab/WDC6/"]
+    print(possible_drive_dirs)
     drive_dir = None
     for dd in possible_drive_dirs:
         if os.path.exists(dd):
@@ -18,6 +20,12 @@ def makePSTH(animal_name):
     if drive_dir == None:
         print("Couldnt' find data directory among any of these: {}".format(possible_drive_dirs))
         return
+
+    UP_DEFLECT_STIM_THRESH = None
+
+
+    clfuncCtrl = None
+    clusterPolygonsCtrl = None
 
     if animal_name == "B13":
         runName = "20220125_094035"
@@ -104,12 +112,19 @@ def makePSTH(animal_name):
             ctrlt0 = ConvertTimeToTrodesTS(5, 13, 1)
             ctrlt1 = ConvertTimeToTrodesTS(5, 44, 0)
             spikeTet = 2
-        else:
+        elif False:
             runName = "20220217_142910"
             swrt0 = ConvertTimeToTrodesTS(0, 21, 2)
             swrt1 = ConvertTimeToTrodesTS(0, 59, 11)
             ctrlt0 = ConvertTimeToTrodesTS(1, 38, 22)
             ctrlt1 = ConvertTimeToTrodesTS(2, 10, 45)
+            spikeTet = 8
+        else:
+            runName = "20220218_145108"
+            swrt0 = ConvertTimeToTrodesTS(0, 39, 10)
+            swrt1 = ConvertTimeToTrodesTS(1, 12, 50)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 39, 51)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 9, 45)
             spikeTet = 8
 
 
@@ -138,6 +153,328 @@ def makePSTH(animal_name):
     #     data_filename = '/media/WDC7/Martin/processed_data/martin_bradtask.dat'
     #     outputDir = "/media/WDC7/Martin/figs/"
     #     diagPoint = None
+    elif animal_name == "B16":
+        lfpTet = 2
+        spikeTet = 2
+        clusterIndex = -1
+        clfunc = None
+        clFileSuffix = ""
+
+        if False:
+            runName = "20220523_092912"
+            swrt0 = ConvertTimeToTrodesTS(3, 47, 30)
+            swrt1 = ConvertTimeToTrodesTS(4, 17, 15)
+            ctrlt0 = ConvertTimeToTrodesTS(4, 48, 45)
+            ctrlt1 = ConvertTimeToTrodesTS(5, 18, 38)
+            spikeTet = 2
+        elif False:
+            runName = "20220531_201756"
+            swrt0 = ConvertTimeToTrodesTS(0, 4, 12)
+            swrt1 = ConvertTimeToTrodesTS(0, 37, 58)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 9, 35)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 39, 50)
+            lfpTet = 4
+            spikeTet = 4
+        else:
+            runName = "20220601_114315"
+            swrt0 = ConvertTimeToTrodesTS(0, 14, 16)
+            swrt1 = ConvertTimeToTrodesTS(0, 51, 15)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 23, 3)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 58, 34)
+            lfpTet = 4
+            spikeTet = 4
+            UP_DEFLECT_STIM_THRESH = 5000
+            clFileSuffix = "_noisy"
+
+
+
+        recFileName = os.path.join(drive_dir, "B16/{}/{}.rec".format(runName, runName))
+        gl = os.path.join(drive_dir, "B16/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(
+            runName, runName, runName, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileName = lfpfilelist[0]
+        else:
+            lfpFileName = "nofile"
+
+        spikeFileName = os.path.join(drive_dir, "B16/{}/{}.spikes/{}.spikes_nt{}.dat".format(
+            runName, runName, runName, spikeTet))
+
+        if clfunc is None:
+            clusterFileName = os.path.join(drive_dir, "B16/{}/{}{}.trodesClusters".format(runName, runName, clFileSuffix))
+            clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
+            clusters = loadTrodesClusters(clusterFileName)
+            # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+            clusterPolygons = clusters[spikeTet-1]
+
+        outputDir = os.path.join(drive_dir, "B16/figs/")
+    elif animal_name == "B17":
+        lfpTet = 2
+        spikeTet = 3
+        clusterIndex = -1
+        clfunc = None
+        clFileSuffix = ""
+        clFileSuffix_delay = None
+
+        if False:
+            runName = "20220526_135145"
+            swrt0 = ConvertTimeToTrodesTS(1, 17, 45)
+            swrt1 = ConvertTimeToTrodesTS(1, 48, 19)
+            ctrlt0 = ConvertTimeToTrodesTS(2, 25, 40)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 55, 45)
+        elif False:
+            runName = "20220601_150729"
+            swrt0 = ConvertTimeToTrodesTS(0, 16, 7)
+            swrt1 = ConvertTimeToTrodesTS(0, 48, 39)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 16, 39)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 50, 54)
+            lfpTet = 3
+            spikeTet = 3
+        elif False:
+            runName = "20220612_182252"
+            swrt0 = ConvertTimeToTrodesTS(2, 15, 36)
+            swrt1 = ConvertTimeToTrodesTS(2, 47, 20)
+            ctrlt0 = ConvertTimeToTrodesTS(3, 15, 20)
+            ctrlt1 = ConvertTimeToTrodesTS(3, 46, 8)
+            lfpTet = 3
+            spikeTet = 3
+        elif False:
+            runName = "20220612_220046"
+            swrt0 = ConvertTimeToTrodesTS(0, 10, 4)
+            swrt1 = ConvertTimeToTrodesTS(0, 30, 33)
+            ctrlt0 = ConvertTimeToTrodesTS(0, 49, 30)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 13, 10)
+            lfpTet = 3
+            spikeTet = 3
+        elif False:
+            runName = "20220614_113602"
+            swrt0 = ConvertTimeToTrodesTS(3, 9, 45)
+            swrt1 = ConvertTimeToTrodesTS(3, 38, 50)
+            ctrlt0 = ConvertTimeToTrodesTS(4, 13, 2)
+            ctrlt1 = ConvertTimeToTrodesTS(4, 50, 0)
+            lfpTet = 3
+            spikeTet = 3
+            # clFileSuffix_delay = "_2"
+            clFileSuffix = "_again"
+        else:
+            runName = "20220616_100325"
+            swrt0 = ConvertTimeToTrodesTS(0, 39, 0)
+            swrt1 = ConvertTimeToTrodesTS(1, 9, 15)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 42, 8)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 12, 13)
+            lfpTet = 3
+            spikeTet = 3
+
+
+        if clFileSuffix_delay is None:
+            clFileSuffix_delay = clFileSuffix
+
+
+        recFileName = os.path.join(drive_dir, "{}/{}/{}.rec".format(animal_name, runName, runName))
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name, 
+            runName, runName, runName, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileName = lfpfilelist[0]
+        else:
+            lfpFileName = "nofile"
+
+        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name, 
+            runName, runName, runName, spikeTet))
+
+        if clfunc is None:
+            clusterFileName = os.path.join(drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix))
+            clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
+            clusters = loadTrodesClusters(clusterFileName)
+            # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+            clusterPolygons = clusters[spikeTet-1]
+
+        if clFileSuffix_delay != clFileSuffix:
+            clusterFileName_delay = os.path.join(drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix_delay))
+            clfuncCtrl = makeClusterFuncFromFile(clusterFileName_delay, spikeTet-1, clusterIndex)
+            clusters = loadTrodesClusters(clusterFileName_delay)
+            # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+            clusterPolygonsCtrl = clusters[spikeTet-1]
+
+
+        outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name))
+    elif animal_name == "B18":
+        lfpTet = 5
+        spikeTet = 5
+        clusterIndex = -1
+        clfunc = None
+
+        if False:
+            pass
+        else:
+            runName = "20220521_094602"
+            swrt0 = ConvertTimeToTrodesTS(3, 12, 45)
+            swrt1 = ConvertTimeToTrodesTS(3, 44, 10)
+            ctrlt0 = ConvertTimeToTrodesTS(4, 15, 30)
+            ctrlt1 = ConvertTimeToTrodesTS(4, 45, 45)
+
+
+        recFileName = os.path.join(drive_dir, "{}/{}/{}.rec".format(animal_name, runName, runName))
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name, 
+            runName, runName, runName, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileName = lfpfilelist[0]
+        else:
+            lfpFileName = "nofile"
+
+        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name, 
+            runName, runName, runName, spikeTet))
+
+        if clfunc is None:
+            clusterFileName = os.path.join(drive_dir, "{}/{}/{}.trodesClusters".format(animal_name, runName, runName))
+            clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
+            clusters = loadTrodesClusters(clusterFileName)
+            # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+            clusterPolygons = clusters[spikeTet-1]
+
+        outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name))
+    elif animal_name == "B19":
+        lfpTet = 2
+        spikeTet = 6
+        clusterIndex = -1
+        clfunc = None
+        clFileSuffix = ""
+
+        if False:
+            runName = "20220504_150715"
+            swrt0 = ConvertTimeToTrodesTS(0, 1, 45)
+            swrt1 = ConvertTimeToTrodesTS(0, 31, 20)
+            ctrlt0 = ConvertTimeToTrodesTS(0, 48, 30)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 18, 30)
+        elif False:
+            runName = "20220525_140759"
+            swrt0 = ConvertTimeToTrodesTS(0, 36, 30)
+            swrt1 = ConvertTimeToTrodesTS(1, 10, 0)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 41, 0)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 41, 30)
+            lfpTet = 8
+            spikeTet = 8
+        elif False:
+            runName = "20220531_114750"
+            swrt0 = ConvertTimeToTrodesTS(0, 56, 16)
+            swrt1 = ConvertTimeToTrodesTS(1, 32, 6)
+            ctrlt0 = ConvertTimeToTrodesTS(2, 7, 4)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 38, 1)
+            lfpTet = 8
+            spikeTet = 8
+        elif False:
+            runName = "20220605_162549"
+            swrt0 = ConvertTimeToTrodesTS(0, 15, 26)
+            swrt1 = ConvertTimeToTrodesTS(0, 56, 30)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 29, 2)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 59, 40)
+            lfpTet = 8
+            spikeTet = 8
+        elif False:
+            runName = "20220609_131504"
+            swrt0 = ConvertTimeToTrodesTS(0, 25, 35)
+            swrt1 = ConvertTimeToTrodesTS(0, 59, 25)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 30, 45)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 10, 0)
+            lfpTet = 8
+            spikeTet = 8
+        else:
+            runName = "20220610_194356"
+            swrt0 = ConvertTimeToTrodesTS(0, 13, 34)
+            swrt1 = ConvertTimeToTrodesTS(0, 47, 58)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 15, 0)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 47, 4)
+            lfpTet = 8
+            spikeTet = 8
+            clFileSuffix = "_2"
+
+
+
+        recFileName = os.path.join(drive_dir, "{}/{}/{}.rec".format(animal_name, runName, runName))
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name, 
+            runName, runName, runName, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileName = lfpfilelist[0]
+        else:
+            lfpFileName = "nofile"
+
+        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name, 
+            runName, runName, runName, spikeTet))
+
+        if clfunc is None:
+            clusterFileName = os.path.join(drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix))
+            clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
+            clusters = loadTrodesClusters(clusterFileName)
+            # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+            clusterPolygons = clusters[spikeTet-1]
+
+        outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name))
+    elif animal_name == "B20":
+        lfpTet = 2
+        spikeTet = 2
+        clusterIndex = -1
+        clfunc = None
+
+        if False:
+            runName = "20220602_144759"
+            swrt0 = ConvertTimeToTrodesTS(3, 44, 15)
+            swrt1 = ConvertTimeToTrodesTS(4, 6, 55)
+            ctrlt0 = ConvertTimeToTrodesTS(4, 25, 7)
+            ctrlt1 = ConvertTimeToTrodesTS(4, 47, 50)
+        elif False:
+            runName = "20220606_132221"
+            swrt0 = ConvertTimeToTrodesTS(0, 45, 36)
+            swrt1 = ConvertTimeToTrodesTS(1, 16, 7)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 46, 13)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 16, 1)
+            spikeTet = 1
+        elif False:
+            runName = "20220609_181141"
+            swrt0 = ConvertTimeToTrodesTS(1, 6, 37)
+            swrt1 = ConvertTimeToTrodesTS(1, 26, 28)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 39, 31)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 3, 20)
+            spikeTet = 8
+        elif False:
+            runName = "20220610_121139"
+            swrt0 = ConvertTimeToTrodesTS(1, 53, 40)
+            swrt1 = ConvertTimeToTrodesTS(2, 22, 22)
+            ctrlt0 = ConvertTimeToTrodesTS(3, 6, 23)
+            ctrlt1 = ConvertTimeToTrodesTS(3, 38, 23)
+            spikeTet = 8
+        else:
+            runName = "20220614_230037"
+            swrt0 = ConvertTimeToTrodesTS(5, 17, 50)
+            swrt1 = ConvertTimeToTrodesTS(5, 56, 30)
+            ctrlt0 = ConvertTimeToTrodesTS(6, 59, 30)
+            ctrlt1 = ConvertTimeToTrodesTS(7, 30, 0)
+            spikeTet = 2
+            lfpTet = 4
+
+
+
+        recFileName = os.path.join(drive_dir, "{}/{}/{}.rec".format(animal_name, runName, runName))
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name, 
+            runName, runName, runName, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileName = lfpfilelist[0]
+        else:
+            lfpFileName = "nofile"
+
+        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name, 
+            runName, runName, runName, spikeTet))
+
+        if clfunc is None:
+            clusterFileName = os.path.join(drive_dir, "{}/{}/{}.trodesClusters".format(animal_name, runName, runName))
+            clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
+            clusters = loadTrodesClusters(clusterFileName)
+            # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+            clusterPolygons = clusters[spikeTet-1]
+
+        outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name))
     else:
         raise Exception("Unknown rat " + animal_name)
 
@@ -172,12 +509,17 @@ def makePSTH(animal_name):
     print(runName, "LFP tet " + str(lfpTet), "spike tet " + str(spikeTet), "cluster index " + str(clusterIndex),
           recFileName, lfpFileName, spikeFileName, clusterFileName)
 
+    if clfuncCtrl is None:
+        clfuncCtrl = clfunc
+    if clusterPolygonsCtrl is None:
+        clusterPolygonsCtrl = clusterPolygons
+
     swrTvals, swrMeanPSTH, swrStdPSTH, swrN = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
                                                           swrOutputFileName, clfunc, makeFigs=True, clusterPolygons=clusterPolygons,
-                                                          tStart=swrt0, tEnd=swrt1)
+                                                          tStart=swrt0, tEnd=swrt1, UP_DEFLECT_STIM_THRESH=UP_DEFLECT_STIM_THRESH)
     ctrlTvals, ctrlMeanPSTH, ctrlStdPSTH, ctrlN = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
-                                                              ctrlOutputFileName, clfunc, makeFigs=False, clusterPolygons=clusterPolygons,
-                                                              tStart=ctrlt0, tEnd=ctrlt1)
+                                                              ctrlOutputFileName, clfuncCtrl, makeFigs=False, clusterPolygons=clusterPolygonsCtrl,
+                                                              tStart=ctrlt0, tEnd=ctrlt1, UP_DEFLECT_STIM_THRESH=UP_DEFLECT_STIM_THRESH)
 
     # print(swrMeanPSTH)
     # print(swrStdPSTH)
@@ -188,6 +530,18 @@ def makePSTH(animal_name):
 
     swrSEM = swrStdPSTH / np.sqrt(swrN)
     ctrlSEM = ctrlStdPSTH / np.sqrt(ctrlN)
+
+
+    normFrac = 0.125
+    normMaxIdx = math.floor(np.size(swrMeanPSTH) / normFrac)
+    print(f"Normalizing to the first {normMaxIdx} datapoints, (out of {np.size(swrMeanPSTH)})")
+    swrBaseline = np.mean(swrMeanPSTH[0:normMaxIdx])
+    ctrlBaseline = np.mean(ctrlMeanPSTH[0:normMaxIdx])
+
+    swrMeanPSTH /= swrBaseline
+    swrSEM /= swrBaseline
+    ctrlMeanPSTH /= ctrlBaseline
+    ctrlSEM /= ctrlBaseline
 
     plt.plot(swrTvals, swrMeanPSTH, color="orange")
     plt.fill_between(swrTvals, swrMeanPSTH - swrSEM, swrMeanPSTH +

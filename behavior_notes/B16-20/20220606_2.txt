@@ -1,0 +1,18 @@
+Order: ['B19', 'B18', 'B16', 'B17', 'B20']
+Home: 11
+Aways: 45 2 34 18 28 22 26 46 47
+Condition: Delayed
+Thresh: Low
+Last Away: 
+Last well: 
+ITI Stim On: 
+Probe Stim On: 
+Weight: 
+
+
+a..aaa
+a.a...
+a.aa..
+a..aa.
+aa....
+a.aa.a

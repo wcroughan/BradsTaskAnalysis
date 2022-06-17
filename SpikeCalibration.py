@@ -184,17 +184,28 @@ def MUAClusterFunc(features, channelRatios):
 
 def makeClusterFuncFromFile(clusterFileName, trodeIndex, clusterIndex):
     clusters = loadTrodesClusters(clusterFileName)
+    # print(clusters)
+    for cl in clusters:
+        while [] in cl:
+            cl.remove([])
+    print(clusters)
+
 
     def retF(features, chmaxes, maxfeature, endFeatures, chmins):
         if isinstance(clusterIndex, list):
             return any([isInPolygons(clusters[trodeIndex][i], features) for i in clusterIndex])
         elif clusterIndex == -1:
+            # print(clusters)
+            # print(trodeIndex)
+            # print(clusters[trodeIndex])
             # print([isInPolygons(clusters[trodeIndex][i], features)
             #   for i in range(len(clusters[trodeIndex]))])
             # print(clusters[trodeIndex])
             ret1 = np.vstack([isInPolygons(clusters[trodeIndex][i], features)
                              for i in range(len(clusters[trodeIndex]))]).T
             # print(ret1.shape)
+            # print(ret1)
+            # print(np.sum(ret1, axis=0))
             ret = np.any(ret1, axis=1)
             # print(ret)
             return ret
@@ -359,12 +370,14 @@ def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
     runTheThing(data_file, lfp_data_file, lfp_ts_file, output_fname, clfunc, tStart, tEnd)
 
 
-def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, tStart=None, tEnd=None,  makeFigs=False, clusterPolygons=None):
+def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, tStart=None, tEnd=None,  makeFigs=False, clusterPolygons=None,
+                UP_DEFLECT_STIM_THRESH=10000):
     DOWN_DEFLECT_NOISE_THRESH = -40000
     NOISE_BWD_EXCLUDE_SECS = 1
     NOISE_FWD_EXCLUDE_SECS = 1
 
-    UP_DEFLECT_STIM_THRESH = 10000
+    if UP_DEFLECT_STIM_THRESH is None:
+        UP_DEFLECT_STIM_THRESH = 10000
     UP_DEFLECT_STIM_PROMINENCE = 5000
     SPK_BIN_SZ_MS = 10
     PSTH_MARGIN_MS = 500
@@ -379,11 +392,11 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         # mkfigs[10] = True  # waveform just cluster, individuals
         # mkfigs[4] = True  # Old test, don't use
         # mkfigs[1] = True  # spike peak amp scatter
-        mkfigs[2] = True  # spike feats just cluster
+        # mkfigs[2] = True  # spike feats just cluster
         mkfigs[11] = True  # waveform just cluster, all waveforms
         # mkfigs[3] = True  # all LFP
         # mkfigs[5] = True  # LFP with noise marked
-        # mkfigs[6] = True  # LFP with peaks marked
+        mkfigs[6] = True  # LFP with peaks marked
         # mkfigs[7] = True  # peaks marked with noise peaks excluded
         mkfigs[8] = True  # LFP with clustered spikes marked
         # mkfigs[9] = True  # final PSTH fig
@@ -475,7 +488,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
 
     c1spks = features[c1spks_idxs, :]
     c1ts = spike_data['time'][c1spks_idxs]
-    print("{} spikes included in psth".format(len(c1ts)))
+    print("{}/{} spikes included in psth".format(len(c1ts), features.shape[0]))
     if mkfigs[2]:
         plt.subplot(321)
         plt.scatter(features[::step, 0], features[::step, 1], marker=".", s=0.5)
@@ -662,6 +675,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         print("{} ({}-{}), {} total stims = {} Hz".format(
             t2-t1, t1, t2, len(peaks), float(len(peaks))/float(t2-t1)
         ))
+        plt.title("lfp peaks with noise included")
 
         plt.show()
 
@@ -674,6 +688,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         ts = lfp_ts.astype(float) / 30000
         plt.plot(ts, lfp_data)
         plt.scatter(ts[stimpeaks], stimpeak_heights, c="#ff7f0e")
+        plt.title("lfp peaks with noise excluded")
         plt.show()
 
     if mkfigs[8]:
@@ -732,7 +747,8 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
     return x1, avg_fr_psth, std_fr_psth, numStimsCounted
 
 
-possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/"]
+# TODO this shouldn't run here do I need this to be global for some reason??
+possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/media/WDC6/", "/media/fosterlab/WDC6/"]
 drive_dir = None
 for dd in possible_drive_dirs:
     if os.path.exists(dd):
