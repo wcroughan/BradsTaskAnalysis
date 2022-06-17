@@ -26,7 +26,7 @@ def makeThesisCommitteeFigs():
     SHOW_OUTPUT_PLOTS = False
     FIG_SCALE = 5
 
-    possibleDataDirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/home/wcroughan/data/"]
+    possibleDataDirs = ["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]
     dataDir = None
     for dd in possibleDataDirs:
         if os.path.exists(dd):
@@ -37,14 +37,14 @@ def makeThesisCommitteeFigs():
         print("Couldnt' find data directory among any of these: {}".format(possibleDataDirs))
         exit()
 
-    globalOutputDir = os.path.join(dataDir, "figures", "thesisCommittee20220208")
+    globalOutputDir = os.path.join(dataDir, "figures", "20220315LabMeeting")
     if not os.path.exists(globalOutputDir):
         os.makedirs(globalOutputDir)
 
     allWellNames = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 
-    animalNames = ["B13", "B14", "Martin"]
-    # animalNames = ["B13"]
+    # animalNames = ["B13", "B14", "Martin"]
+    animalNames = ["B13", "B14"]
     allSessions = []
     allSessionsByRat = {}
     allSessionsWithProbe = []
@@ -56,7 +56,8 @@ def makeThesisCommitteeFigs():
         elif an == "B14":
             dataFilename = os.path.join(dataDir, "B14/processed_data/B14_bradtask.dat")
         elif an == "Martin":
-            dataFilename = os.path.join(dataDir, "Martin/processed_data/martin_bradtask.dat")
+            # dataFilename = os.path.join(dataDir, "Martin/processed_data/martin_bradtask.dat")
+            dataFilename = "/media/WDC7/Martin/processed_data/martin_bradtask.dat"
         else:
             raise Exception("Unknown rat " + an)
         ratData = BTData()
@@ -352,7 +353,6 @@ def makeThesisCommitteeFigs():
                 warnings.filterwarnings("error", category=UserWarning)
                 while not plotWorked:
                     try:
-                        # print("trying...")
                         p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
                                             y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
                         p2 = sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
@@ -361,22 +361,7 @@ def makeThesisCommitteeFigs():
                         plotWorked = True
                     except UserWarning as e:
                         swarmDotSize /= 2
-                        # print("reduing dots to {}".format(swarmDotSize))
-
-                        # ax.cla()
-                        # print(ax.figure)
-                        # try:
-                        #     p1.remove()
-                        # except:
-                        #     pass
-
-                        # try:
-                        #     p2.remove()
-                        # except:
-                        #     pass
                         p1.cla()
-
-                        # print(ax.figure)
 
                         if swarmDotSize < 0.1:
                             raise e
@@ -450,10 +435,10 @@ def makeThesisCommitteeFigs():
             return len(set([k for k, _ in g if k in wellSubset]))
 
     def makeFiguresForSessions(sessions, outputDir, MAKE_STATS_FILE=False,
-                               SKIP_ALL_SESSIONS_PLOTS=False, SKIP_COMPARISON_PLOTS=False,
-                               SKIP_LFP_PLOTS=False,
-                               SKIP_SINGLE_SESSION_PLOTS=True, SKIP_NO_PROBE_SESSION_PLOTS=False,
-                               SKIP_PROBE_SESSION_PLOTS=False):
+                               SKIP_ALL_SESSIONS_PLOTS=False, SKIP_COMPARISON_PLOTS=True,
+                               SKIP_LFP_PLOTS=True,
+                               SKIP_SINGLE_SESSION_PLOTS=True, SKIP_NO_PROBE_SESSION_PLOTS=True,
+                               SKIP_PROBE_SESSION_PLOTS=True):
         fig = plt.figure(figsize=(FIG_SCALE, FIG_SCALE))
         axs = fig.subplots()
 
@@ -707,6 +692,25 @@ def makeThesisCommitteeFigs():
                 axs[-1, 1].tick_params(axis="both", which="both", label1On=False,
                                        label2On=False, tick1On=False, tick2On=False)
             axs = saveOrShow("probe_traces_ctrl", outputDir=outputDir, statsFile=statsFile)
+            fig.set_figheight(FIG_SCALE)
+            fig.set_figwidth(FIG_SCALE)
+
+            # =============
+            # control condition probe traces
+            numCols = math.ceil(math.sqrt(numSessionsWithProbe))
+            fig.set_figheight(math.ceil(numSessionsWithProbe / numCols) * FIG_SCALE / 2)
+            fig.set_figwidth(numCols * FIG_SCALE / 2)
+            axs = fig.subplots(math.ceil(numSessionsWithProbe / numCols), numCols)
+            for si, sesh in enumerate(sessionsWithProbe):
+                axs[si // numCols, si %
+                    numCols].plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                setupBehaviorTracePlot(axs[si // numCols, si % numCols], sesh)
+                axs[si // numCols, si % numCols].set_title(str(si))
+            for i in range(((numSessionsWithProbe-1) % numCols)+1, numCols):
+                axs[-1, i].cla()
+                axs[-1, i].tick_params(axis="both", which="both", label1On=False,
+                                       label2On=False, tick1On=False, tick2On=False)
+            axs = saveOrShow("probe_traces_all", outputDir=outputDir, statsFile=statsFile)
             fig.set_figheight(FIG_SCALE)
             fig.set_figwidth(FIG_SCALE)
 
@@ -2632,17 +2636,15 @@ def makeThesisCommitteeFigs():
             axs = saveOrShow("probe_curvature_color", outputDir=seshOutputDir, statsFile=statsFile)
 
     for animalName in animalNames:
-        # if animalName == "B14":
-        # continue
         print("==========================\n" + animalName)
         animalOutputDir = os.path.join(globalOutputDir, animalName)
         sessions = allSessionsByRat[animalName]
         makeFiguresForSessions(sessions, animalOutputDir)
 
-    print("==========================\nPrince Martin")
-    princeMartinOutputDir = os.path.join(globalOutputDir, "PrinceMartin")
-    sessions = allSessionsByRat["B13"] + allSessionsByRat["Martin"]
-    makeFiguresForSessions(sessions, princeMartinOutputDir)
+    # print("==========================\nPrince Martin")
+    # princeMartinOutputDir = os.path.join(globalOutputDir, "PrinceMartin")
+    # sessions = allSessionsByRat["B13"] + allSessionsByRat["Martin"]
+    # makeFiguresForSessions(sessions, princeMartinOutputDir)
 
 
 if __name__ == "__main__":
