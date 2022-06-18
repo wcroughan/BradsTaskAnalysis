@@ -1,4 +1,4 @@
-Order: ['B19', 'B17', 'B20', 'B16', 'B18']
+Order: ['B18', 'B17', 'B20', 'B16', 'B19']
 Home: 19
 Aways: 47 3 34 7 37 13 2 22 6
 Condition: Interruption
@@ -9,6 +9,9 @@ Last well:
 ITI Stim On: 
 Probe Stim On: 
 Weight: 
+
+Note: manually editing rat order so can run 18 first and then immediately do session 2 after other rats
+Only running 18 for session 2
 
 
 .....a

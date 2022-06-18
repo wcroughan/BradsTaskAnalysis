@@ -1,4 +1,4 @@
-Order: ['B19', 'B17', 'B20', 'B16', 'B18']
+Order: ['B18', 'B17', 'B20', 'B16', 'B19']
 Home: 22
 Aways: 7 18 6 43 4 42 28 46 30
 Condition: Delayed
@@ -10,6 +10,8 @@ ITI Stim On:
 Probe Stim On: 
 Weight: 
 
+Note: manually editing rat order so can run 18 first and then immediately do session 2 after other rats
+Only running 18 for session 2
 
 aa..a.
 ......
