@@ -448,6 +448,7 @@ def getListOfVisitedWells(nearestWells, countFirstVisitOnly):
 def onWall(well):
     return well < 9 or well > 40 or well % 8 in [2, 7]
 
+
 def offWall(well):
     return not onWall(well)
 
@@ -644,9 +645,8 @@ def getInfoForAnimal(animalName):
         ret.out_filename = "B18_bradtask.dat"
 
         ret.excluded_dates = []
-        ret.minimum_date = None  
+        ret.minimum_date = None
         ret.excluded_sessions = []
-
 
         # Amplitude at 100uA, probably don't need to exclude but should note
         # ret.excluded_sessions += ["20220620_2"]
@@ -660,14 +660,12 @@ def getInfoForAnimal(animalName):
         ret.rerun_usb_videos = []
         ret.rerun_trodes_videos = []
 
-
         # ======================
         # Temporary
-        ret.minimum_date = "20220621"
-        ret.excluded_sessions = ["20220621_2", "20220622_2","20220623_2"]
-        ret.excluded_sessions += ["2022062{}_1".format(v) for v in range(24, 29)]
-        ret.excluded_sessions += ["2022062{}_2".format(v) for v in range(24, 29)]
-
+        # ret.minimum_date = "20220621"
+        # ret.excluded_sessions = ["20220621_2", "20220622_2", "20220623_2"]
+        # ret.excluded_sessions += ["2022062{}_1".format(v) for v in range(24, 29)]
+        # ret.excluded_sessions += ["2022062{}_2".format(v) for v in range(24, 29)]
 
     else:
         raise Exception("Unknown animal name")
