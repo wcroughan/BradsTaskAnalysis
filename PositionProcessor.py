@@ -151,8 +151,8 @@ class PositionPlot(QDialog):
             return
 
         # Set the application sliders
-        self.start_time_slider.setMinimum(self.time_chunks[self.current_chunk_idx,0])
-        self.start_time_slider.setMaximum(self.time_chunks[self.current_chunk_idx,1])
+        self.start_time_slider.setMinimum(int(self.time_chunks[self.current_chunk_idx,0]))
+        self.start_time_slider.setMaximum(int(self.time_chunks[self.current_chunk_idx,1]))
         self.plotTimeValueChanged()
 
     def NextChunk(self):
@@ -518,15 +518,15 @@ class PositionPlot(QDialog):
 
         # Set slider for start and finish time
         self.start_time_slider = QSlider(Qt.Horizontal)
-        self.start_time_slider.setTickInterval(SLIDER_TIME_RANGE * MountainViewIO.SPIKE_SAMPLING_RATE)
+        self.start_time_slider.setTickInterval(int(SLIDER_TIME_RANGE * MountainViewIO.SPIKE_SAMPLING_RATE))
         self.start_time_slider.setTickPosition(QSlider.TicksBelow)
         self.start_time_slider.valueChanged.connect(self.plotTimeValueChanged)
         self.start_time_value = QLabel('00:00:00')
 
         self.time_length_slider = QSlider(Qt.Horizontal)
-        self.time_length_slider.setMinimum(0.05 * MountainViewIO.SPIKE_SAMPLING_RATE)
-        self.time_length_slider.setMaximum(SLIDER_TIME_RANGE * MountainViewIO.SPIKE_SAMPLING_RATE)
-        self.time_length_slider.setTickInterval(1.0 * MountainViewIO.SPIKE_SAMPLING_RATE)
+        self.time_length_slider.setMinimum(int(0.05 * MountainViewIO.SPIKE_SAMPLING_RATE))
+        self.time_length_slider.setMaximum(int(SLIDER_TIME_RANGE * MountainViewIO.SPIKE_SAMPLING_RATE))
+        self.time_length_slider.setTickInterval(int(1.0 * MountainViewIO.SPIKE_SAMPLING_RATE))
         self.time_length_slider.setTickPosition(QSlider.TicksBelow)
         self.time_length_slider.valueChanged.connect(self.plotTimeValueChanged)
         self.time_length_value = QLabel('00:00:00')
@@ -554,7 +554,7 @@ class PositionPlot(QDialog):
         if init_display:
             self.setLayout()
             self.clearAxes()
-        self.time_length_slider.setValue(0.5 * MountainViewIO.SPIKE_SAMPLING_RATE)
+        self.time_length_slider.setValue(int(0.5 * MountainViewIO.SPIKE_SAMPLING_RATE))
         
 class PositionProcessorWindow(QMainWindow):
 

@@ -404,14 +404,16 @@ def runTest():
 
 
 def runAllBradTask():
-    dataDir = "/media/WDC6/"
-    animalNames = ["B13", "B14"]
+    # dataDir = "/media/WDC6/"
+    # animalNames = ["B13", "B14"]
+    dataDir = "/home/wcroughan/data/"
+    animalNames = ["B18"]
     allVids = []
     for animalName in animalNames:
         gl = dataDir + "/" + animalName + "/bradtasksessions/*/*.h264"
         videoNameList = glob.glob(gl)
         allVids += videoNameList
-    # print("\n".join(allVids))
+    print("\n".join(allVids))
 
     for videoName in allVids:
         print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
@@ -776,7 +778,9 @@ def runBatchTest():
 
 
 if __name__ == "__main__":
-    rerunUSBVideos(False)
+    # rerunUSBVideos(False)
     # rerunTrodesVideos(False)
     # videoName = "/media/WDC6/B13/bradtasksessions/20220308_140707/20220308_140707.1.h264"
     # processRawTrodesVideo(videoName, overwriteMode="always", showVideo=True, batchStart=15*12*60)
+
+    runAllBradTask()

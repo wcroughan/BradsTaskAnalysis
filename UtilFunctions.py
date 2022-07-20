@@ -448,6 +448,9 @@ def getListOfVisitedWells(nearestWells, countFirstVisitOnly):
 def onWall(well):
     return well < 9 or well > 40 or well % 8 in [2, 7]
 
+def offWall(well):
+    return not onWall(well)
+
 
 class AnimalInfo:
     def __init__(self):
@@ -630,6 +633,41 @@ def getInfoForAnimal(animalName):
 
         ret.rerun_usb_videos = []
         ret.rerun_trodes_videos = []
+    elif animalName == "B18":
+        ret.X_START = 100
+        ret.X_FINISH = 1050
+        ret.Y_START = 20
+        ret.Y_FINISH = 900
+        ret.data_dir = "/home/wcroughan/data/B18/bradtasksessions/"
+        ret.output_dir = "/home/wcroughan/data/B18/processed_data/"
+        ret.fig_output_dir = "/home/wcroughan/data/B18/processed_data/"
+        ret.out_filename = "B18_bradtask.dat"
+
+        ret.excluded_dates = []
+        ret.minimum_date = None  
+        ret.excluded_sessions = []
+
+
+        # Amplitude at 100uA, probably don't need to exclude but should note
+        # ret.excluded_sessions += ["20220620_2"]
+
+        # stim wire was broken, shoulda been iterruption but was no-stim control
+        # (both leads were disconnected, so no stim at all made it to brain)
+        ret.excluded_sessions += ["20220624_2"]
+
+        ret.DEFAULT_RIP_DET_TET = 5
+        ret.DEFAULT_RIP_BAS_TET = 3
+        ret.rerun_usb_videos = []
+        ret.rerun_trodes_videos = []
+
+
+        # ======================
+        # Temporary
+        ret.minimum_date = "20220621"
+        ret.excluded_sessions = ["20220621_2", "20220622_2","20220623_2"]
+        ret.excluded_sessions += ["2022062{}_1".format(v) for v in range(24, 29)]
+        ret.excluded_sessions += ["2022062{}_2".format(v) for v in range(24, 29)]
+
 
     else:
         raise Exception("Unknown animal name")

@@ -50,7 +50,7 @@ TEST_NEAREST_WELL = False
 if len(sys.argv) == 2:
     animal_name = sys.argv[1]
 else:
-    animal_name = 'B13'
+    animal_name = 'B18'
 
 print("Importing data for animal ", animal_name)
 animalInfo = getInfoForAnimal(animal_name)
@@ -203,14 +203,14 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         seshs_on_this_day = sorted(
             list(filter(lambda seshdir: session.date_str + "_" in seshdir, filtered_data_dirs)))
         num_on_this_day = len(seshs_on_this_day)
-        # print("Looking for info file for {}".format(session_dir))
+        print("Looking for info file for {}".format(session_dir))
         for i in range(num_on_this_day):
             # print("\t{}".format(seshs_on_this_day[i]))
             if seshs_on_this_day[i] == session_dir:
                 sesh_idx_within_day = i
         possible_info_files = sorted(
             glob.glob(os.path.join(behavior_notes_dir, date_str + "_*.txt")))
-        # print(possible_info_files)
+        print(possible_info_files)
         # info_file = os.path.join(behavior_notes_dir, date_str + "_" +
         #  str(sesh_idx_within_day+1) + ".txt")
         info_file = possible_info_files[sesh_idx_within_day]
@@ -348,6 +348,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 elif field_name.lower() == "conditiongroup":
                     session.conditionGroup = int(field_val)
                     foundConditionGroups = True
+                elif field_name.lower() == "probe home fill time":
+                    session.probe_fill_time = int(field_val)
                 else:
                     session.notes.append(line)
 
