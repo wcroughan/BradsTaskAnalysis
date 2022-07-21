@@ -38,8 +38,8 @@ SAVE_DONT_SHOW = True
 SHOW_CURVATURE_VIDEO = False
 SKIP_LFP = False
 SKIP_PREV_SESSION = True
-JUST_EXTRACT_TRODES_DATA = False
-RUN_INTERACTIVE = True
+JUST_EXTRACT_TRODES_DATA = True
+RUN_INTERACTIVE = False
 MAKE_ALL_TRACKING_AUTO = False
 
 numExtracted = 0
@@ -648,8 +648,10 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             # syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportLFP -rec " + file_str + ".rec"
             if os.path.exists("/home/wcroughan/Software/Trodes21/exportLFP"):
                 syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + file_str + ".rec"
-            else:
+            elif os.path.exists("/home/wcroughan/Software/Trodes21/linux/exportLFP"):
                 syscmd = "/home/wcroughan/Software/Trodes21/linux/exportLFP -rec " + file_str + ".rec"
+            else:
+                syscmd = "/home/wcroughan/Software/Trodes_2-2-3_Ubuntu1804/exportLFP -rec " + file_str + ".rec"
             print(syscmd)
             os.system(syscmd)
 

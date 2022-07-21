@@ -639,14 +639,25 @@ def getInfoForAnimal(animalName):
         ret.X_FINISH = 1050
         ret.Y_START = 20
         ret.Y_FINISH = 900
-        ret.data_dir = "/home/wcroughan/data/B18/bradtasksessions/"
-        ret.output_dir = "/home/wcroughan/data/B18/processed_data/"
-        ret.fig_output_dir = "/home/wcroughan/data/B18/processed_data/"
+        # ret.data_dir = "/home/wcroughan/data/B18/bradtasksessions/"
+        # ret.output_dir = "/home/wcroughan/data/B18/processed_data/"
+        # ret.fig_output_dir = "/home/wcroughan/data/B18/processed_data/"
+        ret.data_dir = "/media/WDC8/B18/bradtasksessions/"
+        ret.output_dir = "/media/WDC8/B18/processed_data/"
+        ret.fig_output_dir = "/media/WDC8/B18/processed_data/"
         ret.out_filename = "B18_bradtask.dat"
 
         ret.excluded_dates = []
         ret.minimum_date = None
         ret.excluded_sessions = []
+
+        # Trodes video skips
+        ret.excluded_sessions += ["20220620_1"]
+        ret.excluded_sessions += ["20220622_2"]
+
+        # Trodes camera partially blocked during probe by pulley system. It's just wells 7-4 ish, might be able to deal with it in analysis
+        # At least it shouldn't effect measures at off wall wells
+        ret.excluded_sessions += ["20220621_2"]
 
         # Amplitude at 100uA, probably don't need to exclude but should note
         # ret.excluded_sessions += ["20220620_2"]
@@ -662,6 +673,10 @@ def getInfoForAnimal(animalName):
 
         # ======================
         # Temporary
+        # Just annoying behavior notes thing, fix and add back in
+        # ret.excluded_sessions += ["20220618_2"]
+        # ret.excluded_sessions += ["20220625_2"]
+        # ret.excluded_sessions += ["20220626_2"]
         # ret.minimum_date = "20220621"
         # ret.excluded_sessions = ["20220621_2", "20220622_2", "20220623_2"]
         # ret.excluded_sessions += ["2022062{}_1".format(v) for v in range(24, 29)]
