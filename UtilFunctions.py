@@ -657,7 +657,7 @@ def getInfoForAnimal(animalName):
 
         # Trodes camera partially blocked during probe by pulley system. It's just wells 7-4 ish, might be able to deal with it in analysis
         # At least it shouldn't effect measures at off wall wells
-        ret.excluded_sessions += ["20220621_2"]
+        # ret.excluded_sessions += ["20220621_2"]
 
         # Amplitude at 100uA, probably don't need to exclude but should note
         # ret.excluded_sessions += ["20220620_2"]
