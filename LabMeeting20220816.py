@@ -4,9 +4,10 @@ import MountainViewIO
 from BTData import BTData
 from BTSession import BTSession
 import os
-from UtilFunctions import getInfoForAnimal, findDataDir, parseCmdLineAnimalNames, offWall
+from UtilFunctions import getInfoForAnimal, findDataDir, parseCmdLineAnimalNames, offWall, numWellsVisited
 from consts import TRODES_SAMPLING_RATE, offWallWellNames
 import math
+import time
 
 # NOTE: Here's the example for trimming a video
 # $ ffmpeg -i input.mp4 -ss 00:05:20 -t 00:10:00 -c:v copy -c:a copy output1.mp4
@@ -17,7 +18,6 @@ import math
 # trim usb videos
 # Make wellLocations.csv
 # Run import data, do light marking
-
 
 
 class TrialMeasure():
@@ -58,8 +58,10 @@ class TrialMeasure():
                     val = measureFunc(sesh, i0, i1, "home")
                     self.measure.append(val)
                     self.trialCategory.append("home")
-                    self.conditionCategoryByTrial.append("SWR" if sesh.isRippleInterruption else "Ctrl")
-                    self.conditionCategoryBySession.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                    self.conditionCategoryByTrial.append(
+                        "SWR" if sesh.isRippleInterruption else "Ctrl")
+                    self.conditionCategoryBySession.append(
+                        "SWR" if sesh.isRippleInterruption else "Ctrl")
 
                 # away trials
                 t1 = np.array(sesh.away_well_find_pos_idxs)
@@ -75,8 +77,10 @@ class TrialMeasure():
                     val = measureFunc(sesh, i0, i1, "away")
                     self.measure.append(val)
                     self.trialCategory.append("away")
-                    self.conditionCategoryByTrial.append("SWR" if sesh.isRippleInterruption else "Ctrl")
-                    self.conditionCategoryBySession.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                    self.conditionCategoryByTrial.append(
+                        "SWR" if sesh.isRippleInterruption else "Ctrl")
+                    self.conditionCategoryBySession.append(
+                        "SWR" if sesh.isRippleInterruption else "Ctrl")
 
         self.measure = np.array(self.measure)
         self.trialCategory = np.array(self.trialCategory)
@@ -90,7 +94,7 @@ class TrialMeasure():
 class WellMeasure():
     memoDict = {}
 
-    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, wellFilter=lambda ai, aw : offWall(aw)):
+    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, wellFilter=lambda ai, aw: offWall(aw)):
         if name in WellMeasure.memoDict and not forceRemake:
             existing = WellMeasure.memoDict[name]
             self.measure = existing.measure
@@ -115,7 +119,8 @@ class WellMeasure():
                 self.measure.append(homeval)
                 self.wellCategory.append("home")
                 self.conditionCategoryByWell.append("SWR" if sesh.isRippleInterruption else "Ctrl")
-                self.conditionCategoryBySession.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                self.conditionCategoryBySession.append(
+                    "SWR" if sesh.isRippleInterruption else "Ctrl")
 
                 awayVals = []
                 aways = sesh.visited_away_wells
@@ -142,9 +147,6 @@ class WellMeasure():
         self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
 
         WellMeasure.memoDict[name] = self
-
-
-
 
 
 def makeFigures(
@@ -177,64 +179,76 @@ def makeFigures(
         if MAKE_LAST_MEETING_FIGS:
             # All probe measures, within-session differences:
             probeWellMeasures = []
-            probeWellMeasures.append(WellMeasure("avg dwell time", lambda s, h: s.avg_dwell_time(True, h), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("avg dwell time, 90sec", lambda s, h: s.avg_dwell_time(True, h, timeInterval=[0, 90]), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("avg dwell time, before fill", lambda s, h: s.avg_dwell_time(True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("curvature", lambda s, h: s.avg_curvature_at_well(True, h), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("curvature, 90sec", lambda s, h: s.avg_curvature_at_well(True, h, timeInterval=[0, 90]), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("curvature, before fill", lambda s, h: s.avg_curvature_at_well(True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("num entries", lambda s, h: s.num_well_entries(True, h), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("num entries, 90sec", lambda s, h: s.num_well_entries(True, h, timeInterval=[0,90]), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("num entries, before fill", lambda s, h: s.num_well_entries(True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("latency", lambda s, h: s.getLatencyToWell(True, h, returnSeconds=True), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("optimality", lambda s, h: s.path_optimality(True, wellName=h), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("gravity from off wall", lambda s, h: s.gravityOfWell(True, h, fromWells=offWallWellNames), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("avg dwell time", lambda s,
+                                     h: s.avg_dwell_time(True, h), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("avg dwell time, 90sec", lambda s, h: s.avg_dwell_time(
+                True, h, timeInterval=[0, 90]), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("avg dwell time, before fill", lambda s, h: s.avg_dwell_time(
+                True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("curvature", lambda s,
+                                     h: s.avg_curvature_at_well(True, h), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("curvature, 90sec", lambda s, h: s.avg_curvature_at_well(
+                True, h, timeInterval=[0, 90]), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("curvature, before fill", lambda s, h: s.avg_curvature_at_well(
+                True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("num entries", lambda s,
+                                     h: s.num_well_entries(True, h), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("num entries, 90sec", lambda s, h: s.num_well_entries(
+                True, h, timeInterval=[0, 90]), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("num entries, before fill", lambda s, h: s.num_well_entries(
+                True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("latency", lambda s, h: s.getLatencyToWell(
+                True, h, returnSeconds=True), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("optimality", lambda s,
+                                     h: s.path_optimality(True, wellName=h), sessionsWithProbe))
+            probeWellMeasures.append(WellMeasure("gravity from off wall", lambda s, h: s.gravityOfWell(
+                True, h, fromWells=offWallWellNames), sessionsWithProbe))
 
             taskWellMeasures = []
-            taskWellMeasures.append(WellMeasure("gravity from off wall", lambda s, h: s.gravityOfWell(False, h, fromWells=offWallWellNames), sessionsWithProbe))
-            taskWellMeasures.append(WellMeasure("gravity from off wall, T>5", \
-                lambda s, h: s.gravityOfWell(False, h, fromWells=offWallWellNames, timeInterval=[s.home_well_find_times[4], np.inf]), sessionsWithProbe))
-            
+            taskWellMeasures.append(WellMeasure("gravity from off wall", lambda s, h: s.gravityOfWell(
+                False, h, fromWells=offWallWellNames), sessionsWithProbe))
+            taskWellMeasures.append(WellMeasure("gravity from off wall, T>5",
+                                                lambda s, h: s.gravityOfWell(False, h, fromWells=offWallWellNames, timeInterval=[s.home_well_find_times[4], np.inf]), sessionsWithProbe))
+
             taskTrialMeasures = []
+
             def numRepeatsVisited(sesh, i0, i1, t):
-                    numWellsVisited(sesh.bt_nearest_wells[i0:i1], countReturns=True) - \
-                        numWellsVisited(sesh.bt_nearest_wells[i0:i1], countReturns=False)
+                numWellsVisited(sesh.bt_nearest_wells[i0:i1], countReturns=True) - \
+                    numWellsVisited(sesh.bt_nearest_wells[i0:i1], countReturns=False)
             taskTrialMeasures.append(TrialMeasure("num repeats visited", measureFunc=numRepeatsVisited(sesh, i0, i1, t),
-                                    sessionList=sessionsWithProbe, trialFilter=lambda t, ii, i0, i1, w: offWall(w)))
+                                                  sessionList=sessionsWithProbe, trialFilter=lambda t, ii, i0, i1, w: offWall(w)))
             taskTrialMeasures.append(TrialMeasure("num repeats visited, T>5", measureFunc=numRepeatsVisited(sesh, i0, i1, t),
-                                    sessionList=sessionsWithProbe, trialFilter=lambda t, ii, i0, i1, w: offWall(w) and ii > 4))
+                                                  sessionList=sessionsWithProbe, trialFilter=lambda t, ii, i0, i1, w: offWall(w) and ii > 4))
 
             for wm in probeWellMeasures:
                 figName = "probe_well_" + wm.name.replace(" ", "_")
                 with pp.newFig(figName) as ax:
                     boxPlot(ax, wm.measure, wm.wellCategory, categories2=wm.conditionCategoryByWell,
-                    axesNames=[wm.name, "Well type", "Condition"], violin=True, doStats=False)
+                            axesNames=[wm.name, "Well type", "Condition"], violin=True, doStats=False)
 
                 with pp.newFig(figName + "_diff") as ax:
-                    boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession, 
-                    axesNames=[wm.name + " with-session difference", "Condition"], violin=True, doStats=False)
+                    boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession,
+                            axesNames=[wm.name + " with-session difference", "Condition"], violin=True, doStats=False)
 
             for wm in taskWellMeasures:
                 figName = "task_well_" + wm.name.replace(" ", "_")
                 with pp.newFig(figName) as ax:
                     boxPlot(ax, wm.measure, wm.wellCategory, categories2=wm.conditionCategoryByWell,
-                    axesNames=[wm.name, "Well type", "Condition"], violin=True, doStats=False)
+                            axesNames=[wm.name, "Well type", "Condition"], violin=True, doStats=False)
 
                 with pp.newFig(figName + "_diff") as ax:
-                    boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession, 
-                    axesNames=[wm.name + " with-session difference", "Condition"], violin=True, doStats=False)
+                    boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession,
+                            axesNames=[wm.name + " with-session difference", "Condition"], violin=True, doStats=False)
 
             for wm in taskTrialMeasures:
                 figName = "task_trial_" + wm.name.replace(" ", "_")
                 with pp.newFig(figName) as ax:
                     boxPlot(ax, wm.measure, wm.trialCategory, categories2=wm.conditionCategoryByTrial,
-                    axesNames=[wm.name, "Trial type", "Condition"], violin=True, doStats=False)
+                            axesNames=[wm.name, "Trial type", "Condition"], violin=True, doStats=False)
 
                 with pp.newFig(figName + "_diff") as ax:
-                    boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession, 
-                    axesNames=[wm.name + " with-session difference", "Condition"], violin=True, doStats=False)
-
-
+                    boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession,
+                            axesNames=[wm.name + " with-session difference", "Condition"], violin=True, doStats=False)
 
             # follow-ups
             # correlation b/w trial duration and probe behavior?

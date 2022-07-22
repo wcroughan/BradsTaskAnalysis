@@ -1,11 +1,12 @@
-from BTData import *
+from BTData import BTData
+from BTSession import BTSession
 import pandas as pd
 import numpy as np
 import os
 import csv
 import glob
 import json
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import random
 import scipy
 from scipy import stats, signal
@@ -39,7 +40,7 @@ SHOW_CURVATURE_VIDEO = False
 SKIP_LFP = False
 SKIP_PREV_SESSION = True
 JUST_EXTRACT_TRODES_DATA = True
-RUN_INTERACTIVE = False
+RUN_INTERACTIVE = True
 MAKE_ALL_TRACKING_AUTO = False
 
 numExtracted = 0
@@ -69,7 +70,7 @@ if os.path.exists(os.path.join(animalInfo.output_dir, animalInfo.out_filename)):
         exit()
 
 all_quadrant_idxs = [0, 1, 2, 3]
-well_name_to_idx = np.empty((np.max(all_well_names)+1))
+well_name_to_idx = np.empty((np.max(all_well_names) + 1))
 well_name_to_idx[:] = np.nan
 for widx, wname in enumerate(all_well_names):
     well_name_to_idx[wname] = widx
@@ -215,6 +216,9 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         #  str(sesh_idx_within_day+1) + ".txt")
         info_file = possible_info_files[sesh_idx_within_day]
         print("===========================\n", info_file, "\n")
+        session.seshIdx = int(info_file.split("/")[-1].split("_")[-1].split(".")[0])
+    else:
+        session.seshIdx = 1
 
     if "".join(os.path.basename(info_file).split(".")[0:-1]) in animalInfo.excluded_sessions:
         print(session_dir, " excluded session, skipping")
@@ -241,7 +245,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 if seshs_on_this_day[i] == prevsession_dir:
                     sesh_idx_within_day = i
             prevSessionInfoFile = os.path.join(behavior_notes_dir, prevdate_str + "_" +
-                                               str(sesh_idx_within_day+1) + ".txt")
+                                               str(sesh_idx_within_day + 1) + ".txt")
 
     try:
         with open(info_file, 'r') as f:
@@ -463,7 +467,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     else:
                         pass
 
-        except FileNotFoundError as err:
+        except FileNotFoundError:
             session.prevSessionInfoParsed = False
             print("Couldn't read from prev session info file " + prevSessionInfoFile)
 
@@ -555,8 +559,15 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 
         if animal_name != "Martin":
             possibleDirectories = [
-                "/media/WDC6/{}/".format(animal_name), "/media/WDC7/{}/".format(animal_name)]
-            session.usbVidFile = getUSBVideoFile(session.name, possibleDirectories)
+                "/media/WDC6/videos/B16-20/trimmed/{}/".format(animal_name),
+                "/media/WDC7/videos/B16-20/trimmed/{}/".format(animal_name),
+                "/media/WDC8/videos/B16-20/trimmed/{}/".format(animal_name),
+                "/media/WDC6/{}/".format(animal_name),
+                "/media/WDC7/{}/".format(animal_name),
+                "/media/WDC8/{}/".format(animal_name),
+            ]
+            session.usbVidFile = getUSBVideoFile(
+                session.name, possibleDirectories, seshIdx=session.seshIdx, useSeshIdxDirectly=(animal_name == "B18"))
             if session.usbVidFile is None:
                 print("??????? usb vid file not found for session ", session.name)
             else:
@@ -687,6 +698,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 
     if JUST_EXTRACT_TRODES_DATA:
         numExtracted += 1
+        print("\n\n\n")
         continue
 
     # ======================================================================
@@ -757,7 +769,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 
         pre_bt_interruption_idxs = interruption_idxs[interruption_idxs < bt_lfp_start_idx]
         pre_bt_interruption_idxs_first_half = interruption_idxs[interruption_idxs < int(
-            bt_lfp_start_idx/2)]
+            bt_lfp_start_idx / 2)]
 
         _, _, session.prebtMeanRipplePower, session.prebtStdRipplePower = getRipplePower(
             lfp_data[0:bt_lfp_start_idx], omit_artifacts=False)
@@ -774,7 +786,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         _, _, session.prebtMeanRipplePowerArtifactsRemoved, session.prebtStdRipplePowerArtifactsRemoved = getRipplePower(
             lfp_data[0:bt_lfp_start_idx], lfp_deflections=pre_bt_interruption_idxs)
         _, _, session.prebtMeanRipplePowerArtifactsRemovedFirstHalf, session.prebtStdRipplePowerArtifactsRemovedFirstHalf = getRipplePower(
-            lfp_data[0:int(bt_lfp_start_idx/2)], lfp_deflections=pre_bt_interruption_idxs)
+            lfp_data[0:int(bt_lfp_start_idx / 2)], lfp_deflections=pre_bt_interruption_idxs)
 
         if session.probe_performed and not session.separate_iti_file and not session.separate_probe_file:
             ITI_MARGIN = 5  # units: seconds
@@ -1202,8 +1214,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         delta[:, 0, 1] = dy[0:d1]
 
         for i in range(1, furthest_interval):
-            delta[:, i, 0] = delta[:, i-1, 0] + dx[i:i+d1]
-            delta[:, i, 1] = delta[:, i-1, 1] + dy[i:i+d1]
+            delta[:, i, 0] = delta[:, i - 1, 0] + dx[i:i + d1]
+            delta[:, i, 1] = delta[:, i - 1, 1] + dy[i:i + d1]
 
         displacement = np.sqrt(np.sum(np.square(delta), axis=2))
         displacement[displacement == 0] = np.nan
@@ -1221,7 +1233,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
         def m(arg): return np.mean(arg, axis=1)
         # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
-        beta = m(y*x)/m(np.power(x, 2))
+        beta = m(y * x) / m(np.power(x, 2))
         session.bt_ballisticity = beta
         assert np.sum(np.isnan(session.bt_ballisticity)) == 0
 
@@ -1236,8 +1248,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             delta[:, 0, 1] = dy[0:d1]
 
             for i in range(1, furthest_interval):
-                delta[:, i, 0] = delta[:, i-1, 0] + dx[i:i+d1]
-                delta[:, i, 1] = delta[:, i-1, 1] + dy[i:i+d1]
+                delta[:, i, 0] = delta[:, i - 1, 0] + dx[i:i + d1]
+                delta[:, i, 1] = delta[:, i - 1, 1] + dy[i:i + d1]
 
             displacement = np.sqrt(np.sum(np.square(delta), axis=2))
             displacement[displacement == 0] = np.nan
@@ -1254,7 +1266,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
             y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
             # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
-            beta = m(y*x)/m(np.power(x, 2))
+            beta = m(y * x) / m(np.power(x, 2))
             session.probe_ballisticity = beta
             assert np.sum(np.isnan(session.probe_ballisticity)) == 0
 
@@ -1270,14 +1282,14 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             fig = plt.figure()
             plt.ion()
 
-        session.bt_curvature = np.empty((dx.size+1))
-        session.bt_curvature_i1 = np.empty((dx.size+1))
-        session.bt_curvature_i2 = np.empty((dx.size+1))
-        session.bt_curvature_dxf = np.empty((dx.size+1))
-        session.bt_curvature_dyf = np.empty((dx.size+1))
-        session.bt_curvature_dxb = np.empty((dx.size+1))
-        session.bt_curvature_dyb = np.empty((dx.size+1))
-        for pi in range(dx.size+1):
+        session.bt_curvature = np.empty((dx.size + 1))
+        session.bt_curvature_i1 = np.empty((dx.size + 1))
+        session.bt_curvature_i2 = np.empty((dx.size + 1))
+        session.bt_curvature_dxf = np.empty((dx.size + 1))
+        session.bt_curvature_dyf = np.empty((dx.size + 1))
+        session.bt_curvature_dxb = np.empty((dx.size + 1))
+        session.bt_curvature_dyb = np.empty((dx.size + 1))
+        for pi in range(dx.size + 1):
             x0 = session.bt_pos_xs[pi]
             y0 = session.bt_pos_ys[pi]
             ii = pi
@@ -1351,14 +1363,14 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             dx = np.diff(session.probe_pos_xs)
             dy = np.diff(session.probe_pos_ys)
 
-            session.probe_curvature = np.empty((dx.size+1))
-            session.probe_curvature_i1 = np.empty((dx.size+1))
-            session.probe_curvature_i2 = np.empty((dx.size+1))
-            session.probe_curvature_dxf = np.empty((dx.size+1))
-            session.probe_curvature_dyf = np.empty((dx.size+1))
-            session.probe_curvature_dxb = np.empty((dx.size+1))
-            session.probe_curvature_dyb = np.empty((dx.size+1))
-            for pi in range(dx.size+1):
+            session.probe_curvature = np.empty((dx.size + 1))
+            session.probe_curvature_i1 = np.empty((dx.size + 1))
+            session.probe_curvature_i2 = np.empty((dx.size + 1))
+            session.probe_curvature_dxf = np.empty((dx.size + 1))
+            session.probe_curvature_dyf = np.empty((dx.size + 1))
+            session.probe_curvature_dxb = np.empty((dx.size + 1))
+            session.probe_curvature_dyb = np.empty((dx.size + 1))
+            for pi in range(dx.size + 1):
                 x0 = session.probe_pos_xs[pi]
                 y0 = session.probe_pos_ys[pi]
                 ii = pi
@@ -1460,10 +1472,10 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                         continue
                     session.probe_well_curvatures[i].append(
                         session.probe_curvature[weni:wexi])
-                    if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60*TRODES_SAMPLING_RATE:
+                    if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60 * TRODES_SAMPLING_RATE:
                         session.probe_well_curvatures_1min[i].append(
                             session.probe_curvature[weni:wexi])
-                    if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30*TRODES_SAMPLING_RATE:
+                    if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30 * TRODES_SAMPLING_RATE:
                         session.probe_well_curvatures_30sec[i].append(
                             session.probe_curvature[weni:wexi])
 
@@ -1777,7 +1789,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             mxy = np.max(bt_sm_vel)
             for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
                 plt.plot([x[bst], x[bst]], [mny, mxy], 'b')
-                plt.plot([x[ben-1], x[ben-1]], [mny, mxy], 'r')
+                plt.plot([x[ben - 1], x[ben - 1]], [mny, mxy], 'r')
             if SAVE_DONT_SHOW:
                 plt.savefig(os.path.join(animalInfo.fig_output_dir, "bouts",
                                          session.name + "_bouts_over_time"), dpi=800)
@@ -1823,7 +1835,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                                              1], session.probe_pos_ys[ni],
                         session.probe_pos_ys[ni +
                                              1], session.probe_pos_ts[ni - 1],
-                        session.probe_pos_ts[ni], session.probe_pos_ts[ni+1]
+                        session.probe_pos_ts[ni], session.probe_pos_ts[ni + 1]
                     ))
 
         if INSPECT_PROBE_BEHAVIOR_PLOT:
@@ -1840,15 +1852,15 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             while make_colors:
                 well_colors = np.zeros((48, 4))
                 for i in all_well_names:
-                    well_colors[i-1, :] = cmap(random.uniform(0, 1))
+                    well_colors[i - 1, :] = cmap(random.uniform(0, 1))
 
                 make_colors = False
 
                 if ENFORCE_DIFFERENT_WELL_COLORS:
                     for i in all_well_names:
-                        neighs = [i-8, i-1, i+8, i+1]
+                        neighs = [i - 8, i - 1, i + 8, i + 1]
                         for n in neighs:
-                            if n in all_well_names and np.all(well_colors[i-1, :] == well_colors[n-1, :]):
+                            if n in all_well_names and np.all(well_colors[i - 1, :] == well_colors[n - 1, :]):
                                 make_colors = True
                                 print("gotta remake the colors!")
                                 break
@@ -1861,14 +1873,14 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
 
             plt.clf()
             for i, wi in enumerate(all_well_names):
-                color = well_colors[wi-1, :]
+                color = well_colors[wi - 1, :]
                 for j in range(len(session.bt_well_entry_times[i])):
                     i1 = session.bt_well_entry_idxs[i][j]
                     try:
                         i2 = session.bt_well_exit_idxs[i][j]
                         plt.plot(
                             session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2], color=color)
-                    except:
+                    except Exception:
                         print("well {} had {} entries, {} exits".format(
                             wi, len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
 

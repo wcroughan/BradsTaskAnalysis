@@ -272,7 +272,7 @@ class USBVideoWidget(QWidget):
         startPositionUpdated = False
         if startTimestamp is not None:
             startFrame = self.tsToFrameFunc(startTimestamp)
-            newStartPosition = int(self.frameTimes[min(startFrame, len(self.frameTimes)-1)])
+            newStartPosition = int(self.frameTimes[min(startFrame, len(self.frameTimes) - 1)])
             if self.startPosition != newStartPosition:
                 startPositionUpdated = True
             self.startPosition = newStartPosition
@@ -388,20 +388,23 @@ class AnnotatorWindow(QMainWindow):
         # print(wellCoordMap)
 
         self.usbVideoFileName = usbVideoFileName
-        print("Processing USB Video for light times")
-        self.usbLightOffFrame, self.usbLightOnFrame = processUSBVideoData(
-            usbVideoFileName, overwriteMode="loadOld", showVideo=False)
-        print("Done processing USB Video for light times")
+        self.hasUsbVideo = self.usbVideoFileName is not None
+        if self.hasUsbVideo:
+            print("Processing USB Video for light times")
+            self.usbLightOffFrame, self.usbLightOnFrame = processUSBVideoData(
+                usbVideoFileName, overwriteMode="loadOld", showVideo=False)
+            print("Done processing USB Video for light times")
 
-        self.ttf_m = (float(self.usbLightOnFrame) - float(self.usbLightOffFrame)) / \
-            (float(trodesLightOnTime) - float(trodesLightOffTime))
-        self.ttf_b = self.ttf_m * - float(trodesLightOffTime) + float(self.usbLightOffFrame)
+            self.ttf_m = (float(self.usbLightOnFrame) - float(self.usbLightOffFrame)) / \
+                (float(trodesLightOnTime) - float(trodesLightOffTime))
+            self.ttf_b = self.ttf_m * - float(trodesLightOffTime) + float(self.usbLightOffFrame)
 
-        print("USB frames: {}, {}".format(self.usbLightOffFrame, self.usbLightOnFrame))
-        print("timestamps: {}, {}".format(self.trodesLightOffTime, self.trodesLightOnTime))
-        print("func test : {}, {}".format(self.timestampToUSBFrame(
-            self.trodesLightOffTime), self.timestampToUSBFrame(self.trodesLightOnTime)))
-
+            print("USB frames: {}, {}".format(self.usbLightOffFrame, self.usbLightOnFrame))
+            print("timestamps: {}, {}".format(self.trodesLightOffTime, self.trodesLightOnTime))
+            print("func test : {}, {}".format(self.timestampToUSBFrame(
+                self.trodesLightOffTime), self.timestampToUSBFrame(self.trodesLightOnTime)))
+        else:
+            print("No USB video")
         print("initializing UI")
         self.initUI()
         print("initializing menu items")
@@ -421,8 +424,10 @@ class AnnotatorWindow(QMainWindow):
         self.positionPlot = PositionPlot(self.trodesXs, self.trodesYs, self.trodesTs)
         # self.positionPlot = QLabel("hi!")
 
-        self.videoWidget = USBVideoWidget(self.usbVideoFileName, self.timestampToUSBFrame)
-        # self.videoWidget = QLabel("hi!")
+        if self.hasUsbVideo:
+            self.videoWidget = USBVideoWidget(self.usbVideoFileName, self.timestampToUSBFrame)
+        else:
+            self.videoWidget = QLabel("no usb video!")
 
         centralLayout = QHBoxLayout()
         centralLayout.addWidget(self.positionPlot, 1)
@@ -581,7 +586,7 @@ class AnnotatorWindow(QMainWindow):
     def setupForTaskEnd(self):
         self.statusLabel.setText("Task end")
         self.clipStart = None
-        self.clipEnd = self.clips[len(self.foundWells)-1][2]
+        self.clipEnd = self.clips[len(self.foundWells) - 1][2]
         self.positionPlot.clearWellCoord()
         self.updateClipInWidgets()
 
@@ -601,12 +606,14 @@ class AnnotatorWindow(QMainWindow):
 
     def updateClipInWidgets(self, animateAnew=False):
         self.positionPlot.updateClipEdges(self.clipStart, self.clipEnd)
-        self.videoWidget.updateClipEdges(self.clipStart, self.clipEnd)
+        if self.hasUsbVideo:
+            self.videoWidget.updateClipEdges(self.clipStart, self.clipEnd)
         if animateAnew:
             self.playClip()
 
     def playClip(self):
-        self.videoWidget.animateClip()
+        if self.hasUsbVideo:
+            self.videoWidget.animateClip()
 
     def moveClipStart(self, moveAmt):
         if self.clipStart is not None:
@@ -628,19 +635,22 @@ class AnnotatorWindow(QMainWindow):
         if self.currentState == self.STATE_FOUND_WELLS:
             clip = (0, int(self.clipStart), int(self.clipEnd))
             self.clips[self.currentFoundWellIdx] = clip
-            self.videoWidget.updateClipList(self.clips)
+            if self.hasUsbVideo:
+                self.videoWidget.updateClipList(self.clips)
         elif self.currentState == self.STATE_TASK_START:
             self.taskClipStart = int(self.clipStart)
             print(self.taskClipStart)
         elif self.currentState == self.STATE_TASK_END:
             self.taskClip = (0, self.taskClipStart, int(self.clipEnd))
             print(self.taskClip)
-            self.videoWidget.updateTaskClip(self.taskClip)
+            if self.hasUsbVideo:
+                self.videoWidget.updateTaskClip(self.taskClip)
         elif self.currentState == self.STATE_PROBE_START:
             self.probeClipStart = int(self.clipStart)
         elif self.currentState == self.STATE_PROBE_END:
             self.probeClip = (0, self.probeClipStart, int(self.clipEnd))
-            self.videoWidget.updateProbeClip(self.probeClip)
+            if self.hasUsbVideo:
+                self.videoWidget.updateProbeClip(self.probeClip)
 
     def saveAndNextWell(self):
         self.saveClip()
@@ -723,9 +733,10 @@ class AnnotatorWindow(QMainWindow):
         self.taskClip = None
         self.probeClip = None
         self.currentFoundWellIdx = 0
-        self.videoWidget.updateClipList(self.clips)
-        self.videoWidget.updateTaskClip(self.taskClip)
-        self.videoWidget.updateProbeClip(self.probeClip)
+        if self.hasUsbVideo:
+            self.videoWidget.updateClipList(self.clips)
+            self.videoWidget.updateTaskClip(self.taskClip)
+            self.videoWidget.updateProbeClip(self.probeClip)
         print("displaying first well")
         self.setupForWell(0)
 

@@ -704,17 +704,26 @@ def generateFoundWells(home_well, away_wells, last_away_well, ended_on_home, fou
     return foundWells
 
 
-def getUSBVideoFile(seshName, possibleDirectories):
+def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirectly=False):
+    print(seshName)
     seshDate, seshTime = seshName.split("_")
-    if len(seshTime) == 1:
-        # seshTime is actually session idx
-        seshIdx = int(seshTime) - 1
+    if len(seshTime) == 1 or seshIdx is not None:
+        # seshTime is actually session idx, or it's been provided directly
+        if seshIdx is None:
+            seshIdx = int(seshTime) - 1
+        else:
+            seshIdx -= 1
 
         usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
         possibleUSBVids = []
         for pd in possibleDirectories:
-            gl = pd + "/" + usbDateStr + "*.mkv"
-            possibleUSBVids += glob.glob(gl)
+            directName = os.path.join(pd, usbDateStr + "_" + str(seshIdx + 1) + ".mkv")
+            if os.path.exists(directName):
+                return directName
+
+            if not useSeshIdxDirectly:
+                gl = pd + "/" + usbDateStr + "*.mkv"
+                possibleUSBVids += glob.glob(gl)
 
         if len(possibleUSBVids) == 0:
             return None
@@ -738,11 +747,13 @@ def getUSBVideoFile(seshName, possibleDirectories):
         usbVidFile = None
         for uvi, uv in enumerate(sorted(possibleUSBVids)):
             fname = uv.split("/")[-1]
+            print(fname)
             if " " in fname:
                 timeStr = fname.split(" ")[1].split(".")[0]
             else:
                 timeStr = fname.split("_")[1].split(".")[0]
             timeVals = [float(v) for v in timeStr.split("-")]
+            print(timeVals)
             usbTime = timeVals[0] * 3600 + timeVals[1] * 60 + timeVals[0]
 
             diff = abs(usbTime - seshTimeVal)
