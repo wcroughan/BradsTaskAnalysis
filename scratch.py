@@ -9,7 +9,6 @@ from consts import TRODES_SAMPLING_RATE
 from PlotUtil import PlotCtx
 import MountainViewIO
 
-
 # lfpFName = "/home/wcroughan/20220511_142645/20220511_142645.LFP/20220511_142645.LFP_nt6ch1.dat"
 # print("LFP data from file {}".format(lfpFName))
 # lfpData = MountainViewIO.loadLFP(data_file=lfpFName)

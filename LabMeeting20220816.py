@@ -8,6 +8,7 @@ from UtilFunctions import getInfoForAnimal, findDataDir, parseCmdLineAnimalNames
 from consts import TRODES_SAMPLING_RATE, offWallWellNames
 import math
 import time
+from matplotlib import cm
 
 # NOTE: Here's the example for trimming a video
 # $ ffmpeg -i input.mp4 -ss 00:05:20 -t 00:10:00 -c:v copy -c:a copy output1.mp4
@@ -21,25 +22,24 @@ import time
 
 
 class TrialMeasure():
-    memoDict = {}
+    # memoDict = {}
 
     def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, trialFilter=None):
-        if name in TrialMeasure.memoDict and not forceRemake:
-            existing = TrialMeasure.memoDict[name]
-            self.measure = existing.measure
-            self.trialCategory = existing.trialCategory
-            self.conditionCategoryByTrial = existing.conditionCategoryByTrial
-            self.conditionCategoryBySession = existing.conditionCategoryBySession
-            self.withinSessionMeasureDifference = existing.withinSessionMeasureDifference
-            self.name = name
-            return
+        # print("initing trial measure " + name)
+        # if name in TrialMeasure.memoDict and not forceRemake:
+        #     existing = TrialMeasure.memoDict[name]
+        #     self.measure = existing.measure
+        #     self.trialCategory = existing.trialCategory
+        #     self.conditionCategoryByTrial = existing.conditionCategoryByTrial
+        #     self.dotColors = existing.dotColors
+        #     self.name = name
+        #     return
 
         self.measure = []
         self.trialCategory = []
         self.conditionCategoryByTrial = []
-        self.conditionCategoryBySession = []
+        self.dotColors = []
         self.name = name
-        self.withinSessionMeasureDifference = []
 
         if measureFunc is not None:
             assert sessionList is not None
@@ -49,6 +49,10 @@ class TrialMeasure():
                 t0 = np.array(np.hstack(([0], sesh.away_well_leave_pos_idxs)))
                 if not sesh.ended_on_home:
                     t0 = t0[0:-1]
+                # print(t0)
+                # print(t1)
+                # print(sesh.ended_on_home)
+                # print(sesh.name)
                 assert len(t1) == len(t0)
 
                 for ii, (i0, i1) in enumerate(zip(t0, t1)):
@@ -60,8 +64,7 @@ class TrialMeasure():
                     self.trialCategory.append("home")
                     self.conditionCategoryByTrial.append(
                         "SWR" if sesh.isRippleInterruption else "Ctrl")
-                    self.conditionCategoryBySession.append(
-                        "SWR" if sesh.isRippleInterruption else "Ctrl")
+                    self.dotColors.append(si)
 
                 # away trials
                 t1 = np.array(sesh.away_well_find_pos_idxs)
@@ -79,31 +82,32 @@ class TrialMeasure():
                     self.trialCategory.append("away")
                     self.conditionCategoryByTrial.append(
                         "SWR" if sesh.isRippleInterruption else "Ctrl")
-                    self.conditionCategoryBySession.append(
-                        "SWR" if sesh.isRippleInterruption else "Ctrl")
+                    self.dotColors.append(si)
 
         self.measure = np.array(self.measure)
+        self.dotColors = np.array(self.dotColors)
         self.trialCategory = np.array(self.trialCategory)
         self.conditionCategoryByTrial = np.array(self.conditionCategoryByTrial)
-        self.conditionCategoryBySession = np.array(self.conditionCategoryBySession)
-        self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
 
-        TrialMeasure.memoDict[name] = self
+        # TrialMeasure.memoDict[name] = self
 
 
 class WellMeasure():
-    memoDict = {}
+    # memoDict = {}
 
     def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, wellFilter=lambda ai, aw: offWall(aw)):
-        if name in WellMeasure.memoDict and not forceRemake:
-            existing = WellMeasure.memoDict[name]
-            self.measure = existing.measure
-            self.wellCategory = existing.wellCategory
-            self.conditionCategoryByWell = existing.conditionCategoryByWell
-            self.conditionCategoryBySession = existing.conditionCategoryBySession
-            self.withinSessionMeasureDifference = existing.withinSessionMeasureDifference
-            self.name = name
-            return
+        # print("initing trial measure " + name)
+        # if name in WellMeasure.memoDict and not forceRemake:
+        #     existing = WellMeasure.memoDict[name]
+        #     self.measure = existing.measure
+        #     self.wellCategory = existing.wellCategory
+        #     self.conditionCategoryByWell = existing.conditionCategoryByWell
+        #     self.conditionCategoryBySession = existing.conditionCategoryBySession
+        #     self.withinSessionMeasureDifference = existing.withinSessionMeasureDifference
+        #     self.name = name
+        #     self.dotColors = existing.dotColors
+        #     self.dotColorsBySession = existing.dotColorsBySession
+        #     return
 
         self.measure = []
         self.wellCategory = []
@@ -111,6 +115,8 @@ class WellMeasure():
         self.conditionCategoryBySession = []
         self.name = name
         self.withinSessionMeasureDifference = []
+        self.dotColors = []
+        self.dotColorsBySession = []
 
         if measureFunc is not None:
             assert sessionList is not None
@@ -118,6 +124,8 @@ class WellMeasure():
                 homeval = measureFunc(sesh, sesh.home_well)
                 self.measure.append(homeval)
                 self.wellCategory.append("home")
+                self.dotColors.append(si)
+                self.dotColorsBySession.append(si)
                 self.conditionCategoryByWell.append("SWR" if sesh.isRippleInterruption else "Ctrl")
                 self.conditionCategoryBySession.append(
                     "SWR" if sesh.isRippleInterruption else "Ctrl")
@@ -135,6 +143,7 @@ class WellMeasure():
                         awayVals.append(av)
                         self.measure.append(av)
                         self.wellCategory.append("away")
+                        self.dotColors.append(si)
                         self.conditionCategoryByWell.append(self.conditionCategoryByWell[-1])
 
                     awayVals = np.array(awayVals)
@@ -142,11 +151,13 @@ class WellMeasure():
 
         self.measure = np.array(self.measure)
         self.wellCategory = np.array(self.wellCategory)
+        self.dotColors = np.array(self.dotColors)
+        self.dotColorsBySession = np.array(self.dotColorsBySession)
         self.conditionCategoryByWell = np.array(self.conditionCategoryByWell)
         self.conditionCategoryBySession = np.array(self.conditionCategoryBySession)
         self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
 
-        WellMeasure.memoDict[name] = self
+        # WellMeasure.memoDict[name] = self
 
 
 def makeFigures(
@@ -156,17 +167,18 @@ def makeFigures(
     MAKE_INITIAL_HEADING_FIGS=True
 ):
     dataDir = findDataDir()
-    globalOutputDir = os.path.join(dataDir, "figures", "20220607_labmeeting")
+    globalOutputDir = os.path.join(dataDir, "figures", "20220818_labmeeting")
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
     pp = PlotCtx(outputDir=globalOutputDir, randomSeed=rseed, priorityLevel=1)
 
-    animalNames = parseCmdLineAnimalNames(default=["B13", "B14", "Martin"])
+    animalNames = parseCmdLineAnimalNames(default=["B18"])
     allSessionsByRat = {}
     for animalName in animalNames:
         animalInfo = getInfoForAnimal(animalName)
         # dataFilename = os.path.join(dataDir, animalName, "processed_data", animalInfo.out_filename)
         dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
+        print("loading from " + dataFilename)
         ratData = BTData()
         ratData.loadFromFile(dataFilename)
         allSessionsByRat[animalName] = ratData.getSessions()
@@ -175,80 +187,161 @@ def makeFigures(
         print("======================\n", ratName)
         sessions = allSessionsByRat[ratName]
         sessionsWithProbe = [sesh for sesh in sessions if sesh.probe_performed]
+        numSessionsWithProbe = len(sessionsWithProbe)
+
+        pp.setOutputSubDir(ratName)
+        if len(animalNames) > 1:
+            pp.setStatCategory("rat", ratName)
 
         if MAKE_LAST_MEETING_FIGS:
             # All probe measures, within-session differences:
             probeWellMeasures = []
             probeWellMeasures.append(WellMeasure("avg dwell time", lambda s,
-                                     h: s.avg_dwell_time(True, h), sessionsWithProbe))
+                                                 h: s.avg_dwell_time(True, h), sessionsWithProbe))
+            if hasattr(sessions[0], "probe_fill_time"):
+                sessionsWithProbeFillPast90 = [
+                    s for s in sessionsWithProbe if s.probe_fill_time > 90]
+            else:
+                sessionsWithProbeFillPast90 = sessionsWithProbe
             probeWellMeasures.append(WellMeasure("avg dwell time, 90sec", lambda s, h: s.avg_dwell_time(
-                True, h, timeInterval=[0, 90]), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("avg dwell time, before fill", lambda s, h: s.avg_dwell_time(
-                True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
+                True, h, timeInterval=[0, 90]), sessionsWithProbeFillPast90))
+            if hasattr(sessions[0], "probe_fill_time"):
+                probeWellMeasures.append(WellMeasure("avg dwell time, before fill", lambda s, h: s.avg_dwell_time(
+                    True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
+                probeWellMeasures.append(WellMeasure("avg dwell time, after fill", lambda s, h: s.avg_dwell_time(
+                    True, h, timeInterval=[s.probe_fill_time, 60 * 5]), sessionsWithProbe))
             probeWellMeasures.append(WellMeasure("curvature", lambda s,
-                                     h: s.avg_curvature_at_well(True, h), sessionsWithProbe))
+                                                 h: s.avg_curvature_at_well(True, h), sessionsWithProbe))
             probeWellMeasures.append(WellMeasure("curvature, 90sec", lambda s, h: s.avg_curvature_at_well(
-                True, h, timeInterval=[0, 90]), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("curvature, before fill", lambda s, h: s.avg_curvature_at_well(
-                True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
+                True, h, timeInterval=[0, 90]), sessionsWithProbeFillPast90))
+            if hasattr(sessions[0], "probe_fill_time"):
+                probeWellMeasures.append(WellMeasure("curvature, before fill", lambda s, h: s.avg_curvature_at_well(
+                    True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
+                probeWellMeasures.append(WellMeasure("curvature, after fill", lambda s, h: s.avg_curvature_at_well(
+                    True, h, timeInterval=[s.probe_fill_time, 60 * 5]), sessionsWithProbe))
             probeWellMeasures.append(WellMeasure("num entries", lambda s,
-                                     h: s.num_well_entries(True, h), sessionsWithProbe))
+                                                 h: s.num_well_entries(True, h), sessionsWithProbe))
             probeWellMeasures.append(WellMeasure("num entries, 90sec", lambda s, h: s.num_well_entries(
-                True, h, timeInterval=[0, 90]), sessionsWithProbe))
-            probeWellMeasures.append(WellMeasure("num entries, before fill", lambda s, h: s.num_well_entries(
-                True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
+                True, h, timeInterval=[0, 90]), sessionsWithProbeFillPast90))
+            if hasattr(sessions[0], "probe_fill_time"):
+                probeWellMeasures.append(WellMeasure("num entries, before fill", lambda s, h: s.num_well_entries(
+                    True, h, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
+                probeWellMeasures.append(WellMeasure("num entries, after fill", lambda s, h: s.num_well_entries(
+                    True, h, timeInterval=[s.probe_fill_time, 60 * 5]), sessionsWithProbe))
             probeWellMeasures.append(WellMeasure("latency", lambda s, h: s.getLatencyToWell(
                 True, h, returnSeconds=True), sessionsWithProbe))
             probeWellMeasures.append(WellMeasure("optimality", lambda s,
-                                     h: s.path_optimality(True, wellName=h), sessionsWithProbe))
+                                                 h: s.path_optimality(True, wellName=h), sessionsWithProbe))
             probeWellMeasures.append(WellMeasure("gravity from off wall", lambda s, h: s.gravityOfWell(
                 True, h, fromWells=offWallWellNames), sessionsWithProbe))
 
             taskWellMeasures = []
             taskWellMeasures.append(WellMeasure("gravity from off wall", lambda s, h: s.gravityOfWell(
                 False, h, fromWells=offWallWellNames), sessionsWithProbe))
-            taskWellMeasures.append(WellMeasure("gravity from off wall, T>5",
-                                                lambda s, h: s.gravityOfWell(False, h, fromWells=offWallWellNames, timeInterval=[s.home_well_find_times[4], np.inf]), sessionsWithProbe))
+            taskWellMeasures.append(WellMeasure("gravity from off wall, Tgt5",
+                                                lambda s, h: s.gravityOfWell(False, h, fromWells=offWallWellNames, timeInterval=[s.home_well_find_times[4], np.inf]) if len(s.home_well_find_times) >= 5 else np.nan, sessionsWithProbe))
 
             taskTrialMeasures = []
 
             def numRepeatsVisited(sesh, i0, i1, t):
-                numWellsVisited(sesh.bt_nearest_wells[i0:i1], countReturns=True) - \
+                return numWellsVisited(sesh.bt_nearest_wells[i0:i1], countReturns=True) - \
                     numWellsVisited(sesh.bt_nearest_wells[i0:i1], countReturns=False)
-            taskTrialMeasures.append(TrialMeasure("num repeats visited", measureFunc=numRepeatsVisited(sesh, i0, i1, t),
+            taskTrialMeasures.append(TrialMeasure("num repeats visited", measureFunc=numRepeatsVisited,
                                                   sessionList=sessionsWithProbe, trialFilter=lambda t, ii, i0, i1, w: offWall(w)))
-            taskTrialMeasures.append(TrialMeasure("num repeats visited, T>5", measureFunc=numRepeatsVisited(sesh, i0, i1, t),
+            taskTrialMeasures.append(TrialMeasure("num repeats visited, Tgt5", measureFunc=numRepeatsVisited,
                                                   sessionList=sessionsWithProbe, trialFilter=lambda t, ii, i0, i1, w: offWall(w) and ii > 4))
 
             for wm in probeWellMeasures:
                 figName = "probe_well_" + wm.name.replace(" ", "_")
+                print("Making " + figName)
                 with pp.newFig(figName) as ax:
-                    boxPlot(ax, wm.measure, wm.wellCategory, categories2=wm.conditionCategoryByWell,
-                            axesNames=[wm.name, "Well type", "Condition"], violin=True, doStats=False)
+                    boxPlot(ax, wm.measure, categories2=wm.wellCategory, categories=wm.conditionCategoryByWell,
+                            axesNames=["Condition", wm.name, "Well type"], violin=True, doStats=False,
+                            dotColors=wm.dotColors)
 
+                print("Making diff, " + figName)
                 with pp.newFig(figName + "_diff") as ax:
                     boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession,
-                            axesNames=[wm.name + " with-session difference", "Condition"], violin=True, doStats=False)
+                            axesNames=["Contidion", wm.name + " with-session difference"], violin=True, doStats=False,
+                            dotColors=wm.dotColorsBySession)
 
             for wm in taskWellMeasures:
                 figName = "task_well_" + wm.name.replace(" ", "_")
                 with pp.newFig(figName) as ax:
-                    boxPlot(ax, wm.measure, wm.wellCategory, categories2=wm.conditionCategoryByWell,
-                            axesNames=[wm.name, "Well type", "Condition"], violin=True, doStats=False)
+                    boxPlot(ax, wm.measure, categories2=wm.wellCategory, categories=wm.conditionCategoryByWell,
+                            axesNames=["Condition", wm.name, "Well type"], violin=True, doStats=False,
+                            dotColors=wm.dotColors)
 
                 with pp.newFig(figName + "_diff") as ax:
                     boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession,
-                            axesNames=[wm.name + " with-session difference", "Condition"], violin=True, doStats=False)
+                            axesNames=["Condition", wm.name + " with-session difference"], violin=True, doStats=False,
+                            dotColors=wm.dotColorsBySession)
 
             for wm in taskTrialMeasures:
                 figName = "task_trial_" + wm.name.replace(" ", "_")
                 with pp.newFig(figName) as ax:
-                    boxPlot(ax, wm.measure, wm.trialCategory, categories2=wm.conditionCategoryByTrial,
-                            axesNames=[wm.name, "Trial type", "Condition"], violin=True, doStats=False)
+                    boxPlot(ax, wm.measure, categories2=wm.trialCategory, categories=wm.conditionCategoryByTrial,
+                            axesNames=["Condition", wm.name, "Trial type"], violin=True, doStats=False)
 
-                with pp.newFig(figName + "_diff") as ax:
-                    boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession,
-                            axesNames=[wm.name + " with-session difference", "Condition"], violin=True, doStats=False)
+            # Cumulative number of wells visited in probe across sessions
+            windowSlide = 10
+            t1Array = np.arange(windowSlide, 60 * 5, windowSlide)
+            numVisitedOverTime = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisitedOverTime[:] = np.nan
+            numVisitedOverTimeOffWall = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisitedOverTimeOffWall[:] = np.nan
+            numVisitedOverTimeWithRepeats = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisitedOverTimeWithRepeats[:] = np.nan
+            numVisitedOverTimeOffWallWithRepeats = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisitedOverTimeOffWallWithRepeats[:] = np.nan
+            for si, sesh in enumerate(sessionsWithProbe):
+                t1s = t1Array * TRODES_SAMPLING_RATE + sesh.probe_pos_ts[0]
+                i1Array = np.searchsorted(sesh.probe_pos_ts, t1s)
+                for ii, i1 in enumerate(i1Array):
+                    numVisitedOverTime[si, ii] = numWellsVisited(
+                        sesh.probe_nearest_wells[0:i1], countReturns=False)
+                    numVisitedOverTimeOffWall[si, ii] = numWellsVisited(
+                        sesh.probe_nearest_wells[0:i1], countReturns=False,
+                        wellSubset=offWallWellNames)
+                    numVisitedOverTimeWithRepeats[si, ii] = numWellsVisited(
+                        sesh.probe_nearest_wells[0:i1], countReturns=True)
+                    numVisitedOverTimeOffWallWithRepeats[si, ii] = numWellsVisited(
+                        sesh.probe_nearest_wells[0:i1], countReturns=True,
+                        wellSubset=offWallWellNames)
+
+            with pp.newFig("probe_numVisitedOverTime_bysidx") as ax:
+                cmap = cm.get_cmap("coolwarm", numSessionsWithProbe)
+                for si in range(numSessionsWithProbe):
+                    jitter = np.random.uniform(size=(numVisitedOverTime.shape[1],)) * 0.5
+                    ax.plot(t1Array, numVisitedOverTime[si, :] + jitter, color=cmap(si))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
+                ax.set_ylim(0, 37)
+
+            with pp.newFig("probe_numVisitedOverTime_bysidx_offwall") as ax:
+                cmap = cm.get_cmap("coolwarm", numSessionsWithProbe)
+                for si in range(numSessionsWithProbe):
+                    jitter = np.random.uniform(size=(numVisitedOverTimeOffWall.shape[1],)) * 0.5
+                    ax.plot(t1Array, numVisitedOverTimeOffWall[si, :] + jitter, color=cmap(si))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
+                ax.set_ylim(0, 17)
+
+            with pp.newFig("probe_numVisitedOverTime_bysidx_withRepeats") as ax:
+                cmap = cm.get_cmap("coolwarm", numSessionsWithProbe)
+                for si in range(numSessionsWithProbe):
+                    jitter = np.random.uniform(size=(numVisitedOverTimeWithRepeats.shape[1],)) * 0.5
+                    ax.plot(t1Array, numVisitedOverTimeWithRepeats[si, :] + jitter, color=cmap(si))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
+                # ax.set_ylim(0, 37)
+
+            with pp.newFig("probe_numVisitedOverTime_bysidx_offwall_withRepeats") as ax:
+                cmap = cm.get_cmap("coolwarm", numSessionsWithProbe)
+                for si in range(numSessionsWithProbe):
+                    jitter = np.random.uniform(
+                        size=(numVisitedOverTimeOffWallWithRepeats.shape[1],)) * 0.5
+                    ax.plot(
+                        t1Array, numVisitedOverTimeOffWallWithRepeats[si, :] + jitter, color=cmap(si))
+                ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
+                # ax.set_ylim(0, 17)
 
             # follow-ups
             # correlation b/w trial duration and probe behavior?
@@ -265,6 +358,9 @@ def makeFigures(
         else:
             print("warning: skipping spike analysis figs")
 
+    if len(animalNames) > 1:
+        pp.makeCombinedFigs()
+
 
 if __name__ == "__main__":
     makeFigures()
@@ -277,6 +373,8 @@ if __name__ == "__main__":
 # another possible measure, when they find away and are facing away from the home well, how often do they continue
 # the direction they're facing (most of the time they do this) vs turn around immediately.
 # More generally, some bias level between facing dir and home dir
+#
+# How close are start and end of excursion to home well? Euclidean and city block
 #
 # color swarm plots by trial index or date
 #

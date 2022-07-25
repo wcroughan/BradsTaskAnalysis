@@ -11,7 +11,7 @@ import sys
 import os
 
 
-def findDataDir(possibleDataDirs=["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]):
+def findDataDir(possibleDataDirs=["/media/WDC8/", "/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]):
     for dd in possibleDataDirs:
         if os.path.exists(dd):
             return dd
@@ -265,8 +265,8 @@ def getRipplePower(lfp_data, omit_artifacts=True, causal_smoothing=False,
             # lfp_data_copy[cleanup_start:cleanup_finish] = np.nan
             lfp_mask[cleanup_start:cleanup_finish] = 1
 
-        print("LFP mask letting {} of signal through".format(
-            1 - (np.count_nonzero(lfp_mask) / len(lfp_mask))))
+        # print("LFP mask letting {} of signal through".format(
+        #     1 - (np.count_nonzero(lfp_mask) / len(lfp_mask))))
 
     nyq_freq = LFP_SAMPLING_RATE * 0.5
     lo_cutoff = rippleFilterBand[0] / nyq_freq
@@ -665,6 +665,9 @@ def getInfoForAnimal(animalName):
         # stim wire was broken, shoulda been iterruption but was no-stim control
         # (both leads were disconnected, so no stim at all made it to brain)
         ret.excluded_sessions += ["20220624_2"]
+
+        # Messed up the well order, so current pipeline can't handle clips. SHould still be able to analyze probe behavior though if I wanted to
+        ret.excluded_sessions += ["20220621_2"]
 
         ret.DEFAULT_RIP_DET_TET = 5
         ret.DEFAULT_RIP_BAS_TET = 3

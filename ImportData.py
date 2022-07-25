@@ -39,7 +39,7 @@ SAVE_DONT_SHOW = True
 SHOW_CURVATURE_VIDEO = False
 SKIP_LFP = False
 SKIP_PREV_SESSION = True
-JUST_EXTRACT_TRODES_DATA = True
+JUST_EXTRACT_TRODES_DATA = False
 RUN_INTERACTIVE = True
 MAKE_ALL_TRACKING_AUTO = False
 
@@ -553,7 +553,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 else:
                     print("doing the lights")
                     session.trodesLightOffTime, session.trodesLightOnTime = getTrodesLightTimes(
-                        file_str + '.1.h264', showVideo=False)
+                        file_str + '.1.h264', showVideo=True)
                     print("trodesLightFunc says trodes light Time {}, {} (/{})".format(
                         session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
 
@@ -814,7 +814,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 session.ITIRipStartTimestamps = np.array([])
 
             session.ITIDuration = (itiLfpEnd_ts - itiLfpStart_ts) / \
-                BTSession.TRODES_SAMPLING_RATE
+                TRODES_SAMPLING_RATE
 
             probeLfpStart_ts = session.probe_pos_ts[0]
             probeLfpEnd_ts = session.probe_pos_ts[-1]
@@ -837,7 +837,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 session.probeRipStartTimestamps = np.array([])
 
             session.probeDuration = (probeLfpEnd_ts - probeLfpStart_ts) / \
-                BTSession.TRODES_SAMPLING_RATE
+                TRODES_SAMPLING_RATE
 
             _, itiRipplePowerProbeStats, _, _ = getRipplePower(
                 itiLFPData, lfp_deflections=itiStimIdxs, meanPower=session.probeMeanRipplePower, stdPower=session.probeStdRipplePower)
@@ -963,6 +963,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     # Well visit times
     # ===================================
     rewardClipsFile = file_str + '.1.rewardClips'
+    if not os.path.exists(rewardClipsFile):
+        rewardClipsFile = file_str + '.1.rewardclips'
     if not os.path.exists(rewardClipsFile):
         if session.num_home_found > 0:
             print("Well find times not marked for session {}".format(session.name))

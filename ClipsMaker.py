@@ -143,8 +143,13 @@ class USBVideoWidget(QWidget):
 
         print(self.videoWidth, self.videoHeight)
         if self.videoWidth == 252 and self.videoHeight == 288:
+            # tall video
             self.videoType = 1
+        elif self.videoWidth == 640 and self.videoHeight == 720:
+            # B16-18 video
+            self.videoType = 3
         else:
+            # wide video
             self.videoType = 2
 
         self.animPauseTimer = QTimer()
@@ -154,7 +159,18 @@ class USBVideoWidget(QWidget):
         self.initMedia()
 
     def initUI(self):
-        if self.videoType == 2:
+        if self.videoType == 1:
+            videoOffset = QPointF(0, 0)
+            videoSize = QSizeF(700, 500)
+            viewSceneRect = QRectF(120, -5, 1, 1)
+            sceneSceneRect = QRectF(0, 0, 1, 1)
+
+            smallVideoOffset = QPointF(0, 0)
+            smallVideoSize = QSizeF(350, 160)
+            smallViewSceneRect = QRectF(100, -2, 1, 1)
+            smallSceneSceneRect = QRectF(0, 0, 1, 1)
+
+        elif self.videoType == 2:
             videoOffset = QPointF(0, 0)
             videoSize = QSizeF(750, 500)
             viewSceneRect = QRectF(-10, 20, 1, 1)
@@ -208,7 +224,7 @@ class USBVideoWidget(QWidget):
         self.regionListWidget = QListWidget()
         self.regionListWidget.setSortingEnabled(True)
 
-        if self.videoType == 1:
+        if self.videoType == 1 or self.videoType == 3:
             # tall video
             l2 = QHBoxLayout()
             l2.addWidget(startFrameVideoParent)

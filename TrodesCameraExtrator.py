@@ -319,9 +319,9 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
 
                 if currentState == STATE_START_LIGHTSOFF or currentState == STATE_TASK:
                     npframe[y1:y2, x1, :] = 255
-                    npframe[y1:y2, x2-1, :] = 255
+                    npframe[y1:y2, x2 - 1, :] = 255
                     npframe[y1, x1:x2, :] = 255
-                    npframe[y2-1, x1:x2, :] = 255
+                    npframe[y2 - 1, x1:x2, :] = 255
 
                 # frameDur = 1 if currentState == STATE_START_LIGHTSON else 100
 
@@ -406,18 +406,30 @@ def runTest():
 def runAllBradTask():
     # dataDir = "/media/WDC6/"
     # animalNames = ["B13", "B14"]
-    dataDir = "/home/wcroughan/data/"
+    dataDir = "/media/WDC8/"
     animalNames = ["B18"]
-    allVids = []
+    allTrodesVids = []
     for animalName in animalNames:
         gl = dataDir + "/" + animalName + "/bradtasksessions/*/*.h264"
         videoNameList = glob.glob(gl)
-        allVids += videoNameList
-    print("\n".join(allVids))
+        allTrodesVids += videoNameList
+    print("\n".join(allTrodesVids))
 
-    for videoName in allVids:
-        print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
-        processRawTrodesVideo(videoName, overwriteMode="never")
+    for videoName in allTrodesVids:
+        pass
+        # print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
+        # processRawTrodesVideo(videoName, overwriteMode="never")
+        # getTrodesLightTimes(videoFileName=videoName, showVideo=False, initialSkipAmt=5)
+
+    usbDataDir = "/media/WDC7/videos/B16-20/trimmed/"
+    allUSBVids = []
+    for animalName in animalNames:
+        gl = usbDataDir + "/" + animalName + "/*.mkv"
+        videoNameList = glob.glob(gl)
+        allUSBVids += videoNameList
+    print("\n".join(allUSBVids))
+    for videoName in allUSBVids:
+        processUSBVideoData(videoName, showVideo=True, overwriteMode="always")
 
 
 def rerunTrodesVideos(showVideo=False):
@@ -505,6 +517,19 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuri
         maxH = min(maxH1, maxH2)
         minH = max(minH1, minH2)
         thresh = (maxH + minH) / 2.0
+
+        # Check that there's frames with both light on and off at start and finish
+        d1 = maxH1 - minH1
+        d2 = maxH2 - minH2
+        dd = d1 / d2 + d2 / d1
+        print("light stats:")
+        print("\t1st half:\n\t\t{}\n\t\t{}\n\t\t({})".format(minH1, maxH1, d1))
+        print("\t2nd half:\n\t\t{}\n\t\t{}\n\t\t({})".format(minH2, maxH2, d2))
+        print("\tdd = " + str(dd))
+        if dd > 10:
+            print("WARNING: might not have light on or off times, autoEnabling video display")
+            showVideo = True
+
     else:
         maxH = np.max(allFrameH)
         minH = np.min(allFrameH)
@@ -554,13 +579,13 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuri
     lonF2 = None
 
     for i in range(1, nFrames):
-        if allFrameH[i] < lightOffThreshold and allFrameH[i-1] > lightOffThreshold and not loffSet and findLightOff:
+        if allFrameH[i] < lightOffThreshold and allFrameH[i - 1] > lightOffThreshold and not loffSet and findLightOff:
             loffF1 = i - 1
             loffF2 = i
             loffSet = True
             if not findLightOn:
                 break
-        if allFrameH[i] > lightOnThreshold and allFrameH[i-1] < lightOnThreshold and findLightOn:
+        if allFrameH[i] > lightOnThreshold and allFrameH[i - 1] < lightOnThreshold and findLightOn:
             lonF1 = i - 1
             lonF2 = i
             lonSet = True
@@ -583,9 +608,9 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuri
             # heur = getFrameColorHeuristic(frame)
             heur = allFrameH[frameI]
             frame = cv2.putText(frame, "{}: h={}".format(frameI, heur), (100, 100),
-                                cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 0))
+                                cv2.FONT_HERSHEY_COMPLEX, 0.5, (255, 255, 0))
             frame = cv2.putText(frame, "thresh={}, loffF2={}, lonF2={}".format(thresh, loffF2, lonF2), (100, 200),
-                                cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 0))
+                                cv2.FONT_HERSHEY_COMPLEX, 0.5, (255, 255, 0))
             cv2.imshow("frame", frame)
             if cv2.waitKey() & 0xFF == ord('q'):
                 break
@@ -613,14 +638,6 @@ def findLightTimesLinearTrodes(videoFileName, frameStart, frameEnd, frameStride,
 def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
                         greyDiffThreshHigh=100, greyDiffThreshLow=25, lightOnThreshold=0.1, lightOffThreshold=0.04,
                         maxNumBatches=None, showVideo=False, outputFileName=None, overwriteMode="ask", initialSkipAmt=8):
-    probe = ffmpeg.probe(videoFileName)
-    video_stream = next(
-        (stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-    width = int(video_stream['width'])
-    height = int(video_stream['height'])
-
-    lightsOffFrame = None
-    lightsOnFrame = None
 
     if outputFileName is None:
         outputFileName = videoFileName + ".usbLightTimes"
@@ -649,6 +666,15 @@ def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
         elif overwriteMode != "always":
             print("Unknown overwrite mode {}".format(overwriteMode))
             return
+
+    probe = ffmpeg.probe(videoFileName)
+    video_stream = next(
+        (stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+    width = int(video_stream['width'])
+    height = int(video_stream['height'])
+
+    lightsOffFrame = None
+    lightsOnFrame = None
 
     initialFrameJump = np.power(2, initialSkipAmt)
 
