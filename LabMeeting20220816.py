@@ -121,6 +121,7 @@ class WellMeasure():
         if measureFunc is not None:
             assert sessionList is not None
             for si, sesh in enumerate(sessionList):
+                # print(sesh.home_well_find_times)
                 homeval = measureFunc(sesh, sesh.home_well)
                 self.measure.append(homeval)
                 self.wellCategory.append("home")
@@ -157,15 +158,31 @@ class WellMeasure():
         self.conditionCategoryBySession = np.array(self.conditionCategoryBySession)
         self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
 
+        # print(self.name, self.measure)
+
         # WellMeasure.memoDict[name] = self
 
 
 def makeFigures(
-    MAKE_LAST_MEETING_FIGS=True,
-    MAKE_SPIKE_ANALYSIS_FIGS=True,
-    MAKE_CLOSE_PASS_FIGS=True,
-    MAKE_INITIAL_HEADING_FIGS=True
+    MAKE_LAST_MEETING_FIGS=None,
+    MAKE_SPIKE_ANALYSIS_FIGS=None,
+    MAKE_CLOSE_PASS_FIGS=None,
+    MAKE_INITIAL_HEADING_FIGS=None,
+    MAKE_PROBE_TRACES_FIGS=None,
+    MAKE_UNSPECIFIED=True
 ):
+
+    if MAKE_LAST_MEETING_FIGS is None:
+        MAKE_LAST_MEETING_FIGS = MAKE_UNSPECIFIED
+    if MAKE_SPIKE_ANALYSIS_FIGS is None:
+        MAKE_SPIKE_ANALYSIS_FIGS = MAKE_UNSPECIFIED
+    if MAKE_CLOSE_PASS_FIGS is None:
+        MAKE_CLOSE_PASS_FIGS = MAKE_UNSPECIFIED
+    if MAKE_INITIAL_HEADING_FIGS is None:
+        MAKE_INITIAL_HEADING_FIGS = MAKE_UNSPECIFIED
+    if MAKE_PROBE_TRACES_FIGS is None:
+        MAKE_PROBE_TRACES_FIGS = MAKE_UNSPECIFIED
+
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "20220818_labmeeting")
     rseed = int(time.perf_counter())
@@ -188,6 +205,13 @@ def makeFigures(
         sessions = allSessionsByRat[ratName]
         sessionsWithProbe = [sesh for sesh in sessions if sesh.probe_performed]
         numSessionsWithProbe = len(sessionsWithProbe)
+
+        ctrlSessionsWithProbe = [sesh for sesh in sessions if (
+            not sesh.isRippleInterruption) and sesh.probe_performed]
+        swrSessionsWithProbe = [
+            sesh for sesh in sessions if sesh.isRippleInterruption and sesh.probe_performed]
+        nCtrlWithProbe = len(ctrlSessionsWithProbe)
+        nSWRWithProbe = len(swrSessionsWithProbe)
 
         pp.setOutputSubDir(ratName)
         if len(animalNames) > 1:
@@ -238,8 +262,20 @@ def makeFigures(
             taskWellMeasures = []
             taskWellMeasures.append(WellMeasure("gravity from off wall", lambda s, h: s.gravityOfWell(
                 False, h, fromWells=offWallWellNames), sessionsWithProbe))
-            taskWellMeasures.append(WellMeasure("gravity from off wall, Tgt5",
-                                                lambda s, h: s.gravityOfWell(False, h, fromWells=offWallWellNames, timeInterval=[s.home_well_find_times[4], np.inf]) if len(s.home_well_find_times) >= 5 else np.nan, sessionsWithProbe))
+
+            taskWellMeasures.append(WellMeasure("gravity from all neighbors, tgt5", lambda s, h: s.gravityOfWell(
+                False, h, timeInterval=[s.home_well_find_times[4] / TRODES_SAMPLING_RATE, np.inf]) if len(s.home_well_find_times) >= 5 else np.nan, sessionsWithProbe))
+
+            def ff(s, h):
+                if len(s.home_well_find_times) >= 5:
+                    # print("doing normal thing")
+                    return s.gravityOfWell(False, h, fromWells=offWallWellNames, timeInterval=[s.home_well_find_times[4] / TRODES_SAMPLING_RATE, np.inf])
+                else:
+                    # print("too few homes")
+                    return np.nan
+
+            taskWellMeasures.append(WellMeasure(
+                "gravity from off wall, Tgt5", ff, sessionsWithProbe))
 
             taskTrialMeasures = []
 
@@ -253,13 +289,13 @@ def makeFigures(
 
             for wm in probeWellMeasures:
                 figName = "probe_well_" + wm.name.replace(" ", "_")
-                print("Making " + figName)
+                # print("Making " + figName)
                 with pp.newFig(figName) as ax:
                     boxPlot(ax, wm.measure, categories2=wm.wellCategory, categories=wm.conditionCategoryByWell,
                             axesNames=["Condition", wm.name, "Well type"], violin=True, doStats=False,
                             dotColors=wm.dotColors)
 
-                print("Making diff, " + figName)
+                # print("Making diff, " + figName)
                 with pp.newFig(figName + "_diff") as ax:
                     boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession,
                             axesNames=["Contidion", wm.name + " with-session difference"], violin=True, doStats=False,
@@ -358,12 +394,60 @@ def makeFigures(
         else:
             print("warning: skipping spike analysis figs")
 
+        if not MAKE_PROBE_TRACES_FIGS:
+            print("warning: skipping raw probe trace plots")
+        else:
+            numCols = math.ceil(math.sqrt(numSessionsWithProbe))
+            with pp.newFig("allProbeTraces", subPlots=(numCols, numCols), figScale=0.3) as axs:
+                for si, sesh in enumerate(sessionsWithProbe):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                    c = "orange" if sesh.isRippleInterruption else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
+                    ax.set_title(sesh.name, fontdict={'fontsize': 8})
+                    # ax.set_title(str(si))
+                for si in range(numSessionsWithProbe, numCols * numCols):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.cla()
+                    ax.tick_params(axis="both", which="both", label1On=False,
+                                   label2On=False, tick1On=False, tick2On=False)
+
+            numCols = math.ceil(math.sqrt(nCtrlWithProbe))
+            with pp.newFig("allProbeTraces_ctrl", subPlots=(numCols, numCols), figScale=0.3) as axs:
+                for si, sesh in enumerate(ctrlSessionsWithProbe):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                    c = "orange" if sesh.isRippleInterruption else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
+                    # ax.set_title(str(si))
+                    ax.set_title(sesh.name, fontdict={'fontsize': 8})
+                for si in range(nCtrlWithProbe, numCols * numCols):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.cla()
+                    ax.tick_params(axis="both", which="both", label1On=False,
+                                   label2On=False, tick1On=False, tick2On=False)
+
+            numCols = math.ceil(math.sqrt(nSWRWithProbe))
+            with pp.newFig("allProbeTraces_SWR", subPlots=(numCols, numCols), figScale=0.3) as axs:
+                for si, sesh in enumerate(swrSessionsWithProbe):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys, c="#deac7f")
+                    c = "orange" if sesh.isRippleInterruption else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=2)
+                    # ax.set_title(str(si))
+                    ax.set_title(sesh.name, fontdict={'fontsize': 8})
+                for si in range(nSWRWithProbe, numCols * numCols):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.cla()
+                    ax.tick_params(axis="both", which="both", label1On=False,
+                                   label2On=False, tick1On=False, tick2On=False)
+
     if len(animalNames) > 1:
         pp.makeCombinedFigs()
 
 
 if __name__ == "__main__":
-    makeFigures()
+    makeFigures(MAKE_UNSPECIFIED=False, MAKE_PROBE_TRACES_FIGS=True)
 
 
 # TODO: new analyses
