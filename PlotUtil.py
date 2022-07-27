@@ -135,7 +135,7 @@ class ShuffleResult:
 
 
 class PlotCtx:
-    def __init__(self, outputDir="./", priorityLevel=None, randomSeed=None, verbosity=3):
+    def __init__(self, outputDir="./", priorityLevel=None, randomSeed=None, verbosity=3, infoFileName=None):
         self.figSizeX, self.figSizeY = 5, 5
         self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
         self.fig.clf()
@@ -147,7 +147,10 @@ class PlotCtx:
         self.verbosity = verbosity
         self.showedLastFig = False
 
-        self.timeStr = datetime.now().strftime("%Y%m%d_%H%M%S_info.txt")
+        if infoFileName is None:
+            self.infoFileName = datetime.now().strftime("%Y%m%d_%H%M%S_info.txt")
+        else:
+            self.infoFileName = infoFileName
         self.outputSubDir = ""
         self.setOutputDir(outputDir)
         self.figName = ""
@@ -316,8 +319,8 @@ class PlotCtx:
         self.outputDir = outputDir
         if not os.path.exists(os.path.join(outputDir, self.outputSubDir)):
             os.makedirs(os.path.join(outputDir, self.outputSubDir))
-        self.txtOutputFName = os.path.join(
-            outputDir, self.timeStr)
+        self.infoFileFullName = os.path.join(
+            outputDir, self.infoFileName)
 
     def setOutputSubDir(self, outputSubDir):
         self.outputSubDir = outputSubDir
@@ -325,7 +328,7 @@ class PlotCtx:
             os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
 
     def writeToInfoFile(self, txt, suffix="\n"):
-        with open(self.txtOutputFName, "a") as f:
+        with open(self.infoFileFullName, "a") as f:
             f.write(txt + suffix)
 
     def makeCombinedFigs(self, outputSubDir="combined"):
@@ -756,7 +759,7 @@ class PlotCtx:
             valSet[col] = vs
         print("created valset:", valSet)
 
-        with open(self.txtOutputFName, "a") as f:
+        with open(self.infoFileFullName, "a") as f:
             for spec in specs:
                 print(f'\r{spec}                 ', end='')
                 res = self._doShuffleSpec(df, spec, valSet, dataNames)

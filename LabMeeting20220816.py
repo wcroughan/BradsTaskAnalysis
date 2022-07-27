@@ -9,6 +9,7 @@ from consts import TRODES_SAMPLING_RATE, offWallWellNames
 import math
 import time
 from matplotlib import cm
+from datetime import datetime
 
 # NOTE: Here's the example for trimming a video
 # $ ffmpeg -i input.mp4 -ss 00:05:20 -t 00:10:00 -c:v copy -c:a copy output1.mp4
@@ -188,9 +189,13 @@ def makeFigures(
     globalOutputDir = os.path.join(dataDir, "figures", "20220818_labmeeting")
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
-    pp = PlotCtx(outputDir=globalOutputDir, randomSeed=rseed, priorityLevel=1)
 
     animalNames = parseCmdLineAnimalNames(default=["B18"])
+
+    infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
+    pp = PlotCtx(outputDir=globalOutputDir, randomSeed=rseed,
+                 priorityLevel=1, infoFileName=infoFileName)
+
     allSessionsByRat = {}
     for animalName in animalNames:
         animalInfo = getInfoForAnimal(animalName)
@@ -306,7 +311,7 @@ def makeFigures(
                             axesNames=["Contidion", wm.name + " with-session difference"], violin=True, doStats=False,
                             dotColors=wm.dotColorsBySession)
 
-                    yvals[figName + "_diff"] = wm.measure
+                    yvals[figName + "_diff"] = wm.withinSessionMeasureDifference
                     cats["condition"] = wm.conditionCategoryBySession
 
             for wm in taskWellMeasures:
@@ -325,7 +330,7 @@ def makeFigures(
                             axesNames=["Condition", wm.name + " with-session difference"], violin=True, doStats=False,
                             dotColors=wm.dotColorsBySession)
 
-                    yvals[figName + "_diff"] = wm.measure
+                    yvals[figName + "_diff"] = wm.withinSessionMeasureDifference
                     cats["condition"] = wm.conditionCategoryBySession
 
             for wm in taskTrialMeasures:
@@ -462,10 +467,10 @@ def makeFigures(
                                    label2On=False, tick1On=False, tick2On=False)
 
     if len(animalNames) > 1:
-        pp.makeCombinedFigs()
+        pp.makeCombinedFigs(outputSubDir="combo {}".format(" ".join(animalNames)))
 
     if RUN_SHUFFLES:
-        pass
+        pp.runShuffles()
 
 
 if __name__ == "__main__":
