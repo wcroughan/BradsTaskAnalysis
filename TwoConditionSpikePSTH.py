@@ -476,14 +476,14 @@ def makePSTH(animal_name):
 
         outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name))
     elif animal_name == "B13_run":
-        lfpTet = np.nan
-        spikeTet = np.nan
+        lfpTet = 7
+        spikeTet = 7
         clusterIndex = -1
         twoFiles = True
 
         if True:
-            runNameSWR = ""
-            runNameCtrl = ""
+            runNameSWR = "20220307_140442"
+            runNameCtrl = "20220307_174753"
             swrt0 = None
             swrt1 = None
             ctrlt0 = None
@@ -533,14 +533,71 @@ def makePSTH(animal_name):
 
         outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name.split("_")[0]))
     elif animal_name == "B14_run":
-        lfpTet = np.nan
-        spikeTet = np.nan
+        lfpTet = 6
+        spikeTet = 6
         clusterIndex = -1
         twoFiles = True
 
         if True:
-            runNameSWR = ""
-            runNameCtrl = ""
+            runNameSWR = "20220304_175709"
+            runNameCtrl = "20220304_144221"
+            swrt0 = None
+            swrt1 = None
+            ctrlt0 = None
+            ctrlt1 = None
+            # spikeTet = 2
+            # lfpTet = 4
+            recFileNameSWR = os.path.join(
+                drive_dir, "{}/{}/{}.rec".format(animal_name.split("_")[0], runNameSWR, runNameSWR))
+            recFileNameCtrl = os.path.join(
+                drive_dir, "{}/{}/{}.rec".format(animal_name.split("_")[0], runNameCtrl, runNameCtrl))
+
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name.split("_")[0],
+                                                                              runNameSWR, runNameSWR, runNameSWR, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileNameSWR = lfpfilelist[0]
+        else:
+            lfpFileNameSWR = "nofile"
+
+        spikeFileNameSWR = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name.split("_")[0],
+                                                                                               runNameSWR, runNameSWR, runNameSWR, spikeTet))
+
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name.split("_")[0],
+                                                                              runNameCtrl, runNameCtrl, runNameCtrl, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileNameCtrl = lfpfilelist[0]
+        else:
+            lfpFileNameCtrl = "nofile"
+
+        spikeFileNameCtrl = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name.split("_")[0],
+                                                                                                runNameCtrl, runNameCtrl, runNameCtrl, spikeTet))
+
+        clusterFileNameSWR = os.path.join(
+            drive_dir, "{}/{}/{}.trodesClusters".format(animal_name.split("_")[0], runNameSWR, runNameSWR))
+        clfuncSWR = makeClusterFuncFromFile(clusterFileNameSWR, spikeTet-1, clusterIndex)
+        clustersSWR = loadTrodesClusters(clusterFileNameSWR)
+        # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+        clusterPolygonsSWR = clustersSWR[spikeTet-1]
+
+        clusterFileNameCtrl = os.path.join(
+            drive_dir, "{}/{}/{}.trodesClusters".format(animal_name.split("_")[0], runNameCtrl, runNameCtrl))
+        clfuncCtrl = makeClusterFuncFromFile(clusterFileNameCtrl, spikeTet-1, clusterIndex)
+        clustersCtrl = loadTrodesClusters(clusterFileNameCtrl)
+        # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+        clusterPolygonsCtrl = clustersCtrl[spikeTet-1]
+
+        outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name.split("_")[0]))
+    elif animal_name == "B18_run":
+        lfpTet = 3
+        spikeTet = 6
+        clusterIndex = -1
+        twoFiles = True
+
+        if True:
+            runNameSWR = "20220626_181119"
+            runNameCtrl = "20220626_145441"
             swrt0 = None
             swrt1 = None
             ctrlt0 = None
