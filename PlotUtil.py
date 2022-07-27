@@ -362,7 +362,7 @@ class PlotCtx:
     def printShuffleResult(self, results):
         print("\n".join([str(v) for v in sorted(results)]))
 
-    def runShuffles(self, numShuffles=4):
+    def runShuffles(self, numShuffles=100):
         self.numShuffles = numShuffles
         for plotName in self.savedCategories:
             categories = self.savedCategories[plotName]

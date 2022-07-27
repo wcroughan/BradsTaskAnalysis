@@ -1,5 +1,5 @@
 import numpy as np
-from PlotUtil import PlotCtx, plotIndividualAndAverage, setupBehaviorTracePlot, boxPlot
+from PlotUtil import PlotCtx, plotIndividualAndAverage, setupBehaviorTracePlot, boxPlot, ShuffSpec
 import MountainViewIO
 from BTData import BTData
 from BTSession import BTSession
@@ -169,7 +169,8 @@ def makeFigures(
     MAKE_CLOSE_PASS_FIGS=None,
     MAKE_INITIAL_HEADING_FIGS=None,
     MAKE_PROBE_TRACES_FIGS=None,
-    MAKE_UNSPECIFIED=True
+    MAKE_UNSPECIFIED=True,
+    RUN_SHUFFLES=False
 ):
 
     if MAKE_LAST_MEETING_FIGS is None:
@@ -290,34 +291,52 @@ def makeFigures(
             for wm in probeWellMeasures:
                 figName = "probe_well_" + wm.name.replace(" ", "_")
                 # print("Making " + figName)
-                with pp.newFig(figName) as ax:
+                with pp.newFig(figName, withStats=True) as (ax, yvals, cats, info):
                     boxPlot(ax, wm.measure, categories2=wm.wellCategory, categories=wm.conditionCategoryByWell,
                             axesNames=["Condition", wm.name, "Well type"], violin=True, doStats=False,
                             dotColors=wm.dotColors)
 
+                    yvals[figName] = wm.measure
+                    cats["well"] = wm.wellCategory
+                    cats["condition"] = wm.conditionCategoryByWell
+
                 # print("Making diff, " + figName)
-                with pp.newFig(figName + "_diff") as ax:
+                with pp.newFig(figName + "_diff", withStats=True) as (ax, yvals, cats, info):
                     boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession,
                             axesNames=["Contidion", wm.name + " with-session difference"], violin=True, doStats=False,
                             dotColors=wm.dotColorsBySession)
 
+                    yvals[figName + "_diff"] = wm.measure
+                    cats["condition"] = wm.conditionCategoryBySession
+
             for wm in taskWellMeasures:
                 figName = "task_well_" + wm.name.replace(" ", "_")
-                with pp.newFig(figName) as ax:
+                with pp.newFig(figName, withStats=True) as (ax, yvals, cats, info):
                     boxPlot(ax, wm.measure, categories2=wm.wellCategory, categories=wm.conditionCategoryByWell,
                             axesNames=["Condition", wm.name, "Well type"], violin=True, doStats=False,
                             dotColors=wm.dotColors)
 
-                with pp.newFig(figName + "_diff") as ax:
+                    yvals[figName] = wm.measure
+                    cats["well"] = wm.wellCategory
+                    cats["condition"] = wm.conditionCategoryByWell
+
+                with pp.newFig(figName + "_diff", withStats=True) as (ax, yvals, cats, info):
                     boxPlot(ax, wm.withinSessionMeasureDifference, wm.conditionCategoryBySession,
                             axesNames=["Condition", wm.name + " with-session difference"], violin=True, doStats=False,
                             dotColors=wm.dotColorsBySession)
 
+                    yvals[figName + "_diff"] = wm.measure
+                    cats["condition"] = wm.conditionCategoryBySession
+
             for wm in taskTrialMeasures:
                 figName = "task_trial_" + wm.name.replace(" ", "_")
-                with pp.newFig(figName) as ax:
+                with pp.newFig(figName, withStats=True) as (ax, yvals, cats, info):
                     boxPlot(ax, wm.measure, categories2=wm.trialCategory, categories=wm.conditionCategoryByTrial,
                             axesNames=["Condition", wm.name, "Trial type"], violin=True, doStats=False)
+
+                    yvals[figName] = wm.measure
+                    cats["trial"] = wm.trialCategory
+                    cats["condition"] = wm.conditionCategoryByTrial
 
             # Cumulative number of wells visited in probe across sessions
             windowSlide = 10
@@ -445,9 +464,12 @@ def makeFigures(
     if len(animalNames) > 1:
         pp.makeCombinedFigs()
 
+    if RUN_SHUFFLES:
+        pass
+
 
 if __name__ == "__main__":
-    makeFigures(MAKE_UNSPECIFIED=False, MAKE_PROBE_TRACES_FIGS=True)
+    makeFigures(MAKE_UNSPECIFIED=False, MAKE_LAST_MEETING_FIGS=True, RUN_SHUFFLES=True)
 
 
 # TODO: new analyses

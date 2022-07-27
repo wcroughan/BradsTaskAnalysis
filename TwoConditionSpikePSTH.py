@@ -9,7 +9,8 @@ from SpikeCalibration import MUAClusterFunc, runTheThing, makeClusterFuncFromFil
 
 
 def makePSTH(animal_name):
-    possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/media/WDC6/", "/media/fosterlab/WDC6/"]
+    possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/",
+                           "/media/WDC6/", "/media/fosterlab/WDC6/"]
     print(possible_drive_dirs)
     drive_dir = None
     for dd in possible_drive_dirs:
@@ -23,9 +24,9 @@ def makePSTH(animal_name):
 
     UP_DEFLECT_STIM_THRESH = None
 
-
     clfuncCtrl = None
     clusterPolygonsCtrl = None
+    twoFiles = False
 
     if animal_name == "B13":
         runName = "20220125_094035"
@@ -45,7 +46,8 @@ def makePSTH(animal_name):
         spikeFileName = os.path.join(drive_dir, "B13/{}/{}.spikes/{}.spikes_nt{}.dat".format(
             runName, runName, runName, spikeTet))
 
-        clusterFileName = os.path.join(drive_dir, "B13/{}/{}.trodesClusters".format(runName, runName))
+        clusterFileName = os.path.join(
+            drive_dir, "B13/{}/{}.trodesClusters".format(runName, runName))
 
         clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
         clusters = loadTrodesClusters(clusterFileName)
@@ -98,11 +100,13 @@ def makePSTH(animal_name):
             ctrlt1 = ConvertTimeToTrodesTS(2, 51, 0)
             spikeTet = 2
 
-            clusterFileName = os.path.join(drive_dir, "B14/{}/{}.trodesClusters".format(runName, runName))
+            clusterFileName = os.path.join(
+                drive_dir, "B14/{}/{}.trodesClusters".format(runName, runName))
             f = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
+
             def clfunc(features, chmaxes, maxfeature, endFeatures, chmins):
                 ret = f(features, chmaxes, maxfeature)
-                return np.logical_and(ret, endFeatures[:,2] < 0)
+                return np.logical_and(ret, endFeatures[:, 2] < 0)
             clusters = loadTrodesClusters(clusterFileName)
             clusterPolygons = clusters[spikeTet-1]
         elif False:
@@ -127,7 +131,6 @@ def makePSTH(animal_name):
             ctrlt1 = ConvertTimeToTrodesTS(2, 9, 45)
             spikeTet = 8
 
-
         recFileName = os.path.join(drive_dir, "B14/{}/{}.rec".format(runName, runName))
         gl = os.path.join(drive_dir, "B14/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(
             runName, runName, runName, lfpTet))
@@ -141,7 +144,8 @@ def makePSTH(animal_name):
             runName, runName, runName, spikeTet))
 
         if clfunc is None:
-            clusterFileName = os.path.join(drive_dir, "B14/{}/{}.trodesClusters".format(runName, runName))
+            clusterFileName = os.path.join(
+                drive_dir, "B14/{}/{}.trodesClusters".format(runName, runName))
             clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
             clusters = loadTrodesClusters(clusterFileName)
             # clusterPolygons = clusters[spikeTet-1][clusterIndex]
@@ -186,8 +190,6 @@ def makePSTH(animal_name):
             UP_DEFLECT_STIM_THRESH = 5000
             clFileSuffix = "_noisy"
 
-
-
         recFileName = os.path.join(drive_dir, "B16/{}/{}.rec".format(runName, runName))
         gl = os.path.join(drive_dir, "B16/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(
             runName, runName, runName, lfpTet))
@@ -201,7 +203,8 @@ def makePSTH(animal_name):
             runName, runName, runName, spikeTet))
 
         if clfunc is None:
-            clusterFileName = os.path.join(drive_dir, "B16/{}/{}{}.trodesClusters".format(runName, runName, clFileSuffix))
+            clusterFileName = os.path.join(
+                drive_dir, "B16/{}/{}{}.trodesClusters".format(runName, runName, clFileSuffix))
             clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
             clusters = loadTrodesClusters(clusterFileName)
             # clusterPolygons = clusters[spikeTet-1][clusterIndex]
@@ -265,37 +268,36 @@ def makePSTH(animal_name):
             lfpTet = 3
             spikeTet = 3
 
-
         if clFileSuffix_delay is None:
             clFileSuffix_delay = clFileSuffix
 
-
         recFileName = os.path.join(drive_dir, "{}/{}/{}.rec".format(animal_name, runName, runName))
-        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name, 
-            runName, runName, runName, lfpTet))
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name,
+                                                                              runName, runName, runName, lfpTet))
         lfpfilelist = glob.glob(gl)
         if len(lfpfilelist) > 0:
             lfpFileName = lfpfilelist[0]
         else:
             lfpFileName = "nofile"
 
-        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name, 
-            runName, runName, runName, spikeTet))
+        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name,
+                                                                                            runName, runName, runName, spikeTet))
 
         if clfunc is None:
-            clusterFileName = os.path.join(drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix))
+            clusterFileName = os.path.join(
+                drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix))
             clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
             clusters = loadTrodesClusters(clusterFileName)
             # clusterPolygons = clusters[spikeTet-1][clusterIndex]
             clusterPolygons = clusters[spikeTet-1]
 
         if clFileSuffix_delay != clFileSuffix:
-            clusterFileName_delay = os.path.join(drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix_delay))
+            clusterFileName_delay = os.path.join(
+                drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix_delay))
             clfuncCtrl = makeClusterFuncFromFile(clusterFileName_delay, spikeTet-1, clusterIndex)
             clusters = loadTrodesClusters(clusterFileName_delay)
             # clusterPolygons = clusters[spikeTet-1][clusterIndex]
             clusterPolygonsCtrl = clusters[spikeTet-1]
-
 
         outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name))
     elif animal_name == "B18":
@@ -313,21 +315,21 @@ def makePSTH(animal_name):
             ctrlt0 = ConvertTimeToTrodesTS(4, 15, 30)
             ctrlt1 = ConvertTimeToTrodesTS(4, 45, 45)
 
-
         recFileName = os.path.join(drive_dir, "{}/{}/{}.rec".format(animal_name, runName, runName))
-        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name, 
-            runName, runName, runName, lfpTet))
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name,
+                                                                              runName, runName, runName, lfpTet))
         lfpfilelist = glob.glob(gl)
         if len(lfpfilelist) > 0:
             lfpFileName = lfpfilelist[0]
         else:
             lfpFileName = "nofile"
 
-        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name, 
-            runName, runName, runName, spikeTet))
+        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name,
+                                                                                            runName, runName, runName, spikeTet))
 
         if clfunc is None:
-            clusterFileName = os.path.join(drive_dir, "{}/{}/{}.trodesClusters".format(animal_name, runName, runName))
+            clusterFileName = os.path.join(
+                drive_dir, "{}/{}/{}.trodesClusters".format(animal_name, runName, runName))
             clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
             clusters = loadTrodesClusters(clusterFileName)
             # clusterPolygons = clusters[spikeTet-1][clusterIndex]
@@ -389,22 +391,21 @@ def makePSTH(animal_name):
             spikeTet = 8
             clFileSuffix = "_2"
 
-
-
         recFileName = os.path.join(drive_dir, "{}/{}/{}.rec".format(animal_name, runName, runName))
-        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name, 
-            runName, runName, runName, lfpTet))
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name,
+                                                                              runName, runName, runName, lfpTet))
         lfpfilelist = glob.glob(gl)
         if len(lfpfilelist) > 0:
             lfpFileName = lfpfilelist[0]
         else:
             lfpFileName = "nofile"
 
-        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name, 
-            runName, runName, runName, spikeTet))
+        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name,
+                                                                                            runName, runName, runName, spikeTet))
 
         if clfunc is None:
-            clusterFileName = os.path.join(drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix))
+            clusterFileName = os.path.join(
+                drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix))
             clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
             clusters = loadTrodesClusters(clusterFileName)
             # clusterPolygons = clusters[spikeTet-1][clusterIndex]
@@ -453,33 +454,147 @@ def makePSTH(animal_name):
             spikeTet = 2
             lfpTet = 4
 
-
-
         recFileName = os.path.join(drive_dir, "{}/{}/{}.rec".format(animal_name, runName, runName))
-        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name, 
-            runName, runName, runName, lfpTet))
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name,
+                                                                              runName, runName, runName, lfpTet))
         lfpfilelist = glob.glob(gl)
         if len(lfpfilelist) > 0:
             lfpFileName = lfpfilelist[0]
         else:
             lfpFileName = "nofile"
 
-        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name, 
-            runName, runName, runName, spikeTet))
+        spikeFileName = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name,
+                                                                                            runName, runName, runName, spikeTet))
 
         if clfunc is None:
-            clusterFileName = os.path.join(drive_dir, "{}/{}/{}.trodesClusters".format(animal_name, runName, runName))
+            clusterFileName = os.path.join(
+                drive_dir, "{}/{}/{}.trodesClusters".format(animal_name, runName, runName))
             clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet-1, clusterIndex)
             clusters = loadTrodesClusters(clusterFileName)
             # clusterPolygons = clusters[spikeTet-1][clusterIndex]
             clusterPolygons = clusters[spikeTet-1]
 
         outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name))
+    elif animal_name == "B13_run":
+        lfpTet = np.nan
+        spikeTet = np.nan
+        clusterIndex = -1
+        twoFiles = True
+
+        if True:
+            runNameSWR = ""
+            runNameCtrl = ""
+            swrt0 = None
+            swrt1 = None
+            ctrlt0 = None
+            ctrlt1 = None
+            # spikeTet = 2
+            # lfpTet = 4
+            recFileNameSWR = os.path.join(
+                drive_dir, "{}/{}/{}.rec".format(animal_name.split("_")[0], runNameSWR, runNameSWR))
+            recFileNameCtrl = os.path.join(
+                drive_dir, "{}/{}/{}.rec".format(animal_name.split("_")[0], runNameCtrl, runNameCtrl))
+
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name.split("_")[0],
+                                                                              runNameSWR, runNameSWR, runNameSWR, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileNameSWR = lfpfilelist[0]
+        else:
+            lfpFileNameSWR = "nofile"
+
+        spikeFileNameSWR = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name.split("_")[0],
+                                                                                               runNameSWR, runNameSWR, runNameSWR, spikeTet))
+
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name.split("_")[0],
+                                                                              runNameCtrl, runNameCtrl, runNameCtrl, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileNameCtrl = lfpfilelist[0]
+        else:
+            lfpFileNameCtrl = "nofile"
+
+        spikeFileNameCtrl = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name.split("_")[0],
+                                                                                                runNameCtrl, runNameCtrl, runNameCtrl, spikeTet))
+
+        clusterFileNameSWR = os.path.join(
+            drive_dir, "{}/{}/{}.trodesClusters".format(animal_name.split("_")[0], runNameSWR, runNameSWR))
+        clfuncSWR = makeClusterFuncFromFile(clusterFileNameSWR, spikeTet-1, clusterIndex)
+        clustersSWR = loadTrodesClusters(clusterFileNameSWR)
+        # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+        clusterPolygonsSWR = clustersSWR[spikeTet-1]
+
+        clusterFileNameCtrl = os.path.join(
+            drive_dir, "{}/{}/{}.trodesClusters".format(animal_name.split("_")[0], runNameCtrl, runNameCtrl))
+        clfuncCtrl = makeClusterFuncFromFile(clusterFileNameCtrl, spikeTet-1, clusterIndex)
+        clustersCtrl = loadTrodesClusters(clusterFileNameCtrl)
+        # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+        clusterPolygonsCtrl = clustersCtrl[spikeTet-1]
+
+        outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name.split("_")[0]))
+    elif animal_name == "B14_run":
+        lfpTet = np.nan
+        spikeTet = np.nan
+        clusterIndex = -1
+        twoFiles = True
+
+        if True:
+            runNameSWR = ""
+            runNameCtrl = ""
+            swrt0 = None
+            swrt1 = None
+            ctrlt0 = None
+            ctrlt1 = None
+            # spikeTet = 2
+            # lfpTet = 4
+            recFileNameSWR = os.path.join(
+                drive_dir, "{}/{}/{}.rec".format(animal_name.split("_")[0], runNameSWR, runNameSWR))
+            recFileNameCtrl = os.path.join(
+                drive_dir, "{}/{}/{}.rec".format(animal_name.split("_")[0], runNameCtrl, runNameCtrl))
+
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name.split("_")[0],
+                                                                              runNameSWR, runNameSWR, runNameSWR, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileNameSWR = lfpfilelist[0]
+        else:
+            lfpFileNameSWR = "nofile"
+
+        spikeFileNameSWR = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name.split("_")[0],
+                                                                                               runNameSWR, runNameSWR, runNameSWR, spikeTet))
+
+        gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name.split("_")[0],
+                                                                              runNameCtrl, runNameCtrl, runNameCtrl, lfpTet))
+        lfpfilelist = glob.glob(gl)
+        if len(lfpfilelist) > 0:
+            lfpFileNameCtrl = lfpfilelist[0]
+        else:
+            lfpFileNameCtrl = "nofile"
+
+        spikeFileNameCtrl = os.path.join(drive_dir, "{}/{}/{}.spikes/{}.spikes_nt{}.dat".format(animal_name.split("_")[0],
+                                                                                                runNameCtrl, runNameCtrl, runNameCtrl, spikeTet))
+
+        clusterFileNameSWR = os.path.join(
+            drive_dir, "{}/{}/{}.trodesClusters".format(animal_name.split("_")[0], runNameSWR, runNameSWR))
+        clfuncSWR = makeClusterFuncFromFile(clusterFileNameSWR, spikeTet-1, clusterIndex)
+        clustersSWR = loadTrodesClusters(clusterFileNameSWR)
+        # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+        clusterPolygonsSWR = clustersSWR[spikeTet-1]
+
+        clusterFileNameCtrl = os.path.join(
+            drive_dir, "{}/{}/{}.trodesClusters".format(animal_name.split("_")[0], runNameCtrl, runNameCtrl))
+        clfuncCtrl = makeClusterFuncFromFile(clusterFileNameCtrl, spikeTet-1, clusterIndex)
+        clustersCtrl = loadTrodesClusters(clusterFileNameCtrl)
+        # clusterPolygons = clusters[spikeTet-1][clusterIndex]
+        clusterPolygonsCtrl = clustersCtrl[spikeTet-1]
+
+        outputDir = os.path.join(drive_dir, "{}/figs/".format(animal_name.split("_")[0]))
     else:
         raise Exception("Unknown rat " + animal_name)
 
     # If necessary, generate lfp file
-    possible_sg_dirs = ["/home/wcroughan/Software/Trodes21/", "/home/wcroughan/Software/Trodes21/linux/", "/home/fosterlab/Software/Trodes223/"]
+    possible_sg_dirs = ["/home/wcroughan/Software/Trodes232/", "/home/wcroughan/Software/Trodes21/",
+                        "/home/wcroughan/Software/Trodes21/linux/", "/home/fosterlab/Software/Trodes223/"]
     sg_dir = None
     for dd in possible_sg_dirs:
         if os.path.exists(dd):
@@ -489,37 +604,80 @@ def makePSTH(animal_name):
         print("Couldnt' find spike gadgets directory among any of these: {}".format(possible_sg_dirs))
         return
 
-    if not os.path.exists(lfpFileName):
-        syscmd = os.path.join(sg_dir, "exportLFP") + " -rec " + recFileName
-        print(syscmd)
-        os.system(syscmd)
-        lfpfilelist = glob.glob(gl)
-        lfpFileName = lfpfilelist[0]
+    if twoFiles:
+        if not os.path.exists(lfpFileNameSWR):
+            syscmd = os.path.join(sg_dir, "exportLFP") + " -rec " + recFileNameSWR
+            print(syscmd)
+            os.system(syscmd)
+            lfpfilelist = glob.glob(gl)
+            lfpFileNameSWR = lfpfilelist[0]
 
-    # If necessary, generate spike file
-    if not os.path.exists(spikeFileName):
-        syscmd = os.path.join(sg_dir, "exportspikes") + " -rec " + recFileName
-        print(syscmd)
-        os.system(syscmd)
+        # If necessary, generate spike file
+        if not os.path.exists(spikeFileNameSWR):
+            syscmd = os.path.join(sg_dir, "exportspikes") + " -rec " + recFileNameSWR
+            print(syscmd)
+            os.system(syscmd)
 
-    lfpTimestampFileName = ".".join(lfpFileName.split(".")[0:-2]) + ".timestamps.dat"
+        if not os.path.exists(lfpFileNameCtrl):
+            syscmd = os.path.join(sg_dir, "exportLFP") + " -rec " + recFileNameCtrl
+            print(syscmd)
+            os.system(syscmd)
+            lfpfilelist = glob.glob(gl)
+            lfpFileNameCtrl = lfpfilelist[0]
+
+        # If necessary, generate spike file
+        if not os.path.exists(spikeFileNameCtrl):
+            syscmd = os.path.join(sg_dir, "exportspikes") + " -rec " + recFileNameCtrl
+            print(syscmd)
+            os.system(syscmd)
+    else:
+        if not os.path.exists(lfpFileName):
+            syscmd = os.path.join(sg_dir, "exportLFP") + " -rec " + recFileName
+            print(syscmd)
+            os.system(syscmd)
+            lfpfilelist = glob.glob(gl)
+            lfpFileName = lfpfilelist[0]
+
+        # If necessary, generate spike file
+        if not os.path.exists(spikeFileName):
+            syscmd = os.path.join(sg_dir, "exportspikes") + " -rec " + recFileName
+            print(syscmd)
+            os.system(syscmd)
+
+    if twoFiles:
+        lfpTimestampFileNameSWR = ".".join(lfpFileNameSWR.split(".")[0:-2]) + ".timestamps.dat"
+        lfpTimestampFileNameCtrl = ".".join(lfpFileNameCtrl.split(".")[0:-2]) + ".timestamps.dat"
+    else:
+        lfpTimestampFileName = ".".join(lfpFileName.split(".")[0:-2]) + ".timestamps.dat"
     swrOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_swr_psth.png")
     ctrlOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_ctrl_psth.png")
     comboOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_combo_psth.png")
-    print(runName, "LFP tet " + str(lfpTet), "spike tet " + str(spikeTet), "cluster index " + str(clusterIndex),
-          recFileName, lfpFileName, spikeFileName, clusterFileName)
+    if twoFiles:
+        print(runName, "LFP tet " + str(lfpTet), "spike tet " + str(spikeTet), "cluster index " + str(clusterIndex),
+              recFileNameSWR, recFileNameCtrl, lfpFileNameSWR, spikeFileNameSWR, lfpFileNameCtrl, spikeFileNameCtrl, clusterFileName)
+    else:
+        print(runName, "LFP tet " + str(lfpTet), "spike tet " + str(spikeTet), "cluster index " + str(clusterIndex),
+              recFileName, lfpFileName, spikeFileName, clusterFileName)
 
     if clfuncCtrl is None:
         clfuncCtrl = clfunc
     if clusterPolygonsCtrl is None:
         clusterPolygonsCtrl = clusterPolygons
 
-    swrTvals, swrMeanPSTH, swrStdPSTH, swrN = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
-                                                          swrOutputFileName, clfunc, makeFigs=True, clusterPolygons=clusterPolygons,
-                                                          tStart=swrt0, tEnd=swrt1, UP_DEFLECT_STIM_THRESH=UP_DEFLECT_STIM_THRESH)
-    ctrlTvals, ctrlMeanPSTH, ctrlStdPSTH, ctrlN = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
-                                                              ctrlOutputFileName, clfuncCtrl, makeFigs=False, clusterPolygons=clusterPolygonsCtrl,
-                                                              tStart=ctrlt0, tEnd=ctrlt1, UP_DEFLECT_STIM_THRESH=UP_DEFLECT_STIM_THRESH)
+    if twoFiles:
+        swrTvals, swrMeanPSTH, swrStdPSTH, swrN = runTheThing(spikeFileNameSWR, lfpFileNameSWR, lfpTimestampFileNameSWR,
+                                                              swrOutputFileName, clfuncSWR, makeFigs=True, clusterPolygons=clusterPolygonsSWR,
+                                                              tStart=swrt0, tEnd=swrt1, UP_DEFLECT_STIM_THRESH=UP_DEFLECT_STIM_THRESH)
+        ctrlTvals, ctrlMeanPSTH, ctrlStdPSTH, ctrlN = runTheThing(spikeFileNameCtrl, lfpFileNameCtrl, lfpTimestampFileNameCtrl,
+                                                                  ctrlOutputFileName, clfuncCtrl, makeFigs=False, clusterPolygons=clusterPolygonsCtrl,
+                                                                  tStart=ctrlt0, tEnd=ctrlt1, UP_DEFLECT_STIM_THRESH=UP_DEFLECT_STIM_THRESH)
+    else:
+        swrTvals, swrMeanPSTH, swrStdPSTH, swrN = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
+                                                              swrOutputFileName, clfunc, makeFigs=True, clusterPolygons=clusterPolygons,
+                                                              tStart=swrt0, tEnd=swrt1, UP_DEFLECT_STIM_THRESH=UP_DEFLECT_STIM_THRESH)
+        ctrlTvals, ctrlMeanPSTH, ctrlStdPSTH, ctrlN = runTheThing(spikeFileName, lfpFileName, lfpTimestampFileName,
+                                                                  ctrlOutputFileName, clfuncCtrl, makeFigs=False, clusterPolygons=clusterPolygonsCtrl,
+                                                                  tStart=ctrlt0, tEnd=ctrlt1, UP_DEFLECT_STIM_THRESH=UP_DEFLECT_STIM_THRESH)
 
     # print(swrMeanPSTH)
     # print(swrStdPSTH)
@@ -530,7 +688,6 @@ def makePSTH(animal_name):
 
     swrSEM = swrStdPSTH / np.sqrt(swrN)
     ctrlSEM = ctrlStdPSTH / np.sqrt(ctrlN)
-
 
     normFrac = 0.125
     normMaxIdx = math.floor(np.size(swrMeanPSTH) / normFrac)
