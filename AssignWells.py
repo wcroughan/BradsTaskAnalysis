@@ -9,7 +9,7 @@ import math
 TASK_VERSION = 0
 
 RUNS_PER_DAY = 2
-NUM_DAYS = 4
+NUM_DAYS = 2
 START_WITH_TODAY = True
 OVERWRITE_FILES_NO_CONFIRM = False
 if START_WITH_TODAY:
@@ -20,7 +20,7 @@ else:
 # skipDays = [0] * NUM_DAYS
 skipDays = [0, 0, 0, 0]
 
-output_dir = "./behavior_notes/B16-20/"
+output_dir = os.path.join(os.getcwd(), "behavior_notes", "B16-20")
 # output_dir = "./"
 # output_dir = "/media/fosterlab/WDC4/B8/behavior_notes/"
 ratNames = ["B16", "B17", "B18", "B19", "B20"]
