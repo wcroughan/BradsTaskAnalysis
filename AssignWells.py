@@ -18,7 +18,7 @@ else:
     first_day = datetime.now() + timedelta(days=-1)
 
 # skipDays = [0] * NUM_DAYS
-skipDays = [0, 0, 0, 0]
+skipDays = [0, 0, 1, 0]
 
 output_dir = os.path.join(os.getcwd(), "behavior_notes", "B16-20")
 # output_dir = "./"
