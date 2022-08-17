@@ -13,6 +13,7 @@ from enum import IntEnum, auto
 from contextlib import contextmanager
 import matplotlib
 import textwrap as twp
+import matplotlib.image as mpimg
 
 
 class ShufRes:
@@ -134,7 +135,7 @@ class ShuffleResult:
 
 
 class PlotCtx:
-    def __init__(self, outputDir="./", priorityLevel=None, randomSeed=None, verbosity=3):
+    def __init__(self, outputDir="./", priorityLevel=None, randomSeed=None, verbosity=3, infoFileName=None):
         self.figSizeX, self.figSizeY = 5, 5
         self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
         self.fig.clf()
@@ -146,11 +147,15 @@ class PlotCtx:
         self.verbosity = verbosity
         self.showedLastFig = False
 
-        self.timeStr = datetime.now().strftime("%Y%m%d_%H%M%S_info.txt")
+        if infoFileName is None:
+            self.infoFileName = datetime.now().strftime("%Y%m%d_%H%M%S_info.txt")
+        else:
+            self.infoFileName = infoFileName
         self.outputSubDir = ""
         self.setOutputDir(outputDir)
         self.figName = ""
         self.createdPlots = set()
+        self.savedFigsByName = {}
 
         self.priorityLevel = priorityLevel
         self.priority = None
@@ -299,6 +304,12 @@ class PlotCtx:
             print("wrote file {}".format(fname))
         self.createdPlots.add(fname)
 
+        figFileName = fname.split('/')[-1]
+        if figFileName in self.savedFigsByName:
+            self.savedFigsByName[figFileName].append(self.outputSubDir)
+        else:
+            self.savedFigsByName[figFileName] = [self.outputSubDir]
+
     def clearFig(self):
         self.fig.clf()
         self.axs = self.fig.subplots(1, 1)
@@ -308,8 +319,8 @@ class PlotCtx:
         self.outputDir = outputDir
         if not os.path.exists(os.path.join(outputDir, self.outputSubDir)):
             os.makedirs(os.path.join(outputDir, self.outputSubDir))
-        self.txtOutputFName = os.path.join(
-            outputDir, self.timeStr)
+        self.infoFileFullName = os.path.join(
+            outputDir, self.infoFileName)
 
     def setOutputSubDir(self, outputSubDir):
         self.outputSubDir = outputSubDir
@@ -317,13 +328,44 @@ class PlotCtx:
             os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
 
     def writeToInfoFile(self, txt, suffix="\n"):
-        with open(self.txtOutputFName, "a") as f:
+        with open(self.infoFileFullName, "a") as f:
             f.write(txt + suffix)
+
+    def makeCombinedFigs(self, outputSubDir="combined"):
+        if not os.path.exists(os.path.join(self.outputDir, outputSubDir)):
+            os.makedirs(os.path.join(self.outputDir, outputSubDir))
+
+        for figFileName in self.savedFigsByName:
+            figSubDirs = self.savedFigsByName[figFileName]
+            if len(figSubDirs) <= 1:
+                continue
+
+            self.clearFig()
+
+            self.axs.remove()
+            self.axs = self.fig.subplots(1, len(figSubDirs))
+            self.fig.set_figheight(self.figSizeY)
+            self.fig.set_figwidth(self.figSizeX * len(figSubDirs))
+
+            for sdi, sd in enumerate(figSubDirs):
+                im = mpimg.imread(os.path.join(self.outputDir, sd, figFileName + ".png"))
+                # self.axs[sdi].set_xticks([])
+                # self.axs[sdi].set_yticks([])
+                self.axs[sdi].axis('off')
+                self.axs[sdi].set_title(sd)
+                self.axs[sdi].imshow(im)
+
+            fname = os.path.join(self.outputDir, outputSubDir, figFileName)
+            plt.savefig(fname, bbox_inches="tight", dpi=200)
+
+            self.writeToInfoFile("wrote file {}".format(fname))
+            if self.verbosity >= 3:
+                print("wrote file {}".format(fname))
 
     def printShuffleResult(self, results):
         print("\n".join([str(v) for v in sorted(results)]))
 
-    def runShuffles(self, numShuffles=4):
+    def runShuffles(self, numShuffles=100):
         self.numShuffles = numShuffles
         for plotName in self.savedCategories:
             categories = self.savedCategories[plotName]
@@ -717,7 +759,7 @@ class PlotCtx:
             valSet[col] = vs
         print("created valset:", valSet)
 
-        with open(self.txtOutputFName, "a") as f:
+        with open(self.infoFileFullName, "a") as f:
             for spec in specs:
                 print(f'\r{spec}                 ', end='')
                 res = self._doShuffleSpec(df, spec, valSet, dataNames)
@@ -985,7 +1027,7 @@ def pctilePvalSig(val):
     return 3
 
 
-def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=False, doStats=True, statsFile=None, statsAx=None):
+def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=None, violin=False, doStats=True, statsFile=None, statsAx=None):
     if categories2 is None:
         categories2 = ["a" for _ in categories]
         sortingCategories2 = categories2
@@ -999,12 +1041,20 @@ def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=Fals
         else:
             sortingCategories2 = categories2
 
+    if dotColors is None:
+        swarmPallete = sns.color_palette(palette=["black"])
+        dotColors = np.array([0.0 for _ in yvals])
+    else:
+        nColors = len(np.unique(dotColors))
+        swarmPallete = sns.color_palette("coolwarm", n_colors=nColors)
+
     # Same sorting here as in perseveration plot function so colors are always the same
     sortList = ["{}__{}__{}".format(x, y, xi)
                 for xi, (x, y) in enumerate(zip(categories, sortingCategories2))]
     categories = [x for _, x in sorted(zip(sortList, categories))]
     yvals = [x for _, x in sorted(zip(sortList, yvals))]
     categories2 = [x for _, x in sorted(zip(sortList, categories2))]
+    dotColors = [x for _, x in sorted(zip(sortList, dotColors))]
 
     if axesNames is None:
         hideAxes = True
@@ -1013,7 +1063,8 @@ def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=Fals
         hideAxes = False
 
     axesNamesNoSpaces = [a.replace(" ", "_") for a in axesNames]
-    s = pd.Series([categories, yvals, categories2], index=axesNamesNoSpaces)
+    axesNamesNoSpaces.append("dotcoloraxisname")
+    s = pd.Series([categories, yvals, categories2, dotColors], index=axesNamesNoSpaces)
 
     ax.cla()
 
@@ -1026,10 +1077,24 @@ def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=Fals
             warnings.filterwarnings("error", category=UserWarning)
             while not plotWorked:
                 try:
-                    p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
-                                        y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
-                    sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
-                                  y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", size=swarmDotSize, dodge=True, zorder=3)
+                    # p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
+                    # y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
+                    # sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
+                    #   y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", size=swarmDotSize, dodge=True, zorder=3)
+
+                    sx = np.array(s[axesNamesNoSpaces[2]])
+                    sy = np.array(s[axesNamesNoSpaces[1]]).astype(float)
+                    sh = np.array(s[axesNamesNoSpaces[0]])
+                    swarmx = np.array([a + b for a, b in zip(sx, sh)])
+                    # print(swarmx)
+                    # print(sx)
+                    # print(sy)
+                    # print(sy.dtype)
+
+                    p1 = sns.violinplot(ax=ax, hue=sh,
+                                        y=sy, x=swarmx, data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
+                    sns.swarmplot(ax=ax, x=swarmx, y=sy, hue=dotColors, data=s,
+                                  size=swarmDotSize, zorder=3, dodge=False, palette=swarmPallete)
                     # print("worked")
                     plotWorked = True
                 except UserWarning as e:
@@ -1042,7 +1107,7 @@ def boxPlot(ax, yvals, categories, categories2=None, axesNames=None, violin=Fals
         p1 = sns.boxplot(
             ax=ax, hue=axesNamesNoSpaces[0], y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, zorder=1)
         sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
-                      y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", dodge=True, zorder=3)
+                      y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color=s[axesNamesNoSpaces[3]], dodge=True, zorder=3)
 
     if cat2IsFake:
         p1.set(xticklabels=[])

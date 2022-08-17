@@ -35,7 +35,7 @@ def loadTrodesClusters(fname):
 
 
 def ccw(A, B, C):
-    return (C[1]-A[1]) * (B[0]-A[0]) > (B[1]-A[1]) * (C[0]-A[0])
+    return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
 
 # Return true if line segments AB and CD intersect
 
@@ -54,7 +54,7 @@ def isInPolygons(polygons, points):
         numIntersections = np.zeros((points.shape[0],))
         for i in range(len(ppts)):
             p1 = ppts[i]
-            p2 = ppts[(i+1) % len(ppts)]
+            p2 = ppts[(i + 1) % len(ppts)]
             for j in range(len(numIntersections)):
                 if intersect(p1, p2, [0, 0], pa[j]):
                     numIntersections[j] += 1
@@ -154,8 +154,8 @@ def runTheThingWithFilenames(args, makeFigs=False):
 
     if clusterFileName != "None":
         clusters = loadTrodesClusters(clusterFileName)
-        clusterPolygons = clusters[spk_tet-1][clusterIndex]
-        clfunc = makeClusterFuncFromFile(clusterFileName, spk_tet-1, clusterIndex)
+        clusterPolygons = clusters[spk_tet - 1][clusterIndex]
+        clfunc = makeClusterFuncFromFile(clusterFileName, spk_tet - 1, clusterIndex)
     else:
         clusterPolygons = None
         diagPoint = np.array([3408, 682, 3053, 690], dtype=float)
@@ -189,7 +189,6 @@ def makeClusterFuncFromFile(clusterFileName, trodeIndex, clusterIndex):
         while [] in cl:
             cl.remove([])
     print(clusters)
-
 
     def retF(features, chmaxes, maxfeature, endFeatures, chmins):
         if isinstance(clusterIndex, list):
@@ -370,7 +369,7 @@ def runTheThingWithAnimalInfo(animal_name, condition, amplitude=40):
     runTheThing(data_file, lfp_data_file, lfp_ts_file, output_fname, clfunc, tStart, tEnd)
 
 
-def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, tStart=None, tEnd=None,  makeFigs=False, clusterPolygons=None,
+def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, tStart=None, tEnd=None, makeFigs=False, clusterPolygons=None,
                 UP_DEFLECT_STIM_THRESH=10000):
     DOWN_DEFLECT_NOISE_THRESH = -40000
     NOISE_BWD_EXCLUDE_SECS = 1
@@ -429,7 +428,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         features[si, :] = wfs[:, maxslice]
 
         endSize = 10
-        endWf = wfs[:,-endSize:]
+        endWf = wfs[:, -endSize:]
         ntp = endSize
         maxpt = np.argmax(endWf)
         maxtet = maxpt // ntp
@@ -539,7 +538,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
                     vtxs = p[2]
                     for i in range(len(vtxs)):
                         p1 = vtxs[i]
-                        p2 = vtxs[(i+1) % len(vtxs)]
+                        p2 = vtxs[(i + 1) % len(vtxs)]
                         plt.plot([p1[0], p2[0]], [p1[1], p2[1]], color="red")
 
         plt.show()
@@ -624,7 +623,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         LFP_HZ = 4
         NOISE_BWD_EXCLUDE_SECS = 0.5
         NOISE_FWD_EXCLUDE_SECS = 2
-        lfp_data = np.sin(np.linspace(0, 2*np.pi, num=100))
+        lfp_data = np.sin(np.linspace(0, 2 * np.pi, num=100))
         DOWN_DEFLECT_NOISE_THRESH = -0.9
 
     is_noise = lfp_data < DOWN_DEFLECT_NOISE_THRESH
@@ -632,7 +631,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
     NOISE_FWD_EXCLUDE_FRAMES = int(NOISE_FWD_EXCLUDE_SECS * LFP_HZ)
     STRSZHLF = max(NOISE_BWD_EXCLUDE_FRAMES, NOISE_FWD_EXCLUDE_FRAMES)
     dilstr = np.zeros((STRSZHLF * 2))
-    dilstr[STRSZHLF-NOISE_BWD_EXCLUDE_FRAMES:STRSZHLF+NOISE_FWD_EXCLUDE_FRAMES] = 1
+    dilstr[STRSZHLF - NOISE_BWD_EXCLUDE_FRAMES:STRSZHLF + NOISE_FWD_EXCLUDE_FRAMES] = 1
 
     # Ugh this isn't working after arch linux upgrade (libffi newer version)
     # noise_mask = binary_dilation(is_noise, structure=dilstr).astype(bool)
@@ -640,7 +639,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
     i = 0
     while i < len(noise_mask):
         if is_noise[i]:
-            for j in range(max(0, i-NOISE_BWD_EXCLUDE_FRAMES), min(len(is_noise), NOISE_FWD_EXCLUDE_FRAMES)):
+            for j in range(max(0, i - NOISE_BWD_EXCLUDE_FRAMES), min(len(is_noise), NOISE_FWD_EXCLUDE_FRAMES)):
                 noise_mask[j] = 1
                 i = j
         i += 1
@@ -673,7 +672,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         t1 = ts[peaks[0]]
         t2 = ts[peaks[-1]]
         print("{} ({}-{}), {} total stims = {} Hz".format(
-            t2-t1, t1, t2, len(peaks), float(len(peaks))/float(t2-t1)
+            t2 - t1, t1, t2, len(peaks), float(len(peaks)) / float(t2 - t1)
         ))
         plt.title("lfp peaks with noise included")
 
@@ -698,12 +697,12 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
         plt.show()
 
     NUM_PSTH_BINS = int(PSTH_MARGIN_MS / SPK_BIN_SZ_MS)
-    psth = np.zeros((stimpeaks.size, 2*NUM_PSTH_BINS))
+    psth = np.zeros((stimpeaks.size, 2 * NUM_PSTH_BINS))
     spike_times = c1ts.astype(float) / 30000
     stim_times = lfp_ts[stimpeaks].astype(float) / 30000
 
     NUM_LFP_PSTH_BINS = int(PSTH_MARGIN_SECS * LFP_HZ)
-    lfp_psth = np.zeros((stimpeaks.size, 2*NUM_LFP_PSTH_BINS))
+    lfp_psth = np.zeros((stimpeaks.size, 2 * NUM_LFP_PSTH_BINS))
     for si, (st, stidx) in enumerate(zip(stim_times, stimpeaks)):
         if tStart is not None and st < tStart / 30000:
             psth[si, :] = np.nan
@@ -712,20 +711,20 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
             print("Reached tEnd of {} with time {}, breaking".format(tEnd / 30000, st))
             psth[si:, :] = np.nan
             break
-        bins = np.linspace(st - PSTH_MARGIN_SECS, st + PSTH_MARGIN_SECS, num=2*NUM_PSTH_BINS+1)
+        bins = np.linspace(st - PSTH_MARGIN_SECS, st + PSTH_MARGIN_SECS, num=2 * NUM_PSTH_BINS + 1)
         h, b = np.histogram(spike_times, bins=bins)
         psth[si, :] = h / (SPK_BIN_SZ_MS / 1000)
 
-        lfp_psth[si, :] = lfp_data[stidx-NUM_LFP_PSTH_BINS:stidx+NUM_LFP_PSTH_BINS]
+        lfp_psth[si, :] = lfp_data[stidx - NUM_LFP_PSTH_BINS:stidx + NUM_LFP_PSTH_BINS]
 
-    numStimsCounted = np.count_nonzero(np.isnan(psth[:, 0]))
+    numStimsCounted = np.count_nonzero(np.logical_not(np.isnan(psth[:, 0])))
     print("{}/{} stims included".format(numStimsCounted, psth.shape[0]))
     avg_fr_psth = np.nanmean(psth, axis=0)
     std_fr_psth = np.nanstd(psth, axis=0)
     avg_lfp_psth = np.mean(lfp_psth, axis=0)
     std_lfp_psth = np.std(lfp_psth, axis=0)
-    x1 = np.linspace(-PSTH_MARGIN_SECS, PSTH_MARGIN_SECS, NUM_PSTH_BINS*2)
-    x2 = np.linspace(-PSTH_MARGIN_SECS, PSTH_MARGIN_SECS, NUM_LFP_PSTH_BINS*2)
+    x1 = np.linspace(-PSTH_MARGIN_SECS, PSTH_MARGIN_SECS, NUM_PSTH_BINS * 2)
+    x2 = np.linspace(-PSTH_MARGIN_SECS, PSTH_MARGIN_SECS, NUM_LFP_PSTH_BINS * 2)
     # y1 = avg_fr_psth - np.min(avg_fr_psth)
     y2 = avg_lfp_psth - np.min(avg_lfp_psth)
     # y1 = y1 / np.max(y1)

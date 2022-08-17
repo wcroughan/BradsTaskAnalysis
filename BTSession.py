@@ -1011,6 +1011,7 @@ class BTSession:
                                      timeInterval=timeInterval, returnIdxs=True)[1])
 
         if len(neighborExitIdxs) == 0:
+            # print("emptyval ret, neighbor wells was {}".format(neighborWells))
             return emptyVal
 
         wellEntryIdxs = self.entry_exit_times(
@@ -1020,6 +1021,6 @@ class BTSession:
         # print(wellEntryIdxs)
         ret = len([nwei for nwei in neighborExitIdxs if nwei in wellEntryIdxs]) / \
             len(neighborExitIdxs)
-        # print(ret)
+        # print(timeInterval, ret)
 
         return ret

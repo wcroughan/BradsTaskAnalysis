@@ -11,7 +11,7 @@ import sys
 import os
 
 
-def findDataDir(possibleDataDirs=["/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]):
+def findDataDir(possibleDataDirs=["/media/WDC8/", "/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]):
     for dd in possibleDataDirs:
         if os.path.exists(dd):
             return dd
@@ -265,8 +265,8 @@ def getRipplePower(lfp_data, omit_artifacts=True, causal_smoothing=False,
             # lfp_data_copy[cleanup_start:cleanup_finish] = np.nan
             lfp_mask[cleanup_start:cleanup_finish] = 1
 
-        print("LFP mask letting {} of signal through".format(
-            1 - (np.count_nonzero(lfp_mask) / len(lfp_mask))))
+        # print("LFP mask letting {} of signal through".format(
+        #     1 - (np.count_nonzero(lfp_mask) / len(lfp_mask))))
 
     nyq_freq = LFP_SAMPLING_RATE * 0.5
     lo_cutoff = rippleFilterBand[0] / nyq_freq
@@ -447,6 +447,10 @@ def getListOfVisitedWells(nearestWells, countFirstVisitOnly):
 
 def onWall(well):
     return well < 9 or well > 40 or well % 8 in [2, 7]
+
+
+def offWall(well):
+    return not onWall(well)
 
 
 class AnimalInfo:
@@ -630,6 +634,56 @@ def getInfoForAnimal(animalName):
 
         ret.rerun_usb_videos = []
         ret.rerun_trodes_videos = []
+    elif animalName == "B18":
+        ret.X_START = 100
+        ret.X_FINISH = 1050
+        ret.Y_START = 20
+        ret.Y_FINISH = 900
+        # ret.data_dir = "/home/wcroughan/data/B18/bradtasksessions/"
+        # ret.output_dir = "/home/wcroughan/data/B18/processed_data/"
+        # ret.fig_output_dir = "/home/wcroughan/data/B18/processed_data/"
+        ret.data_dir = "/media/WDC8/B18/bradtasksessions/"
+        ret.output_dir = "/media/WDC8/B18/processed_data/"
+        ret.fig_output_dir = "/media/WDC8/B18/processed_data/"
+        ret.out_filename = "B18_bradtask.dat"
+
+        ret.excluded_dates = []
+        ret.minimum_date = None
+        ret.excluded_sessions = []
+
+        # Trodes video skips
+        ret.excluded_sessions += ["20220620_1"]
+        ret.excluded_sessions += ["20220622_2"]
+
+        # Trodes camera partially blocked during probe by pulley system. It's just wells 7-4 ish, might be able to deal with it in analysis
+        # At least it shouldn't effect measures at off wall wells
+        # ret.excluded_sessions += ["20220621_2"]
+
+        # Amplitude at 100uA, probably don't need to exclude but should note
+        # ret.excluded_sessions += ["20220620_2"]
+
+        # stim wire was broken, shoulda been iterruption but was no-stim control
+        # (both leads were disconnected, so no stim at all made it to brain)
+        ret.excluded_sessions += ["20220624_2"]
+
+        # Messed up the well order, so current pipeline can't handle clips. SHould still be able to analyze probe behavior though if I wanted to
+        ret.excluded_sessions += ["20220621_2"]
+
+        ret.DEFAULT_RIP_DET_TET = 5
+        ret.DEFAULT_RIP_BAS_TET = 3
+        ret.rerun_usb_videos = []
+        ret.rerun_trodes_videos = []
+
+        # ======================
+        # Temporary
+        # Just annoying behavior notes thing, fix and add back in
+        # ret.excluded_sessions += ["20220618_2"]
+        # ret.excluded_sessions += ["20220625_2"]
+        # ret.excluded_sessions += ["20220626_2"]
+        # ret.minimum_date = "20220621"
+        # ret.excluded_sessions = ["20220621_2", "20220622_2", "20220623_2"]
+        # ret.excluded_sessions += ["2022062{}_1".format(v) for v in range(24, 29)]
+        # ret.excluded_sessions += ["2022062{}_2".format(v) for v in range(24, 29)]
 
     else:
         raise Exception("Unknown animal name")
@@ -653,17 +707,26 @@ def generateFoundWells(home_well, away_wells, last_away_well, ended_on_home, fou
     return foundWells
 
 
-def getUSBVideoFile(seshName, possibleDirectories):
+def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirectly=False):
+    print(seshName)
     seshDate, seshTime = seshName.split("_")
-    if len(seshTime) == 1:
-        # seshTime is actually session idx
-        seshIdx = int(seshTime) - 1
+    if len(seshTime) == 1 or seshIdx is not None:
+        # seshTime is actually session idx, or it's been provided directly
+        if seshIdx is None:
+            seshIdx = int(seshTime) - 1
+        else:
+            seshIdx -= 1
 
         usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
         possibleUSBVids = []
         for pd in possibleDirectories:
-            gl = pd + "/" + usbDateStr + "*.mkv"
-            possibleUSBVids += glob.glob(gl)
+            directName = os.path.join(pd, usbDateStr + "_" + str(seshIdx + 1) + ".mkv")
+            if os.path.exists(directName):
+                return directName
+
+            if not useSeshIdxDirectly:
+                gl = pd + "/" + usbDateStr + "*.mkv"
+                possibleUSBVids += glob.glob(gl)
 
         if len(possibleUSBVids) == 0:
             return None
@@ -687,11 +750,13 @@ def getUSBVideoFile(seshName, possibleDirectories):
         usbVidFile = None
         for uvi, uv in enumerate(sorted(possibleUSBVids)):
             fname = uv.split("/")[-1]
+            print(fname)
             if " " in fname:
                 timeStr = fname.split(" ")[1].split(".")[0]
             else:
                 timeStr = fname.split("_")[1].split(".")[0]
             timeVals = [float(v) for v in timeStr.split("-")]
+            print(timeVals)
             usbTime = timeVals[0] * 3600 + timeVals[1] * 60 + timeVals[0]
 
             diff = abs(usbTime - seshTimeVal)
