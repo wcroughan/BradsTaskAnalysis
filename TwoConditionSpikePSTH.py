@@ -9,7 +9,7 @@ from SpikeCalibration import MUAClusterFunc, runTheThing, makeClusterFuncFromFil
 
 
 def makePSTH(animal_name):
-    possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/media/WDC6/", "/media/fosterlab/WDC6/"]
+    possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/media/WDC6/", "/media/fosterlab/WDC6/", "/media/WDC8/", "/media/fosterlab/WDC8/"]
     print(possible_drive_dirs)
     drive_dir = None
     for dd in possible_drive_dirs:
@@ -256,7 +256,7 @@ def makePSTH(animal_name):
             spikeTet = 3
             # clFileSuffix_delay = "_2"
             clFileSuffix = "_again"
-        else:
+        elif False:
             runName = "20220616_100325"
             swrt0 = ConvertTimeToTrodesTS(0, 39, 0)
             swrt1 = ConvertTimeToTrodesTS(1, 9, 15)
@@ -264,6 +264,57 @@ def makePSTH(animal_name):
             ctrlt1 = ConvertTimeToTrodesTS(2, 12, 13)
             lfpTet = 3
             spikeTet = 3
+        elif False:
+            runName = "20220617_121743"
+            swrt0 = ConvertTimeToTrodesTS(0, 25, 15)
+            swrt1 = ConvertTimeToTrodesTS(0, 55, 12)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 32, 2)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 5, 50)
+            lfpTet = 3
+            spikeTet = 3
+            clFileSuffix = "_2"
+        elif False:
+            runName = "20220620_123733"
+            swrt0 = ConvertTimeToTrodesTS(0, 42, 43)
+            swrt1 = ConvertTimeToTrodesTS(1, 12, 33)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 43, 17)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 18, 3)
+            lfpTet = 3
+            spikeTet = 3
+        elif False:
+            runName = "20220620_173330"
+            swrt0 = ConvertTimeToTrodesTS(1, 22, 37)
+            swrt1 = ConvertTimeToTrodesTS(1, 52, 40)
+            ctrlt0 = ConvertTimeToTrodesTS(2, 51, 1)
+            ctrlt1 = ConvertTimeToTrodesTS(3, 24, 45)
+            lfpTet = 3
+            spikeTet = 3
+        elif False:
+            runName = "20220623_114549"
+            swrt0 = ConvertTimeToTrodesTS(3, 2, 24)
+            swrt1 = ConvertTimeToTrodesTS(3, 32, 30)
+            ctrlt0 = ConvertTimeToTrodesTS(4, 5, 25)
+            ctrlt1 = ConvertTimeToTrodesTS(4, 44, 0)
+            lfpTet = 3
+            spikeTet = 3
+        elif False:
+            runName = "20220627_134658"
+            swrt0 = ConvertTimeToTrodesTS(0, 30, 2)
+            swrt1 = ConvertTimeToTrodesTS(1, 0, 37)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 33, 6)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 18, 0)
+            lfpTet = 3
+            spikeTet = 3
+        else:
+            runName = "20220627_171258"
+            swrt0 = ConvertTimeToTrodesTS(0, 39, 55)
+            swrt1 = ConvertTimeToTrodesTS(1, 10, 55)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 39, 15)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 25, 10)
+            lfpTet = 3
+            spikeTet = 3
+
+
 
 
         if clFileSuffix_delay is None:
@@ -502,6 +553,8 @@ def makePSTH(animal_name):
         print(syscmd)
         os.system(syscmd)
 
+    if not os.path.exists(outputDir):
+        os.makedirs(outputDir)
     lfpTimestampFileName = ".".join(lfpFileName.split(".")[0:-2]) + ".timestamps.dat"
     swrOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_swr_psth.png")
     ctrlOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_ctrl_psth.png")
@@ -533,7 +586,7 @@ def makePSTH(animal_name):
 
 
     normFrac = 0.125
-    normMaxIdx = math.floor(np.size(swrMeanPSTH) / normFrac)
+    normMaxIdx = math.floor(np.size(swrMeanPSTH) * normFrac)
     print(f"Normalizing to the first {normMaxIdx} datapoints, (out of {np.size(swrMeanPSTH)})")
     swrBaseline = np.mean(swrMeanPSTH[0:normMaxIdx])
     ctrlBaseline = np.mean(ctrlMeanPSTH[0:normMaxIdx])
