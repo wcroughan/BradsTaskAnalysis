@@ -747,8 +747,7 @@ def runTheThing(spike_file, lfp_file, lfp_timestamp_file, output_fname, clfunc, 
 
 
 # TODO this shouldn't run here do I need this to be global for some reason??
-possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/",
-                       "/media/WDC6/", "/media/fosterlab/WDC6/"]
+possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/media/WDC6/", "/media/fosterlab/WDC6/", "/media/WDC8/", "/media/fosterlab/WDC8/"]
 drive_dir = None
 for dd in possible_drive_dirs:
     if os.path.exists(dd):
