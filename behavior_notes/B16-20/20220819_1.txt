@@ -1,0 +1,19 @@
+Order: ['B20', 'B16', 'B19', 'B17', 'B18']
+Home: 37
+Aways: 43 14 19 22 21 36 11 26 6 44 5 10
+Condition: Interruption
+fill probe at 180.0s
+Thresh: Low
+Last Away: 
+Last well: 
+ITI Stim On: 
+Probe Stim On: 
+Weight: 
+
+
+.aa...
+..aa..
+a.....
+.a.aa.
+aa..a.
+...aa.
