@@ -166,6 +166,7 @@ class WellMeasure():
 
 def makeFigures(
     MAKE_LAST_MEETING_FIGS=None,
+    MAKE_MID_MEETING_FIGS=None,
     MAKE_SPIKE_ANALYSIS_FIGS=None,
     MAKE_CLOSE_PASS_FIGS=None,
     MAKE_INITIAL_HEADING_FIGS=None,
@@ -466,6 +467,11 @@ def makeFigures(
                     ax.tick_params(axis="both", which="both", label1On=False,
                                    label2On=False, tick1On=False, tick2On=False)
 
+        if not MAKE_MID_MEETING_FIGS:
+            print("Warning skipping mid meeting figs")
+        else:
+            pass
+
     if len(animalNames) > 1:
         pp.makeCombinedFigs(outputSubDir="combo {}".format(" ".join(animalNames)))
 
@@ -474,7 +480,8 @@ def makeFigures(
 
 
 if __name__ == "__main__":
-    makeFigures(MAKE_UNSPECIFIED=False, MAKE_LAST_MEETING_FIGS=True, RUN_SHUFFLES=True)
+    # makeFigures(MAKE_UNSPECIFIED=False, MAKE_LAST_MEETING_FIGS=True, RUN_SHUFFLES=True)
+    makeFigures(MAKE_UNSPECIFIED=False, MAKE_MID_MEETING_FIGS=True)
 
 
 # TODO: new analyses
