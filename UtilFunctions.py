@@ -3,7 +3,7 @@ from consts import allWellNames, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 import csv
 import glob
 from scipy import stats, signal
-from scipy.ndimage.filters import gaussian_filter
+from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 import matplotlib.pyplot as plt
 from itertools import groupby
 from datetime import date
@@ -88,51 +88,54 @@ def readClipData(data_filename):
     return time_clips
 
 
-def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
-                   xLim=(100, 1050), yLim=(20, 900)):
-    x_pos = np.array(position_data['x1'], dtype=float)
-    y_pos = np.array(position_data['y1'], dtype=float)
+def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
+                          xLim=(100, 1050), yLim=(20, 900), smooth=None):
+    x_pos = np.array(x, dtype=float)
+    y_pos = np.array(y, dtype=float)
 
     # Interpolate the position data into evenly sampled time points
-    x = np.linspace(position_data['timestamp'][0],
-                    position_data['timestamp'][-1], position_data.shape[0])
 
-    xp = position_data['timestamp']
-    x_pos = np.interp(x, xp, position_data['x1'])
-    y_pos = np.interp(x, xp, position_data['y1'])
-    # position_sampling_frequency = TRODES_SAMPLING_RATE / np.diff(x)[0]
-    # Interpolated Timestamps:
-    # position_data['timestamp'] = x
+    if len(t) == len(x):
+        tpts = np.linspace(t[0], t[-1], len(t))
+        x_pos = np.interp(tpts, t, x)
+        y_pos = np.interp(tpts, t, y)
+    else:
+        # probably from DLC
+        tpts = np.linspace(t[0], t[-1], len(x))
+        x_pos = x
+        y_pos = y
 
     # Remove large jumps in position (tracking errors)
     for _ in range(nCleaningReps):
         jump_distance = np.sqrt(np.square(np.diff(x_pos, prepend=x_pos[0])) +
                                 np.square(np.diff(y_pos, prepend=y_pos[0])))
         # print(jump_distance)
-        points_in_range = (x_pos > xLim[0]) & (x_pos < xLim[1]) &\
-            (y_pos > yLim[0]) & (y_pos < yLim[1])
+        points_in_range = np.ones_like(jump_distance).astype(bool)
+        if xLim is not None:
+            points_in_range &= (x_pos > xLim[0]) & (x_pos < xLim[1])
+        if yLim is not None:
+            points_in_range &= (y_pos > yLim[0]) & (y_pos < yLim[1])
         clean_points = jump_distance < maxJumpDistance
 
     # substitute them with NaNs then interpolate
     x_pos[np.logical_not(clean_points & points_in_range)] = np.nan
     y_pos[np.logical_not(clean_points & points_in_range)] = np.nan
 
-    # try:
-    #     assert not np.isnan(x_pos[0])
-    #     assert not np.isnan(y_pos[0])
-    #     assert not np.isnan(x_pos[-1])
-    #     assert not np.isnan(y_pos[-1])
-    # except:
-    #     nans = np.argwhere(np.isnan(x_pos))
-    #     print("nans (", np.size(nans), "):", nans)
-    #     exit()
-
     nanpos = np.isnan(x_pos)
     notnanpos = np.logical_not(nanpos)
-    x_pos = np.interp(x, x[notnanpos], x_pos[notnanpos])
-    y_pos = np.interp(x, x[notnanpos], y_pos[notnanpos])
+    x_pos = np.interp(tpts, tpts[notnanpos], x_pos[notnanpos])
+    y_pos = np.interp(tpts, tpts[notnanpos], y_pos[notnanpos])
 
-    return list(x_pos), list(y_pos), list(x)
+    if smooth is not None:
+        x_pos = gaussian_filter1d(x_pos, smooth)
+        y_pos = gaussian_filter1d(y_pos, smooth)
+
+    return list(x_pos), list(y_pos), list(tpts)
+
+
+def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
+                   xLim=(100, 1050), yLim=(20, 900)):
+    processPosData_coords(position_data["x1"], position_data["y1"], position_data["timestamp"])
 
 
 def getWellCoordinates(well_num, well_coords_map):
@@ -471,6 +474,8 @@ class AnimalInfo:
         self.DEFAULT_RIP_DET_TET = None
         self.DEFAULT_RIP_BAS_TET = None
 
+        self.DLC_dir = None
+
 
 def getInfoForAnimal(animalName):
     ret = AnimalInfo
@@ -516,6 +521,8 @@ def getInfoForAnimal(animalName):
         ret.minimum_date = None
         ret.excluded_sessions = []
         ret.DEFAULT_RIP_DET_TET = 7
+
+        ret.DLC_dir = "/media/WDC6/DLC/trainingVideos/"
 
     elif animalName == "B12_goodpos":
         ret.X_START = 200

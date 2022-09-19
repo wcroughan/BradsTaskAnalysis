@@ -21,7 +21,7 @@ from consts import all_well_names, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 from UtilFunctions import readWellCoordsFile, readRawPositionData, readClipData, \
     processPosData, getWellCoordinates, getNearestWell, getWellEntryAndExitTimes, \
     quadrantOfWell, getListOfVisitedWells, onWall, getRipplePower, detectRipples, \
-    getInfoForAnimal, AnimalInfo, generateFoundWells, getUSBVideoFile
+    getInfoForAnimal, AnimalInfo, generateFoundWells, getUSBVideoFile, processPosData_coords
 from ClipsMaker import runPositionAnnotator, AnnotatorWindow
 from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, playFrames, processUSBVideoData
 
@@ -33,15 +33,18 @@ INSPECT_PROBE_BEHAVIOR_PLOT = False
 INSPECT_PLOT_WELL_OCCUPANCIES = False
 ENFORCE_DIFFERENT_WELL_COLORS = False
 RUN_JUST_SPECIFIED = False
-SPECIFIED_DAYS = ["20200604"]
+SPECIFIED_DAYS = ["20210903"]
+SPECIFIED_RUNS = []
 INSPECT_BOUTS = True
 SAVE_DONT_SHOW = True
 SHOW_CURVATURE_VIDEO = False
 SKIP_LFP = False
 SKIP_PREV_SESSION = True
+SKIP_SNIFF = True
 JUST_EXTRACT_TRODES_DATA = False
 RUN_INTERACTIVE = True
 MAKE_ALL_TRACKING_AUTO = False
+SKIP_CURVATURE = True
 
 numExtracted = 0
 numExcluded = 0
@@ -130,7 +133,7 @@ for session_idx, session_dir in enumerate(all_data_dirs):
 
     date_str = dir_split[0][-8:]
 
-    if RUN_JUST_SPECIFIED and date_str not in SPECIFIED_DAYS:
+    if RUN_JUST_SPECIFIED and date_str not in SPECIFIED_DAYS and session_dir not in SPECIFIED_RUNS:
         continue
 
     if date_str in animalInfo.excluded_dates:
@@ -170,6 +173,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     s = "{}_{}".format(date_str, time_str)
     # print(s)
     session.date = datetime.strptime(s, "%Y%m%d_%H%M%S")
+    print("===============================")
     print(session.date)
 
     session.prevSessionDir = prevSessionDirs[session_idx]
@@ -215,7 +219,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         # info_file = os.path.join(behavior_notes_dir, date_str + "_" +
         #  str(sesh_idx_within_day+1) + ".txt")
         info_file = possible_info_files[sesh_idx_within_day]
-        print("===========================\n", info_file, "\n")
+        print("=========\n", info_file, "\n")
         session.seshIdx = int(info_file.split("/")[-1].split("_")[-1].split(".")[0])
     else:
         session.seshIdx = 1
@@ -358,13 +362,22 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                     session.notes.append(line)
 
         if not JUST_EXTRACT_TRODES_DATA:
+            if session.probe_performed is None and animal_name == "B12":
+                session.probe_performed = True
+
             if session.probe_performed and session.probe_ended_at_well is None:
-                raise Exception(
-                    "Didn't mark the probe end well for session {}".format(session.name))
+                session.missingProbeEndedAtWell = True
+                # raise Exception(
+                #     "Didn't mark the probe end well for session {}".format(session.name))
+            else:
+                session.missingProbeEndedAtWell = False
 
             if not (session.last_away_well == session.away_wells[-1] and session.ended_on_home) and session.bt_ended_at_well is None:
-                raise Exception(
-                    "Didn't find all the wells but task end well not marked for session {}".format(session.name))
+                # raise Exception(
+                #     "Didn't find all the wells but task end well not marked for session {}".format(session.name))
+                session.missingEndedAtWell = True
+            else:
+                session.missingEndedAtWell = False
 
         session.infoFileName = info_file
 
@@ -483,11 +496,64 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             session.home_well, session.away_wells, session.last_away_well, session.ended_on_home, session.found_first_home)
 
     # ===================================
+    # read DLC pos data (if it exists)
+    # ===================================
+    position_data = None
+    positionLoadedFromDLC = False
+
+    if animalInfo.DLC_dir is not None:
+        btPosFileName = animalInfo.DLC_dir + session.name + "_task.npz"
+        probePosFileName = animalInfo.DLC_dir + session.name + "_probe.npz"
+        if not os.path.exists(btPosFileName) or not os.path.exists(probePosFileName):
+            print(f"SKIPPING {session.name} because no DLC file!")
+            continue
+
+        if session.missingEndedAtWell:
+            raise Exception(
+                "Have DLC stuff but no last well marked in behavior notes and didn't end on last home")
+        if session.missingProbeEndedAtWell:
+            raise Exception("Didn't mark the probe end well for session {}".format(session.name))
+
+        bt_pos = np.load(btPosFileName)
+        session.bt_pos_xs, session.bt_pos_ys, session.bt_pos_ts = \
+            processPosData_coords(bt_pos["x1"], bt_pos["y1"],
+                                  bt_pos["timestamp"], xLim=None, yLim=None, smooth=3)
+
+        probe_pos = np.load(probePosFileName)
+        session.probe_pos_xs, session.probe_pos_ys, session.probe_pos_ts = \
+            processPosData_coords(probe_pos["x1"], probe_pos["y1"],
+                                  probe_pos["timestamp"], xLim=None, yLim=None, smooth=3)
+        # if True:
+        #     plt.plot(session.probe_pos_xs, session.probe_pos_ys)
+        #     plt.show()
+
+        positionLoadedFromDLC = True
+        session.hasPositionData = True
+
+        position_data_metadata = {}
+        PIXELS_PER_CM = 1.28
+        KNOT_H_POS = KNOT_H_CM * PIXELS_PER_CM
+
+        xs = list(np.hstack((session.bt_pos_xs, session.probe_pos_xs)))
+        ys = list(np.hstack((session.bt_pos_ys, session.probe_pos_ys)))
+        ts = list(np.hstack((session.bt_pos_ts, session.probe_pos_ts)))
+
+    if not positionLoadedFromDLC:
+        if session.missingEndedAtWell:
+            raise Exception(
+                "Have DLC stuff but no last well marked in behavior notes and didn't end on last home")
+        if session.missingProbeEndedAtWell:
+            raise Exception("Didn't mark the probe end well for session {}".format(session.name))
+
+    # ===================================
     # get well coordinates
     # ===================================
     well_coords_file_name = file_str + '.1.wellLocations.csv'
-    if not os.path.exists(well_coords_file_name):
-        well_coords_file_name = os.path.join(animalInfo.data_dir, 'well_locations.csv')
+    if not os.path.exists(well_coords_file_name) or positionLoadedFromDLC:
+        if positionLoadedFromDLC:
+            well_coords_file_name = os.path.join(animalInfo.data_dir, 'well_locations_dlc.csv')
+        else:
+            well_coords_file_name = os.path.join(animalInfo.data_dir, 'well_locations.csv')
         print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
     session.well_coords_map = readWellCoordsFile(well_coords_file_name)
     session.home_x, session.home_y = getWellCoordinates(
@@ -496,36 +562,39 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     # ===================================
     # Read position data
     # ===================================
-    trackingFile = file_str + '.1.videoPositionTracking'
-    if os.path.exists(trackingFile):
-        position_data_metadata, position_data = readRawPositionData(
-            file_str + '.1.videoPositionTracking')
+    if not positionLoadedFromDLC:
+        trackingFile = file_str + '.1.videoPositionTracking'
+        if os.path.exists(trackingFile):
+            position_data_metadata, position_data = readRawPositionData(
+                file_str + '.1.videoPositionTracking')
 
-        if MAKE_ALL_TRACKING_AUTO and ("source" not in position_data_metadata or "trodescameraextractor" not in position_data_metadata["source"]):
-            # print(position_data_metadata)
-            position_data = None
-            os.rename(file_str + '.1.videoPositionTracking', file_str +
-                      '.1.videoPositionTracking.manualOutput')
+            if MAKE_ALL_TRACKING_AUTO and ("source" not in position_data_metadata or "trodescameraextractor" not in position_data_metadata["source"]):
+                # print(position_data_metadata)
+                position_data = None
+                os.rename(file_str + '.1.videoPositionTracking', file_str +
+                          '.1.videoPositionTracking.manualOutput')
+            else:
+                print("Got position tracking")
+                session.frameTimes = position_data['timestamp']
+                xs, ys, ts = processPosData(position_data, xLim=(
+                    animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
         else:
-            print("Got position tracking")
+            position_data = None
+
+        if position_data is None:
+            print("running trodes camera extractor!")
+            processRawTrodesVideo(file_str + '.1.h264')
+            position_data_metadata, position_data = readRawPositionData(
+                file_str + '.1.videoPositionTracking')
             session.frameTimes = position_data['timestamp']
-    else:
-        position_data = None
+            xs, ys, ts = processPosData(position_data, xLim=(
+                animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
 
-    if position_data is None:
-        print("running trodes camera extractor!")
-        processRawTrodesVideo(file_str + '.1.h264')
-        position_data_metadata, position_data = readRawPositionData(
-            file_str + '.1.videoPositionTracking')
-        session.frameTimes = position_data['timestamp']
-
-    if position_data is None:
+    if position_data is None and not positionLoadedFromDLC:
         print("Warning: skipping position data")
         session.hasPositionData = False
     else:
         session.hasPositionData = True
-        xs, ys, ts = processPosData(position_data, xLim=(
-            animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
 
         if animal_name != "Martin":
             if "lightonframe" in position_data_metadata:
@@ -553,7 +622,7 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 else:
                     print("doing the lights")
                     session.trodesLightOffTime, session.trodesLightOnTime = getTrodesLightTimes(
-                        file_str + '.1.h264', showVideo=True)
+                        file_str + '.1.h264', showVideo=False)
                     print("trodesLightFunc says trodes light Time {}, {} (/{})".format(
                         session.trodesLightOffTime, session.trodesLightOnTime, len(ts)))
 
@@ -581,6 +650,11 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             clipsFileName = file_str + '.1.clips'
             if not os.path.exists(clipsFileName) and len(session.foundWells) > 0:
                 print("clips file not found, gonna launch clips generator")
+                if positionLoadedFromDLC:
+                    xs = np.hstack((session.bt_pos_xs, session.probe_pos_xs))
+                    print(np.shape(xs))
+                    exit()
+
                 all_pos_nearest_wells = getNearestWell(
                     xs, ys, session.well_coords_map)
                 all_pos_well_entry_idxs, all_pos_well_exit_idxs, \
@@ -736,8 +810,9 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         if len(session.bt_interruption_pos_idxs) < 50:
             if session.isRippleInterruption and len(session.bt_interruption_pos_idxs) > 0:
                 # print( "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER THAN 50 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
-                raise Exception("SAW FEWER THAN 50 INTERRUPTIONS ON AN INTERRUPTION SESSION: {} on session {}".format(
-                    len(session.bt_interruption_pos_idxs), session.name))
+                # raise Exception("SAW FEWER THAN 50 INTERRUPTIONS ON AN INTERRUPTION SESSION: {} on session {}".format(
+                # len(session.bt_interruption_pos_idxs), session.name))
+                print("WARNING: FEWER THAN 50 STIMS DETECTED ON AN INTERRUPTION SESSION")
             elif len(session.bt_interruption_pos_idxs) == 0:
                 print(
                     "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING 0 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
@@ -1100,7 +1175,6 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             session.probe_well_entry_idxs, session.probe_well_exit_idxs, \
                 session.probe_well_entry_times, session.probe_well_exit_times = getWellEntryAndExitTimes(
                     session.probe_nearest_wells, session.probe_pos_ts)
-
             session.probe_well_entry_idxs_ninc, session.probe_well_exit_idxs_ninc, \
                 session.probe_well_entry_times_ninc, session.probe_well_exit_times_ninc = getWellEntryAndExitTimes(
                     session.probe_nearest_wells, session.probe_pos_ts, include_neighbors=True)
@@ -1137,6 +1211,19 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             session.bt_ended_at_well = session.home_well
 
         bt_ended_at_well_idx = np.argmax(all_well_names == session.bt_ended_at_well)
+
+        # if True:
+        #     print(all_well_names[bt_ended_at_well_idx])
+        #     print(session.bt_well_entry_idxs)
+        #     colors = ["k", "r", "g", "c"]
+        #     for wi in range(len(session.bt_well_entry_idxs)):
+        #         ents = session.bt_well_entry_idxs[wi]
+        #         exts = session.bt_well_exit_idxs[wi]
+        #         for ent, ext in zip(ents, exts):
+        #             plt.plot(session.bt_pos_xs[ent:ext],
+        #                      session.bt_pos_ys[ent:ext], colors[wi % 4])
+        #     plt.show()
+
         session.bt_recall_pos_idx = session.bt_well_exit_idxs[bt_ended_at_well_idx][-1]
 
         if session.probe_performed:
@@ -1151,6 +1238,9 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     dir_list = glob.glob(gl)
     if len(dir_list) == 0:
         print("Couldn't find sniff times files")
+        session.hasSniffTimes = False
+    elif SKIP_SNIFF:
+        print("Warning: skipping sniff stuff")
         session.hasSniffTimes = False
     else:
         session.hasSniffTimes = True
@@ -1276,123 +1366,45 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         # Knot-path-curvature as in https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000638
         # ===================================
 
-        dx = np.diff(session.bt_pos_xs)
-        dy = np.diff(session.bt_pos_ys)
-
-        if SHOW_CURVATURE_VIDEO:
-            cmap = plt.cm.get_cmap('coolwarm')
-            fig = plt.figure()
-            plt.ion()
-
-        session.bt_curvature = np.empty((dx.size + 1))
-        session.bt_curvature_i1 = np.empty((dx.size + 1))
-        session.bt_curvature_i2 = np.empty((dx.size + 1))
-        session.bt_curvature_dxf = np.empty((dx.size + 1))
-        session.bt_curvature_dyf = np.empty((dx.size + 1))
-        session.bt_curvature_dxb = np.empty((dx.size + 1))
-        session.bt_curvature_dyb = np.empty((dx.size + 1))
-        for pi in range(dx.size + 1):
-            x0 = session.bt_pos_xs[pi]
-            y0 = session.bt_pos_ys[pi]
-            ii = pi
-            dxf = 0.0
-            dyf = 0.0
-            while ii < dx.size:
-                dxf += dx[ii]
-                dyf += dy[ii]
-                magf = dxf * dxf + dyf * dyf
-                if magf >= KNOT_H_POS * KNOT_H_POS:
-                    break
-                ii += 1
-            if ii == dx.size:
-                session.bt_curvature[pi] = np.nan
-                session.bt_curvature_i1[pi] = np.nan
-                session.bt_curvature_i2[pi] = np.nan
-                session.bt_curvature_dxf[pi] = np.nan
-                session.bt_curvature_dyf[pi] = np.nan
-                session.bt_curvature_dxb[pi] = np.nan
-                session.bt_curvature_dyb[pi] = np.nan
-                continue
-            i2 = ii
-
-            ii = pi - 1
-            dxb = 0.0
-            dyb = 0.0
-            while ii >= 0:
-                dxb += dx[ii]
-                dyb += dy[ii]
-                magb = dxb * dxb + dyb * dyb
-                if magb >= KNOT_H_POS * KNOT_H_POS:
-                    break
-                ii -= 1
-            if ii == -1:
-                session.bt_curvature[pi] = np.nan
-                session.bt_curvature_i1[pi] = np.nan
-                session.bt_curvature_i2[pi] = np.nan
-                session.bt_curvature_dxf[pi] = np.nan
-                session.bt_curvature_dyf[pi] = np.nan
-                session.bt_curvature_dxb[pi] = np.nan
-                session.bt_curvature_dyb[pi] = np.nan
-                continue
-            i1 = ii
-
-            uxf = dxf / np.sqrt(magf)
-            uyf = dyf / np.sqrt(magf)
-            uxb = dxb / np.sqrt(magb)
-            uyb = dyb / np.sqrt(magb)
-            dotprod = uxf * uxb + uyf * uyb
-            session.bt_curvature[pi] = np.arccos(dotprod)
-
-            session.bt_curvature_i1[pi] = i1
-            session.bt_curvature_i2[pi] = i2
-            session.bt_curvature_dxf[pi] = dxf
-            session.bt_curvature_dyf[pi] = dyf
-            session.bt_curvature_dxb[pi] = dxb
-            session.bt_curvature_dyb[pi] = dyb
+        if SKIP_CURVATURE:
+            print("WARNING: Skipping curvature calculation")
+        else:
+            dx = np.diff(session.bt_pos_xs)
+            dy = np.diff(session.bt_pos_ys)
 
             if SHOW_CURVATURE_VIDEO:
-                plt.clf()
-                plt.xlim(0, 1200)
-                plt.ylim(0, 1000)
-                plt.plot(session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2])
-                c = np.array(
-                    cmap(session.bt_curvature[pi] / 3.15)).reshape(1, -1)
-                plt.scatter(session.bt_pos_xs[pi], session.bt_pos_ys[pi], c=c)
-                plt.show()
-                plt.pause(0.01)
+                cmap = plt.cm.get_cmap('coolwarm')
+                fig = plt.figure()
+                plt.ion()
 
-        if session.probe_performed:
-            dx = np.diff(session.probe_pos_xs)
-            dy = np.diff(session.probe_pos_ys)
-
-            session.probe_curvature = np.empty((dx.size + 1))
-            session.probe_curvature_i1 = np.empty((dx.size + 1))
-            session.probe_curvature_i2 = np.empty((dx.size + 1))
-            session.probe_curvature_dxf = np.empty((dx.size + 1))
-            session.probe_curvature_dyf = np.empty((dx.size + 1))
-            session.probe_curvature_dxb = np.empty((dx.size + 1))
-            session.probe_curvature_dyb = np.empty((dx.size + 1))
+            session.bt_curvature = np.empty((dx.size + 1))
+            session.bt_curvature_i1 = np.empty((dx.size + 1))
+            session.bt_curvature_i2 = np.empty((dx.size + 1))
+            session.bt_curvature_dxf = np.empty((dx.size + 1))
+            session.bt_curvature_dyf = np.empty((dx.size + 1))
+            session.bt_curvature_dxb = np.empty((dx.size + 1))
+            session.bt_curvature_dyb = np.empty((dx.size + 1))
             for pi in range(dx.size + 1):
-                x0 = session.probe_pos_xs[pi]
-                y0 = session.probe_pos_ys[pi]
+                x0 = session.bt_pos_xs[pi]
+                y0 = session.bt_pos_ys[pi]
                 ii = pi
                 dxf = 0.0
                 dyf = 0.0
                 while ii < dx.size:
                     dxf += dx[ii]
                     dyf += dy[ii]
-                    magf = np.sqrt(dxf * dxf + dyf * dyf)
-                    if magf >= KNOT_H_POS:
+                    magf = dxf * dxf + dyf * dyf
+                    if magf >= KNOT_H_POS * KNOT_H_POS:
                         break
                     ii += 1
                 if ii == dx.size:
-                    session.probe_curvature[pi] = np.nan
-                    session.probe_curvature_i1[pi] = np.nan
-                    session.probe_curvature_i2[pi] = np.nan
-                    session.probe_curvature_dxf[pi] = np.nan
-                    session.probe_curvature_dyf[pi] = np.nan
-                    session.probe_curvature_dxb[pi] = np.nan
-                    session.probe_curvature_dyb[pi] = np.nan
+                    session.bt_curvature[pi] = np.nan
+                    session.bt_curvature_i1[pi] = np.nan
+                    session.bt_curvature_i2[pi] = np.nan
+                    session.bt_curvature_dxf[pi] = np.nan
+                    session.bt_curvature_dyf[pi] = np.nan
+                    session.bt_curvature_dxb[pi] = np.nan
+                    session.bt_curvature_dyb[pi] = np.nan
                     continue
                 i2 = ii
 
@@ -1402,113 +1414,202 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
                 while ii >= 0:
                     dxb += dx[ii]
                     dyb += dy[ii]
-                    magb = np.sqrt(dxb * dxb + dyb * dyb)
-                    if magb >= KNOT_H_POS:
+                    magb = dxb * dxb + dyb * dyb
+                    if magb >= KNOT_H_POS * KNOT_H_POS:
                         break
                     ii -= 1
                 if ii == -1:
-                    session.probe_curvature[pi] = np.nan
-                    session.probe_curvature_i1[pi] = np.nan
-                    session.probe_curvature_i2[pi] = np.nan
-                    session.probe_curvature_dxf[pi] = np.nan
-                    session.probe_curvature_dyf[pi] = np.nan
-                    session.probe_curvature_dxb[pi] = np.nan
-                    session.probe_curvature_dyb[pi] = np.nan
+                    session.bt_curvature[pi] = np.nan
+                    session.bt_curvature_i1[pi] = np.nan
+                    session.bt_curvature_i2[pi] = np.nan
+                    session.bt_curvature_dxf[pi] = np.nan
+                    session.bt_curvature_dyf[pi] = np.nan
+                    session.bt_curvature_dxb[pi] = np.nan
+                    session.bt_curvature_dyb[pi] = np.nan
                     continue
                 i1 = ii
 
-                uxf = dxf / magf
-                uyf = dyf / magf
-                uxb = dxb / magb
-                uyb = dyb / magb
+                uxf = dxf / np.sqrt(magf)
+                uyf = dyf / np.sqrt(magf)
+                uxb = dxb / np.sqrt(magb)
+                uyb = dyb / np.sqrt(magb)
                 dotprod = uxf * uxb + uyf * uyb
-                session.probe_curvature[pi] = np.arccos(dotprod)
+                session.bt_curvature[pi] = np.arccos(dotprod)
 
-                session.probe_curvature_i1[pi] = i1
-                session.probe_curvature_i2[pi] = i2
-                session.probe_curvature_dxf[pi] = dxf
-                session.probe_curvature_dyf[pi] = dyf
-                session.probe_curvature_dxb[pi] = dxb
-                session.probe_curvature_dyb[pi] = dyb
+                session.bt_curvature_i1[pi] = i1
+                session.bt_curvature_i2[pi] = i2
+                session.bt_curvature_dxf[pi] = dxf
+                session.bt_curvature_dyf[pi] = dyf
+                session.bt_curvature_dxb[pi] = dxb
+                session.bt_curvature_dyb[pi] = dyb
 
-        session.bt_well_curvatures = []
-        session.bt_well_avg_curvature_over_time = []
-        session.bt_well_avg_curvature_over_visits = []
-        for i, wi in enumerate(all_well_names):
-            session.bt_well_curvatures.append([])
-            for ei, (weni, wexi) in enumerate(zip(session.bt_well_entry_idxs[i], session.bt_well_exit_idxs[i])):
-                if wexi > session.bt_curvature.size:
-                    continue
-                if weni == wexi:
-                    continue
-                session.bt_well_curvatures[i].append(
-                    session.bt_curvature[weni:wexi])
+                if SHOW_CURVATURE_VIDEO:
+                    plt.clf()
+                    plt.xlim(0, 1200)
+                    plt.ylim(0, 1000)
+                    plt.plot(session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2])
+                    c = np.array(
+                        cmap(session.bt_curvature[pi] / 3.15)).reshape(1, -1)
+                    plt.scatter(session.bt_pos_xs[pi], session.bt_pos_ys[pi], c=c)
+                    plt.show()
+                    plt.pause(0.01)
 
-            if len(session.bt_well_curvatures[i]) > 0:
-                session.bt_well_avg_curvature_over_time.append(
-                    np.mean(np.concatenate(session.bt_well_curvatures[i])))
-                session.bt_well_avg_curvature_over_visits.append(
-                    np.mean([np.mean(x) for x in session.bt_well_curvatures[i]]))
-            else:
-                session.bt_well_avg_curvature_over_time.append(np.nan)
-                session.bt_well_avg_curvature_over_visits.append(np.nan)
+            if session.probe_performed:
+                dx = np.diff(session.probe_pos_xs)
+                dy = np.diff(session.probe_pos_ys)
 
-        if session.probe_performed:
-            session.probe_well_curvatures = []
-            session.probe_well_avg_curvature_over_time = []
-            session.probe_well_avg_curvature_over_visits = []
-            session.probe_well_curvatures_1min = []
-            session.probe_well_avg_curvature_over_time_1min = []
-            session.probe_well_avg_curvature_over_visits_1min = []
-            session.probe_well_curvatures_30sec = []
-            session.probe_well_avg_curvature_over_time_30sec = []
-            session.probe_well_avg_curvature_over_visits_30sec = []
+                session.probe_curvature = np.empty((dx.size + 1))
+                session.probe_curvature_i1 = np.empty((dx.size + 1))
+                session.probe_curvature_i2 = np.empty((dx.size + 1))
+                session.probe_curvature_dxf = np.empty((dx.size + 1))
+                session.probe_curvature_dyf = np.empty((dx.size + 1))
+                session.probe_curvature_dxb = np.empty((dx.size + 1))
+                session.probe_curvature_dyb = np.empty((dx.size + 1))
+                for pi in range(dx.size + 1):
+                    x0 = session.probe_pos_xs[pi]
+                    y0 = session.probe_pos_ys[pi]
+                    ii = pi
+                    dxf = 0.0
+                    dyf = 0.0
+
+                    # cdx = np.cumsum(dx[pi:])
+                    # cdy = np.cumsum(dy[pi:])
+                    # cmagf = np.sqrt(cdx * cdx + cdy + cdy)
+                    # firstPass = np.asarray(cmagf >= KNOT_H_POS).nonzero()[0][0]
+                    # ii = firstPass + pi
+
+                    while ii < dx.size:
+                        dxf += dx[ii]
+                        dyf += dy[ii]
+                        magf = np.sqrt(dxf * dxf + dyf * dyf)
+                        if magf >= KNOT_H_POS:
+                            # print(numiters)
+                            break
+                        ii += 1
+                    if ii == dx.size:
+                        session.probe_curvature[pi] = np.nan
+                        session.probe_curvature_i1[pi] = np.nan
+                        session.probe_curvature_i2[pi] = np.nan
+                        session.probe_curvature_dxf[pi] = np.nan
+                        session.probe_curvature_dyf[pi] = np.nan
+                        session.probe_curvature_dxb[pi] = np.nan
+                        session.probe_curvature_dyb[pi] = np.nan
+                        continue
+                    i2 = ii
+
+                    ii = pi - 1
+                    dxb = 0.0
+                    dyb = 0.0
+                    while ii >= 0:
+                        dxb += dx[ii]
+                        dyb += dy[ii]
+                        magb = np.sqrt(dxb * dxb + dyb * dyb)
+                        if magb >= KNOT_H_POS:
+                            break
+                        ii -= 1
+                    if ii == -1:
+                        session.probe_curvature[pi] = np.nan
+                        session.probe_curvature_i1[pi] = np.nan
+                        session.probe_curvature_i2[pi] = np.nan
+                        session.probe_curvature_dxf[pi] = np.nan
+                        session.probe_curvature_dyf[pi] = np.nan
+                        session.probe_curvature_dxb[pi] = np.nan
+                        session.probe_curvature_dyb[pi] = np.nan
+                        continue
+                    i1 = ii
+
+                    uxf = dxf / magf
+                    uyf = dyf / magf
+                    uxb = dxb / magb
+                    uyb = dyb / magb
+                    dotprod = uxf * uxb + uyf * uyb
+                    session.probe_curvature[pi] = np.arccos(dotprod)
+
+                    session.probe_curvature_i1[pi] = i1
+                    session.probe_curvature_i2[pi] = i2
+                    session.probe_curvature_dxf[pi] = dxf
+                    session.probe_curvature_dyf[pi] = dyf
+                    session.probe_curvature_dxb[pi] = dxb
+                    session.probe_curvature_dyb[pi] = dyb
+
+            session.bt_well_curvatures = []
+            session.bt_well_avg_curvature_over_time = []
+            session.bt_well_avg_curvature_over_visits = []
             for i, wi in enumerate(all_well_names):
-                session.probe_well_curvatures.append([])
-                session.probe_well_curvatures_1min.append([])
-                session.probe_well_curvatures_30sec.append([])
-                for ei, (weni, wexi) in enumerate(zip(session.probe_well_entry_idxs[i], session.probe_well_exit_idxs[i])):
-                    if wexi > session.probe_curvature.size:
+                session.bt_well_curvatures.append([])
+                for ei, (weni, wexi) in enumerate(zip(session.bt_well_entry_idxs[i], session.bt_well_exit_idxs[i])):
+                    if wexi > session.bt_curvature.size:
                         continue
                     if weni == wexi:
                         continue
-                    session.probe_well_curvatures[i].append(
-                        session.probe_curvature[weni:wexi])
-                    if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60 * TRODES_SAMPLING_RATE:
-                        session.probe_well_curvatures_1min[i].append(
+                    session.bt_well_curvatures[i].append(
+                        session.bt_curvature[weni:wexi])
+
+                if len(session.bt_well_curvatures[i]) > 0:
+                    session.bt_well_avg_curvature_over_time.append(
+                        np.mean(np.concatenate(session.bt_well_curvatures[i])))
+                    session.bt_well_avg_curvature_over_visits.append(
+                        np.mean([np.mean(x) for x in session.bt_well_curvatures[i]]))
+                else:
+                    session.bt_well_avg_curvature_over_time.append(np.nan)
+                    session.bt_well_avg_curvature_over_visits.append(np.nan)
+
+            if session.probe_performed:
+                session.probe_well_curvatures = []
+                session.probe_well_avg_curvature_over_time = []
+                session.probe_well_avg_curvature_over_visits = []
+                session.probe_well_curvatures_1min = []
+                session.probe_well_avg_curvature_over_time_1min = []
+                session.probe_well_avg_curvature_over_visits_1min = []
+                session.probe_well_curvatures_30sec = []
+                session.probe_well_avg_curvature_over_time_30sec = []
+                session.probe_well_avg_curvature_over_visits_30sec = []
+                for i, wi in enumerate(all_well_names):
+                    session.probe_well_curvatures.append([])
+                    session.probe_well_curvatures_1min.append([])
+                    session.probe_well_curvatures_30sec.append([])
+                    for ei, (weni, wexi) in enumerate(zip(session.probe_well_entry_idxs[i], session.probe_well_exit_idxs[i])):
+                        if wexi > session.probe_curvature.size:
+                            continue
+                        if weni == wexi:
+                            continue
+                        session.probe_well_curvatures[i].append(
                             session.probe_curvature[weni:wexi])
-                    if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30 * TRODES_SAMPLING_RATE:
-                        session.probe_well_curvatures_30sec[i].append(
-                            session.probe_curvature[weni:wexi])
+                        if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60 * TRODES_SAMPLING_RATE:
+                            session.probe_well_curvatures_1min[i].append(
+                                session.probe_curvature[weni:wexi])
+                        if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30 * TRODES_SAMPLING_RATE:
+                            session.probe_well_curvatures_30sec[i].append(
+                                session.probe_curvature[weni:wexi])
 
-                if len(session.probe_well_curvatures[i]) > 0:
-                    session.probe_well_avg_curvature_over_time.append(
-                        np.mean(np.concatenate(session.probe_well_curvatures[i])))
-                    session.probe_well_avg_curvature_over_visits.append(
-                        np.mean([np.mean(x) for x in session.probe_well_curvatures[i]]))
-                else:
-                    session.probe_well_avg_curvature_over_time.append(np.nan)
-                    session.probe_well_avg_curvature_over_visits.append(np.nan)
+                    if len(session.probe_well_curvatures[i]) > 0:
+                        session.probe_well_avg_curvature_over_time.append(
+                            np.mean(np.concatenate(session.probe_well_curvatures[i])))
+                        session.probe_well_avg_curvature_over_visits.append(
+                            np.mean([np.mean(x) for x in session.probe_well_curvatures[i]]))
+                    else:
+                        session.probe_well_avg_curvature_over_time.append(np.nan)
+                        session.probe_well_avg_curvature_over_visits.append(np.nan)
 
-                if len(session.probe_well_curvatures_1min[i]) > 0:
-                    session.probe_well_avg_curvature_over_time_1min.append(
-                        np.mean(np.concatenate(session.probe_well_curvatures_1min[i])))
-                    session.probe_well_avg_curvature_over_visits_1min.append(
-                        np.mean([np.mean(x) for x in session.probe_well_curvatures_1min[i]]))
-                else:
-                    session.probe_well_avg_curvature_over_time_1min.append(np.nan)
-                    session.probe_well_avg_curvature_over_visits_1min.append(
-                        np.nan)
+                    if len(session.probe_well_curvatures_1min[i]) > 0:
+                        session.probe_well_avg_curvature_over_time_1min.append(
+                            np.mean(np.concatenate(session.probe_well_curvatures_1min[i])))
+                        session.probe_well_avg_curvature_over_visits_1min.append(
+                            np.mean([np.mean(x) for x in session.probe_well_curvatures_1min[i]]))
+                    else:
+                        session.probe_well_avg_curvature_over_time_1min.append(np.nan)
+                        session.probe_well_avg_curvature_over_visits_1min.append(
+                            np.nan)
 
-                if len(session.probe_well_curvatures_30sec[i]) > 0:
-                    session.probe_well_avg_curvature_over_time_30sec.append(
-                        np.mean(np.concatenate(session.probe_well_curvatures_30sec[i])))
-                    session.probe_well_avg_curvature_over_visits_30sec.append(
-                        np.mean([np.mean(x) for x in session.probe_well_curvatures_30sec[i]]))
-                else:
-                    session.probe_well_avg_curvature_over_time_30sec.append(np.nan)
-                    session.probe_well_avg_curvature_over_visits_30sec.append(
-                        np.nan)
+                    if len(session.probe_well_curvatures_30sec[i]) > 0:
+                        session.probe_well_avg_curvature_over_time_30sec.append(
+                            np.mean(np.concatenate(session.probe_well_curvatures_30sec[i])))
+                        session.probe_well_avg_curvature_over_visits_30sec.append(
+                            np.mean([np.mean(x) for x in session.probe_well_curvatures_30sec[i]]))
+                    else:
+                        session.probe_well_avg_curvature_over_time_30sec.append(np.nan)
+                        session.probe_well_avg_curvature_over_visits_30sec.append(
+                            np.nan)
 
         # ===================================
         # Latency to well in probe

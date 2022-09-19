@@ -25,7 +25,7 @@ from datetime import datetime
 class TrialMeasure():
     # memoDict = {}
 
-    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, trialFilter=None):
+    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, trialFilter=None, skipStats=False):
         # print("initing trial measure " + name)
         # if name in TrialMeasure.memoDict and not forceRemake:
         #     existing = TrialMeasure.memoDict[name]
@@ -96,7 +96,7 @@ class TrialMeasure():
 class WellMeasure():
     # memoDict = {}
 
-    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, wellFilter=lambda ai, aw: offWall(aw)):
+    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, wellFilter=lambda ai, aw: offWall(aw), skipStats=False):
         # print("initing trial measure " + name)
         # if name in WellMeasure.memoDict and not forceRemake:
         #     existing = WellMeasure.memoDict[name]
@@ -121,6 +121,7 @@ class WellMeasure():
 
         if measureFunc is not None:
             assert sessionList is not None
+            # print(sessionList)
             for si, sesh in enumerate(sessionList):
                 # print(sesh.home_well_find_times)
                 homeval = measureFunc(sesh, sesh.home_well)
@@ -171,6 +172,7 @@ def makeFigures(
     MAKE_CLOSE_PASS_FIGS=None,
     MAKE_INITIAL_HEADING_FIGS=None,
     MAKE_PROBE_TRACES_FIGS=None,
+    MAKE_B16_BEHAVIOR_FIG=False,
     MAKE_UNSPECIFIED=True,
     RUN_SHUFFLES=False
 ):
@@ -187,7 +189,7 @@ def makeFigures(
         MAKE_PROBE_TRACES_FIGS = MAKE_UNSPECIFIED
 
     dataDir = findDataDir()
-    globalOutputDir = os.path.join(dataDir, "figures", "20220818_labmeeting")
+    globalOutputDir = os.path.join(dataDir, "figures", "20220919_labmeeting")
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
 
@@ -212,6 +214,7 @@ def makeFigures(
         sessions = allSessionsByRat[ratName]
         sessionsWithProbe = [sesh for sesh in sessions if sesh.probe_performed]
         numSessionsWithProbe = len(sessionsWithProbe)
+        print(f"{len(sessions)} sessions ({len(sessionsWithProbe)} with probe)")
 
         ctrlSessionsWithProbe = [sesh for sesh in sessions if (
             not sesh.isRippleInterruption) and sesh.probe_performed]
@@ -265,6 +268,9 @@ def makeFigures(
                                                  h: s.path_optimality(True, wellName=h), sessionsWithProbe))
             probeWellMeasures.append(WellMeasure("gravity from off wall", lambda s, h: s.gravityOfWell(
                 True, h, fromWells=offWallWellNames), sessionsWithProbe))
+            if hasattr(sessions[0], "probe_fill_time"):
+                probeWellMeasures.append(WellMeasure("gravity from off wall, before fill", lambda s, h: s.gravityOfWell(
+                    True, h, fromWells=offWallWellNames, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe))
 
             taskWellMeasures = []
             taskWellMeasures.append(WellMeasure("gravity from off wall", lambda s, h: s.gravityOfWell(
@@ -481,7 +487,8 @@ def makeFigures(
 
 if __name__ == "__main__":
     # makeFigures(MAKE_UNSPECIFIED=False, MAKE_LAST_MEETING_FIGS=True, RUN_SHUFFLES=True)
-    makeFigures(MAKE_UNSPECIFIED=False, MAKE_MID_MEETING_FIGS=True)
+    # makeFigures(MAKE_UNSPECIFIED=False, MAKE_MID_MEETING_FIGS=True)
+    makeFigures()
 
 
 # TODO: new analyses

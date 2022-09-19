@@ -235,7 +235,7 @@ class PlotCtx:
 
     def __exit__(self, *args):
         if self.priority is None or self.priorityLevel is None or self.priority <= self.priorityLevel:
-            if self.withStats:
+            if self.withStats and len(self.yvals) > 0:
                 statsName = self.figName.split("/")[-1]
                 assert len(self.yvals) > 0
                 assert len(self.persistentCategories) + len(self.categories) > 0

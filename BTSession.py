@@ -1006,9 +1006,12 @@ class BTSession:
         neighborWells = np.array([-9, -8, -7, -1, 1, 7, 8, 9]) + wellName
         neighborWells = [w for w in neighborWells if (w in fromWells)]
         neighborExitIdxs = []
+        neighborEntryIdxs = []
         for nw in neighborWells:
-            neighborExitIdxs += list(self.entry_exit_times(inProbe, nw,
-                                     timeInterval=timeInterval, returnIdxs=True)[1])
+            ents, exts = self.entry_exit_times(inProbe, nw,
+                                               timeInterval=timeInterval, returnIdxs=True)
+            neighborEntryIdxs += list(ents)
+            neighborExitIdxs += list(exts)
 
         if len(neighborExitIdxs) == 0:
             # print("emptyval ret, neighbor wells was {}".format(neighborWells))
@@ -1020,7 +1023,7 @@ class BTSession:
         # print(neighborExitIdxs)
         # print(wellEntryIdxs)
         ret = len([nwei for nwei in neighborExitIdxs if nwei in wellEntryIdxs]) / \
-            len(neighborExitIdxs)
+            len([nwei for nwei in neighborExitIdxs if nwei + 1 not in neighborEntryIdxs])
         # print(timeInterval, ret)
 
         return ret

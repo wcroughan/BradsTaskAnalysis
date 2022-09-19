@@ -20,6 +20,7 @@ ffmpeg-python = "*"
 timer = "*"
 flake8 = "*"
 autopep8 = "*"
+tables = "*"
 
 [dev-packages]
 
