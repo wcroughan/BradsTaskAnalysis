@@ -1,8 +1,8 @@
-Order: ['B18', 'B17', 'B16', 'B20', 'B19']
-Home: 20
-Aways: 11 15 5 13 4 42 26 7 47 39 36 46
+Order: ['B19', 'B18', 'B17', 'B20', 'B16']
+Home: 27
+Aways: 29 4 35 22 12 23 19 13 30 36 11 7
 Condition: Delayed
-fill probe at 180.0s
+fill probe at 240.0s
 Thresh: Low
 Last Away: 
 Last well: 
@@ -11,9 +11,9 @@ Probe Stim On:
 Weight: 
 
 
-a...aa
+......
+.aa...
+.a.aa.
+.a..aa
+.aaa..
 ..a..a
-a.....
-..a...
-.a.a.a
-..aa.a

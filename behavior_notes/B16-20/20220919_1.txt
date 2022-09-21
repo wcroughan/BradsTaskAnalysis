@@ -1,6 +1,6 @@
-Order: ['B16', 'B20', 'B17', 'B18', 'B19']
-Home: 13
-Aways: 29 44 6 5 39 28 20 12 43 42 26 30
+Order: ['B18', 'B19', 'B20', 'B16', 'B17']
+Home: 30
+Aways: 20 5 47 31 34 12 27 22 44 15 13 37
 Condition: Interruption
 fill probe at 180.0s
 Thresh: Low
@@ -11,9 +11,9 @@ Probe Stim On:
 Weight: 
 
 
-aaa...
-.....a
-a.aaa.
-..a...
-..aa..
-...aa.
+..a..a
+a..a..
+.a..aa
+..a.a.
+..aa.a
+...a..
