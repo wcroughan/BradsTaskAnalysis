@@ -25,11 +25,14 @@ class BTData:
         self.filename = ""
         self.allSessions = []
         self.allRestSessions = []
+        self.importOptions = None
 
     def loadFromFile(self, filename):
         with open(filename, 'r') as f:
             np_dir = filename + ".numpy_objs"
             self.allSessions = []
+            self.allRestSessions = []
+            self.importOptions = None
             line = f.readline()
             while line:
                 if line == "!!Session\n":
@@ -51,6 +54,11 @@ class BTData:
                         self.allRestSessions[-1].date_str, self.allRestSessions[-1].time_str), "%Y%m%d_%H%M%S")
 
                     # print(self.allRestSessions[-1].restDuration)
+                elif line == "!!ImportOptions\n":
+                    assert self.importOptions is None
+                    line = f.readline()
+                    self.importOptions = json.loads(line[:-1])
+                    print(self.importOptions)
                 else:
                     print("File parse error!")
                     return -2
@@ -110,6 +118,9 @@ class BTData:
 
                 di['date'] = date
                 di['btwpSession'] = btwp
+
+            f.write("!!ImportOptions\n")
+            f.write(json.dumps(self.importOptions) + '\n')
 
             self.filename = filename
             return 0

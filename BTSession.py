@@ -287,6 +287,8 @@ class BTSession:
         self.sniff_probe_stop = None
         self.sniff_post_probe_light_on = None
 
+        self.positionFromDeepLabCut = None
+
     def get_well_coordinates(self, wellName):
         return self.well_coords_map[str(wellName)]
 
