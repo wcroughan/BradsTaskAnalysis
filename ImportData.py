@@ -1,18 +1,12 @@
 from BTData import BTData
 from BTSession import BTSession
-import pandas as pd
 import numpy as np
 import os
 import csv
 import glob
-import json
-import matplotlib.pyplot as plt
-import random
 import scipy
 from scipy import stats, signal
-from itertools import groupby
 import MountainViewIO
-from scipy.ndimage.filters import gaussian_filter
 from datetime import datetime
 import sys
 from PyQt5.QtWidgets import QApplication
@@ -21,583 +15,18 @@ from consts import all_well_names, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 from UtilFunctions import readWellCoordsFile, readRawPositionData, readClipData, \
     processPosData, getWellCoordinates, getNearestWell, getWellEntryAndExitTimes, \
     quadrantOfWell, getListOfVisitedWells, onWall, getRipplePower, detectRipples, \
-    getInfoForAnimal, AnimalInfo, generateFoundWells, getUSBVideoFile, processPosData_coords, \
+    getInfoForAnimal, generateFoundWells, getUSBVideoFile, processPosData_coords, \
     parseCmdLineAnimalNames
-from ClipsMaker import runPositionAnnotator, AnnotatorWindow
-from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, playFrames, processUSBVideoData
+from ClipsMaker import AnnotatorWindow
+from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, processUSBVideoData
 
+importParentApp = QApplication(sys.argv)
 
-INSPECT_ALL = False
-INSPECT_IN_DETAIL = []
-# INSPECT_IN_DETAIL = ["20200526"]
-INSPECT_NANVALS = False
-INSPECT_PROBE_BEHAVIOR_PLOT = False
-INSPECT_PLOT_WELL_OCCUPANCIES = False
-ENFORCE_DIFFERENT_WELL_COLORS = False
-RUN_JUST_SPECIFIED = False
-SPECIFIED_DAYS = ["20210903"]
-SPECIFIED_RUNS = []
-INSPECT_BOUTS = True
-SAVE_DONT_SHOW = True
-SHOW_CURVATURE_VIDEO = False
-SKIP_LFP = False
-SKIP_PREV_SESSION = True
-SKIP_SNIFF = True
-JUST_EXTRACT_TRODES_DATA = False
-RUN_INTERACTIVE = True
-MAKE_ALL_TRACKING_AUTO = False
-SKIP_CURVATURE = True
-
-numExtracted = 0
-numExcluded = 0
-
-all_quadrant_idxs = [0, 1, 2, 3]
-well_name_to_idx = np.empty((np.max(all_well_names) + 1))
-well_name_to_idx[:] = np.nan
-for widx, wname in enumerate(all_well_names):
-    well_name_to_idx[wname] = widx
-
-VEL_THRESH = 10  # cm/s
-
-# Typical observed amplitude of LFP deflection on stimulation
-DEFLECTION_THRESHOLD_HI = 6000.0
-DEFLECTION_THRESHOLD_LO = 2000.0
-MIN_ARTIFACT_DISTANCE = int(0.05 * LFP_SAMPLING_RATE)
-
-# # Typical duration of the stimulation artifact - For peak detection
-# MIN_ARTIFACT_PERIOD = int(0.1 * LFP_SAMPLING_RATE)
-# # Typical duration of a Sharp-Wave Ripple
-# ACCEPTED_RIPPLE_LENGTH = int(0.2 * LFP_SAMPLING_RATE)
-
-# constants for exploration bout analysis
-# raise Exception("try longer sigmas here")
-BOUT_VEL_SM_SIGMA_SECS = 1.5
-PAUSE_MAX_SPEED_CM_S = 8.0
-MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS = 2.5
-MIN_EXPLORE_TIME_SECS = 3.0
-MIN_EXPLORE_NUM_WELLS = 4
-# COUNT_ONE_WELL_VISIT_PER_BOUT = False
-
-# constants for ballisticity
-# BALL_TIME_INTERVALS = list(range(1, 12, 3))
-BALL_TIME_INTERVALS = list(range(1, 24))
-# KNOT_H_CM = 20.0
-KNOT_H_CM = 8.0
-
-# well_coords_file = '/home/wcroughan/repos/BradsTaskAnalysis/well_locations.csv'
-
-dataob = BTData()
-
-parent_app = QApplication(sys.argv)
-foundConditionGroups = False
+filtered_data_dirs = []
 
 for session_idx, session_dir in enumerate(filtered_data_dirs):
-    # ===================================
-    # Sniff times marked by hand from USB camera (Not available for Martin)
-    # ===================================
+    session = None
     if session.hasPositionData:
-        # ===================================
-        # Ballisticity of movements
-        # ===================================
-        furthest_interval = max(BALL_TIME_INTERVALS)
-        assert np.all(np.diff(np.array(BALL_TIME_INTERVALS)) > 0)
-        assert BALL_TIME_INTERVALS[0] > 0
-
-        # idx is (time, interval len, dimension)
-        d1 = len(session.bt_pos_ts) - furthest_interval
-        delta = np.empty((d1, furthest_interval, 2))
-        delta[:] = np.nan
-        dx = np.diff(session.bt_pos_xs)
-        dy = np.diff(session.bt_pos_ys)
-        delta[:, 0, 0] = dx[0:d1]
-        delta[:, 0, 1] = dy[0:d1]
-
-        for i in range(1, furthest_interval):
-            delta[:, i, 0] = delta[:, i - 1, 0] + dx[i:i + d1]
-            delta[:, i, 1] = delta[:, i - 1, 1] + dy[i:i + d1]
-
-        displacement = np.sqrt(np.sum(np.square(delta), axis=2))
-        displacement[displacement == 0] = np.nan
-        last_displacement = displacement[:, -1]
-        session.bt_ball_displacement = last_displacement
-
-        x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
-        y = np.log(displacement)
-        assert np.all(np.logical_or(
-            np.logical_not(np.isnan(y)), np.isnan(displacement)))
-        y[y == -np.inf] = np.nan
-        np.nan_to_num(y, copy=False, nan=np.nanmin(y))
-
-        x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
-        y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
-        def m(arg): return np.mean(arg, axis=1)
-        # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
-        beta = m(y * x) / m(np.power(x, 2))
-        session.bt_ballisticity = beta
-        assert np.sum(np.isnan(session.bt_ballisticity)) == 0
-
-        if session.probe_performed:
-            # idx is (time, interval len, dimension)
-            d1 = len(session.probe_pos_ts) - furthest_interval
-            delta = np.empty((d1, furthest_interval, 2))
-            delta[:] = np.nan
-            dx = np.diff(session.probe_pos_xs)
-            dy = np.diff(session.probe_pos_ys)
-            delta[:, 0, 0] = dx[0:d1]
-            delta[:, 0, 1] = dy[0:d1]
-
-            for i in range(1, furthest_interval):
-                delta[:, i, 0] = delta[:, i - 1, 0] + dx[i:i + d1]
-                delta[:, i, 1] = delta[:, i - 1, 1] + dy[i:i + d1]
-
-            displacement = np.sqrt(np.sum(np.square(delta), axis=2))
-            displacement[displacement == 0] = np.nan
-            last_displacement = displacement[:, -1]
-            session.probe_ball_displacement = last_displacement
-
-            x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
-            y = np.log(displacement)
-            assert np.all(np.logical_or(
-                np.logical_not(np.isnan(y)), np.isnan(displacement)))
-            y[y == -np.inf] = np.nan
-            np.nan_to_num(y, copy=False, nan=np.nanmin(y))
-
-            x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
-            y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
-            # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
-            beta = m(y * x) / m(np.power(x, 2))
-            session.probe_ballisticity = beta
-            assert np.sum(np.isnan(session.probe_ballisticity)) == 0
-
-        # ===================================
-        # Knot-path-curvature as in https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000638
-        # ===================================
-
-        if SKIP_CURVATURE:
-            print("WARNING: Skipping curvature calculation")
-        else:
-            KNOT_H_POS = KNOT_H_CM * PIXELS_PER_CM
-            dx = np.diff(session.bt_pos_xs)
-            dy = np.diff(session.bt_pos_ys)
-
-            if SHOW_CURVATURE_VIDEO:
-                cmap = plt.cm.get_cmap('coolwarm')
-                fig = plt.figure()
-                plt.ion()
-
-            session.bt_curvature = np.empty((dx.size + 1))
-            session.bt_curvature_i1 = np.empty((dx.size + 1))
-            session.bt_curvature_i2 = np.empty((dx.size + 1))
-            session.bt_curvature_dxf = np.empty((dx.size + 1))
-            session.bt_curvature_dyf = np.empty((dx.size + 1))
-            session.bt_curvature_dxb = np.empty((dx.size + 1))
-            session.bt_curvature_dyb = np.empty((dx.size + 1))
-            for pi in range(dx.size + 1):
-                x0 = session.bt_pos_xs[pi]
-                y0 = session.bt_pos_ys[pi]
-                ii = pi
-                dxf = 0.0
-                dyf = 0.0
-                while ii < dx.size:
-                    dxf += dx[ii]
-                    dyf += dy[ii]
-                    magf = dxf * dxf + dyf * dyf
-                    if magf >= KNOT_H_POS * KNOT_H_POS:
-                        break
-                    ii += 1
-                if ii == dx.size:
-                    session.bt_curvature[pi] = np.nan
-                    session.bt_curvature_i1[pi] = np.nan
-                    session.bt_curvature_i2[pi] = np.nan
-                    session.bt_curvature_dxf[pi] = np.nan
-                    session.bt_curvature_dyf[pi] = np.nan
-                    session.bt_curvature_dxb[pi] = np.nan
-                    session.bt_curvature_dyb[pi] = np.nan
-                    continue
-                i2 = ii
-
-                ii = pi - 1
-                dxb = 0.0
-                dyb = 0.0
-                while ii >= 0:
-                    dxb += dx[ii]
-                    dyb += dy[ii]
-                    magb = dxb * dxb + dyb * dyb
-                    if magb >= KNOT_H_POS * KNOT_H_POS:
-                        break
-                    ii -= 1
-                if ii == -1:
-                    session.bt_curvature[pi] = np.nan
-                    session.bt_curvature_i1[pi] = np.nan
-                    session.bt_curvature_i2[pi] = np.nan
-                    session.bt_curvature_dxf[pi] = np.nan
-                    session.bt_curvature_dyf[pi] = np.nan
-                    session.bt_curvature_dxb[pi] = np.nan
-                    session.bt_curvature_dyb[pi] = np.nan
-                    continue
-                i1 = ii
-
-                uxf = dxf / np.sqrt(magf)
-                uyf = dyf / np.sqrt(magf)
-                uxb = dxb / np.sqrt(magb)
-                uyb = dyb / np.sqrt(magb)
-                dotprod = uxf * uxb + uyf * uyb
-                session.bt_curvature[pi] = np.arccos(dotprod)
-
-                session.bt_curvature_i1[pi] = i1
-                session.bt_curvature_i2[pi] = i2
-                session.bt_curvature_dxf[pi] = dxf
-                session.bt_curvature_dyf[pi] = dyf
-                session.bt_curvature_dxb[pi] = dxb
-                session.bt_curvature_dyb[pi] = dyb
-
-                if SHOW_CURVATURE_VIDEO:
-                    plt.clf()
-                    plt.xlim(0, 1200)
-                    plt.ylim(0, 1000)
-                    plt.plot(session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2])
-                    c = np.array(
-                        cmap(session.bt_curvature[pi] / 3.15)).reshape(1, -1)
-                    plt.scatter(session.bt_pos_xs[pi], session.bt_pos_ys[pi], c=c)
-                    plt.show()
-                    plt.pause(0.01)
-
-            if session.probe_performed:
-                dx = np.diff(session.probe_pos_xs)
-                dy = np.diff(session.probe_pos_ys)
-
-                session.probe_curvature = np.empty((dx.size + 1))
-                session.probe_curvature_i1 = np.empty((dx.size + 1))
-                session.probe_curvature_i2 = np.empty((dx.size + 1))
-                session.probe_curvature_dxf = np.empty((dx.size + 1))
-                session.probe_curvature_dyf = np.empty((dx.size + 1))
-                session.probe_curvature_dxb = np.empty((dx.size + 1))
-                session.probe_curvature_dyb = np.empty((dx.size + 1))
-                for pi in range(dx.size + 1):
-                    x0 = session.probe_pos_xs[pi]
-                    y0 = session.probe_pos_ys[pi]
-                    ii = pi
-                    dxf = 0.0
-                    dyf = 0.0
-
-                    # cdx = np.cumsum(dx[pi:])
-                    # cdy = np.cumsum(dy[pi:])
-                    # cmagf = np.sqrt(cdx * cdx + cdy + cdy)
-                    # firstPass = np.asarray(cmagf >= KNOT_H_POS).nonzero()[0][0]
-                    # ii = firstPass + pi
-
-                    while ii < dx.size:
-                        dxf += dx[ii]
-                        dyf += dy[ii]
-                        magf = np.sqrt(dxf * dxf + dyf * dyf)
-                        if magf >= KNOT_H_POS:
-                            # print(numiters)
-                            break
-                        ii += 1
-                    if ii == dx.size:
-                        session.probe_curvature[pi] = np.nan
-                        session.probe_curvature_i1[pi] = np.nan
-                        session.probe_curvature_i2[pi] = np.nan
-                        session.probe_curvature_dxf[pi] = np.nan
-                        session.probe_curvature_dyf[pi] = np.nan
-                        session.probe_curvature_dxb[pi] = np.nan
-                        session.probe_curvature_dyb[pi] = np.nan
-                        continue
-                    i2 = ii
-
-                    ii = pi - 1
-                    dxb = 0.0
-                    dyb = 0.0
-                    while ii >= 0:
-                        dxb += dx[ii]
-                        dyb += dy[ii]
-                        magb = np.sqrt(dxb * dxb + dyb * dyb)
-                        if magb >= KNOT_H_POS:
-                            break
-                        ii -= 1
-                    if ii == -1:
-                        session.probe_curvature[pi] = np.nan
-                        session.probe_curvature_i1[pi] = np.nan
-                        session.probe_curvature_i2[pi] = np.nan
-                        session.probe_curvature_dxf[pi] = np.nan
-                        session.probe_curvature_dyf[pi] = np.nan
-                        session.probe_curvature_dxb[pi] = np.nan
-                        session.probe_curvature_dyb[pi] = np.nan
-                        continue
-                    i1 = ii
-
-                    uxf = dxf / magf
-                    uyf = dyf / magf
-                    uxb = dxb / magb
-                    uyb = dyb / magb
-                    dotprod = uxf * uxb + uyf * uyb
-                    session.probe_curvature[pi] = np.arccos(dotprod)
-
-                    session.probe_curvature_i1[pi] = i1
-                    session.probe_curvature_i2[pi] = i2
-                    session.probe_curvature_dxf[pi] = dxf
-                    session.probe_curvature_dyf[pi] = dyf
-                    session.probe_curvature_dxb[pi] = dxb
-                    session.probe_curvature_dyb[pi] = dyb
-
-            session.bt_well_curvatures = []
-            session.bt_well_avg_curvature_over_time = []
-            session.bt_well_avg_curvature_over_visits = []
-            for i, wi in enumerate(all_well_names):
-                session.bt_well_curvatures.append([])
-                for ei, (weni, wexi) in enumerate(zip(session.bt_well_entry_idxs[i], session.bt_well_exit_idxs[i])):
-                    if wexi > session.bt_curvature.size:
-                        continue
-                    if weni == wexi:
-                        continue
-                    session.bt_well_curvatures[i].append(
-                        session.bt_curvature[weni:wexi])
-
-                if len(session.bt_well_curvatures[i]) > 0:
-                    session.bt_well_avg_curvature_over_time.append(
-                        np.mean(np.concatenate(session.bt_well_curvatures[i])))
-                    session.bt_well_avg_curvature_over_visits.append(
-                        np.mean([np.mean(x) for x in session.bt_well_curvatures[i]]))
-                else:
-                    session.bt_well_avg_curvature_over_time.append(np.nan)
-                    session.bt_well_avg_curvature_over_visits.append(np.nan)
-
-            if session.probe_performed:
-                session.probe_well_curvatures = []
-                session.probe_well_avg_curvature_over_time = []
-                session.probe_well_avg_curvature_over_visits = []
-                session.probe_well_curvatures_1min = []
-                session.probe_well_avg_curvature_over_time_1min = []
-                session.probe_well_avg_curvature_over_visits_1min = []
-                session.probe_well_curvatures_30sec = []
-                session.probe_well_avg_curvature_over_time_30sec = []
-                session.probe_well_avg_curvature_over_visits_30sec = []
-                for i, wi in enumerate(all_well_names):
-                    session.probe_well_curvatures.append([])
-                    session.probe_well_curvatures_1min.append([])
-                    session.probe_well_curvatures_30sec.append([])
-                    for ei, (weni, wexi) in enumerate(zip(session.probe_well_entry_idxs[i], session.probe_well_exit_idxs[i])):
-                        if wexi > session.probe_curvature.size:
-                            continue
-                        if weni == wexi:
-                            continue
-                        session.probe_well_curvatures[i].append(
-                            session.probe_curvature[weni:wexi])
-                        if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 60 * TRODES_SAMPLING_RATE:
-                            session.probe_well_curvatures_1min[i].append(
-                                session.probe_curvature[weni:wexi])
-                        if session.probe_pos_ts[weni] <= session.probe_pos_ts[0] + 30 * TRODES_SAMPLING_RATE:
-                            session.probe_well_curvatures_30sec[i].append(
-                                session.probe_curvature[weni:wexi])
-
-                    if len(session.probe_well_curvatures[i]) > 0:
-                        session.probe_well_avg_curvature_over_time.append(
-                            np.mean(np.concatenate(session.probe_well_curvatures[i])))
-                        session.probe_well_avg_curvature_over_visits.append(
-                            np.mean([np.mean(x) for x in session.probe_well_curvatures[i]]))
-                    else:
-                        session.probe_well_avg_curvature_over_time.append(np.nan)
-                        session.probe_well_avg_curvature_over_visits.append(np.nan)
-
-                    if len(session.probe_well_curvatures_1min[i]) > 0:
-                        session.probe_well_avg_curvature_over_time_1min.append(
-                            np.mean(np.concatenate(session.probe_well_curvatures_1min[i])))
-                        session.probe_well_avg_curvature_over_visits_1min.append(
-                            np.mean([np.mean(x) for x in session.probe_well_curvatures_1min[i]]))
-                    else:
-                        session.probe_well_avg_curvature_over_time_1min.append(np.nan)
-                        session.probe_well_avg_curvature_over_visits_1min.append(
-                            np.nan)
-
-                    if len(session.probe_well_curvatures_30sec[i]) > 0:
-                        session.probe_well_avg_curvature_over_time_30sec.append(
-                            np.mean(np.concatenate(session.probe_well_curvatures_30sec[i])))
-                        session.probe_well_avg_curvature_over_visits_30sec.append(
-                            np.mean([np.mean(x) for x in session.probe_well_curvatures_30sec[i]]))
-                    else:
-                        session.probe_well_avg_curvature_over_time_30sec.append(np.nan)
-                        session.probe_well_avg_curvature_over_visits_30sec.append(
-                            np.nan)
-
-        # ===================================
-        # Latency to well in probe
-        # ===================================
-
-        if session.probe_performed:
-            session.probe_latency_to_well = []
-            for i, wi in enumerate(all_well_names):
-                if len(session.probe_well_entry_times[i]) == 0:
-                    session.probe_latency_to_well.append(np.nan)
-                else:
-                    session.probe_latency_to_well.append(
-                        session.probe_well_entry_times[0])
-
-        # ===================================
-        # exploration bouts
-        # ===================================
-
-        POS_FRAME_RATE = stats.mode(
-            np.diff(session.bt_pos_ts))[0] / float(TRODES_SAMPLING_RATE)
-        BOUT_VEL_SM_SIGMA = BOUT_VEL_SM_SIGMA_SECS / POS_FRAME_RATE
-        MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS = 1.0
-        MIN_PAUSE_TIME_FRAMES = int(
-            MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS / POS_FRAME_RATE)
-        MIN_EXPLORE_TIME_FRAMES = int(MIN_EXPLORE_TIME_SECS / POS_FRAME_RATE)
-
-        bt_sm_vel = scipy.ndimage.gaussian_filter1d(
-            session.bt_vel_cm_s, BOUT_VEL_SM_SIGMA)
-        session.bt_sm_vel = bt_sm_vel
-
-        bt_is_explore_local = bt_sm_vel > PAUSE_MAX_SPEED_CM_S
-        dil_filt = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
-        in_pause_bout = np.logical_not(signal.convolve(
-            bt_is_explore_local.astype(int), dil_filt, mode='same').astype(bool))
-        # now just undo dilation to get flags
-        session.bt_is_in_pause = signal.convolve(
-            in_pause_bout.astype(int), dil_filt, mode='same').astype(bool)
-        session.bt_is_in_explore = np.logical_not(session.bt_is_in_pause)
-
-        # explicitly adjust flags at reward consumption times
-        for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
-            pidx1 = np.searchsorted(session.bt_pos_ts[0:-1], wft)
-            pidx2 = np.searchsorted(session.bt_pos_ts[0:-1], wlt)
-            session.bt_is_in_pause[pidx1:pidx2] = True
-            session.bt_is_in_explore[pidx1:pidx2] = False
-
-        for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
-            pidx1 = np.searchsorted(session.bt_pos_ts[0:-1], wft)
-            pidx2 = np.searchsorted(session.bt_pos_ts[0:-1], wlt)
-            session.bt_is_in_pause[pidx1:pidx2] = True
-            session.bt_is_in_explore[pidx1:pidx2] = False
-
-        assert np.sum(np.isnan(session.bt_is_in_pause)) == 0
-        assert np.sum(np.isnan(session.bt_is_in_explore)) == 0
-        assert np.all(np.logical_or(
-            session.bt_is_in_pause, session.bt_is_in_explore))
-        assert not np.any(np.logical_and(
-            session.bt_is_in_pause, session.bt_is_in_explore))
-
-        start_explores = np.where(
-            np.diff(session.bt_is_in_explore.astype(int)) == 1)[0] + 1
-        if session.bt_is_in_explore[0]:
-            start_explores = np.insert(start_explores, 0, 0)
-
-        stop_explores = np.where(
-            np.diff(session.bt_is_in_explore.astype(int)) == -1)[0] + 1
-        if session.bt_is_in_explore[-1]:
-            stop_explores = np.append(
-                stop_explores, len(session.bt_is_in_explore))
-
-        bout_len_frames = stop_explores - start_explores
-
-        long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
-        bout_num_wells_visited = np.zeros((len(start_explores)))
-        for i, (bst, ben) in enumerate(zip(start_explores, stop_explores)):
-            bout_num_wells_visited[i] = len(
-                getListOfVisitedWells(session.bt_nearest_wells[bst:ben], True))
-            # bout_num_wells_visited[i] = len(set(session.bt_nearest_wells[bst:ben]))
-        enough_wells = bout_num_wells_visited >= MIN_EXPLORE_NUM_WELLS
-
-        keep_bout = np.logical_and(long_enough, enough_wells)
-        session.bt_explore_bout_starts = start_explores[keep_bout]
-        session.bt_explore_bout_ends = stop_explores[keep_bout]
-        session.bt_explore_bout_lens = session.bt_explore_bout_ends - \
-            session.bt_explore_bout_starts
-        ts = np.array(session.bt_pos_ts)
-        session.bt_explore_bout_lens_secs = (ts[session.bt_explore_bout_ends] -
-                                             ts[session.bt_explore_bout_starts]) / TRODES_SAMPLING_RATE
-
-        # add a category at each behavior time point for easy reference later:
-        session.bt_bout_category = np.zeros_like(session.bt_pos_xs)
-        last_stop = 0
-        for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
-            session.bt_bout_category[last_stop:bst] = 1
-            last_stop = ben
-        session.bt_bout_category[last_stop:] = 1
-        for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
-            pidx1 = np.searchsorted(session.bt_pos_ts, wft)
-            pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
-            session.bt_bout_category[pidx1:pidx2] = 2
-        for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
-            pidx1 = np.searchsorted(session.bt_pos_ts, wft)
-            pidx2 = np.searchsorted(session.bt_pos_ts, wlt)
-            session.bt_bout_category[pidx1:pidx2] = 2
-
-        if session.probe_performed:
-            probe_sm_vel = scipy.ndimage.gaussian_filter1d(
-                session.probe_vel_cm_s, BOUT_VEL_SM_SIGMA)
-            session.probe_sm_vel = probe_sm_vel
-
-            probe_is_explore_local = probe_sm_vel > PAUSE_MAX_SPEED_CM_S
-            dil_filt = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
-            in_pause_bout = np.logical_not(signal.convolve(
-                probe_is_explore_local.astype(int), dil_filt, mode='same').astype(bool))
-            # now just undo dilation to get flags
-            session.probe_is_in_pause = signal.convolve(
-                in_pause_bout.astype(int), dil_filt, mode='same').astype(bool)
-            session.probe_is_in_explore = np.logical_not(session.probe_is_in_pause)
-
-            assert np.sum(np.isnan(session.probe_is_in_pause)) == 0
-            assert np.sum(np.isnan(session.probe_is_in_explore)) == 0
-            assert np.all(np.logical_or(session.probe_is_in_pause,
-                                        session.probe_is_in_explore))
-            assert not np.any(np.logical_and(
-                session.probe_is_in_pause, session.probe_is_in_explore))
-
-            start_explores = np.where(
-                np.diff(session.probe_is_in_explore.astype(int)) == 1)[0] + 1
-            if session.probe_is_in_explore[0]:
-                start_explores = np.insert(start_explores, 0, 0)
-
-            stop_explores = np.where(
-                np.diff(session.probe_is_in_explore.astype(int)) == -1)[0] + 1
-            if session.probe_is_in_explore[-1]:
-                stop_explores = np.append(
-                    stop_explores, len(session.probe_is_in_explore))
-
-            bout_len_frames = stop_explores - start_explores
-
-            long_enough = bout_len_frames >= MIN_EXPLORE_TIME_FRAMES
-            bout_num_wells_visited = np.zeros((len(start_explores)))
-            for i, (bst, ben) in enumerate(zip(start_explores, stop_explores)):
-                bout_num_wells_visited[i] = len(
-                    getListOfVisitedWells(session.probe_nearest_wells[bst:ben], True))
-            enough_wells = bout_num_wells_visited >= MIN_EXPLORE_NUM_WELLS
-
-            keep_bout = np.logical_and(long_enough, enough_wells)
-            session.probe_explore_bout_starts = start_explores[keep_bout]
-            session.probe_explore_bout_ends = stop_explores[keep_bout]
-            session.probe_explore_bout_lens = session.probe_explore_bout_ends - session.probe_explore_bout_starts
-            ts = np.array(session.probe_pos_ts)
-            session.probe_explore_bout_lens_secs = (ts[session.probe_explore_bout_ends] -
-                                                    ts[session.probe_explore_bout_starts]) / TRODES_SAMPLING_RATE
-
-            # add a category at each behavior time point for easy reference later:
-            session.probe_bout_category = np.zeros_like(session.probe_pos_xs)
-            last_stop = 0
-            for bst, ben in zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends):
-                session.probe_bout_category[last_stop:bst] = 1
-                last_stop = ben
-            session.probe_bout_category[last_stop:] = 1
-            for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
-                pidx1 = np.searchsorted(session.probe_pos_ts, wft)
-                pidx2 = np.searchsorted(session.probe_pos_ts, wlt)
-                session.probe_bout_category[pidx1:pidx2] = 2
-            for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
-                pidx1 = np.searchsorted(session.probe_pos_ts, wft)
-                pidx2 = np.searchsorted(session.probe_pos_ts, wlt)
-                session.probe_bout_category[pidx1:pidx2] = 2
-
-        # And a similar thing, but value == 0 for rest/reward, or i when rat is in ith bout (starting at 1)
-        session.bt_bout_label = np.zeros_like(session.bt_pos_xs)
-        for bi, (bst, ben) in enumerate(zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends)):
-            session.bt_bout_label[bst:ben] = bi + 1
-
-        if session.probe_performed:
-            session.probe_bout_label = np.zeros_like(session.probe_pos_xs)
-            for bi, (bst, ben) in enumerate(zip(session.probe_explore_bout_starts, session.probe_explore_bout_ends)):
-                session.probe_bout_label[bst:ben] = bi + 1
-
         # ===================================
         # excursions (when the rat left the wall-wells and searched the middle)
         # ===================================
@@ -606,7 +35,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
         session.bt_excursion_starts = np.where(np.diff(
             (session.bt_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == 1)[0] + 1
         if session.bt_excursion_category[0] == BTSession.EXCURSION_STATE_OFF_WALL:
-            session.bt_excursion_starts = np.insert(session.bt_excursion_starts, 0, 0)
+            session.bt_excursion_starts = np.insert(
+                session.bt_excursion_starts, 0, 0)
         session.bt_excursion_ends = np.where(np.diff(
             (session.bt_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == -1)[0] + 1
         if session.bt_excursion_category[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
@@ -622,7 +52,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
             session.probe_excursion_starts = np.where(np.diff(
                 (session.probe_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == 1)[0] + 1
             if session.probe_excursion_category[0] == BTSession.EXCURSION_STATE_OFF_WALL:
-                session.probe_excursion_starts = np.insert(session.probe_excursion_starts, 0, 0)
+                session.probe_excursion_starts = np.insert(
+                    session.probe_excursion_starts, 0, 0)
             session.probe_excursion_ends = np.where(np.diff(
                 (session.probe_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == -1)[0] + 1
             if session.probe_excursion_category[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
@@ -645,7 +76,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     # Where do ripples happen? Would inform whether to split by away vs home, etc in future experiments
     #   Only during rest? Can set velocity threshold in future interruptions?
     #
-    # Based on speed or exploration, is there a more principled way to choose period of probe that is measured? B/c could vary by rat
+    # Based on speed or exploration, is there a more principled way to
+    # choose period of probe that is measured? B/c could vary by rat
     #
     # avg speed by condition ... could explain higher visits per bout everywhere on SWR trials
     #
@@ -656,163 +88,8 @@ for session_idx, session_dir in enumerate(filtered_data_dirs):
     #
     # ======================================================================
 
-    # ===================================
-    # Now save this session
-    # ===================================
-    dataob.allSessions.append(session)
-    print("done with", session.name)
 
-    # ===================================
-    # extra plotting stuff
-    # ===================================
-    if session.date_str in INSPECT_IN_DETAIL or INSPECT_ALL:
-        if INSPECT_BOUTS and len(session.away_well_find_times) > 0:
-            # print("{} probe bouts, {} bt bouts".format(
-            # session.probe_num_bouts, session.bt_num_bouts))
-            x = session.bt_pos_ts[0:-1]
-            y = bt_sm_vel
-            x1 = np.array(x, copy=True)
-            y1 = np.copy(y)
-            x2 = np.copy(x1)
-            y2 = np.copy(y1)
-            x1[session.bt_is_in_explore] = np.nan
-            y1[session.bt_is_in_explore] = np.nan
-            x2[session.bt_is_in_pause] = np.nan
-            y2[session.bt_is_in_pause] = np.nan
-            plt.clf()
-            plt.plot(x1, y1)
-            plt.plot(x2, y2)
-
-            for wft, wlt in zip(session.home_well_find_times, session.home_well_leave_times):
-                pidx1 = np.searchsorted(x, wft)
-                pidx2 = np.searchsorted(x, wlt)
-                plt.scatter(x[pidx1], y[pidx1], c='green')
-                plt.scatter(x[pidx2], y[pidx2], c='green')
-
-            print(len(session.away_well_find_times))
-            for wft, wlt in zip(session.away_well_find_times, session.away_well_leave_times):
-                pidx1 = np.searchsorted(x, wft)
-                pidx2 = np.searchsorted(x, wlt)
-                plt.scatter(x[pidx1], y[pidx1], c='green')
-                plt.scatter(x[pidx2], y[pidx2], c='green')
-
-            mny = np.min(bt_sm_vel)
-            mxy = np.max(bt_sm_vel)
-            for bst, ben in zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends):
-                plt.plot([x[bst], x[bst]], [mny, mxy], 'b')
-                plt.plot([x[ben - 1], x[ben - 1]], [mny, mxy], 'r')
-            if SAVE_DONT_SHOW:
-                plt.savefig(os.path.join(animalInfo.fig_output_dir, "bouts",
-                                         session.name + "_bouts_over_time"), dpi=800)
-            else:
-                plt.show()
-
-            for i, (bst, ben) in enumerate(zip(session.bt_explore_bout_starts, session.bt_explore_bout_ends)):
-                plt.clf()
-                plt.plot(session.bt_pos_xs, session.bt_pos_ys)
-                plt.plot(
-                    session.bt_pos_xs[bst:ben], session.bt_pos_ys[bst:ben])
-
-                wells_visited = getListOfVisitedWells(
-                    session.bt_nearest_wells[bst:ben], True)
-                for w in wells_visited:
-                    wx, wy = getWellCoordinates(
-                        w, session.well_coords_map)
-                    plt.scatter(wx, wy, c='red')
-
-                if SAVE_DONT_SHOW:
-                    plt.savefig(os.path.join(animalInfo.fig_output_dir, "bouts",
-                                             session.name + "_bouts_" + str(i)), dpi=800)
-                else:
-                    plt.show()
-
-        if INSPECT_NANVALS:
-            print("{} nan xs, {} nan ys, {} nan ts".format(sum(np.isnan(session.probe_pos_xs)),
-                                                           sum(np.isnan(
-                                                               session.probe_pos_xs)),
-                                                           sum(np.isnan(session.probe_pos_xs))))
-
-            nanxs = np.argwhere(np.isnan(session.probe_pos_xs))
-            nanxs = nanxs.T[0]
-            num_nan_x = np.size(nanxs)
-            if num_nan_x > 0:
-                print(nanxs, num_nan_x, nanxs[0])
-                for i in range(min(5, num_nan_x)):
-                    ni = nanxs[i]
-                    print("index {}, x=({},nan,{}), y=({},{},{}), t=({},{},{})".format(
-                        ni, session.probe_pos_xs[ni -
-                                                 1], session.probe_pos_xs[ni + 1],
-                        session.probe_pos_ys[ni -
-                                             1], session.probe_pos_ys[ni],
-                        session.probe_pos_ys[ni +
-                                             1], session.probe_pos_ts[ni - 1],
-                        session.probe_pos_ts[ni], session.probe_pos_ts[ni + 1]
-                    ))
-
-        if INSPECT_PROBE_BEHAVIOR_PLOT:
-            plt.clf()
-            plt.scatter(session.home_x, session.home_y,
-                        color='green', zorder=2)
-            plt.plot(session.probe_pos_xs, session.probe_pos_ys, zorder=0)
-            plt.grid('on')
-            plt.show()
-
-        if INSPECT_PLOT_WELL_OCCUPANCIES:
-            cmap = plt.get_cmap('Set3')
-            make_colors = True
-            while make_colors:
-                well_colors = np.zeros((48, 4))
-                for i in all_well_names:
-                    well_colors[i - 1, :] = cmap(random.uniform(0, 1))
-
-                make_colors = False
-
-                if ENFORCE_DIFFERENT_WELL_COLORS:
-                    for i in all_well_names:
-                        neighs = [i - 8, i - 1, i + 8, i + 1]
-                        for n in neighs:
-                            if n in all_well_names and np.all(well_colors[i - 1, :] == well_colors[n - 1, :]):
-                                make_colors = True
-                                print("gotta remake the colors!")
-                                break
-
-                        if make_colors:
-                            break
-
-            # print(session.bt_well_entry_idxs)
-            # print(session.bt_well_exit_idxs)
-
-            plt.clf()
-            for i, wi in enumerate(all_well_names):
-                color = well_colors[wi - 1, :]
-                for j in range(len(session.bt_well_entry_times[i])):
-                    i1 = session.bt_well_entry_idxs[i][j]
-                    try:
-                        i2 = session.bt_well_exit_idxs[i][j]
-                        plt.plot(
-                            session.bt_pos_xs[i1:i2], session.bt_pos_ys[i1:i2], color=color)
-                    except Exception:
-                        print("well {} had {} entries, {} exits".format(
-                            wi, len(session.bt_well_entry_idxs[i]), len(session.bt_well_exit_idxs[i])))
-
-            plt.show()
-
-
-if JUST_EXTRACT_TRODES_DATA:
-    print("extracted: {}\nexcluded: {}".format(numExtracted, numExcluded))
-else:
-    if not foundConditionGroups:
-        for si, sesh in enumerate(dataob.allSessions):
-            sesh.conditionGroup = si
-
-    # save all sessions to disk
-    print("Saving to file: {}".format(animalInfo.out_filename))
-    dataob.saveToFile(os.path.join(animalInfo.output_dir, animalInfo.out_filename))
-    print("Saved sessions:")
-    for sesh in dataob.allSessions:
-        print(sesh.name)
-
-# Returns a list of directories that correspond to runs for analysis. Unless RUN_JUST_SPECIFIED is True,
+# Returns a list of directories that correspond to runs for analysis. Unless runJustSpecified is True,
 # only ever filters by day. Thus index within day of returned list can be used to find corresponding behavior notes file
 def getSessionDirs(animalInfo, importOptions):
     filtered_data_dirs = []
@@ -836,7 +113,8 @@ def getSessionDirs(animalInfo, importOptions):
 
         date_str = dir_split[0][-8:]
 
-        if importOptions.runJustSpecified and date_str not in importOptions.specifiedDays and session_dir not in importOptions.specifiedRuns:
+        if importOptions["runJustSpecified"] and date_str not in importOptions["specifiedDays"] and \
+                session_dir not in importOptions["specifiedRuns"]:
             prevSession = session_dir
             continue
 
@@ -846,7 +124,8 @@ def getSessionDirs(animalInfo, importOptions):
             continue
 
         if animalInfo.minimum_date is not None and date_str < animalInfo.minimum_date:
-            print("skipping date {}, is before minimum date {}".format(date_str, animalInfo.minimum_date))
+            print("skipping date {}, is before minimum date {}".format(
+                date_str, animalInfo.minimum_date))
             prevSession = session_dir
             continue
 
@@ -854,6 +133,7 @@ def getSessionDirs(animalInfo, importOptions):
         prevSessionDirs.append(prevSession)
 
     return filtered_data_dirs, prevSessionDirs
+
 
 def makeSessionObj(seshDir, prevSeshDir, sessionNumber, prevSessionNumber, animalInfo):
     sesh = BTSession()
@@ -888,19 +168,22 @@ def makeSessionObj(seshDir, prevSeshDir, sessionNumber, prevSessionNumber, anima
         sesh.iti_dir = seshDir
 
     # Get behavior_notes info file name
-    behavior_notes_dir = os.path.join(animalInfo.data_dir, 'behavior_notes')
-    sesh.infoFileName = os.path.join(behavior_notes_dir, date_str + ".txt")
+    behaviorNotesDir = os.path.join(animalInfo.data_dir, 'behavior_notes')
+    sesh.infoFileName = os.path.join(behaviorNotesDir, date_str + ".txt")
     if not os.path.exists(sesh.infoFileName):
         # Switched numbering scheme once started doing multiple sessions a day
-        sesh.infoFileName = os.path.join(behaviorNotesDir, f"{date_str}_{sessionNumber}.txt")
+        sesh.infoFileName = os.path.join(
+            behaviorNotesDir, f"{date_str}_{sessionNumber}.txt")
     sesh.seshIdx = sessionNumber
 
     dir_split = prevSeshDir.split('_')
     prevSeshDateStr = dir_split[0][-8:]
-    sesh.prevInfoFileName = os.path.join(behavior_notes_dir, prevSeshDateStr + ".txt")
-    if not os.path.exists(sesh.prevInfoFileName ):
+    sesh.prevInfoFileName = os.path.join(
+        behaviorNotesDir, prevSeshDateStr + ".txt")
+    if not os.path.exists(sesh.prevInfoFileName):
         # Switched numbering scheme once started doing multiple sessions a day
-        sesh.prevInfoFileName = os.path.join(behaviorNotesDir, f"{prevSeshDateStr}_{prevSessionNumber}.txt")
+        sesh.prevInfoFileName = os.path.join(
+            behaviorNotesDir, f"{prevSeshDateStr}_{prevSessionNumber}.txt")
     sesh.prevSeshIdx = prevSessionNumber
 
     sesh.fileStartString = os.path.join(animalInfo.data_dir, seshDir, seshDir)
@@ -919,7 +202,8 @@ def parseInfoFiles(sesh):
             fieldName = lineparts[0]
             fieldVal = lineparts[1]
 
-            # if JUST_EXTRACT_TRODES_DATA and fieldName.lower() not in ["reference", "ref", "baseline", "home", "aways", "last away", "last well", "probe performed"]:
+            # if sesh.importOptions["justExtractData"]  and fieldName.lower() not in ["reference", "ref", "baseline", "home", \
+            # "aways", "last away", "last well", "probe performed"]:
             # continue
 
             if fieldName.lower() == "home":
@@ -941,7 +225,7 @@ def parseInfoFiles(sesh):
                     sesh.isDelayedInterruption = True
                 else:
                     print("Couldn't recognize Condition {} in file {}".format(
-                        type_in, info_file))
+                        type_in, sesh.infoFileName))
             elif fieldName.lower() == "thresh":
                 if "low" in fieldVal.lower():
                     sesh.ripple_detection_threshold = 2.5
@@ -969,14 +253,13 @@ def parseInfoFiles(sesh):
                     sesh.ended_on_home = False
                 else:
                     sesh.found_first_home = True
-                    ended_on = fieldVal
                     if 'H' in fieldVal:
                         sesh.ended_on_home = True
                     elif 'A' in fieldVal:
                         sesh.ended_on_home = False
                     else:
                         print("Couldn't recognize last well {} in file {}".format(
-                            fieldVal, info_file))
+                            fieldVal, sesh.infoFileName))
             elif fieldName.lower() == "iti stim on":
                 if 'Y' in fieldVal:
                     sesh.ITI_stim_on = True
@@ -984,7 +267,7 @@ def parseInfoFiles(sesh):
                     sesh.ITI_stim_on = False
                 else:
                     print("Couldn't recognize ITI Stim condition {} in file {}".format(
-                        fieldVal, info_file))
+                        fieldVal, sesh.infoFileName))
             elif fieldName.lower() == "probe stim on":
                 if 'Y' in fieldVal:
                     sesh.probe_stim_on = True
@@ -992,17 +275,18 @@ def parseInfoFiles(sesh):
                     sesh.probe_stim_on = False
                 else:
                     print("Couldn't recognize Probe Stim condition {} in file {}".format(
-                        fieldVal, info_file))
+                        fieldVal, sesh.infoFileName))
             elif fieldName.lower() == "probe performed":
                 if 'Y' in fieldVal:
                     sesh.probe_performed = True
                 elif 'N' in fieldVal:
                     sesh.probe_performed = False
-                    if animal_name == "Martin":
-                        raise Exception("I thought all martin runs had a probe")
+                    if sesh.animalName == "Martin":
+                        raise Exception(
+                            "I thought all martin runs had a probe")
                 else:
                     print("Couldn't recognize Probe performed val {} in file {}".format(
-                        fieldVal, info_file))
+                        fieldVal, sesh.infoFileName))
             elif fieldName.lower() == "task ended at":
                 sesh.bt_ended_at_well = int(fieldVal)
             elif fieldName.lower() == "probe ended at":
@@ -1011,7 +295,6 @@ def parseInfoFiles(sesh):
                 sesh.weight = float(fieldVal)
             elif fieldName.lower() == "conditiongroup":
                 sesh.conditionGroup = int(fieldVal)
-                foundConditionGroups = True
             elif fieldName.lower() == "probe home fill time":
                 sesh.probe_fill_time = int(fieldVal)
             else:
@@ -1050,7 +333,7 @@ def parseInfoFiles(sesh):
                     sesh.prevSessionHome = int(field_val)
                 elif field_name.lower() == "aways":
                     sesh.prevSessionAways = [int(w)
-                                                for w in field_val.strip().split(' ')]
+                                             for w in field_val.strip().split(' ')]
                 elif field_name.lower() == "condition":
                     type_in = field_val
                     if 'Ripple' in type_in or 'Interruption' in type_in:
@@ -1074,7 +357,6 @@ def parseInfoFiles(sesh):
                     sesh.prevSession_last_away_well = float(field_val)
                     # print(field_val)
                 elif field_name.lower() == "last well":
-                    ended_on = field_val
                     if 'H' in field_val:
                         sesh.prevSession_ended_on_home = True
                     elif 'A' in field_val:
@@ -1104,12 +386,13 @@ def parseInfoFiles(sesh):
     else:
         sesh.prevSessionInfoParsed = False
 
-    if not JUST_EXTRACT_TRODES_DATA:
+    if not sesh.importOptions["justExtractData"]:
         assert sesh.home_well != 0
 
     if sesh.foundWells is None:
         sesh.foundWells = generateFoundWells(
             sesh.home_well, sesh.away_wells, sesh.last_away_well, sesh.ended_on_home, sesh.found_first_home)
+
 
 def parseDLCData(sesh):
     btPosFileName = sesh.animalInfo.DLC_dir + sesh.name + "_task.npz"
@@ -1121,12 +404,12 @@ def parseDLCData(sesh):
     bt_pos = np.load(btPosFileName)
     sesh.bt_pos_xs, sesh.bt_pos_ys, sesh.bt_pos_ts = \
         processPosData_coords(bt_pos["x1"], bt_pos["y1"],
-                                bt_pos["timestamp"], xLim=None, yLim=None, smooth=3)
+                              bt_pos["timestamp"], xLim=None, yLim=None, smooth=3)
 
     probe_pos = np.load(probePosFileName)
     sesh.probe_pos_xs, sesh.probe_pos_ys, sesh.probe_pos_ts = \
         processPosData_coords(probe_pos["x1"], probe_pos["y1"],
-                                probe_pos["timestamp"], xLim=None, yLim=None, smooth=3)
+                              probe_pos["timestamp"], xLim=None, yLim=None, smooth=3)
     # if True:
     #     plt.plot(sesh.probe_pos_xs, sesh.probe_pos_ys)
     #     plt.show()
@@ -1142,7 +425,6 @@ def parseDLCData(sesh):
     return xs, ys, ts
 
 
-
 def loadPositionData(sesh):
     sesh.hasPositionData = False
     position_data = None
@@ -1151,10 +433,10 @@ def loadPositionData(sesh):
     if sesh.animalInfo.DLC_dir is not None:
         position_data = parseDLCData(sesh)
         if position_data is None:
-            assert sesh.positionFromDeepLabCut is None or not sesh.positionFromDeepLabCut 
+            assert sesh.positionFromDeepLabCut is None or not sesh.positionFromDeepLabCut
             sesh.positionFromDeepLabCut = False
         else:
-            assert sesh.positionFromDeepLabCut is None or sesh.positionFromDeepLabCut 
+            assert sesh.positionFromDeepLabCut is None or sesh.positionFromDeepLabCut
             sesh.positionFromDeepLabCut = True
             xs, ys, ts = position_data
             position_data_metadata = {}
@@ -1162,15 +444,16 @@ def loadPositionData(sesh):
     else:
         sesh.positionFromDeepLabCut = False
 
-
     if position_data is None:
-        assert not sesh.positionFromDeepLabCut 
+        assert not sesh.positionFromDeepLabCut
         sesh.importOptions["PIXELS_PER_CM"] = 5.0
         trackingFile = sesh.fileStartString + '.1.videoPositionTracking'
         if os.path.exists(trackingFile):
-            position_data_metadata, position_data = readRawPositionData(trackingFile)
+            position_data_metadata, position_data = readRawPositionData(
+                trackingFile)
 
-            if MAKE_ALL_TRACKING_AUTO and ("source" not in position_data_metadata or "trodescameraextractor" not in position_data_metadata["source"]):
+            if sesh.importOptions["forceAllTrackingAuto"] and ("source" not in position_data_metadata or
+                                                               "trodescameraextractor" not in position_data_metadata["source"]):
                 # print(position_data_metadata)
                 position_data = None
                 os.rename(sesh.fileStartString + '.1.videoPositionTracking', sesh.fileStartString +
@@ -1179,7 +462,7 @@ def loadPositionData(sesh):
                 print("Got position tracking")
                 sesh.frameTimes = position_data['timestamp']
                 xs, ys, ts = processPosData(position_data, xLim=(
-                    animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
+                    sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH))
                 sesh.hasPositionData = True
         else:
             position_data = None
@@ -1187,35 +470,39 @@ def loadPositionData(sesh):
         if position_data is None:
             print("running trodes camera extractor!")
             processRawTrodesVideo(sesh.fileStartString + '.1.h264')
-            position_data_metadata, position_data = readRawPositionData( trackingFile)
+            position_data_metadata, position_data = readRawPositionData(
+                trackingFile)
             sesh.frameTimes = position_data['timestamp']
             xs, ys, ts = processPosData(position_data, xLim=(
-                animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
+                sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH))
             sesh.hasPositionData = True
-
 
     if sesh.missingEndedAtWell:
         raise Exception(
             f"{sesh.name} has position but no last well marked in behavior notes and didn't end on last home")
     if sesh.missingProbeEndedAtWell:
-        raise Exception("Didn't mark the probe end well for session {}".format(sesh.name))
-
+        raise Exception(
+            "Didn't mark the probe end well for session {}".format(sesh.name))
 
     if sesh.positionFromDeepLabCut:
         well_coords_file_name = sesh.fileStartString + '.1.wellLocations_dlc.csv'
         if not os.path.exists(well_coords_file_name):
-            well_coords_file_name = os.path.join(animalInfo.data_dir, 'well_locations_dlc.csv')
-            print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
+            well_coords_file_name = os.path.join(
+                sesh.animalInfo.data_dir, 'well_locations_dlc.csv')
+            print("Specific well locations not found, falling back to file {}".format(
+                well_coords_file_name))
     else:
         well_coords_file_name = sesh.fileStartString + '.1.wellLocations.csv'
         if not os.path.exists(well_coords_file_name):
-            well_coords_file_name = os.path.join(animalInfo.data_dir, 'well_locations.csv')
-            print("Specific well locations not found, falling back to file {}".format(well_coords_file_name))
+            well_coords_file_name = os.path.join(
+                sesh.animalInfo.data_dir, 'well_locations.csv')
+            print("Specific well locations not found, falling back to file {}".format(
+                well_coords_file_name))
     sesh.well_coords_map = readWellCoordsFile(well_coords_file_name)
     sesh.home_x, sesh.home_y = getWellCoordinates(
         sesh.home_well, sesh.well_coords_map)
 
-    if not sesh.hasPositionData :
+    if not sesh.hasPositionData:
         print(f"WARNING: {sesh.name} has no position data")
         return
 
@@ -1223,10 +510,12 @@ def loadPositionData(sesh):
         print("WARNING: Skipping USB ")
     else:
         if "lightonframe" in position_data_metadata:
-            sesh.trodesLightOnFrame = int(position_data_metadata['lightonframe'])
-            sesh.trodesLightOffFrame = int(position_data_metadata['lightoffframe'])
+            sesh.trodesLightOnFrame = int(
+                position_data_metadata['lightonframe'])
+            sesh.trodesLightOffFrame = int(
+                position_data_metadata['lightoffframe'])
             print("metadata says trodes light frames {}, {} (/{})".format(sesh.trodesLightOffFrame,
-                                                                            sesh.trodesLightOnFrame, len(ts)))
+                                                                          sesh.trodesLightOnFrame, len(ts)))
             sesh.trodesLightOnTime = sesh.frameTimes[sesh.trodesLightOnFrame]
             sesh.trodesLightOffTime = sesh.frameTimes[sesh.trodesLightOffFrame]
             print("metadata file says trodes light timestamps {}, {} (/{})".format(
@@ -1239,7 +528,8 @@ def loadPositionData(sesh):
             # was a separate metadatafile made?
             positionMetadataFile = sesh.fileStartString + '.1.justLights'
             if os.path.exists(positionMetadataFile):
-                lightInfo = np.fromfile(positionMetadataFile, sep=",").astype(int)
+                lightInfo = np.fromfile(
+                    positionMetadataFile, sep=",").astype(int)
                 sesh.trodesLightOffTime = lightInfo[0]
                 sesh.trodesLightOnTime = lightInfo[1]
                 print("justlights file says trodes light timestamps {}, {} (/{})".format(
@@ -1252,15 +542,15 @@ def loadPositionData(sesh):
                     sesh.trodesLightOffTime, sesh.trodesLightOnTime, len(ts)))
 
         possibleDirectories = [
-            "/media/WDC6/videos/B16-20/trimmed/{}/".format(animal_name),
-            "/media/WDC7/videos/B16-20/trimmed/{}/".format(animal_name),
-            "/media/WDC8/videos/B16-20/trimmed/{}/".format(animal_name),
-            "/media/WDC6/{}/".format(animal_name),
-            "/media/WDC7/{}/".format(animal_name),
-            "/media/WDC8/{}/".format(animal_name),
+            "/media/WDC6/videos/B16-20/trimmed/{}/".format(sesh.animalName),
+            "/media/WDC7/videos/B16-20/trimmed/{}/".format(sesh.animalName),
+            "/media/WDC8/videos/B16-20/trimmed/{}/".format(sesh.animalName),
+            "/media/WDC6/{}/".format(sesh.animalName),
+            "/media/WDC7/{}/".format(sesh.animalName),
+            "/media/WDC8/{}/".format(sesh.animalName),
         ]
         sesh.usbVidFile = getUSBVideoFile(
-            sesh.name, possibleDirectories, seshIdx=sesh.seshIdx, useSeshIdxDirectly=(animal_name == "B18"))
+            sesh.name, possibleDirectories, seshIdx=sesh.seshIdx, useSeshIdxDirectly=(sesh.animalName == "B18"))
         if sesh.usbVidFile is None:
             print("??????? usb vid file not found for session ", sesh.name)
         else:
@@ -1283,18 +573,19 @@ def loadPositionData(sesh):
                         all_pos_nearest_wells, ts)
 
                 ann = AnnotatorWindow(xs, ys, ts, sesh.trodesLightOffTime, sesh.trodesLightOnTime,
-                                        sesh.usbVidFile, all_pos_well_entry_times, all_pos_well_exit_times,
-                                        sesh.foundWells, not sesh.probe_performed, sesh.fileStartString + '.1',
-                                        sesh.well_coords_map)
+                                      sesh.usbVidFile, all_pos_well_entry_times, all_pos_well_exit_times,
+                                      sesh.foundWells, not sesh.probe_performed, sesh.fileStartString + '.1',
+                                      sesh.well_coords_map)
                 ann.resize(1600, 800)
                 ann.show()
-                parent_app.exec()
+                importParentApp.exec()
 
         if not sesh.importOptions["justExtractData"]:
             if sesh.separate_probe_file:
                 probe_file_str = os.path.join(
                     sesh.probe_dir, os.path.basename(sesh.probe_dir))
-                bt_time_clips = readClipData(sesh.fileStartString + '.1.clips')[0]
+                bt_time_clips = readClipData(
+                    sesh.fileStartString + '.1.clips')[0]
                 probe_time_clips = readClipData(probe_file_str + '.1.clips')[0]
             else:
                 time_clips = readClipData(sesh.fileStartString + '.1.clips')
@@ -1314,7 +605,7 @@ def loadPositionData(sesh):
                     _, position_data = readRawPositionData(
                         probe_file_str + '.1.videoPositionTracking')
                     xs, ys, ts = processPosData(position_data, xLim=(
-                        animalInfo.X_START, animalInfo.X_FINISH), yLim=(animalInfo.Y_START, animalInfo.Y_FINISH))
+                        sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH))
 
                 probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
                 probe_end_idx = np.searchsorted(ts, probe_time_clips[1])
@@ -1363,15 +654,13 @@ def loadPositionData(sesh):
         sesh.away_well_leave_pos_idxs = np.searchsorted(
             sesh.bt_pos_ts, sesh.away_well_leave_times)
 
-
-    if not sesh.importOptions["skipSniff"]:
-        gl = animalInfo.data_dir + sesh.name + '/*.rgs'
+    if sesh.importOptions["skipSniff"]:
+        sesh.hasSniffTimes = False
+    else:
+        gl = sesh.animalInfo.data_dir + sesh.name + '/*.rgs'
         dir_list = glob.glob(gl)
         if len(dir_list) == 0:
             print("Couldn't find sniff times files")
-            sesh.hasSniffTimes = False
-        elif SKIP_SNIFF:
-            print("Warning: skipping sniff stuff")
             sesh.hasSniffTimes = False
         else:
             sesh.hasSniffTimes = True
@@ -1390,10 +679,14 @@ def loadPositionData(sesh):
 
                     sesh.well_sniff_times_entry = [[] for _ in all_well_names]
                     sesh.well_sniff_times_exit = [[] for _ in all_well_names]
-                    sesh.bt_well_sniff_times_entry = [[] for _ in all_well_names]
-                    sesh.bt_well_sniff_times_exit = [[] for _ in all_well_names]
-                    sesh.probe_well_sniff_times_entry = [[] for _ in all_well_names]
-                    sesh.probe_well_sniff_times_exit = [[] for _ in all_well_names]
+                    sesh.bt_well_sniff_times_entry = [
+                        [] for _ in all_well_names]
+                    sesh.bt_well_sniff_times_exit = [
+                        [] for _ in all_well_names]
+                    sesh.probe_well_sniff_times_entry = [
+                        [] for _ in all_well_names]
+                    sesh.probe_well_sniff_times_exit = [
+                        [] for _ in all_well_names]
 
                     sesh.sniff_pre_trial_light_off = int(sniffData[0][0])
                     sesh.sniff_trial_start = int(sniffData[0][1])
@@ -1401,6 +694,11 @@ def loadPositionData(sesh):
                     sesh.sniff_probe_start = int(sniffData[1][0])
                     sesh.sniff_probe_stop = int(sniffData[1][1])
                     sesh.sniff_post_probe_light_on = int(sniffData[1][2])
+
+                    well_name_to_idx = np.empty((np.max(all_well_names) + 1))
+                    well_name_to_idx[:] = np.nan
+                    for widx, wname in enumerate(all_well_names):
+                        well_name_to_idx[wname] = widx
 
                     for i in sniffData[2:]:
                         w = int(well_name_to_idx[int(i[2])])
@@ -1410,22 +708,25 @@ def loadPositionData(sesh):
                         sesh.well_sniff_times_exit[w].append(exit_time)
 
                         if exit_time < entry_time:
-                            print("mismatched interval: {} - {}".format(entry_time, exit_time))
+                            print(
+                                "mismatched interval: {} - {}".format(entry_time, exit_time))
                             assert False
                         if exit_time < sesh.sniff_trial_stop:
-                            sesh.bt_well_sniff_times_entry[w].append(entry_time)
+                            sesh.bt_well_sniff_times_entry[w].append(
+                                entry_time)
                             sesh.bt_well_sniff_times_exit[w].append(exit_time)
                         else:
-                            sesh.probe_well_sniff_times_entry[w].append(entry_time)
-                            sesh.probe_well_sniff_times_exit[w].append(exit_time)
-
+                            sesh.probe_well_sniff_times_entry[w].append(
+                                entry_time)
+                            sesh.probe_well_sniff_times_exit[w].append(
+                                exit_time)
 
 
 def loadLFPData(sesh):
     lfpData = []
 
     if len(sesh.ripple_detection_tetrodes) == 0:
-        sesh.ripple_detection_tetrodes = [animalInfo.DEFAULT_RIP_DET_TET]
+        sesh.ripple_detection_tetrodes = [sesh.animalInfo.DEFAULT_RIP_DET_TET]
 
     for i in range(len(sesh.ripple_detection_tetrodes)):
         lfpdir = sesh.fileStartString + ".LFP"
@@ -1433,11 +734,14 @@ def loadLFPData(sesh):
             print(lfpdir, "doesn't exists, gonna try and extract the LFP")
             # syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportLFP -rec " + sesh.fileStartString + ".rec"
             if os.path.exists("/home/wcroughan/Software/Trodes21/exportLFP"):
-                syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + sesh.fileStartString + ".rec"
+                syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + \
+                    sesh.fileStartString + ".rec"
             elif os.path.exists("/home/wcroughan/Software/Trodes21/linux/exportLFP"):
-                syscmd = "/home/wcroughan/Software/Trodes21/linux/exportLFP -rec " + sesh.fileStartString + ".rec"
+                syscmd = "/home/wcroughan/Software/Trodes21/linux/exportLFP -rec " + \
+                    sesh.fileStartString + ".rec"
             else:
-                syscmd = "/home/wcroughan/Software/Trodes_2-2-3_Ubuntu1804/exportLFP -rec " + sesh.fileStartString + ".rec"
+                syscmd = "/home/wcroughan/Software/Trodes_2-2-3_Ubuntu1804/exportLFP -rec " + \
+                    sesh.fileStartString + ".rec"
             print(syscmd)
             os.system(syscmd)
 
@@ -1446,10 +750,11 @@ def loadLFPData(sesh):
         lfpfilelist = glob.glob(gl)
         lfpfilename = lfpfilelist[0]
         sesh.bt_lfp_fnames.append(lfpfilename)
-        lfpData.append(MountainViewIO.loadLFP(data_file=sesh.bt_lfp_fnames[-1]))
+        lfpData.append(MountainViewIO.loadLFP(
+            data_file=sesh.bt_lfp_fnames[-1]))
 
     if sesh.ripple_baseline_tetrode is None:
-        sesh.ripple_baseline_tetrode = animalInfo.DEFAULT_RIP_BAS_TET
+        sesh.ripple_baseline_tetrode = sesh.animalInfo.DEFAULT_RIP_BAS_TET
 
     # I think Martin didn't have this baseline tetrode? Need to check
     if sesh.ripple_baseline_tetrode is not None:
@@ -1458,9 +763,11 @@ def loadLFPData(sesh):
             print(lfpdir, "doesn't exists, gonna try and extract the LFP")
             # syscmd = "/home/wcroughan/SpikeGadgets/Trodes_1_8_1/exportLFP -rec " + sesh.fileStartString + ".rec"
             if os.path.exists("/home/wcroughan/Software/Trodes21/exportLFP"):
-                syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + sesh.fileStartString + ".rec"
+                syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + \
+                    sesh.fileStartString + ".rec"
             else:
-                syscmd = "/home/wcroughan/Software/Trodes21/linux/exportLFP -rec " + sesh.fileStartString + ".rec"
+                syscmd = "/home/wcroughan/Software/Trodes21/linux/exportLFP -rec " + \
+                    sesh.fileStartString + ".rec"
             print(syscmd)
             os.system(syscmd)
 
@@ -1469,7 +776,12 @@ def loadLFPData(sesh):
         lfpfilelist = glob.glob(gl)
         lfpfilename = lfpfilelist[0]
         sesh.bt_lfp_baseline_fname = lfpfilename
-        baselineLfpData = MountainViewIO.loadLFP(data_file=sesh.bt_lfp_baseline_fname)
+        baselineLfpData = MountainViewIO.loadLFP(
+            data_file=sesh.bt_lfp_baseline_fname)
+    else:
+        baselineLfpData = None
+
+    return lfpData, baselineLfpData
 
 
 def runLFPAnalyses(sesh, lfpData, baselineLfpData):
@@ -1487,16 +799,20 @@ def runLFPAnalyses(sesh, lfpData, baselineLfpData):
     sesh.interruption_timestamps = lfpTimestamps[interruption_idxs]
     sesh.interruptionIdxs = interruption_idxs
 
-    sesh.bt_interruption_pos_idxs = np.searchsorted( sesh.bt_pos_ts, sesh.interruption_timestamps)
-    sesh.bt_interruption_pos_idxs = sesh.bt_interruption_pos_idxs[ sesh.bt_interruption_pos_idxs < len(sesh.bt_pos_ts)]
+    sesh.bt_interruption_pos_idxs = np.searchsorted(
+        sesh.bt_pos_ts, sesh.interruption_timestamps)
+    sesh.bt_interruption_pos_idxs = sesh.bt_interruption_pos_idxs[sesh.bt_interruption_pos_idxs < len(
+        sesh.bt_pos_ts)]
 
     # ========
     # dealing with weird Martin sessions:
     showPlot = False
-    print("{} interruptions detected".format(len(sesh.bt_interruption_pos_idxs)))
+    print("{} interruptions detected".format(
+        len(sesh.bt_interruption_pos_idxs)))
     if len(sesh.bt_interruption_pos_idxs) < 50:
         if sesh.isRippleInterruption and len(sesh.bt_interruption_pos_idxs) > 0:
-            # print( "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER THAN 50 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
+            # print( "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER " \
+            # "THAN 50 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
             # raise Exception("SAW FEWER THAN 50 INTERRUPTIONS ON AN INTERRUPTION SESSION: {} on session {}".format(
             # len(session.bt_interruption_pos_idxs), session.name))
             print("WARNING: FEWER THAN 50 STIMS DETECTED ON AN INTERRUPTION SESSION")
@@ -1514,7 +830,7 @@ def runLFPAnalyses(sesh, lfpData, baselineLfpData):
 
     print("Condition - {}".format("SWR" if sesh.isRippleInterruption else "Ctrl"))
     lfp_deflections = signal.find_peaks(np.abs(
-        np.diff(lfpV, prepend=lfpV[0])), height=DEFLECTION_THRESHOLD_LO, distance=MIN_ARTIFACT_DISTANCE)
+        np.diff(lfpV, prepend=lfpV[0])), height=C["DEFLECTION_THRESHOLD_LO"], distance=C["MIN_ARTIFACT_DISTANCE"])
     lfp_artifact_idxs = lfp_deflections[0]
     sesh.artifact_timestamps = lfpTimestamps[lfp_artifact_idxs]
     sesh.artifactIdxs = lfp_artifact_idxs
@@ -1529,21 +845,24 @@ def runLFPAnalyses(sesh, lfpData, baselineLfpData):
     sesh.bt_lfp_start_idx = bt_lfp_start_idx
     sesh.bt_lfp_end_idx = bt_lfp_end_idx
 
-    pre_bt_interruption_idxs = interruption_idxs[interruption_idxs < bt_lfp_start_idx]
-    pre_bt_interruption_idxs_first_half = interruption_idxs[interruption_idxs < int(
-        bt_lfp_start_idx / 2)]
+    pre_bt_interruption_idxs = interruption_idxs[interruption_idxs <
+                                                 bt_lfp_start_idx]
+    # pre_bt_interruption_idxs_first_half = interruption_idxs[interruption_idxs < int(
+    #     bt_lfp_start_idx / 2)]
 
     _, _, sesh.prebtMeanRipplePower, sesh.prebtStdRipplePower = getRipplePower(
         lfpV[0:bt_lfp_start_idx], omit_artifacts=False)
     _, ripple_power, _, _ = getRipplePower(
-        btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=sesh.prebtMeanRipplePower, stdPower=sesh.prebtStdRipplePower, showPlot=showPlot)
+        btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=sesh.prebtMeanRipplePower,
+        stdPower=sesh.prebtStdRipplePower, showPlot=showPlot)
     sesh.btRipStartIdxsPreStats, sesh.btRipLensPreStats, sesh.btRipPeakIdxsPreStats, sesh.btRipPeakAmpsPreStats, sesh.btRipCrossThreshIdxsPreStats = \
         detectRipples(ripple_power)
     # print(bt_lfp_start_idx, sesh.btRipStartIdxsPreStats)
     if len(sesh.btRipStartIdxsPreStats) == 0:
         sesh.btRipStartTimestampsPreStats = np.array([])
     else:
-        sesh.btRipStartTimestampsPreStats = lfpTimestamps[sesh.btRipStartIdxsPreStats + bt_lfp_start_idx]
+        sesh.btRipStartTimestampsPreStats = lfpTimestamps[
+            sesh.btRipStartIdxsPreStats + bt_lfp_start_idx]
 
     _, _, sesh.prebtMeanRipplePowerArtifactsRemoved, sesh.prebtStdRipplePowerArtifactsRemoved = getRipplePower(
         lfpV[0:bt_lfp_start_idx], lfp_deflections=pre_bt_interruption_idxs)
@@ -1623,20 +942,23 @@ def runLFPAnalyses(sesh, lfpData, baselineLfpData):
 
         if sesh.bt_lfp_baseline_fname is not None:
             # With baseline tetrode, calculated the way activelink does it
-            lfpData = MountainViewIO.loadLFP(data_file=sesh.bt_lfp_baseline_fname)
+            lfpData = MountainViewIO.loadLFP(
+                data_file=sesh.bt_lfp_baseline_fname)
             baselfpV = lfpData[1]['voltage']
-            baselfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
+            # baselfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
 
             btRipPower, _, _, _ = getRipplePower(
                 btLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=sesh.probeMeanRipplePower, stdPower=sesh.probeStdRipplePower, showPlot=showPlot)
-            probeRipPower, _, _, _ = getRipplePower(probeLFPData, omit_artifacts=False)
+            probeRipPower, _, _, _ = getRipplePower(
+                probeLFPData, omit_artifacts=False)
 
             baselineProbeLFPData = baselfpV[probeLfpStart_idx:probeLfpEnd_idx]
             probeBaselinePower, _, baselineProbeMeanRipplePower, baselineProbeStdRipplePower = getRipplePower(
                 baselineProbeLFPData, omit_artifacts=False)
             btBaselineLFPData = baselfpV[bt_lfp_start_idx:bt_lfp_end_idx]
             btBaselineRipplePower, _, _, _ = getRipplePower(
-                btBaselineLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower, showPlot=showPlot)
+                btBaselineLFPData, lfp_deflections=bt_lfp_artifact_idxs, meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower,
+                showPlot=showPlot)
 
             probeRawPowerDiff = probeRipPower - probeBaselinePower
             zmean = np.nanmean(probeRawPowerDiff)
@@ -1645,8 +967,8 @@ def runLFPAnalyses(sesh, lfpData, baselineLfpData):
             rawPowerDiff = btRipPower - btBaselineRipplePower
             zPowerDiff = (rawPowerDiff - zmean) / zstd
 
-            sesh.btWithBaseRipStartIdx, sesh.btWithBaseRipLens, sesh.btWithBaseRipPeakIdx, sesh.btWithBaseRipPeakAmps, sesh.btWithBaseRipCrossThreshIdxs = detectRipples(
-                zPowerDiff)
+            sesh.btWithBaseRipStartIdx, sesh.btWithBaseRipLens, sesh.btWithBaseRipPeakIdx, sesh.btWithBaseRipPeakAmps, sesh.btWithBaseRipCrossThreshIdxs = \
+                detectRipples(zPowerDiff)
             if len(sesh.btWithBaseRipStartIdx) > 0:
                 sesh.btWithBaseRipStartTimestamps = lfpTimestamps[
                     sesh.btWithBaseRipStartIdx + bt_lfp_start_idx]
@@ -1659,17 +981,20 @@ def runLFPAnalyses(sesh, lfpData, baselineLfpData):
     elif sesh.probe_performed:
         print("Probe performed but LFP in a separate file for session", sesh.name)
 
+
 def runSanityChecks(sesh, lfpData, baselineLfpData):
     # TODO:
     # Check num stims in LFP, large gaps in signal
     pass
 
+
 def posCalcVelocity(sesh):
+    pixPerCm = sesh.importOptions["consts"]["PIXELS_PER_CM"]
     bt_vel = np.sqrt(np.power(np.diff(sesh.bt_pos_xs), 2) +
-                        np.power(np.diff(sesh.bt_pos_ys), 2))
+                     np.power(np.diff(sesh.bt_pos_ys), 2))
     sesh.bt_vel_cm_s = np.divide(bt_vel, np.diff(sesh.bt_pos_ts) /
-                                    TRODES_SAMPLING_RATE) / PIXELS_PER_CM
-    bt_is_mv = sesh.bt_vel_cm_s > VEL_THRESH
+                                 TRODES_SAMPLING_RATE) / pixPerCm
+    bt_is_mv = sesh.bt_vel_cm_s > sesh.importOptions["consts"]["VEL_THRESH"]
     if len(bt_is_mv) > 0:
         bt_is_mv = np.append(bt_is_mv, np.array(bt_is_mv[-1]))
     sesh.bt_is_mv = bt_is_mv
@@ -1686,8 +1011,8 @@ def posCalcVelocity(sesh):
         probe_vel = np.sqrt(np.power(np.diff(sesh.probe_pos_xs), 2) +
                             np.power(np.diff(sesh.probe_pos_ys), 2))
         sesh.probe_vel_cm_s = np.divide(probe_vel, np.diff(sesh.probe_pos_ts) /
-                                            TRODES_SAMPLING_RATE) / PIXELS_PER_CM
-        probe_is_mv = sesh.probe_vel_cm_s > VEL_THRESH
+                                        TRODES_SAMPLING_RATE) / pixPerCm
+        probe_is_mv = sesh.probe_vel_cm_s > sesh.importOptions["consts"]["VEL_THRESH"]
         if len(probe_is_mv) > 0:
             probe_is_mv = np.append(probe_is_mv, np.array(probe_is_mv[-1]))
         sesh.probe_is_mv = probe_is_mv
@@ -1699,6 +1024,7 @@ def posCalcVelocity(sesh):
         sesh.probe_mv_ys[np.logical_not(probe_is_mv)] = np.nan
         sesh.probe_still_ys = np.array(sesh.probe_pos_ys)
         sesh.probe_still_ys[probe_is_mv] = np.nan
+
 
 def posCalcEntryExitTimes(sesh):
     # ===================================
@@ -1782,6 +1108,250 @@ def posCalcEntryExitTimes(sesh):
         sesh.probe_ctrl_home_well_exit_times = sesh.probe_well_exit_times[
             sesh.ctrl_home_well_idx_in_allwells]
 
+
+def posCalcBallisticity(sesh):
+    # ===================================
+    # Ballisticity of movements
+    # ===================================
+    timeIntervals = sesh.importOptions["consts"]["BALL_TIME_INTERVALS"]
+    furthest_interval = max(timeIntervals)
+    assert np.all(np.diff(np.array(timeIntervals)) > 0)
+    assert timeIntervals[0] > 0
+
+    # idx is (time, interval len, dimension)
+    d1 = len(session.bt_pos_ts) - furthest_interval
+    delta = np.empty((d1, furthest_interval, 2))
+    delta[:] = np.nan
+    dx = np.diff(session.bt_pos_xs)
+    dy = np.diff(session.bt_pos_ys)
+    delta[:, 0, 0] = dx[0:d1]
+    delta[:, 0, 1] = dy[0:d1]
+
+    for i in range(1, furthest_interval):
+        delta[:, i, 0] = delta[:, i - 1, 0] + dx[i:i + d1]
+        delta[:, i, 1] = delta[:, i - 1, 1] + dy[i:i + d1]
+
+    displacement = np.sqrt(np.sum(np.square(delta), axis=2))
+    displacement[displacement == 0] = np.nan
+    last_displacement = displacement[:, -1]
+    session.bt_ball_displacement = last_displacement
+
+    x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
+    y = np.log(displacement)
+    assert np.all(np.logical_or(
+        np.logical_not(np.isnan(y)), np.isnan(displacement)))
+    y[y == -np.inf] = np.nan
+    np.nan_to_num(y, copy=False, nan=np.nanmin(y))
+
+    x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
+    y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
+    def m(arg): return np.mean(arg, axis=1)
+    # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
+    beta = m(y * x) / m(np.power(x, 2))
+    session.bt_ballisticity = beta
+    assert np.sum(np.isnan(session.bt_ballisticity)) == 0
+
+    if session.probe_performed:
+        # idx is (time, interval len, dimension)
+        d1 = len(session.probe_pos_ts) - furthest_interval
+        delta = np.empty((d1, furthest_interval, 2))
+        delta[:] = np.nan
+        dx = np.diff(session.probe_pos_xs)
+        dy = np.diff(session.probe_pos_ys)
+        delta[:, 0, 0] = dx[0:d1]
+        delta[:, 0, 1] = dy[0:d1]
+
+        for i in range(1, furthest_interval):
+            delta[:, i, 0] = delta[:, i - 1, 0] + dx[i:i + d1]
+            delta[:, i, 1] = delta[:, i - 1, 1] + dy[i:i + d1]
+
+        displacement = np.sqrt(np.sum(np.square(delta), axis=2))
+        displacement[displacement == 0] = np.nan
+        last_displacement = displacement[:, -1]
+        session.probe_ball_displacement = last_displacement
+
+        x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
+        y = np.log(displacement)
+        assert np.all(np.logical_or(
+            np.logical_not(np.isnan(y)), np.isnan(displacement)))
+        y[y == -np.inf] = np.nan
+        np.nan_to_num(y, copy=False, nan=np.nanmin(y))
+
+        x = x - np.tile(np.nanmean(x, axis=1), (furthest_interval, 1)).T
+        y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
+        # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
+        beta = m(y * x) / m(np.power(x, 2))
+        session.probe_ballisticity = beta
+        assert np.sum(np.isnan(session.probe_ballisticity)) == 0
+
+
+# ===================================
+# Knot-path-curvature as in https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000638
+# ===================================
+def getCurvature(x, y, H):
+    H2 = H * H
+    i1 = np.empty_like(x)
+    i2 = np.empty_like(x)
+    dxf = np.empty_like(x)
+    dyf = np.empty_like(x)
+    dxb = np.empty_like(x)
+    dyb = np.empty_like(x)
+    magf = np.empty_like(x)
+    magb = np.empty_like(x)
+
+    dx = np.diff(x)
+    dy = np.diff(y)
+
+    for pi in range(len(x)):
+        # forward
+        ii = pi
+        dxfi = 0.0
+        dyfi = 0.0
+        while ii < len(dx):
+            dxfi += dx[ii]
+            dyfi += dy[ii]
+            magfi = dxfi * dxfi + dyfi * dyfi
+            if magfi >= H2:
+                break
+            ii += 1
+
+        if ii == len(dx):
+            i1[pi] = np.nan
+            i2[pi] = np.nan
+            dxf[pi] = np.nan
+            dyf[pi] = np.nan
+            dxb[pi] = np.nan
+            dyb[pi] = np.nan
+            magf[pi] = np.nan
+            magb[pi] = np.nan
+            continue
+        i2[pi] = ii
+
+        ii = pi - 1
+        dxbi = 0.0
+        dybi = 0.0
+        while ii >= 0:
+            dxbi += dx[ii]
+            dybi += dy[ii]
+            magb = dxbi * dxbi + dybi * dybi
+            if magb >= H2:
+                break
+        if ii == -1:
+            i1[pi] = np.nan
+            i2[pi] = np.nan
+            dxf[pi] = np.nan
+            dyf[pi] = np.nan
+            dxb[pi] = np.nan
+            dyb[pi] = np.nan
+            magf[pi] = np.nan
+            magb[pi] = np.nan
+            continue
+        i1[pi] = ii
+
+    uxf = dxf / np.sqrt(magf)
+    uyf = dyf / np.sqrt(magf)
+    uxb = dxb / np.sqrt(magb)
+    uyb = dyb / np.sqrt(magb)
+    dotprod = uxf * uxb + uyf * uyb
+    curvature = np.arccos(dotprod)
+
+    return curvature, i1, i2, dxf, dyf, dxb, dyb
+
+
+def posCalcCurvature(sesh):
+    KNOT_H_POS = sesh.importOptions["consts"]["KNOT_H_CM"] * sesh.importOptions["consts"]["PIXELS_PER_CM"]
+
+    sesh.bt_curvature, sesh.bt_curvature_i1, sesh.bt_curvature_i2, sesh.bt_curvature_dxf, sesh.bt_curvature_dyf, sesh.bt_curvature_dxb, \
+        sesh.bt_curvature_dyb = getCurvature(sesh.bt_pos_xs, sesh.bt_pos_ys, KNOT_H_POS)
+
+    if session.probe_performed:
+        sesh.probe_curvature, sesh.probe_curvature_i1, sesh.probe_curvature_i2, sesh.probe_curvature_dxf, sesh.probe_curvature_dyf, sesh.probe_curvature_dxb, \
+            sesh.probe_curvature_dyb = getCurvature(sesh.probe_pos_xs, sesh.probe_pos_ys, KNOT_H_POS)
+
+
+def getExplorationCategories(ts, vel, nearestWells, consts, forcePauseIntervals=None):
+    POS_FRAME_RATE = stats.mode(np.diff(ts))[0] / float(TRODES_SAMPLING_RATE)
+    BOUT_VEL_SM_SIGMA = consts["BOUT_VEL_SM_SIGMA_SECS"] / POS_FRAME_RATE
+    MIN_PAUSE_TIME_FRAMES = int(consts["MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS"] / POS_FRAME_RATE)
+    MIN_EXPLORE_TIME_FRAMES = int(consts["MIN_EXPLORE_TIME_SECS"] / POS_FRAME_RATE)
+
+    smoothVel = scipy.ndimage.gaussian_filter1d(vel, BOUT_VEL_SM_SIGMA)
+
+    isExploreLocal = smoothVel > consts["PAUSE_MAX_SPEED_CM_S"]
+    dilationFilter = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
+    inPauseBout = ~ (signal.convolve(isExploreLocal.astype(int), dilationFilter, mode='same').astype(bool))
+    isInPause = signal.convolve(inPauseBout.astype(int), dilationFilter, mode='same').astype(bool)
+    isInExplore = np.logical_not(isInPause)
+
+    if forcePauseIntervals is not None:
+        for i1, i2 in forcePauseIntervals:
+            pidx1 = np.searchsorted(ts[0:-1], i1)
+            pidx2 = np.searchsorted(ts[0:-1], i2)
+            isInPause[pidx1:pidx2] = True
+            isInExplore[pidx1:pidx2] = False
+
+    assert np.sum(np.isnan(isInPause)) == 0
+    assert np.sum(np.isnan(isInExplore)) == 0
+    assert np.all(np.logical_or(isInPause, isInExplore))
+    assert not np.any(np.logical_and(isInPause, isInExplore))
+
+    startExplores = np.where(np.diff(isInExplore.astype(int)) == 1)[0] + 1
+    if isInExplore[0]:
+        startExplores = np.insert(startExplores, 0, 0)
+
+    stopExplores = np.where(np.diff(isInExplore.astype(int)) == -1)[0] + 1
+    if isInExplore[-1]:
+        stopExplores = np.append(stopExplores, len(isInExplore))
+
+    boutLenFrames = stopExplores - startExplores
+    longEnough = boutLenFrames >= MIN_EXPLORE_TIME_FRAMES
+
+    boutNumWellsVisited = np.zeros((len(startExplores)))
+    for i, (bst, ben) in enumerate(zip(startExplores, stopExplores)):
+        boutNumWellsVisited[i] = len(
+            getListOfVisitedWells(nearestWells[bst:ben], True))
+    enoughWells = boutNumWellsVisited >= consts["MIN_EXPLORE_NUM_WELLS"]
+
+    keepBout = np.logical_and(longEnough, enoughWells)
+    exploreBoutStarts = startExplores[keepBout]
+    exploreBoutEnds = stopExplores[keepBout]
+    exploreBoutLens = exploreBoutEnds - exploreBoutStarts
+    ts = np.array(ts)
+    exploreBoutLensSecs = (ts[exploreBoutEnds] - ts[exploreBoutStarts]) / TRODES_SAMPLING_RATE
+
+    # add a category at each behavior time point for easy reference later:
+    boutCategory = np.zeros_like(ts)
+    last_stop = 0
+    for bst, ben in zip(exploreBoutStarts, exploreBoutEnds):
+        boutCategory[last_stop:bst] = 1
+        last_stop = ben
+    boutCategory[last_stop:] = 1
+    for i1, i2 in forcePauseIntervals:
+        pidx1 = np.searchsorted(ts[0:-1], i1)
+        pidx2 = np.searchsorted(ts[0:-1], i2)
+        boutCategory[pidx1:pidx2] = 2
+
+    boutLabel = np.zeros_like(ts)
+    for bi, (bst, ben) in enumerate(zip(exploreBoutStarts, exploreBoutEnds)):
+        boutLabel[bst:ben] = bi + 1
+
+    return smoothVel, isInPause, isInExplore, exploreBoutStarts, exploreBoutEnds, exploreBoutLens, \
+        exploreBoutLensSecs, boutCategory, boutLabel
+
+
+def posCalcExplorationBouts(sesh):
+    sesh.bt_sm_vel, sesh.bt_is_in_pause, sesh.bt_is_in_explore, sesh.bt_explore_bout_starts, sesh.bt_explore_bout_ends, \
+        sesh.bt_explore_bout_lens, sesh.bt_explore_bout_lens_secs, sesh.bt_bout_category, sesh.bt_bout_label = \
+        getExplorationCategories(sesh.bt_pos_ts, sesh.bt_vel_cm_s, sesh.bt_nearest_wells, sesh.importOptions["consts"],
+                                 forcePauseIntervals=(list(zip(sesh.home_well_find_times, sesh.home_well_leave_times)) +
+                                                      list(zip(sesh.away_well_find_times, sesh.away_well_leave_times))))
+
+    if sesh.probe_performed:
+        sesh.probe_sm_vel, sesh.probe_is_in_pause, sesh.probe_is_in_explore, sesh.probe_explore_bout_starts, sesh.probe_explore_bout_ends, \
+            sesh.probe_explore_bout_lens, sesh.probe_explore_bout_lens_secs, sesh.probe_bout_category, sesh.probe_bout_label = \
+            getExplorationCategories(sesh.probe_pos_ts, sesh.probe_vel_cm_s, sesh.probe_nearest_wells, sesh.importOptions["consts"])
+
+
 def runPositionAnalyses(sesh):
     if sesh.last_away_well is None:
         sesh.num_away_found = 0
@@ -1803,7 +1373,8 @@ def runPositionAnalyses(sesh):
             sesh.away_well_latencies = np.array(sesh.away_well_find_times) - \
                 np.array(sesh.home_well_leave_times)
             sesh.home_well_latencies = np.array(sesh.home_well_find_times) - \
-                np.append([sesh.bt_pos_ts[0]], sesh.away_well_leave_times[0:-1])
+                np.append([sesh.bt_pos_ts[0]],
+                          sesh.away_well_leave_times[0:-1])
         else:
             sesh.away_well_latencies = np.array(sesh.away_well_find_times) - \
                 np.array(sesh.home_well_leave_times[0:-1])
@@ -1842,11 +1413,16 @@ def runPositionAnalyses(sesh):
     #     plt.show()
 
     if sesh.probe_performed:
-        probe_ended_at_well_idx = np.argmax(all_well_names == sesh.probe_ended_at_well)
+        probe_ended_at_well_idx = np.argmax(
+            all_well_names == sesh.probe_ended_at_well)
         sesh.probe_recall_pos_idx = sesh.probe_well_exit_idxs[probe_ended_at_well_idx][-1]
 
+    posCalcCurvature(sesh)
+    # posCalcBallisticity(sesh)
 
-    
+    posCalcExplorationBouts(sesh)
+    posCalcExcursions(sesh)
+    posCalcRewardCategories(sesh)
 
 
 def extractAndSave(animalName, importOptions):
@@ -1856,13 +1432,15 @@ def extractAndSave(animalName, importOptions):
     print("=========================================================")
     print(f"Extracting data for animal {animalName}")
     print("=========================================================")
-    animalInfo = getInfoForAnimal(animal_name)
-    print(f"\tdata_dir = {animalInfo.data_dir}\n\toutput_dir = {animalInfo.output_dir}")
+    animalInfo = getInfoForAnimal(animalName)
+    print(
+        f"\tdata_dir = {animalInfo.data_dir}\n\toutput_dir = {animalInfo.output_dir}")
     if not os.path.exists(animalInfo.output_dir):
         os.mkdir(animalInfo.output_dir)
 
     sessionDirs, prevSessionDirs = getSessionDirs(animalInfo, importOptions)
-    dirListStr = "".join([f"\t{s}\t{ss}\n"  for s, ss in zip(sessionDirs, prevSessionDirs)])
+    dirListStr = "".join(
+        [f"\t{s}\t{ss}\n" for s, ss in zip(sessionDirs, prevSessionDirs)])
     print("Session dirs:", dirListStr)
 
     dataObj = BTData()
@@ -1888,8 +1466,8 @@ def extractAndSave(animalName, importOptions):
                 lastPrevDateStr = prevDateStr
                 prevSessionNumber = 1
 
-
-        sesh = makeSessionObj(seshDir, prevSeshDir, sessionNumber, prevSessionNumber, animalInfo)
+        sesh = makeSessionObj(seshDir, prevSeshDir,
+                              sessionNumber, prevSessionNumber, animalInfo)
         sesh.animalName = animalName
         sesh.importOptions = importOptions
         print(sesh.infoFileName)
@@ -1919,7 +1497,8 @@ def extractAndSave(animalName, importOptions):
         dataObj.allSessions.append(sesh)
 
     if importOptions["justExtractData"]:
-        print(f"Extracted data from {numExtracted} sessions, excluded {numExcluded}. Not analyzing or saving")
+        print(
+            f"Extracted data from {numExtracted} sessions, excluded {numExcluded}. Not analyzing or saving")
         return
 
     if not any([s.conditionGroup is not None for s in dataObj.allSessions]):
@@ -1928,47 +1507,47 @@ def extractAndSave(animalName, importOptions):
 
     # save all sessions to disk
     print("Saving to file: {}".format(animalInfo.out_filename))
-    dataob.saveToFile(os.path.join(animalInfo.output_dir, animalInfo.out_filename))
+    dataObj.saveToFile(os.path.join(
+        animalInfo.output_dir, animalInfo.out_filename))
     print("Saved sessions:")
-    for sesh in dataob.allSessions:
+    for sesh in dataObj.allSessions:
         print(sesh.name)
-
 
 
 if __name__ == "__main__":
     animalNames = parseCmdLineAnimalNames(default=["B18"])
     importOptions = {
-            "skipLFP" : False,
-            "skipUSB" : False,
-            "skipPrevSession" : True,
-            "skipSniff" : True,
-            "forceAllTrackingAuto" : False,
-            "skipCurvature" : False,
-            "runJustSpecified" : False,
-            "specifiedDays" : [],
-            "specifiedRuns" : [],
-            "justExtractData": False,
-            "runInteractiveExtraction": True,
-            "consts": {
-                "VEL_THRESH" : 10,  # cm/s
-                "PIXELS_PER_CM" : None,
+        "skipLFP": False,
+        "skipUSB": False,
+        "skipPrevSession": True,
+        "skipSniff": True,
+        "forceAllTrackingAuto": False,
+        "skipCurvature": False,
+        "runJustSpecified": False,
+        "specifiedDays": [],
+        "specifiedRuns": [],
+        "justExtractData": False,
+        "runInteractiveExtraction": True,
+        "consts": {
+            "VEL_THRESH": 10,  # cm/s
+            "PIXELS_PER_CM": None,
 
-                # Typical observed amplitude of LFP deflection on stimulation
-                "DEFLECTION_THRESHOLD_HI" : 6000.0,
-                "DEFLECTION_THRESHOLD_LO" : 2000.0,
-                "MIN_ARTIFACT_DISTANCE" : int(0.05 * LFP_SAMPLING_RATE),
+            # Typical observed amplitude of LFP deflection on stimulation
+            "DEFLECTION_THRESHOLD_HI": 6000.0,
+            "DEFLECTION_THRESHOLD_LO": 2000.0,
+            "MIN_ARTIFACT_DISTANCE": int(0.05 * LFP_SAMPLING_RATE),
 
-                # constants for exploration bout analysis
-                "BOUT_VEL_SM_SIGMA_SECS" : 1.5,
-                "PAUSE_MAX_SPEED_CM_S" : 8.0,
-                "MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS" : 2.5,
-                "MIN_EXPLORE_TIME_SECS" : 3.0,
-                "MIN_EXPLORE_NUM_WELLS" : 4,
+            # constants for exploration bout analysis
+            "BOUT_VEL_SM_SIGMA_SECS": 1.5,
+            "PAUSE_MAX_SPEED_CM_S": 8.0,
+            "MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS": 1.0,
+            "MIN_EXPLORE_TIME_SECS": 3.0,
+            "MIN_EXPLORE_NUM_WELLS": 4,
 
-                # constants for ballisticity
-                "BALL_TIME_INTERVALS" : list(range(1, 24)),
-                "KNOT_H_CM" : 8.0
-            }
+            # constants for ballisticity
+            "BALL_TIME_INTERVALS": list(range(1, 24)),
+            "KNOT_H_CM": 8.0
+        }
     }
 
     for animalName in animalNames:

@@ -1,14 +1,15 @@
-import os
+# import os
 import sys
-from BTData import BTData
-from BTSession import BTSession
+# from BTData import BTData
+# from BTSession import BTSession
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
-from UtilFunctions import getInfoForAnimal
-from consts import TRODES_SAMPLING_RATE
-from PlotUtil import PlotCtx
-import MountainViewIO
+
+# from UtilFunctions import getInfoForAnimal
+# from consts import TRODES_SAMPLING_RATE
+# from PlotUtil import PlotCtx
+# import MountainViewIO
 
 # lfpFName = "/home/wcroughan/20220511_142645/20220511_142645.LFP/20220511_142645.LFP_nt6ch1.dat"
 # print("LFP data from file {}".format(lfpFName))
@@ -129,33 +130,33 @@ import MountainViewIO
 # print(h1)
 
 
-numAwaysFound = np.array([2, 5, 2, 0, 7, 11, 11, 3, 11, 6, 12, 8, 12, 10, 9, 12, 12,
-                          7, 12, 12, 12, 12, 12, 11, 7, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
-                          12, 12, 10, 12, 2, 3, 2, 0, 0, 1, 0, 2, 4, 2, 0, 1, 3, 1, 0, 2, 5, 5, 5, 6, 5,
-                          5, 7, 6, 5, 6, 4, 12, 11, 6, 7, 3, 8, 0, 3, 4, 5, 2, 3, 3, 12, 12, 12, 12, 12, 7, 8])
+# numAwaysFound = np.array([2, 5, 2, 0, 7, 11, 11, 3, 11, 6, 12, 8, 12, 10, 9, 12, 12,
+#                           7, 12, 12, 12, 12, 12, 11, 7, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+#                           12, 12, 10, 12, 2, 3, 2, 0, 0, 1, 0, 2, 4, 2, 0, 1, 3, 1, 0, 2, 5, 5, 5, 6, 5,
+#                           5, 7, 6, 5, 6, 4, 12, 11, 6, 7, 3, 8, 0, 3, 4, 5, 2, 3, 3, 12, 12, 12, 12, 12, 7, 8])
 
-timeSpentText = [2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 1056, 2000, 1550, 2000, 2000,
-                 1301, 1045, 2000, 2000, 1711, 1206, 1158, 1420, 2000, 2000, 1426, 1516, 1247, 1131, 1352,
-                 1602, 1100, 1259, 1038, 1400, 1156, 1555, 1331, 1628, 2000, 1348, 6000, 6000, 6000, 3000,
-                 4500, 4500, 6000, 6000, 3000, 4500, 4500, 4500, 4500, 4500, 4500, 4500, 4500, 3000, 3000,
-                 6000, 1700, 3000, 2000, 2000, 1800, 2000, 2000, 1700, 2000, 2000, 2000, 2000, 2000, 2000,
-                 2000, 2000, 2000, 2000, 2000, 2000, 1924, 1447, 1035, 1259, 1300, 2000, 2000]
-timeSpentMinutes = [float(str(s)[0:2]) + (float(str(s)[2:4]) / 60.0) for s in timeSpentText]
-plt.plot(numAwaysFound)
-plt.plot(timeSpentMinutes)
+# timeSpentText = [2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 1056, 2000, 1550, 2000, 2000,
+#                  1301, 1045, 2000, 2000, 1711, 1206, 1158, 1420, 2000, 2000, 1426, 1516, 1247, 1131, 1352,
+#                  1602, 1100, 1259, 1038, 1400, 1156, 1555, 1331, 1628, 2000, 1348, 6000, 6000, 6000, 3000,
+#                  4500, 4500, 6000, 6000, 3000, 4500, 4500, 4500, 4500, 4500, 4500, 4500, 4500, 3000, 3000,
+#                  6000, 1700, 3000, 2000, 2000, 1800, 2000, 2000, 1700, 2000, 2000, 2000, 2000, 2000, 2000,
+#                  2000, 2000, 2000, 2000, 2000, 2000, 1924, 1447, 1035, 1259, 1300, 2000, 2000]
+# timeSpentMinutes = [float(str(s)[0:2]) + (float(str(s)[2:4]) / 60.0) for s in timeSpentText]
+# plt.plot(numAwaysFound)
+# plt.plot(timeSpentMinutes)
 
-cableHookedUpIdx = 41
-firstNesquikSession = 56
-firstCrystalSession = 61
-backToNesquikSession = 70
-firstSmallerRewardSession = 78
-backToCrystalSession = 79
-lines = [cableHookedUpIdx, firstNesquikSession, firstCrystalSession,
-         backToNesquikSession, firstSmallerRewardSession, backToCrystalSession]
-for ll in lines:
-    plt.plot([ll - 0.5, ll - 0.5], [0, 60], 'k')
-plt.plot([0, len(numAwaysFound)], [12, 12], '--k')
+# cableHookedUpIdx = 41
+# firstNesquikSession = 56
+# firstCrystalSession = 61
+# backToNesquikSession = 70
+# firstSmallerRewardSession = 78
+# backToCrystalSession = 79
+# lines = [cableHookedUpIdx, firstNesquikSession, firstCrystalSession,
+#          backToNesquikSession, firstSmallerRewardSession, backToCrystalSession]
+# for ll in lines:
+#     plt.plot([ll - 0.5, ll - 0.5], [0, 60], 'k')
+# plt.plot([0, len(numAwaysFound)], [12, 12], '--k')
 
-plt.legend(["num away wells found", "session duration (mins)"])
-plt.xlabel("Session")
-plt.show()
+# plt.legend(["num away wells found", "session duration (mins)"])
+# plt.xlabel("Session")
+# plt.show()
