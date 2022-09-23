@@ -22,72 +22,6 @@ from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, pro
 
 importParentApp = QApplication(sys.argv)
 
-filtered_data_dirs = []
-
-for session_idx, session_dir in enumerate(filtered_data_dirs):
-    session = None
-    if session.hasPositionData:
-        # ===================================
-        # excursions (when the rat left the wall-wells and searched the middle)
-        # ===================================
-        session.bt_excursion_category = np.array([BTSession.EXCURSION_STATE_ON_WALL if onWall(
-            w) else BTSession.EXCURSION_STATE_OFF_WALL for w in session.bt_nearest_wells])
-        session.bt_excursion_starts = np.where(np.diff(
-            (session.bt_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == 1)[0] + 1
-        if session.bt_excursion_category[0] == BTSession.EXCURSION_STATE_OFF_WALL:
-            session.bt_excursion_starts = np.insert(
-                session.bt_excursion_starts, 0, 0)
-        session.bt_excursion_ends = np.where(np.diff(
-            (session.bt_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == -1)[0] + 1
-        if session.bt_excursion_category[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
-            session.bt_excursion_ends = np.append(
-                session.bt_excursion_ends, len(session.bt_excursion_category))
-        ts = np.array(session.bt_pos_ts + [session.bt_pos_ts[-1]])
-        session.bt_excursion_lens_secs = (
-            ts[session.bt_excursion_ends] - ts[session.bt_excursion_starts]) / TRODES_SAMPLING_RATE
-
-        if session.probe_performed:
-            session.probe_excursion_category = np.array([BTSession.EXCURSION_STATE_ON_WALL if onWall(
-                w) else BTSession.EXCURSION_STATE_OFF_WALL for w in session.probe_nearest_wells])
-            session.probe_excursion_starts = np.where(np.diff(
-                (session.probe_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == 1)[0] + 1
-            if session.probe_excursion_category[0] == BTSession.EXCURSION_STATE_OFF_WALL:
-                session.probe_excursion_starts = np.insert(
-                    session.probe_excursion_starts, 0, 0)
-            session.probe_excursion_ends = np.where(np.diff(
-                (session.probe_excursion_category == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == -1)[0] + 1
-            if session.probe_excursion_category[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
-                session.probe_excursion_ends = np.append(
-                    session.probe_excursion_ends, len(session.probe_excursion_category))
-            ts = np.array(session.probe_pos_ts + [session.probe_pos_ts[-1]])
-            session.probe_excursion_lens_secs = (
-                ts[session.probe_excursion_ends] - ts[session.probe_excursion_starts]) / TRODES_SAMPLING_RATE
-
-    # ======================================================================
-    # TODO
-    # Some perseveration measure during away trials to see if there's an effect during the actual task
-    #
-    # During task effect on home/away latencies?
-    #
-    # average latencies for H1, A1, H2, ...
-    #
-    # difference in effect magnitude by distance from starting location to home well?
-    #
-    # Where do ripples happen? Would inform whether to split by away vs home, etc in future experiments
-    #   Only during rest? Can set velocity threshold in future interruptions?
-    #
-    # Based on speed or exploration, is there a more principled way to
-    # choose period of probe that is measured? B/c could vary by rat
-    #
-    # avg speed by condition ... could explain higher visits per bout everywhere on SWR trials
-    #
-    # latency to home well in probe, directness of path, etc maybe?
-    #   probably will be nothing, but will probably also be asked for
-    #
-    # Any differences b/w early vs later experiments?
-    #
-    # ======================================================================
-
 
 # Returns a list of directories that correspond to runs for analysis. Unless runJustSpecified is True,
 # only ever filters by day. Thus index within day of returned list can be used to find corresponding behavior notes file
@@ -630,16 +564,16 @@ def loadPositionData(sesh):
     if not os.path.exists(rewardClipsFile):
         rewardClipsFile = sesh.fileStartString + '.1.rewardclips'
     if not os.path.exists(rewardClipsFile):
-        if session.num_home_found > 0:
-            print("Well find times not marked for session {}".format(session.name))
+        if sesh.num_home_found > 0:
+            print("Well find times not marked for session {}".format(sesh.name))
             sesh.hasWellFindTimes = False
         else:
             sesh.hasWellFindTimes = True
     else:
         sesh.hasWellFindTimes = True
         well_visit_times = readClipData(rewardClipsFile)
-        assert session.num_away_found + \
-            session.num_home_found == np.shape(well_visit_times)[0]
+        assert sesh.num_away_found + \
+            sesh.num_home_found == np.shape(well_visit_times)[0]
         sesh.home_well_find_times = well_visit_times[::2, 0]
         sesh.home_well_leave_times = well_visit_times[::2, 1]
         sesh.away_well_find_times = well_visit_times[1::2, 0]
@@ -1119,11 +1053,11 @@ def posCalcBallisticity(sesh):
     assert timeIntervals[0] > 0
 
     # idx is (time, interval len, dimension)
-    d1 = len(session.bt_pos_ts) - furthest_interval
+    d1 = len(sesh.bt_pos_ts) - furthest_interval
     delta = np.empty((d1, furthest_interval, 2))
     delta[:] = np.nan
-    dx = np.diff(session.bt_pos_xs)
-    dy = np.diff(session.bt_pos_ys)
+    dx = np.diff(sesh.bt_pos_xs)
+    dy = np.diff(sesh.bt_pos_ys)
     delta[:, 0, 0] = dx[0:d1]
     delta[:, 0, 1] = dy[0:d1]
 
@@ -1134,7 +1068,7 @@ def posCalcBallisticity(sesh):
     displacement = np.sqrt(np.sum(np.square(delta), axis=2))
     displacement[displacement == 0] = np.nan
     last_displacement = displacement[:, -1]
-    session.bt_ball_displacement = last_displacement
+    sesh.bt_ball_displacement = last_displacement
 
     x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
     y = np.log(displacement)
@@ -1148,16 +1082,16 @@ def posCalcBallisticity(sesh):
     def m(arg): return np.mean(arg, axis=1)
     # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
     beta = m(y * x) / m(np.power(x, 2))
-    session.bt_ballisticity = beta
-    assert np.sum(np.isnan(session.bt_ballisticity)) == 0
+    sesh.bt_ballisticity = beta
+    assert np.sum(np.isnan(sesh.bt_ballisticity)) == 0
 
-    if session.probe_performed:
+    if sesh.probe_performed:
         # idx is (time, interval len, dimension)
-        d1 = len(session.probe_pos_ts) - furthest_interval
+        d1 = len(sesh.probe_pos_ts) - furthest_interval
         delta = np.empty((d1, furthest_interval, 2))
         delta[:] = np.nan
-        dx = np.diff(session.probe_pos_xs)
-        dy = np.diff(session.probe_pos_ys)
+        dx = np.diff(sesh.probe_pos_xs)
+        dy = np.diff(sesh.probe_pos_ys)
         delta[:, 0, 0] = dx[0:d1]
         delta[:, 0, 1] = dy[0:d1]
 
@@ -1168,7 +1102,7 @@ def posCalcBallisticity(sesh):
         displacement = np.sqrt(np.sum(np.square(delta), axis=2))
         displacement[displacement == 0] = np.nan
         last_displacement = displacement[:, -1]
-        session.probe_ball_displacement = last_displacement
+        sesh.probe_ball_displacement = last_displacement
 
         x = np.log(np.tile(np.arange(furthest_interval) + 1, (d1, 1)))
         y = np.log(displacement)
@@ -1181,8 +1115,8 @@ def posCalcBallisticity(sesh):
         y = y - np.tile(np.nanmean(y, axis=1), (furthest_interval, 1)).T
         # beta = ((m(y * x) - m(x) * m(y))/m(x*x) - m(x)**2)
         beta = m(y * x) / m(np.power(x, 2))
-        session.probe_ballisticity = beta
-        assert np.sum(np.isnan(session.probe_ballisticity)) == 0
+        sesh.probe_ballisticity = beta
+        assert np.sum(np.isnan(sesh.probe_ballisticity)) == 0
 
 
 # ===================================
@@ -1259,14 +1193,16 @@ def getCurvature(x, y, H):
 
 
 def posCalcCurvature(sesh):
-    KNOT_H_POS = sesh.importOptions["consts"]["KNOT_H_CM"] * sesh.importOptions["consts"]["PIXELS_PER_CM"]
+    KNOT_H_POS = sesh.importOptions["consts"]["KNOT_H_CM"] * \
+        sesh.importOptions["consts"]["PIXELS_PER_CM"]
 
     sesh.bt_curvature, sesh.bt_curvature_i1, sesh.bt_curvature_i2, sesh.bt_curvature_dxf, sesh.bt_curvature_dyf, sesh.bt_curvature_dxb, \
         sesh.bt_curvature_dyb = getCurvature(sesh.bt_pos_xs, sesh.bt_pos_ys, KNOT_H_POS)
 
-    if session.probe_performed:
+    if sesh.probe_performed:
         sesh.probe_curvature, sesh.probe_curvature_i1, sesh.probe_curvature_i2, sesh.probe_curvature_dxf, sesh.probe_curvature_dyf, sesh.probe_curvature_dxb, \
-            sesh.probe_curvature_dyb = getCurvature(sesh.probe_pos_xs, sesh.probe_pos_ys, KNOT_H_POS)
+            sesh.probe_curvature_dyb = getCurvature(
+                sesh.probe_pos_xs, sesh.probe_pos_ys, KNOT_H_POS)
 
 
 def getExplorationCategories(ts, vel, nearestWells, consts, forcePauseIntervals=None):
@@ -1279,7 +1215,8 @@ def getExplorationCategories(ts, vel, nearestWells, consts, forcePauseIntervals=
 
     isExploreLocal = smoothVel > consts["PAUSE_MAX_SPEED_CM_S"]
     dilationFilter = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
-    inPauseBout = ~ (signal.convolve(isExploreLocal.astype(int), dilationFilter, mode='same').astype(bool))
+    inPauseBout = ~ (signal.convolve(isExploreLocal.astype(int),
+                     dilationFilter, mode='same').astype(bool))
     isInPause = signal.convolve(inPauseBout.astype(int), dilationFilter, mode='same').astype(bool)
     isInExplore = np.logical_not(isInPause)
 
@@ -1349,7 +1286,34 @@ def posCalcExplorationBouts(sesh):
     if sesh.probe_performed:
         sesh.probe_sm_vel, sesh.probe_is_in_pause, sesh.probe_is_in_explore, sesh.probe_explore_bout_starts, sesh.probe_explore_bout_ends, \
             sesh.probe_explore_bout_lens, sesh.probe_explore_bout_lens_secs, sesh.probe_bout_category, sesh.probe_bout_label = \
-            getExplorationCategories(sesh.probe_pos_ts, sesh.probe_vel_cm_s, sesh.probe_nearest_wells, sesh.importOptions["consts"])
+            getExplorationCategories(sesh.probe_pos_ts, sesh.probe_vel_cm_s,
+                                     sesh.probe_nearest_wells, sesh.importOptions["consts"])
+
+
+def getExcursions(nearestWells, ts):
+    excursionCategory = np.array([BTSession.EXCURSION_STATE_ON_WALL if onWall(
+        w) else BTSession.EXCURSION_STATE_OFF_WALL for w in nearestWells])
+    excursionStarts = np.where(
+        np.diff((excursionCategory == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == 1)[0] + 1
+    if excursionCategory[0] == BTSession.EXCURSION_STATE_OFF_WALL:
+        excursionStarts = np.insert(excursionStarts, 0, 0)
+    excursionEnds = np.where(
+        np.diff((excursionCategory == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == -1)[0] + 1
+    if excursionCategory[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
+        excursionEnds = np.append(excursionEnds, len(excursionCategory))
+    t = np.array(ts + [ts[-1]])
+    excursionLensSecs = (t[excursionEnds] - t[excursionStarts]) / TRODES_SAMPLING_RATE
+
+    return excursionCategory, excursionStarts, excursionEnds, excursionLensSecs
+
+
+def posCalcExcursions(sesh):
+    sesh.bt_excursion_category, sesh.bt_excursion_starts, sesh.bt_excursion_ends, sesh.bt_excursion_lens_secs = \
+        getExcursions(sesh.bt_nearest_wells, sesh.bt_pos_ts)
+
+    if sesh.probe_performed:
+        sesh.probe_excursion_category, sesh.probe_excursion_starts, sesh.probe_excursion_ends, sesh.probe_excursion_lens_secs = \
+            getExcursions(sesh.probe_nearest_wells, sesh.probe_pos_ts)
 
 
 def runPositionAnalyses(sesh):
@@ -1422,7 +1386,7 @@ def runPositionAnalyses(sesh):
 
     posCalcExplorationBouts(sesh)
     posCalcExcursions(sesh)
-    posCalcRewardCategories(sesh)
+    # posCalcRewardCategories(sesh)
 
 
 def extractAndSave(animalName, importOptions):
@@ -1553,3 +1517,29 @@ if __name__ == "__main__":
     for animalName in animalNames:
         importOptions["skipUSB"] = animalName == "Martin"
         extractAndSave(animalName, importOptions)
+
+
+# ======================================================================
+# TODO
+# Some perseveration measure during away trials to see if there's an effect during the actual task
+#
+# During task effect on home/away latencies?
+#
+# average latencies for H1, A1, H2, ...
+#
+# difference in effect magnitude by distance from starting location to home well?
+#
+# Where do ripples happen? Would inform whether to split by away vs home, etc in future experiments
+#   Only during rest? Can set velocity threshold in future interruptions?
+#
+# Based on speed or exploration, is there a more principled way to
+# choose period of probe that is measured? B/c could vary by rat
+#
+# avg speed by condition ... could explain higher visits per bout everywhere on SWR trials
+#
+# latency to home well in probe, directness of path, etc maybe?
+#   probably will be nothing, but will probably also be asked for
+#
+# Any differences b/w early vs later experiments?
+#
+# ======================================================================
