@@ -1,8 +1,6 @@
 import numpy as np
-from PlotUtil import PlotCtx, plotIndividualAndAverage, setupBehaviorTracePlot, boxPlot, ShuffSpec
-import MountainViewIO
+from PlotUtil import PlotCtx, setupBehaviorTracePlot, boxPlot
 from BTData import BTData
-from BTSession import BTSession
 import os
 from UtilFunctions import getInfoForAnimal, findDataDir, parseCmdLineAnimalNames, offWall, numWellsVisited
 from consts import TRODES_SAMPLING_RATE, offWallWellNames
@@ -23,24 +21,13 @@ from datetime import datetime
 
 
 class TrialMeasure():
-    # memoDict = {}
-
     def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, trialFilter=None, skipStats=False):
-        # print("initing trial measure " + name)
-        # if name in TrialMeasure.memoDict and not forceRemake:
-        #     existing = TrialMeasure.memoDict[name]
-        #     self.measure = existing.measure
-        #     self.trialCategory = existing.trialCategory
-        #     self.conditionCategoryByTrial = existing.conditionCategoryByTrial
-        #     self.dotColors = existing.dotColors
-        #     self.name = name
-        #     return
-
         self.measure = []
         self.trialCategory = []
         self.conditionCategoryByTrial = []
         self.dotColors = []
         self.name = name
+        self.skipStats = skipStats
 
         if measureFunc is not None:
             assert sessionList is not None
@@ -90,26 +77,9 @@ class TrialMeasure():
         self.trialCategory = np.array(self.trialCategory)
         self.conditionCategoryByTrial = np.array(self.conditionCategoryByTrial)
 
-        # TrialMeasure.memoDict[name] = self
-
 
 class WellMeasure():
-    # memoDict = {}
-
     def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, wellFilter=lambda ai, aw: offWall(aw), skipStats=False):
-        # print("initing trial measure " + name)
-        # if name in WellMeasure.memoDict and not forceRemake:
-        #     existing = WellMeasure.memoDict[name]
-        #     self.measure = existing.measure
-        #     self.wellCategory = existing.wellCategory
-        #     self.conditionCategoryByWell = existing.conditionCategoryByWell
-        #     self.conditionCategoryBySession = existing.conditionCategoryBySession
-        #     self.withinSessionMeasureDifference = existing.withinSessionMeasureDifference
-        #     self.name = name
-        #     self.dotColors = existing.dotColors
-        #     self.dotColorsBySession = existing.dotColorsBySession
-        #     return
-
         self.measure = []
         self.wellCategory = []
         self.conditionCategoryByWell = []
@@ -118,6 +88,7 @@ class WellMeasure():
         self.withinSessionMeasureDifference = []
         self.dotColors = []
         self.dotColorsBySession = []
+        self.skipStats = skipStats
 
         if measureFunc is not None:
             assert sessionList is not None
@@ -159,10 +130,6 @@ class WellMeasure():
         self.conditionCategoryByWell = np.array(self.conditionCategoryByWell)
         self.conditionCategoryBySession = np.array(self.conditionCategoryBySession)
         self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
-
-        # print(self.name, self.measure)
-
-        # WellMeasure.memoDict[name] = self
 
 
 def makeFigures(

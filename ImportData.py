@@ -718,7 +718,7 @@ def loadLFPData(sesh):
     return lfpData, baselineLfpData
 
 
-def runLFPAnalyses(sesh, lfpData, baselineLfpData):
+def runLFPAnalyses(sesh, lfpData, baselineLfpData, showPlot=False):
     lfpV = lfpData[0][1]['voltage']
     lfpTimestamps = lfpData[0][0]['time']
     C = sesh.importOptions["consts"]
@@ -737,30 +737,6 @@ def runLFPAnalyses(sesh, lfpData, baselineLfpData):
         sesh.bt_pos_ts, sesh.interruption_timestamps)
     sesh.bt_interruption_pos_idxs = sesh.bt_interruption_pos_idxs[sesh.bt_interruption_pos_idxs < len(
         sesh.bt_pos_ts)]
-
-    # ========
-    # dealing with weird Martin sessions:
-    showPlot = False
-    print("{} interruptions detected".format(
-        len(sesh.bt_interruption_pos_idxs)))
-    if len(sesh.bt_interruption_pos_idxs) < 50:
-        if sesh.isRippleInterruption and len(sesh.bt_interruption_pos_idxs) > 0:
-            # print( "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING FEWER " \
-            # "THAN 50 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
-            # raise Exception("SAW FEWER THAN 50 INTERRUPTIONS ON AN INTERRUPTION SESSION: {} on session {}".format(
-            # len(session.bt_interruption_pos_idxs), session.name))
-            print("WARNING: FEWER THAN 50 STIMS DETECTED ON AN INTERRUPTION SESSION")
-        elif len(sesh.bt_interruption_pos_idxs) == 0:
-            print(
-                "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING 0 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
-        else:
-            print(
-                "WARNING: very few interruptions. This was a delay control but is basically a no-stim control")
-        # showPlot = True
-        sesh.isRippleInterruption = False
-    elif len(sesh.bt_interruption_pos_idxs) < 100:
-        print("50-100 interruptions: not overriding label")
-        # showPlot = True
 
     print("Condition - {}".format("SWR" if sesh.isRippleInterruption else "Ctrl"))
     lfp_deflections = signal.find_peaks(np.abs(
@@ -916,10 +892,53 @@ def runLFPAnalyses(sesh, lfpData, baselineLfpData):
         print("Probe performed but LFP in a separate file for session", sesh.name)
 
 
-def runSanityChecks(sesh, lfpData, baselineLfpData):
-    # TODO:
-    # Check num stims in LFP, large gaps in signal
-    pass
+def runSanityChecks(sesh, lfpData, baselineLfpData, showPlots=False, overrideNotes=True):
+    print(f"Running sanity checks for {sesh.name}")
+    if lfpData is None:
+        print("No LFP data to look at")
+    else:
+        lfpV = lfpData[0][1]['voltage']
+        lfpTimestamps = lfpData[0][0]['time']
+        C = sesh.importOptions["consts"]
+
+        lfp_deflections = signal.find_peaks(np.abs(np.diff(lfpV, prepend=lfpV[0])), height=C["DEFLECTION_THRESHOLD_HI"], distance=C["MIN_ARTIFACT_DISTANCE"])
+        interruptionIdxs = lfp_deflections[0]
+        interruptionTimestamps = lfpTimestamps[interruptionIdxs]
+        btInterruptionPosIdxs = np.searchsorted(sesh.bt_pos_ts, interruptionTimestamps)
+        btInterruptionPosIdxs = sesh.bt_interruption_pos_idxs[btInterruptionPosIdxs < len(sesh.bt_pos_ts)]
+
+        numInterruptions = len(sesh.bt_interruption_pos_idxs)
+        print("{} interruptions detected".format(numInterruptions))
+        if numInterruptions < 50:
+            if sesh.isRippleInterruption and numInterruptions > 0:
+                print("WARNING: FEWER THAN 50 STIMS DETECTED ON AN INTERRUPTION SESSION")
+            elif numInterruptions == 0:
+                print(
+                    "WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING 0 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
+                if overrideNotes:
+                    sesh.isRippleInterruption = False
+            else:
+                print(
+                    "WARNING: very few interruptions. This was a delay control but is basically a no-stim control")
+        elif numInterruptions < 100:
+            print("50-100 interruptions: not overriding label")
+
+        dt = np.diff(lfpTimestamps)
+        gapThresh = 2.0 * float(TRODES_SAMPLING_RATE / LFP_SAMPLING_RATE)
+        isBigGap = dt > gapThresh
+
+        if not any(isBigGap):
+            print("No gaps in LFP!")
+        else:
+            totalTime = (lfpTimestamps[-1] - lfpTimestamps[0]) / TRODES_SAMPLING_RATE
+            totalGapTime = np.sum(dt[isBigGap])
+            print(f"{totalGapTime}/{totalTime} ({int(100*totalGapTime/totalTime)}%) of lfp signal missing")
+
+            maxGapIdx = np.argmax(dt)
+            maxGapLen = dt[maxGapIdx] / TRODES_SAMPLING_RATE
+            maxGapT1 = (lfpTimestamps[maxGapIdx] - lfpTimestamps[0]) / TRODES_SAMPLING_RATE
+            maxGapT2 = (lfpTimestamps[maxGapIdx+1] - lfpTimestamps[0]) / TRODES_SAMPLING_RATE
+            print(f"Biggest gap: {maxGapLen}s long ({maxGapT1} - {maxGapT2})")
 
 
 def posCalcVelocity(sesh):
@@ -1517,29 +1536,3 @@ if __name__ == "__main__":
     for animalName in animalNames:
         importOptions["skipUSB"] = animalName == "Martin"
         extractAndSave(animalName, importOptions)
-
-
-# ======================================================================
-# TODO
-# Some perseveration measure during away trials to see if there's an effect during the actual task
-#
-# During task effect on home/away latencies?
-#
-# average latencies for H1, A1, H2, ...
-#
-# difference in effect magnitude by distance from starting location to home well?
-#
-# Where do ripples happen? Would inform whether to split by away vs home, etc in future experiments
-#   Only during rest? Can set velocity threshold in future interruptions?
-#
-# Based on speed or exploration, is there a more principled way to
-# choose period of probe that is measured? B/c could vary by rat
-#
-# avg speed by condition ... could explain higher visits per bout everywhere on SWR trials
-#
-# latency to home well in probe, directness of path, etc maybe?
-#   probably will be nothing, but will probably also be asked for
-#
-# Any differences b/w early vs later experiments?
-#
-# ======================================================================

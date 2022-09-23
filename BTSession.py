@@ -273,6 +273,16 @@ class BTSession:
         self.probe_bout_category = np.array([])
         self.probe_bout_label = np.array([])
 
+        self.bt_excursion_category = []
+        self.bt_excursion_starts = []
+        self.bt_excursion_ends = []
+        self.bt_excursion_lens_secs = np.array([])
+
+        self.probe_excursion_category = []
+        self.probe_excursion_starts = []
+        self.probe_excursion_ends = []
+        self.probe_excursion_lens_secs = np.array([])
+
         self.well_sniff_times_entry = []
         self.well_sniff_times_exit = []
         self.bt_well_sniff_times_entry = []
