@@ -2,7 +2,7 @@ import numpy as np
 from consts import allWellNames, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 import csv
 import glob
-from scipy import stats, signal
+from scipy import signal
 from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
 import matplotlib.pyplot as plt
 from itertools import groupby
@@ -135,7 +135,7 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
 
 def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
                    xLim=(100, 1050), yLim=(20, 900)):
-    processPosData_coords(position_data["x1"], position_data["y1"], position_data["timestamp"])
+    return processPosData_coords(position_data["x1"], position_data["y1"], position_data["timestamp"])
 
 
 def getWellCoordinates(well_num, well_coords_map):
@@ -478,7 +478,7 @@ class AnimalInfo:
 
 
 def getInfoForAnimal(animalName):
-    ret = AnimalInfo
+    ret = AnimalInfo()
     if animalName == "Martin":
         ret.X_START = 200
         ret.X_FINISH = 1175
@@ -691,6 +691,25 @@ def getInfoForAnimal(animalName):
         # ret.excluded_sessions = ["20220621_2", "20220622_2", "20220623_2"]
         # ret.excluded_sessions += ["2022062{}_1".format(v) for v in range(24, 29)]
         # ret.excluded_sessions += ["2022062{}_2".format(v) for v in range(24, 29)]
+
+    elif animalName == "B16":
+        ret.X_START = 100
+        ret.X_FINISH = 1050
+        ret.Y_START = 20
+        ret.Y_FINISH = 900
+        ret.data_dir = "/media/WDC8/B16/bradtasksessions/"
+        ret.output_dir = "/media/WDC8/B16/processed_data/"
+        ret.fig_output_dir = "/media/WDC8/B16/processed_data/"
+        ret.out_filename = "B16_bradtask.dat"
+
+        ret.excluded_dates = []
+        ret.minimum_date = None
+        ret.excluded_sessions = []
+
+        ret.DEFAULT_RIP_DET_TET = 4
+        ret.DEFAULT_RIP_BAS_TET = 7
+        ret.rerun_usb_videos = []
+        ret.rerun_trodes_videos = []
 
     else:
         raise Exception("Unknown animal name")

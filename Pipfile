@@ -12,7 +12,6 @@ pandas = "*"
 seaborn = "*"
 sortednp = "*"
 statsmodels = "*"
-mountainlab-pytools = "*"
 sklearn = "*"
 ffms2 = "*"
 opencv-python = "*"
@@ -21,6 +20,8 @@ timer = "*"
 flake8 = "*"
 autopep8 = "*"
 tables = "*"
+mountainlab-pytools = "*"
+ipython-genutils = "*"
 
 [dev-packages]
 

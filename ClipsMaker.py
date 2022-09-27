@@ -329,8 +329,8 @@ class USBVideoWidget(QWidget):
             # QTimer.singleShot((self.stopPosition - self.startPosition) // self.animationSpeed,
             #                   Qt.TimerType.PreciseTimer, self.endAnimateClip)
             self.animPauseTimer.stop()
-            self.animPauseTimer.start(
-                (self.stopPosition - self.startPosition) // self.animationSpeed)
+            self.animPauseTimer.start(int(
+                (self.stopPosition - self.startPosition) // self.animationSpeed))
 
     def endAnimateClip(self):
         self.mainMediaPlayer.pause()

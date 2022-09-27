@@ -65,6 +65,7 @@ def getSessionDirs(animalInfo, importOptions):
 
         filtered_data_dirs.append(session_dir)
         prevSessionDirs.append(prevSession)
+        prevSession = session_dir
 
     return filtered_data_dirs, prevSessionDirs
 
@@ -110,18 +111,24 @@ def makeSessionObj(seshDir, prevSeshDir, sessionNumber, prevSessionNumber, anima
             behaviorNotesDir, f"{date_str}_{sessionNumber}.txt")
     sesh.seshIdx = sessionNumber
 
-    dir_split = prevSeshDir.split('_')
-    prevSeshDateStr = dir_split[0][-8:]
-    sesh.prevInfoFileName = os.path.join(
-        behaviorNotesDir, prevSeshDateStr + ".txt")
-    if not os.path.exists(sesh.prevInfoFileName):
-        # Switched numbering scheme once started doing multiple sessions a day
+    if prevSeshDir is None:
+        sesh.prevInfoFileName = None
+        sesh.prevSeshIdx = None
+    else:
+        dir_split = prevSeshDir.split('_')
+        prevSeshDateStr = dir_split[0][-8:]
         sesh.prevInfoFileName = os.path.join(
-            behaviorNotesDir, f"{prevSeshDateStr}_{prevSessionNumber}.txt")
-    sesh.prevSeshIdx = prevSessionNumber
+            behaviorNotesDir, prevSeshDateStr + ".txt")
+        if not os.path.exists(sesh.prevInfoFileName):
+            # Switched numbering scheme once started doing multiple sessions a day
+            sesh.prevInfoFileName = os.path.join(
+                behaviorNotesDir, f"{prevSeshDateStr}_{prevSessionNumber}.txt")
+        sesh.prevSeshIdx = prevSessionNumber
 
     sesh.fileStartString = os.path.join(animalInfo.data_dir, seshDir, seshDir)
     sesh.animalInfo = animalInfo
+
+    return sesh
 
 
 def parseInfoFiles(sesh):
@@ -187,9 +194,9 @@ def parseInfoFiles(sesh):
                     sesh.ended_on_home = False
                 else:
                     sesh.found_first_home = True
-                    if 'H' in fieldVal:
+                    if 'h' in fieldVal.lower():
                         sesh.ended_on_home = True
-                    elif 'A' in fieldVal:
+                    elif 'a' in fieldVal.lower():
                         sesh.ended_on_home = False
                     else:
                         print("Couldn't recognize last well {} in file {}".format(
@@ -270,7 +277,7 @@ def parseInfoFiles(sesh):
                                              for w in field_val.strip().split(' ')]
                 elif field_name.lower() == "condition":
                     type_in = field_val
-                    if 'Ripple' in type_in or 'Interruption' in type_in:
+                    if 'ripple' in type_in or 'interruption' in type_in.lower():
                         sesh.prevSessionIsRippleInterruption = True
                     elif 'None' in type_in:
                         sesh.prevSessionIsNoInterruption = True
@@ -284,6 +291,8 @@ def parseInfoFiles(sesh):
                         sesh.prevSession_ripple_detection_threshold = 2.5
                     elif "High" in field_val:
                         sesh.prevSession_ripple_detection_threshold = 4
+                    elif "med" in field_val.lower():
+                        sesh.prevSession_ripple_detection_threshold = 3
                     else:
                         sesh.prevSession_ripple_detection_threshold = float(
                             field_val)
@@ -291,9 +300,9 @@ def parseInfoFiles(sesh):
                     sesh.prevSession_last_away_well = float(field_val)
                     # print(field_val)
                 elif field_name.lower() == "last well":
-                    if 'H' in field_val:
+                    if 'h' in field_val.lower():
                         sesh.prevSession_ended_on_home = True
-                    elif 'A' in field_val:
+                    elif 'a' in field_val.lower():
                         sesh.prevSession_ended_on_home = False
                     else:
                         print("Couldn't recognize last well {} in file {}".format(
@@ -482,6 +491,7 @@ def loadPositionData(sesh):
             "/media/WDC6/{}/".format(sesh.animalName),
             "/media/WDC7/{}/".format(sesh.animalName),
             "/media/WDC8/{}/".format(sesh.animalName),
+            "/media/WDC4/Lab videos"
         ]
         sesh.usbVidFile = getUSBVideoFile(
             sesh.name, possibleDirectories, seshIdx=sesh.seshIdx, useSeshIdxDirectly=(sesh.animalName == "B18"))
@@ -1424,7 +1434,8 @@ def extractAndSave(animalName, importOptions):
     sessionDirs, prevSessionDirs = getSessionDirs(animalInfo, importOptions)
     dirListStr = "".join(
         [f"\t{s}\t{ss}\n" for s, ss in zip(sessionDirs, prevSessionDirs)])
-    print("Session dirs:", dirListStr)
+    print("Session dirs:")
+    print(dirListStr)
 
     dataObj = BTData()
     dataObj.importOptions = importOptions
@@ -1467,8 +1478,6 @@ def extractAndSave(animalName, importOptions):
         else:
             lfpData, baselineLfpData = loadLFPData(sesh)
 
-        runSanityChecks(sesh, lfpData, baselineLfpData)
-
         if importOptions["justExtractData"]:
             numExtracted += 1
             continue
@@ -1476,6 +1485,8 @@ def extractAndSave(animalName, importOptions):
         if not importOptions["skipLFP"]:
             runLFPAnalyses(sesh, lfpData, baselineLfpData)
         runPositionAnalyses(sesh)
+
+        runSanityChecks(sesh, lfpData, baselineLfpData)
 
         dataObj.allSessions.append(sesh)
 
@@ -1509,8 +1520,8 @@ if __name__ == "__main__":
         "runJustSpecified": False,
         "specifiedDays": [],
         "specifiedRuns": [],
-        "justExtractData": False,
-        "runInteractiveExtraction": True,
+        "justExtractData": True,
+        "runInteractiveExtraction": False,
         "consts": {
             "VEL_THRESH": 10,  # cm/s
             "PIXELS_PER_CM": None,
