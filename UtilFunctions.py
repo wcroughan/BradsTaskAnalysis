@@ -706,6 +706,8 @@ def getInfoForAnimal(animalName):
         ret.minimum_date = None
         ret.excluded_sessions = []
 
+        # ret.excluded_sessions += ["20220919_122046"]
+
         ret.DEFAULT_RIP_DET_TET = 4
         ret.DEFAULT_RIP_BAS_TET = 7
         ret.rerun_usb_videos = []

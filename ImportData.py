@@ -491,7 +491,7 @@ def loadPositionData(sesh):
             "/media/WDC6/{}/".format(sesh.animalName),
             "/media/WDC7/{}/".format(sesh.animalName),
             "/media/WDC8/{}/".format(sesh.animalName),
-            "/media/WDC4/Lab videos"
+            "/media/WDC4/lab_videos"
         ]
         sesh.usbVidFile = getUSBVideoFile(
             sesh.name, possibleDirectories, seshIdx=sesh.seshIdx, useSeshIdxDirectly=(sesh.animalName == "B18"))
@@ -911,11 +911,13 @@ def runSanityChecks(sesh, lfpData, baselineLfpData, showPlots=False, overrideNot
         lfpTimestamps = lfpData[0][0]['time']
         C = sesh.importOptions["consts"]
 
-        lfp_deflections = signal.find_peaks(np.abs(np.diff(lfpV, prepend=lfpV[0])), height=C["DEFLECTION_THRESHOLD_HI"], distance=C["MIN_ARTIFACT_DISTANCE"])
+        lfp_deflections = signal.find_peaks(np.abs(np.diff(
+            lfpV, prepend=lfpV[0])), height=C["DEFLECTION_THRESHOLD_HI"], distance=C["MIN_ARTIFACT_DISTANCE"])
         interruptionIdxs = lfp_deflections[0]
         interruptionTimestamps = lfpTimestamps[interruptionIdxs]
         btInterruptionPosIdxs = np.searchsorted(sesh.bt_pos_ts, interruptionTimestamps)
-        btInterruptionPosIdxs = sesh.bt_interruption_pos_idxs[btInterruptionPosIdxs < len(sesh.bt_pos_ts)]
+        btInterruptionPosIdxs = sesh.bt_interruption_pos_idxs[btInterruptionPosIdxs < len(
+            sesh.bt_pos_ts)]
 
         numInterruptions = len(sesh.bt_interruption_pos_idxs)
         print("{} interruptions detected".format(numInterruptions))
@@ -947,7 +949,7 @@ def runSanityChecks(sesh, lfpData, baselineLfpData, showPlots=False, overrideNot
             maxGapIdx = np.argmax(dt)
             maxGapLen = dt[maxGapIdx] / TRODES_SAMPLING_RATE
             maxGapT1 = (lfpTimestamps[maxGapIdx] - lfpTimestamps[0]) / TRODES_SAMPLING_RATE
-            maxGapT2 = (lfpTimestamps[maxGapIdx+1] - lfpTimestamps[0]) / TRODES_SAMPLING_RATE
+            maxGapT2 = (lfpTimestamps[maxGapIdx + 1] - lfpTimestamps[0]) / TRODES_SAMPLING_RATE
             print(f"Biggest gap: {maxGapLen}s long ({maxGapT1} - {maxGapT2})")
 
 
@@ -1469,6 +1471,10 @@ def extractAndSave(animalName, importOptions):
         print(f"\tfolder: {seshDir}:")
         print(f"\tinfo file name: {sesh.infoFileName}:")
         print(f"\tprev sesh info file name: {sesh.prevInfoFileName }:")
+        if seshDir in animalInfo.excluded_sessions:
+            print(seshDir, " excluded session, skipping")
+            numExcluded += 1
+            continue
         if "".join(os.path.basename(sesh.infoFileName).split(".")[0:-1]) in animalInfo.excluded_sessions:
             print(seshDir, " excluded session, skipping")
             numExcluded += 1

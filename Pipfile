@@ -7,9 +7,9 @@ name = "pypi"
 numpy = "*"
 matplotlib = "*"
 scipy = "*"
-pyqt5 = "*"
 pandas = "*"
 seaborn = "*"
+pyqt5 = "*"
 sortednp = "*"
 statsmodels = "*"
 sklearn = "*"
@@ -26,4 +26,4 @@ ipython-genutils = "*"
 [dev-packages]
 
 [requires]
-python_version = "3"
+python_version = "3.10"

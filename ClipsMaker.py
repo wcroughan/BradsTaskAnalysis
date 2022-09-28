@@ -122,11 +122,23 @@ class PositionPlot(QWidget):
 
 
 class USBVideoWidget(QWidget):
-    def __init__(self, usbVideoFileName, tsToFrameFunc):
+    def __init__(self, usbVideoFileName, tsToFrameFunc, copyVideoFileToTmp=False):
         QWidget.__init__(self)
         print("hello from usbvideowidghet!")
 
-        self.usbVideoFileName = usbVideoFileName
+        if copyVideoFileToTmp:
+            tmpDir = "/tmp/clipmaker/"
+            if not os.path.exists(tmpDir):
+                os.mkdir(tmpDir)
+            tmpFileName = "vid.avi"
+            fullTmpPath = os.path.join(tmpDir, tmpFileName)
+            cmd = f"ffmpeg -i {usbVideoFileName} -y {fullTmpPath}"
+            print(cmd)
+            os.system(cmd)
+            self.usbVideoFileName = fullTmpPath
+        else:
+            self.usbVideoFileName = usbVideoFileName
+
         self.tsToFrameFunc = tsToFrameFunc
 
         self.isAnimatingClip = False
@@ -261,6 +273,7 @@ class USBVideoWidget(QWidget):
         self.mainMediaPlayer.positionChanged.connect(self.mediaPositionChanged)
         self.mainMediaPlayer.setVolume(0)
         self.mainMediaPlayer.setPlaybackRate(self.animationSpeed)
+        print(f"self.animationSpeed, {self.animationSpeed}")
 
         self.startFrameMediaPlayer = QMediaPlayer(None, QMediaPlayer.VideoSurface)
         self.startFrameMediaPlayer.setVideoOutput(self.startFrameVideoWidget)
@@ -314,19 +327,25 @@ class USBVideoWidget(QWidget):
             self.isAnimatingClip = False
             self.animPauseTimer.stop()
 
+        print("Updated USB clip edges")
+
         if self.isAnimatingClip:
             self.animateClip()
         elif (stopPositionUpdated and not startPositionUpdated) or (self.startPosition is None):
+            print("skipping to stop position")
             self.mainMediaPlayer.setPosition(self.stopPosition)
         else:
+            print("skipping to start position")
             self.mainMediaPlayer.setPosition(self.startPosition)
 
     def animateClip(self):
         if self.startPosition is not None and self.stopPosition is not None:
-            self.isAnimatingClip = True
+            self.mainMediaPlayer.pause()
             self.mainMediaPlayer.setPosition(self.startPosition)
             self.mainMediaPlayer.play()
-            # QTimer.singleShot((self.stopPosition - self.startPosition) // self.animationSpeed,
+            self.isAnimatingClip = True
+            print("started animation")
+            # QTimer.singleShot(int((self.stopPosition - self.startPosition) // self.animationSpeed),
             #                   Qt.TimerType.PreciseTimer, self.endAnimateClip)
             self.animPauseTimer.stop()
             self.animPauseTimer.start(int(
@@ -336,6 +355,8 @@ class USBVideoWidget(QWidget):
         self.mainMediaPlayer.pause()
         self.mainMediaPlayer.setPosition(self.stopPosition)
         self.isAnimatingClip = False
+
+        print("ended animation")
 
     def mediaPositionChanged(self, position):
         # if self.isAnimatingClip:
@@ -583,8 +604,8 @@ class AnnotatorWindow(QMainWindow):
         self.clipStart = entryTimes[entryIdx]
         self.clipEnd = exitTimes[entryIdx]
 
-        print("Setting up for visit {} to well {}, ({} - {})".format(foundWellIdx,
-              wellName, self.clipStart, self.clipEnd))
+        print(
+            f"Setting up for visit {foundWellIdx} to well {wellName} ({entryIdx}th visit), ({self.clipStart} - {self.clipEnd})")
         self.statusLabel.setText("visit {}, well {}".format(foundWellIdx, wellName))
 
         self.positionPlot.setWellCoord(self.wellCoordMap[str(wellName)])
