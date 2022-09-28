@@ -276,20 +276,20 @@ def parseInfoFiles(sesh):
                     sesh.prevSessionAways = [int(w)
                                              for w in field_val.strip().split(' ')]
                 elif field_name.lower() == "condition":
-                    type_in = field_val
-                    if 'ripple' in type_in or 'interruption' in type_in.lower():
+                    type_in = field_val.lower()
+                    if 'ripple' in type_in or 'interruption' in type_in:
                         sesh.prevSessionIsRippleInterruption = True
-                    elif 'None' in type_in:
+                    elif 'none' in type_in:
                         sesh.prevSessionIsNoInterruption = True
-                    elif 'Delay' in type_in:
+                    elif 'delay' in type_in:
                         sesh.prevSessionIsDelayedInterruption = True
                     else:
                         print("Couldn't recognize Condition {} in file {}".format(
                             type_in, sesh.prevInfoFileName))
                 elif field_name.lower() == "thresh":
-                    if "Low" in field_val:
+                    if "low" in field_val.lower():
                         sesh.prevSession_ripple_detection_threshold = 2.5
-                    elif "High" in field_val:
+                    elif "high" in field_val.lower():
                         sesh.prevSession_ripple_detection_threshold = 4
                     elif "med" in field_val.lower():
                         sesh.prevSession_ripple_detection_threshold = 3
@@ -1464,7 +1464,11 @@ def extractAndSave(animalName, importOptions):
                               sessionNumber, prevSessionNumber, animalInfo)
         sesh.animalName = animalName
         sesh.importOptions = importOptions
-        print(sesh.infoFileName)
+        print("\n=======================================")
+        print(f"Starting session {sesh.name}:")
+        print(f"\tfolder: {seshDir}:")
+        print(f"\tinfo file name: {sesh.infoFileName}:")
+        print(f"\tprev sesh info file name: {sesh.prevInfoFileName }:")
         if "".join(os.path.basename(sesh.infoFileName).split(".")[0:-1]) in animalInfo.excluded_sessions:
             print(seshDir, " excluded session, skipping")
             numExcluded += 1
@@ -1520,8 +1524,8 @@ if __name__ == "__main__":
         "runJustSpecified": False,
         "specifiedDays": [],
         "specifiedRuns": [],
-        "justExtractData": True,
-        "runInteractiveExtraction": False,
+        "justExtractData": False,
+        "runInteractiveExtraction": True,
         "consts": {
             "VEL_THRESH": 10,  # cm/s
             "PIXELS_PER_CM": None,
