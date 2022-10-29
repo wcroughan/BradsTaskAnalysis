@@ -1,0 +1,19 @@
+Order: ['B20', 'B16', 'B18', 'B17', 'B19']
+Home: 27
+Aways: 37 6 28 13 47 7 21 10 42 12 43 31
+Condition: Delayed
+fill probe at 120.0s
+Thresh: Low
+Last Away: 
+Last well: 
+ITI Stim On: 
+Probe Stim On: 
+Weight: 
+
+
+aa...a
+...a..
+.aa..a
+...a..
+a.aa..
+....aa
