@@ -9,7 +9,10 @@ from SpikeCalibration import MUAClusterFunc, runTheThing, makeClusterFuncFromFil
 
 
 def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
-    possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/", "/media/WDC6/", "/media/fosterlab/WDC6/", "/media/WDC8/", "/media/fosterlab/WDC8/"]
+    possible_drive_dirs = ["/media/WDC7/", "/media/fosterlab/WDC7/",
+                           "/media/WDC6/", "/media/fosterlab/WDC6/",
+                           "/media/WDC8/", "/media/fosterlab/WDC8/",
+                           "/home/fosterlab/Desktop/"]
     # print(possible_drive_dirs)
 
     drive_dir = None
@@ -180,7 +183,7 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
             ctrlt1 = ConvertTimeToTrodesTS(1, 39, 50)
             lfpTet = 4
             spikeTet = 4
-        else:
+        elif False:
             runName = "20220601_114315"
             swrt0 = ConvertTimeToTrodesTS(0, 14, 16)
             swrt1 = ConvertTimeToTrodesTS(0, 51, 15)
@@ -190,6 +193,14 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
             spikeTet = 4
             UP_DEFLECT_STIM_THRESH = 5000
             clFileSuffix = "_noisy"
+        else:
+            runName = "20220819_111500"
+            swrt0 = ConvertTimeToTrodesTS(0, 39, 53)
+            swrt1 = ConvertTimeToTrodesTS(1, 13, 52)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 42, 42)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 21, 42)
+            lfpTet = 4
+            spikeTet = 4
 
         recFileName = os.path.join(drive_dir, "B16/{}/{}.rec".format(runName, runName))
         gl = os.path.join(drive_dir, "B16/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(
@@ -219,6 +230,7 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
         clfunc = None
         clFileSuffix = ""
         clFileSuffix_delay = None
+        harsherClFunc = False
 
         if False:
             runName = "20220526_135145"
@@ -309,7 +321,7 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
             ctrlt1 = ConvertTimeToTrodesTS(2, 18, 0)
             lfpTet = 3
             spikeTet = 3
-        else:
+        elif False:
             runName = "20220627_171258"
             swrt0 = ConvertTimeToTrodesTS(0, 39, 55)
             swrt1 = ConvertTimeToTrodesTS(1, 10, 55)
@@ -317,6 +329,39 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
             ctrlt1 = ConvertTimeToTrodesTS(2, 25, 10)
             lfpTet = 3
             spikeTet = 3
+        elif False:
+            runName = "20220928_144436"
+            swrt0 = ConvertTimeToTrodesTS(1, 53, 39)
+            swrt1 = ConvertTimeToTrodesTS(2, 29, 29)
+            ctrlt0 = ConvertTimeToTrodesTS(2, 45, 53)
+            ctrlt1 = ConvertTimeToTrodesTS(3, 22, 26)
+            lfpTet = 6
+            spikeTet = 3
+        elif False:
+            runName = "20220929_140856"
+            swrt0 = ConvertTimeToTrodesTS(0, 19, 29)
+            swrt1 = ConvertTimeToTrodesTS(0, 59, 40)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 37, 19)
+            ctrlt1 = ConvertTimeToTrodesTS(2, 14, 28)
+            lfpTet = 6
+            spikeTet = 3
+        elif False:
+            runName = "20221012_161840"
+            swrt0 = ConvertTimeToTrodesTS(0, 18, 1)
+            swrt1 = ConvertTimeToTrodesTS(0, 48, 1)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 24, 54)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 55, 5)
+            lfpTet = 6
+            spikeTet = 3
+        else:
+            runName = "20221013_115514"
+            swrt0 = ConvertTimeToTrodesTS(0, 9, 6)
+            swrt1 = ConvertTimeToTrodesTS(0, 40, 8)
+            ctrlt0 = ConvertTimeToTrodesTS(1, 21, 10)
+            ctrlt1 = ConvertTimeToTrodesTS(1, 54, 24)
+            lfpTet = 6
+            spikeTet = 3
+            harsherClFunc = True
 
 
 
@@ -338,7 +383,15 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
         if clfunc is None:
             clusterFileName = os.path.join(
                 drive_dir, "{}/{}/{}{}.trodesClusters".format(animal_name, runName, runName, clFileSuffix))
-            clfunc = makeClusterFuncFromFile(clusterFileName, spikeTet - 1, clusterIndex)
+            tmpfunc = makeClusterFuncFromFile(clusterFileName, spikeTet - 1, clusterIndex)
+            if harsherClFunc:
+                def clfunc(features, chmaxes, maxfeature, endFeatures, chmins):
+                    return np.logical_and(
+                        tmpfunc(features, chmaxes, maxfeature, endFeatures, chmins),
+                        np.max(endFeatures, axis=1) < 300
+                    )
+            else:
+                clfunc = tmpfunc
             clusters = loadTrodesClusters(clusterFileName)
             # clusterPolygons = clusters[spikeTet-1][clusterIndex]
             clusterPolygons = clusters[spikeTet - 1]
@@ -433,7 +486,7 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
             ctrlt1 = ConvertTimeToTrodesTS(2, 10, 0)
             lfpTet = 8
             spikeTet = 8
-        else:
+        elif False:
             runName = "20220610_194356"
             swrt0 = ConvertTimeToTrodesTS(0, 13, 34)
             swrt1 = ConvertTimeToTrodesTS(0, 47, 58)
@@ -442,6 +495,14 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
             lfpTet = 8
             spikeTet = 8
             clFileSuffix = "_2"
+        else:
+            runName = "20220816_144045"
+            swrt0 = ConvertTimeToTrodesTS(0, 48, 14 )
+            swrt1 = ConvertTimeToTrodesTS(1, 17, 45)
+            ctrlt0 = ConvertTimeToTrodesTS(2, 4, 47 )
+            ctrlt1 = ConvertTimeToTrodesTS(2, 30, 0)
+            lfpTet = 8
+            spikeTet = 8
 
         recFileName = os.path.join(drive_dir, "{}/{}/{}.rec".format(animal_name, runName, runName))
         gl = os.path.join(drive_dir, "{}/{}/{}.LFP/{}.LFP_nt{}ch*.dat".format(animal_name,
@@ -770,12 +831,16 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
     if twoFiles:
         lfpTimestampFileNameSWR = ".".join(lfpFileNameSWR.split(".")[0:-2]) + ".timestamps.dat"
         lfpTimestampFileNameCtrl = ".".join(lfpFileNameCtrl.split(".")[0:-2]) + ".timestamps.dat"
+        swrOutputFileName = os.path.join(outputDir, animal_name + "_" + runNameSWR + "_swr_psth.png")
+        ctrlOutputFileName = os.path.join(outputDir, animal_name + "_" + runNameCtrl + "_ctrl_psth.png")
+        comboOutputFileName = os.path.join(
+            outputDir, animal_name + "_" + runNameSWR + "_" + runNameCtrl + "_combo_psth.png")
     else:
         lfpTimestampFileName = ".".join(lfpFileName.split(".")[0:-2]) + ".timestamps.dat"
-    swrOutputFileName = os.path.join(outputDir, animal_name + "_" + runNameSWR + "_swr_psth.png")
-    ctrlOutputFileName = os.path.join(outputDir, animal_name + "_" + runNameCtrl + "_ctrl_psth.png")
-    comboOutputFileName = os.path.join(
-        outputDir, animal_name + "_" + runNameSWR + "_" + runNameCtrl + "_combo_psth.png")
+        swrOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_swr_psth.png")
+        ctrlOutputFileName = os.path.join(outputDir, animal_name + "_" + runName + "_ctrl_psth.png")
+        comboOutputFileName = os.path.join(
+            outputDir, animal_name + "_" + runName + "_" + runName + "_combo_psth.png")
 
     if not os.path.exists(outputDir):
         os.makedirs(outputDir)
