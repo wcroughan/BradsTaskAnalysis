@@ -34,12 +34,8 @@ PRINT_WELL_GRID = False
 PRINT_DAY_WELL_GRID = True
 
 all_wells = [i + 1 for i in range(48) if not i % 8 in [0, 7]]
-broken_wells = []
-# broken_wells = [38, 11, 7]
-# broken_wells = [2, 4, 6, 7, 18, 20, 42, 29, 31, 39, 37, 47, 27]
-# broken_wells = [2, 3, 4, 20, 42, 34]
-# broken_wells = [34, 15, 21, 22, 28, 29, 44, 38, 35]
-# broken_wells = [12, 6, 14]
+# broken_wells = []
+broken_wells = [46]
 working_wells = set(all_wells) - set(broken_wells)
 
 probeFillTimes = np.linspace(60, 60*4, 4)
