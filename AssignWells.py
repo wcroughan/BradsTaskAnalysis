@@ -8,7 +8,7 @@ import math
 # 1 - choose one well from each quadrant
 TASK_VERSION = 0
 
-RUNS_PER_DAY = 2
+RUNS_PER_DAY = 1
 NUM_DAYS = 4
 START_WITH_TODAY = True
 OVERWRITE_FILES_NO_CONFIRM = False
