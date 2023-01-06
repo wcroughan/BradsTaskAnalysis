@@ -671,6 +671,7 @@ class AnnotatorWindow(QMainWindow):
     def saveClip(self):
         if self.currentState == self.STATE_FOUND_WELLS:
             clip = (0, int(self.clipStart), int(self.clipEnd))
+            print(f"saving clip: {clip}")
             self.clips[self.currentFoundWellIdx] = clip
             if self.hasUsbVideo:
                 self.videoWidget.updateClipList(self.clips)

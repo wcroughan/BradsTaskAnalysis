@@ -117,6 +117,12 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
             points_in_range &= (y_pos > yLim[0]) & (y_pos < yLim[1])
         clean_points = jump_distance < maxJumpDistance
 
+    
+    MIN_CLEAN_TIME_FRAMES = 5
+    dilationFilter = np.ones((MIN_CLEAN_TIME_FRAMES), dtype=float)
+    clean_points = ~ (signal.convolve((~ clean_points).astype(float),
+                     dilationFilter, mode='same').astype(bool))
+
     # substitute them with NaNs then interpolate
     x_pos[np.logical_not(clean_points & points_in_range)] = np.nan
     y_pos[np.logical_not(clean_points & points_in_range)] = np.nan
@@ -655,8 +661,12 @@ def getInfoForAnimal(animalName):
         ret.out_filename = "B18_bradtask.dat"
 
         ret.excluded_dates = []
-        ret.minimum_date = None
+        # ret.minimum_date = None
+        ret.minimum_date = "20221101"
         ret.excluded_sessions = []
+
+        # usb video skips (add back later, just annoying for now)
+        ret.excluded_sessions += ["20220617_1"]
 
         # Trodes video skips
         ret.excluded_sessions += ["20220620_1"]
@@ -675,6 +685,13 @@ def getInfoForAnimal(animalName):
 
         # Messed up the well order, so current pipeline can't handle clips. SHould still be able to analyze probe behavior though if I wanted to
         ret.excluded_sessions += ["20220621_2"]
+
+        # Wasn't actually detecting ripples during these
+        ret.excluded_sessions += ["20221102_1"]
+        ret.excluded_sessions += ["20221102_2"]
+        ret.excluded_sessions += ["20221103_1"]
+        ret.excluded_sessions += ["20221103_2"]
+        ret.excluded_sessions += ["20221105_1"]
 
         ret.DEFAULT_RIP_DET_TET = 5
         ret.DEFAULT_RIP_BAS_TET = 3
@@ -703,13 +720,39 @@ def getInfoForAnimal(animalName):
         ret.out_filename = "B16_bradtask.dat"
 
         ret.excluded_dates = []
+        # ret.minimum_date = "20221101"
         ret.minimum_date = None
         ret.excluded_sessions = []
 
         # ret.excluded_sessions += ["20220919_122046"]
 
+        # Used the wrong detection tetrode
+        ret.excluded_sessions += ["20221103_1"]
+
+        # USB video starts right after I put him in
+        ret.excluded_sessions += ["20221109_1"]
+
         ret.DEFAULT_RIP_DET_TET = 4
         ret.DEFAULT_RIP_BAS_TET = 7
+        ret.rerun_usb_videos = []
+        ret.rerun_trodes_videos = []
+
+    elif animalName == "B17":
+        ret.X_START = 100
+        ret.X_FINISH = 1050
+        ret.Y_START = 20
+        ret.Y_FINISH = 900
+        ret.data_dir = "/media/WDC8/B17/bradtasksessions/"
+        ret.output_dir = "/media/WDC8/B17/processed_data/"
+        ret.fig_output_dir = "/media/WDC8/B17/processed_data/"
+        ret.out_filename = "B17_bradtask.dat"
+
+        ret.excluded_dates = []
+        ret.minimum_date = None
+        ret.excluded_sessions = []
+
+        ret.DEFAULT_RIP_DET_TET = 6
+        ret.DEFAULT_RIP_BAS_TET = 5
         ret.rerun_usb_videos = []
         ret.rerun_trodes_videos = []
 
@@ -745,7 +788,12 @@ def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirec
         else:
             seshIdx -= 1
 
-        usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
+        if seshDate > "20221100" and seshDate < "20221122":
+            # In november, trimmed videos are labeled by session name
+            print("using date string directly with no dashes")
+            usbDateStr = seshDate
+        else:
+            usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
         possibleUSBVids = []
         for pd in possibleDirectories:
             directName = os.path.join(pd, usbDateStr + "_" + str(seshIdx + 1) + ".mkv")
@@ -757,6 +805,7 @@ def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirec
                 possibleUSBVids += glob.glob(gl)
 
         if len(possibleUSBVids) == 0:
+            print("Couldn't find any matching usb video files")
             return None
 
         possibleUSBVids = sorted(possibleUSBVids)
