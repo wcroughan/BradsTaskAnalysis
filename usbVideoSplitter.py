@@ -2,15 +2,15 @@ import os
 
 
 def splitVideo(inFile, startTimeCode, endTimeCode, outFile):
-    if startTimeCode is None:
-        assert endTimeCode is None
+    if startTimeCode is not None:
+        assert endTimeCode is not None
         cmd = f"ffmpeg -ss {startTimeCode} -to {endTimeCode} -i {inFile} -an -muxdelay 0 -muxpreload 0 {outFile}"
     else:
-        assert endTimeCode is not None
+        assert endTimeCode is None
         cmd = f"ffmpeg -i {inFile} -an -muxdelay 0 -muxpreload 0 {outFile}"
 
     print(cmd)
-    # os.system(cmd)
+    os.system(cmd)
 
 
 def splitAllVideos(cutTimesFile, videoDirectory):
