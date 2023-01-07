@@ -89,59 +89,103 @@ def readClipData(data_filename):
 
 
 def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
-                          xLim=(100, 1050), yLim=(20, 900), smooth=None):
+                          xLim=(100, 1050), yLim=(20, 900), smooth=None,
+                          excludeBoxes=None):
     x_pos = np.array(x, dtype=float)
     y_pos = np.array(y, dtype=float)
 
+    def debugPlot(tt, xx, yy, title):
+        if False:
+            plt.plot(xx, yy)
+            plt.title(title)
+            plt.show()
+            plt.plot(tt, xx)
+            plt.plot(tt, yy)
+            plt.show()
+            plt.scatter(tt, xx)
+            plt.scatter(tt, yy)
+            plt.show()
+
+
     # Interpolate the position data into evenly sampled time points
 
-    if len(t) == len(x):
-        tpts = np.linspace(t[0], t[-1], len(t))
-        x_pos = np.interp(tpts, t, x)
-        y_pos = np.interp(tpts, t, y)
-    else:
-        # probably from DLC
-        tpts = np.linspace(t[0], t[-1], len(x))
-        x_pos = x
-        y_pos = y
+    tpts = np.array(t).astype(float)
+    x_pos = np.array(x).astype(float)
+    y_pos = np.array(y).astype(float)
+
+    debugPlot(tpts, x_pos, y_pos, "raw")
+
+    # only in bounds points pls
+    points_in_range = np.ones_like(x_pos).astype(bool)
+    if xLim is not None:
+        points_in_range &= (x_pos > xLim[0]) & (x_pos < xLim[1])
+    if yLim is not None:
+        points_in_range &= (y_pos > yLim[0]) & (y_pos < yLim[1])
+
+    x_pos[~ points_in_range] = np.nan
+    y_pos[~ points_in_range] = np.nan
+
+    debugPlot(tpts, x_pos, y_pos, "in bounds only")
+
+    if excludeBoxes is not None:
+        for x1, y1, x2, y2 in excludeBoxes:
+            inBox = (x_pos > x1) & (x_pos < x2) & (y_pos > y1) & (y_pos < y2)
+            x_pos[inBox] = np.nan
+            y_pos[inBox] = np.nan
+
+    debugPlot(tpts, x_pos, y_pos, "excluded boxes")
 
     # Remove large jumps in position (tracking errors)
-    for _ in range(nCleaningReps):
-        jump_distance = np.sqrt(np.square(np.diff(x_pos, prepend=x_pos[0])) +
-                                np.square(np.diff(y_pos, prepend=y_pos[0])))
-        # print(jump_distance)
-        points_in_range = np.ones_like(jump_distance).astype(bool)
-        if xLim is not None:
-            points_in_range &= (x_pos > xLim[0]) & (x_pos < xLim[1])
-        if yLim is not None:
-            points_in_range &= (y_pos > yLim[0]) & (y_pos < yLim[1])
-        clean_points = jump_distance < maxJumpDistance
-
-    
-    MIN_CLEAN_TIME_FRAMES = 5
-    dilationFilter = np.ones((MIN_CLEAN_TIME_FRAMES), dtype=float)
-    clean_points = ~ (signal.convolve((~ clean_points).astype(float),
-                     dilationFilter, mode='same').astype(bool))
+    jump_distance = np.sqrt(np.square(np.diff(x_pos, prepend=x_pos[0])) +
+                            np.square(np.diff(y_pos, prepend=y_pos[0])))
+    clean_points = jump_distance < maxJumpDistance
 
     # substitute them with NaNs then interpolate
-    x_pos[np.logical_not(clean_points & points_in_range)] = np.nan
-    y_pos[np.logical_not(clean_points & points_in_range)] = np.nan
+    x_pos[~ clean_points] = np.nan
+    y_pos[~ clean_points] = np.nan
+
+    debugPlot(tpts, x_pos, y_pos, "no jumps (single)")
+    
+    MIN_CLEAN_TIME_FRAMES = 15
+    # dilationFilter = np.ones((MIN_CLEAN_TIME_FRAMES), dtype=float)
+    # clean_points = ~ (signal.convolve((~ clean_points).astype(float),
+    #                  dilationFilter, mode='same').astype(bool))
+
+    # x_pos[~ clean_points] = np.nan
+    # y_pos[~ clean_points] = np.nan
+
+    # Dilate the excluded parts but only inward toward the noise
+    nanidx = np.argwhere(np.isnan(x_pos)).reshape(-1)
+    nidiff = np.diff(nanidx)
+    takeout = np.argwhere((nidiff > 1) & (nidiff < MIN_CLEAN_TIME_FRAMES))
+    for t in takeout:
+        x_pos[nanidx[t][0]:nanidx[t+1][0]] = np.nan
+        y_pos[nanidx[t][0]:nanidx[t+1][0]] = np.nan
+    
+    debugPlot(tpts, x_pos, y_pos, "no jumps (dilated)")
 
     nanpos = np.isnan(x_pos)
     notnanpos = np.logical_not(nanpos)
     x_pos = np.interp(tpts, tpts[notnanpos], x_pos[notnanpos])
     y_pos = np.interp(tpts, tpts[notnanpos], y_pos[notnanpos])
 
+    debugPlot(tpts, x_pos, y_pos, "interp")
+   
     if smooth is not None:
         x_pos = gaussian_filter1d(x_pos, smooth)
         y_pos = gaussian_filter1d(y_pos, smooth)
+
+        debugPlot(tpts, x_pos, y_pos, "smooth")
+
 
     return list(x_pos), list(y_pos), list(tpts)
 
 
 def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
-                   xLim=(100, 1050), yLim=(20, 900)):
-    return processPosData_coords(position_data["x1"], position_data["y1"], position_data["timestamp"])
+                   xLim=(100, 1050), yLim=(20, 900), smooth=None, excludeBoxes=None):
+    return processPosData_coords(position_data["x1"], position_data["y1"], position_data["timestamp"],
+            maxJumpDistance=maxJumpDistance, nCleaningReps=nCleaningReps, xLim=xLim, yLim=yLim, smooth=smooth,
+            excludeBoxes=excludeBoxes)
 
 
 def getWellCoordinates(well_num, well_coords_map):
@@ -468,6 +512,7 @@ class AnimalInfo:
         self.X_FINISH = None
         self.Y_START = None
         self.Y_FINISH = None
+        self.excludeBoxes = None
         self.data_dir = ""
         self.output_dir = ""
         self.fig_output_dir = ""
@@ -652,6 +697,7 @@ def getInfoForAnimal(animalName):
         ret.X_FINISH = 1050
         ret.Y_START = 20
         ret.Y_FINISH = 900
+        ret.excludeBoxes = [(0, 0, 130, 60)]
         # ret.data_dir = "/home/wcroughan/data/B18/bradtasksessions/"
         # ret.output_dir = "/home/wcroughan/data/B18/processed_data/"
         # ret.fig_output_dir = "/home/wcroughan/data/B18/processed_data/"
@@ -779,7 +825,7 @@ def generateFoundWells(home_well, away_wells, last_away_well, ended_on_home, fou
 
 
 def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirectly=False):
-    print(seshName)
+    # print(seshName)
     seshDate, seshTime = seshName.split("_")
     if len(seshTime) == 1 or seshIdx is not None:
         # seshTime is actually session idx, or it's been provided directly
@@ -790,7 +836,7 @@ def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirec
 
         if seshDate > "20221100" and seshDate < "20221122":
             # In november, trimmed videos are labeled by session name
-            print("using date string directly with no dashes")
+            print("\tusing date string directly with no dashes")
             usbDateStr = seshDate
         else:
             usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
@@ -805,7 +851,7 @@ def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirec
                 possibleUSBVids += glob.glob(gl)
 
         if len(possibleUSBVids) == 0:
-            print("Couldn't find any matching usb video files")
+            print("\tCouldn't find any matching usb video files")
             return None
 
         possibleUSBVids = sorted(possibleUSBVids)

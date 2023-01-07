@@ -527,8 +527,12 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuri
         print("\t2nd half:\n\t\t{}\n\t\t{}\n\t\t({})".format(minH2, maxH2, d2))
         print("\tdd = " + str(dd))
         if dd > 10:
-            print("WARNING: might not have light on or off times, autoEnabling video display")
-            showVideo = True
+            # print("WARNING: might not have light on or off times, autoEnabling video display")
+            # showVideo = True
+            print("WARNING: might not have light on or off times, using just the overall light mins and maxes")
+            maxH = max(maxH1, maxH2)
+            minH = min(minH1, minH2)
+            thresh = (maxH + minH) / 2.0
 
     else:
         maxH = np.max(allFrameH)

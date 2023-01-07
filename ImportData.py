@@ -33,8 +33,8 @@ def getSessionDirs(animalInfo, importOptions):
     filtered_data_dirs = []
     prevSessionDirs = []
     prevSession = None
-    all_data_dirs = sorted(os.listdir(animalInfo.data_dir), key=lambda s: (
-        s.split('_')[0], s.split('_')[1]))
+    all_data_dirs = sorted([d for d in os.listdir(animalInfo.data_dir) if d.count("_") > 0],
+        key=lambda s: (s.split('_')[0], s.split('_')[1]))
 
     for session_idx, session_dir in enumerate(all_data_dirs):
         if session_dir == "behavior_notes" or "numpy_objs" in session_dir:
@@ -307,6 +307,8 @@ def parseInfoFiles(sesh):
                         sesh.prevSession_ripple_detection_threshold = 4
                     elif "med" in field_val.lower():
                         sesh.prevSession_ripple_detection_threshold = 3
+                    elif "none" in field_val.lower():
+                        sesh.prevSession_ripple_detection_threshold = None
                     else:
                         sesh.prevSession_ripple_detection_threshold = float(
                             field_val)
@@ -433,7 +435,8 @@ def loadPositionData(sesh):
                 print("\tFound existing tracking data")
                 sesh.frameTimes = position_data['timestamp']
                 xs, ys, ts = processPosData(position_data, xLim=(
-                    sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH))
+                    sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH),
+                    excludeBoxes=sesh.animalInfo.excludeBoxes)
                 sesh.hasPositionData = True
         else:
             position_data = None
@@ -445,7 +448,8 @@ def loadPositionData(sesh):
                 trackingFile)
             sesh.frameTimes = position_data['timestamp']
             xs, ys, ts = processPosData(position_data, xLim=(
-                sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH))
+                sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH),
+                    excludeBoxes=sesh.animalInfo.excludeBoxes)
             sesh.hasPositionData = True
 
     if sesh.missingEndedAtWell:
@@ -506,7 +510,7 @@ def loadPositionData(sesh):
                 print("\tjustlights file says trodes light timestamps {}, {} (/{})".format(
                     sesh.trodesLightOffTime, sesh.trodesLightOnTime, len(ts)))
             else:
-                print("\tdoing the lights")
+                print(f"\tdoing the lights with file {sesh.fileStartString + '.1.h264'}")
                 sesh.trodesLightOffTime, sesh.trodesLightOnTime = getTrodesLightTimes(
                     sesh.fileStartString + '.1.h264', showVideo=False)
                 print("\ttrodesLightFunc says trodes light Time {}, {} (/{})".format(
@@ -583,7 +587,8 @@ def loadPositionData(sesh):
                     _, position_data = readRawPositionData(
                         probe_file_str + '.1.videoPositionTracking')
                     xs, ys, ts = processPosData(position_data, xLim=(
-                        sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH))
+                        sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH),
+                        excludeBoxes=sesh.animalInfo.excludeBoxes)
 
                 probe_start_idx = np.searchsorted(ts, probe_time_clips[0])
                 probe_end_idx = np.searchsorted(ts, probe_time_clips[1])
@@ -989,8 +994,12 @@ def posCalcVelocity(sesh):
     pixPerCm = sesh.importOptions["consts"]["PIXELS_PER_CM"]
     bt_vel = np.sqrt(np.power(np.diff(sesh.bt_pos_xs), 2) +
                      np.power(np.diff(sesh.bt_pos_ys), 2))
+
+    oldSettings = np.seterr(invalid="ignore")
     sesh.bt_vel_cm_s = np.divide(bt_vel, np.diff(sesh.bt_pos_ts) /
                                  TRODES_SAMPLING_RATE) / pixPerCm
+    np.seterr(**oldSettings)
+
     bt_is_mv = sesh.bt_vel_cm_s > sesh.importOptions["consts"]["VEL_THRESH"]
     if len(bt_is_mv) > 0:
         bt_is_mv = np.append(bt_is_mv, np.array(bt_is_mv[-1]))
@@ -1007,8 +1016,10 @@ def posCalcVelocity(sesh):
     if sesh.probe_performed:
         probe_vel = np.sqrt(np.power(np.diff(sesh.probe_pos_xs), 2) +
                             np.power(np.diff(sesh.probe_pos_ys), 2))
+        oldSettings = np.seterr(invalid="ignore")
         sesh.probe_vel_cm_s = np.divide(probe_vel, np.diff(sesh.probe_pos_ts) /
                                         TRODES_SAMPLING_RATE) / pixPerCm
+        np.seterr(**oldSettings)
         probe_is_mv = sesh.probe_vel_cm_s > sesh.importOptions["consts"]["VEL_THRESH"]
         if len(probe_is_mv) > 0:
             probe_is_mv = np.append(probe_is_mv, np.array(probe_is_mv[-1]))
@@ -1528,6 +1539,8 @@ def extractAndSave(animalName, importOptions):
         parseInfoFiles(sesh)
         print("Loading position data")
         loadPositionData(sesh)
+        if sesh.isNoInterruption:
+            importOptions["skipLFP"] = True
         if importOptions["skipLFP"]:
             print("!!!!!\tSKIPPING LFP\t!!!!!")
             lfpData = None
