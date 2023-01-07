@@ -87,24 +87,77 @@ def readClipData(data_filename):
         print(err)
     return time_clips
 
+def cleanupPos(tpts, x_pos, y_pos, xLim=(100, 1050), yLim=(20, 900), excludeBoxes=None, maxJumpDistance=50, makePlots=False):
+    # only in bounds points pls
+    points_in_range = np.ones_like(x_pos).astype(bool)
+    if xLim is not None:
+        points_in_range &= (x_pos > xLim[0]) & (x_pos < xLim[1])
+    if yLim is not None:
+        points_in_range &= (y_pos > yLim[0]) & (y_pos < yLim[1])
+    x_pos[~ points_in_range] = np.nan
+    y_pos[~ points_in_range] = np.nan
+    if makePlots:
+        quickPosPlot(tpts, x_pos, y_pos, "in bounds only")
+
+    # exclude boxes
+    if excludeBoxes is not None:
+        for x1, y1, x2, y2 in excludeBoxes:
+            inBox = (x_pos > x1) & (x_pos < x2) & (y_pos > y1) & (y_pos < y2)
+            x_pos[inBox] = np.nan
+            y_pos[inBox] = np.nan
+    if makePlots:
+        quickPosPlot(tpts, x_pos, y_pos, "excluded boxes")
+
+    # Remove large jumps in position (tracking errors)
+    jump_distance = np.sqrt(np.square(np.diff(x_pos, prepend=x_pos[0])) +
+                            np.square(np.diff(y_pos, prepend=y_pos[0])))
+    clean_points = jump_distance < maxJumpDistance
+    x_pos[~ clean_points] = np.nan
+    y_pos[~ clean_points] = np.nan
+    if makePlots:
+        quickPosPlot(tpts, x_pos, y_pos, "no jumps (single)")
+    
+    # Dilate the excluded parts but only inward toward the noise
+    MIN_CLEAN_TIME_FRAMES = 15
+    nanidx = np.argwhere(np.isnan(x_pos)).reshape(-1)
+    nidiff = np.diff(nanidx)
+    takeout = np.argwhere((nidiff > 1) & (nidiff < MIN_CLEAN_TIME_FRAMES))
+    for t in takeout:
+        x_pos[nanidx[t][0]:nanidx[t+1][0]] = np.nan
+        y_pos[nanidx[t][0]:nanidx[t+1][0]] = np.nan
+    if makePlots:
+        quickPosPlot(tpts, x_pos, y_pos, "no jumps (dilated)")
+
+def interpNanPositions(tpts, x_pos, y_pos):
+    nanpos = np.isnan(x_pos)
+    ynanpos = np.isnan(y_pos)
+    assert all(ynanpos == nanpos)
+    notnanpos = np.logical_not(nanpos)
+    x_pos = np.interp(tpts, tpts[notnanpos], x_pos[notnanpos])
+    y_pos = np.interp(tpts, tpts[notnanpos], y_pos[notnanpos])
+    return x_pos, y_pos
+
+def quickPosPlot(tt, xx, yy, title, irange=None):
+    if True:
+        if irange is not None:
+            xx = xx[irange[0]:irange[1]]
+            yy = yy[irange[0]:irange[1]]
+            tt = tt[irange[0]:irange[1]]
+        plt.plot(xx, yy)
+        plt.title(title)
+        plt.show()
+        plt.plot(tt, xx)
+        plt.plot(tt, yy)
+        plt.show()
+        plt.scatter(tt, xx)
+        plt.scatter(tt, yy)
+        plt.show()
 
 def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                           xLim=(100, 1050), yLim=(20, 900), smooth=None,
-                          excludeBoxes=None):
+                          excludeBoxes=None, correctionDirectory=None):
     x_pos = np.array(x, dtype=float)
     y_pos = np.array(y, dtype=float)
-
-    def debugPlot(tt, xx, yy, title):
-        if False:
-            plt.plot(xx, yy)
-            plt.title(title)
-            plt.show()
-            plt.plot(tt, xx)
-            plt.plot(tt, yy)
-            plt.show()
-            plt.scatter(tt, xx)
-            plt.scatter(tt, yy)
-            plt.show()
 
 
     # Interpolate the position data into evenly sampled time points
@@ -113,79 +166,167 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
     x_pos = np.array(x).astype(float)
     y_pos = np.array(y).astype(float)
 
-    debugPlot(tpts, x_pos, y_pos, "raw")
+    # quickPosPlot(tpts, x_pos, y_pos, "raw")
 
-    # only in bounds points pls
-    points_in_range = np.ones_like(x_pos).astype(bool)
-    if xLim is not None:
-        points_in_range &= (x_pos > xLim[0]) & (x_pos < xLim[1])
-    if yLim is not None:
-        points_in_range &= (y_pos > yLim[0]) & (y_pos < yLim[1])
+    # Remove bad position points
+    cleanupPos(tpts, x_pos, y_pos, xLim=xLim, yLim=yLim, excludeBoxes=excludeBoxes, maxJumpDistance=maxJumpDistance)
 
-    x_pos[~ points_in_range] = np.nan
-    y_pos[~ points_in_range] = np.nan
+    # Now check for large gaps that were removed and fill in with correction files
+    validTpts = tpts[~np.isnan(x_pos)]
+    notnandiff = np.diff(validTpts)
+    MIN_CORRECTION_SECS = 1.0
+    MIN_CORRECTION_TS = MIN_CORRECTION_SECS * TRODES_SAMPLING_RATE
+    needsCorrection = np.argwhere((notnandiff >= MIN_CORRECTION_TS)).reshape(-1)
+    correctionRegions = []
+    correctedFlag = []
+    # print("\tLarge gaps that are being interped:")
+    for nc in needsCorrection:
+        t1 = int(validTpts[nc])
+        t2 = int(validTpts[nc+1])
 
-    debugPlot(tpts, x_pos, y_pos, "in bounds only")
+        s1 = t1 // TRODES_SAMPLING_RATE
+        s1secs = s1 % 60
+        s1 = s1 // 60
+        s1mins = s1 % 60
+        s1hrs = s1 // 60
+        timeStr1 = f"{s1hrs}:{s1mins}:{s1secs}"
 
-    if excludeBoxes is not None:
-        for x1, y1, x2, y2 in excludeBoxes:
-            inBox = (x_pos > x1) & (x_pos < x2) & (y_pos > y1) & (y_pos < y2)
-            x_pos[inBox] = np.nan
-            y_pos[inBox] = np.nan
+        s2 = t2 // TRODES_SAMPLING_RATE
+        s2secs = s2 % 60
+        s2 = s2 // 60
+        s2mins = s2 % 60
+        s2hrs = s2 // 60
+        timeStr2 = f"{s2hrs}:{s2mins}:{s2secs}"
 
-    debugPlot(tpts, x_pos, y_pos, "excluded boxes")
+        entry = (
+            t1,
+            t2,
+            timeStr1,
+            timeStr2,
+            (t2-t1) / TRODES_SAMPLING_RATE,
+            False
+        )
+        correctionRegions.append(entry)
+        correctedFlag.append(False)
 
-    # Remove large jumps in position (tracking errors)
-    jump_distance = np.sqrt(np.square(np.diff(x_pos, prepend=x_pos[0])) +
-                            np.square(np.diff(y_pos, prepend=y_pos[0])))
-    clean_points = jump_distance < maxJumpDistance
-
-    # substitute them with NaNs then interpolate
-    x_pos[~ clean_points] = np.nan
-    y_pos[~ clean_points] = np.nan
-
-    debugPlot(tpts, x_pos, y_pos, "no jumps (single)")
+        # print("\t" + "\t".join([str(s) for s in entry]))
     
-    MIN_CLEAN_TIME_FRAMES = 15
-    # dilationFilter = np.ones((MIN_CLEAN_TIME_FRAMES), dtype=float)
-    # clean_points = ~ (signal.convolve((~ clean_points).astype(float),
-    #                  dilationFilter, mode='same').astype(bool))
+    if correctionDirectory is None:
+        response = input("No corrections provided, interp all these gaps anyway (y/N)?")
+        if response != "y":
+            exit()
 
-    # x_pos[~ clean_points] = np.nan
-    # y_pos[~ clean_points] = np.nan
+    if correctionDirectory is not None:
+        if not os.path.exists(correctionDirectory):
+            os.makedirs(correctionDirectory)
 
-    # Dilate the excluded parts but only inward toward the noise
-    nanidx = np.argwhere(np.isnan(x_pos)).reshape(-1)
-    nidiff = np.diff(nanidx)
-    takeout = np.argwhere((nidiff > 1) & (nidiff < MIN_CLEAN_TIME_FRAMES))
-    for t in takeout:
-        x_pos[nanidx[t][0]:nanidx[t+1][0]] = np.nan
-        y_pos[nanidx[t][0]:nanidx[t+1][0]] = np.nan
-    
-    debugPlot(tpts, x_pos, y_pos, "no jumps (dilated)")
+        gl = correctionDirectory + '/*.videoPositionTracking'
+        cfiles = glob.glob(gl)
+        # print(gl, cfiles)
+        for cf in cfiles:
+            _, posdata = readRawPositionData(cf)
+            ct = np.array(posdata["timestamp"]).astype(float)
+            cx = np.array(posdata["x1"]).astype(float)
+            cy = np.array(posdata["y1"]).astype(float)
 
-    nanpos = np.isnan(x_pos)
-    notnanpos = np.logical_not(nanpos)
-    x_pos = np.interp(tpts, tpts[notnanpos], x_pos[notnanpos])
-    y_pos = np.interp(tpts, tpts[notnanpos], y_pos[notnanpos])
+            # Seems like it includes all the video timestamps, but just extends wherever tracking happened for some reason
+            cd = np.abs(np.diff(cx, prepend=cx[0])) + np.abs(np.diff(cy, prepend=cy[0]))
+            nzcd = np.nonzero(cd)[0]
+            ci1 = nzcd[0]
+            ci2 = nzcd[-1]
+            if False:
+                quickPosPlot(ct, cx, cy, "incoming correction points")
+                quickPosPlot(ct, cx, cy, "incoming correction points (just with tracking data)", irange=(ci1, ci2))
+            ct = ct[ci1:ci2]
+            cx = cx[ci1:ci2]
+            cy = cy[ci1:ci2]
+            # quickPosPlot(ct, cx, cy, "incoming correction points")
 
-    debugPlot(tpts, x_pos, y_pos, "interp")
+            posStartTs = ct[0]
+            posEndTs = ct[-1]
+            print(f"\tchecking {cf}\n\t\t{posStartTs} - {posEndTs}")
+            for entryi, entry in enumerate(correctionRegions):
+                t1 = entry[0]
+                t2 = entry[1]
+                # print("\t\tagainst entry\t", t1, t2)
+                if t1 > posStartTs and t2 < posEndTs:
+                    correctedFlag[entryi] = True
+                    print("\tfound correction for", "\t".join([str(s) for s in entry]))
+                    # integrate this bit
+                    # cleanupPos(ct, cx, cy, xLim=xLim, yLim=yLim, excludeBoxes=excludeBoxes, maxJumpDistance=maxJumpDistance)
+                    # cx, cy = interpNanPositions(ct, cx, cy)
+
+                    MARGIN = 20
+                    tpi1 = np.searchsorted(tpts, t1)
+                    tpi2 = np.searchsorted(tpts, t2)
+                    cpi1 = np.searchsorted(ct, t1)
+                    cpi2 = np.searchsorted(ct, t2)
+                    
+                    # quickPosPlot(ct, cx, cy, "incoming correction points, full")
+                    # quickPosPlot(tpts, x_pos, y_pos, "correction region original",
+                    #              irange=(max(0, tpi1 - MARGIN), min(len(tpts)-1, tpi2 + MARGIN)))
+                    # quickPosPlot(ct, cx, cy, "incoming correction points", irange=(cpi1, cpi2))
+                    for t in ct:
+                        assert t in tpts
+                    for ci, pi in zip(range(cpi1, cpi2), range(tpi1, tpi2)):
+                        if np.isnan(x_pos[pi]):
+                            x_pos[pi] = cx[ci]
+                            y_pos[pi] = cy[ci]
+                    # quickPosPlot(tpts, x_pos, y_pos, "correction region integrated", irange=(max(0, tpi1 - MARGIN), min(len(tpts)-1, tpi2 + MARGIN)))
+                    
+
+        print("\tRemaining regions that are uncorrected:")
+        lastEnd = None
+        lastStart = None
+        optimizedTimes = []
+        SPLITGAP = 30
+        COMBINEGAP = 5
+        MAXREC = 60*5
+        for entryi, entry in enumerate(correctionRegions):
+            if not correctedFlag[entryi]:
+                print("\t" + "\t".join([str(s) for s in entry]))
+
+                if lastEnd is not None and (\
+                    (entry[0] - lastEnd) / TRODES_SAMPLING_RATE < COMBINEGAP or \
+                    ((entry[0] - lastEnd) / TRODES_SAMPLING_RATE < SPLITGAP and \
+                        (entry[1] - lastStart) / TRODES_SAMPLING_RATE < MAXREC)):
+                    # combine this with last entry
+                    optimizedTimes[-1] = (optimizedTimes[-1][0], entry[3])
+                    lastEnd = entry[1]
+                else:
+                    # new entry
+                    lastStart = entry[0]
+                    lastEnd = entry[1]
+                    optimizedTimes.append((entry[2], entry[3]))
+
+        print("\toptimized = ")
+        for oe in optimizedTimes:
+            print("\t\t", oe[0], oe[1])
+
+        correctionsFileName = os.path.join(correctionDirectory, "optimized.txt")
+        print(f"\tsaving optimized list to file {correctionsFileName}")
+        with open(correctionsFileName, 'w') as f:
+            f.writelines([f"{oe[0]} - {oe[1]}\n" for oe in optimizedTimes])
+
+    x_pos, y_pos = interpNanPositions(tpts, x_pos, y_pos)
+
+    quickPosPlot(tpts, x_pos, y_pos, "interp")
    
     if smooth is not None:
         x_pos = gaussian_filter1d(x_pos, smooth)
         y_pos = gaussian_filter1d(y_pos, smooth)
 
-        debugPlot(tpts, x_pos, y_pos, "smooth")
+        quickPosPlot(tpts, x_pos, y_pos, "smooth")
 
 
     return list(x_pos), list(y_pos), list(tpts)
 
 
 def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
-                   xLim=(100, 1050), yLim=(20, 900), smooth=None, excludeBoxes=None):
+                   xLim=(100, 1050), yLim=(20, 900), smooth=None, excludeBoxes=None, correctionDirectory=None):
     return processPosData_coords(position_data["x1"], position_data["y1"], position_data["timestamp"],
             maxJumpDistance=maxJumpDistance, nCleaningReps=nCleaningReps, xLim=xLim, yLim=yLim, smooth=smooth,
-            excludeBoxes=excludeBoxes)
+            excludeBoxes=excludeBoxes, correctionDirectory=correctionDirectory)
 
 
 def getWellCoordinates(well_num, well_coords_map):
@@ -708,8 +849,11 @@ def getInfoForAnimal(animalName):
 
         ret.excluded_dates = []
         # ret.minimum_date = None
-        ret.minimum_date = "20221101"
+        ret.minimum_date = "20221109"
         ret.excluded_sessions = []
+
+        # Need to improve trodes tracking
+        ret.excluded_sessions += ["20221108_1"]
 
         # usb video skips (add back later, just annoying for now)
         ret.excluded_sessions += ["20220617_1"]

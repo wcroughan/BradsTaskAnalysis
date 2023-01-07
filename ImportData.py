@@ -434,9 +434,11 @@ def loadPositionData(sesh):
             else:
                 print("\tFound existing tracking data")
                 sesh.frameTimes = position_data['timestamp']
+                correctionDirectory = os.path.join(os.path.dirname(sesh.fileStartString), "trackingCorrections")
+                print(f"\tcorrectionDirectory is {correctionDirectory} ")
                 xs, ys, ts = processPosData(position_data, xLim=(
                     sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH),
-                    excludeBoxes=sesh.animalInfo.excludeBoxes)
+                    excludeBoxes=sesh.animalInfo.excludeBoxes, correctionDirectory=correctionDirectory)
                 sesh.hasPositionData = True
         else:
             position_data = None
