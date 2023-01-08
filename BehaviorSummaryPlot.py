@@ -13,7 +13,6 @@
 
 
 from BTData import *
-import sortednp
 import os
 import matplotlib.pyplot as plt
 import pandas as pd

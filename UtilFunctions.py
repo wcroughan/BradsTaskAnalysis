@@ -275,7 +275,7 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                     # quickPosPlot(tpts, x_pos, y_pos, "correction region integrated", irange=(max(0, tpi1 - MARGIN), min(len(tpts)-1, tpi2 + MARGIN)))
                     
 
-        print("\tRemaining regions that are uncorrected:")
+        # print("\tRemaining regions that are uncorrected:")
         lastEnd = None
         lastStart = None
         optimizedTimes = []
@@ -284,7 +284,7 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
         MAXREC = 60*5
         for entryi, entry in enumerate(correctionRegions):
             if not correctedFlag[entryi]:
-                print("\t" + "\t".join([str(s) for s in entry]))
+                # print("\t" + "\t".join([str(s) for s in entry]))
 
                 if lastEnd is not None and (\
                     (entry[0] - lastEnd) / TRODES_SAMPLING_RATE < COMBINEGAP or \
@@ -299,7 +299,7 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                     lastEnd = entry[1]
                     optimizedTimes.append((entry[2], entry[3]))
 
-        print("\toptimized = ")
+        print("\toptimized corrections = ")
         for oe in optimizedTimes:
             print("\t\t", oe[0], oe[1])
 
@@ -310,13 +310,13 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
 
     x_pos, y_pos = interpNanPositions(tpts, x_pos, y_pos)
 
-    quickPosPlot(tpts, x_pos, y_pos, "interp")
+    # quickPosPlot(tpts, x_pos, y_pos, "interp")
    
     if smooth is not None:
         x_pos = gaussian_filter1d(x_pos, smooth)
         y_pos = gaussian_filter1d(y_pos, smooth)
 
-        quickPosPlot(tpts, x_pos, y_pos, "smooth")
+        # quickPosPlot(tpts, x_pos, y_pos, "smooth")
 
 
     return list(x_pos), list(y_pos), list(tpts)
@@ -848,9 +848,15 @@ def getInfoForAnimal(animalName):
         ret.out_filename = "B18_bradtask.dat"
 
         ret.excluded_dates = []
-        # ret.minimum_date = None
-        ret.minimum_date = "20221109"
+        ret.minimum_date = None
+        # ret.minimum_date = "20221109"
         ret.excluded_sessions = []
+
+        # Add back in later, just issue with info file
+        ret.excluded_sessions += ["20221114_1"]
+        ret.excluded_sessions += ["20221115_1"]
+        ret.excluded_sessions += ["20221116_1"]
+        ret.excluded_sessions += ["20221118_1"]
 
         # Need to improve trodes tracking
         ret.excluded_sessions += ["20221108_1"]
@@ -913,6 +919,9 @@ def getInfoForAnimal(animalName):
         # ret.minimum_date = "20221101"
         ret.minimum_date = None
         ret.excluded_sessions = []
+
+        # Just annoying info file stuff, fix and add back in
+        # ret.excluded_sessions += ["20221111_2"]
 
         # ret.excluded_sessions += ["20220919_122046"]
 

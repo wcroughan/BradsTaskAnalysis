@@ -722,6 +722,9 @@ def loadLFPData(sesh):
             elif os.path.exists("/home/wcroughan/Software/Trodes21/linux/exportLFP"):
                 syscmd = "/home/wcroughan/Software/Trodes21/linux/exportLFP -rec " + \
                     sesh.fileStartString + ".rec"
+            # elif os.path.exists("/home/wcroughan/Software/Trodes_2-3-2_Ubuntu2004/exportLFP"):
+            #     syscmd = "/home/wcroughan/Software/Trodes_2-3-2_Ubuntu2004/exportLFP -rec " + \
+            #         sesh.fileStartString + ".rec"
             else:
                 syscmd = "/home/wcroughan/Software/Trodes_2-2-3_Ubuntu1804/exportLFP -rec " + \
                     sesh.fileStartString + ".rec"
@@ -748,8 +751,14 @@ def loadLFPData(sesh):
             if os.path.exists("/home/wcroughan/Software/Trodes21/exportLFP"):
                 syscmd = "/home/wcroughan/Software/Trodes21/exportLFP -rec " + \
                     sesh.fileStartString + ".rec"
-            else:
+            # elif os.path.exists("/home/wcroughan/Software/Trodes_2-3-2_Ubuntu2004/exportLFP"):
+            #     syscmd = "/home/wcroughan/Software/Trodes_2-3-2_Ubuntu2004/exportLFP -rec " + \
+            #         sesh.fileStartString + ".rec"
+            elif os.path.exists("/home/wcroughan/Software/Trodes21/linux/exportLFP"):
                 syscmd = "/home/wcroughan/Software/Trodes21/linux/exportLFP -rec " + \
+                    sesh.fileStartString + ".rec"
+            else:
+                syscmd = "/home/wcroughan/Software/Trodes_2-2-3_Ubuntu1804/exportLFP -rec " + \
                     sesh.fileStartString + ".rec"
             print("\t" + syscmd)
             os.system(syscmd)
@@ -1522,7 +1531,7 @@ def extractAndSave(animalName, importOptions):
         sesh = makeSessionObj(seshDir, prevSeshDir,
                               sessionNumber, prevSessionNumber, animalInfo)
         sesh.animalName = animalName
-        sesh.importOptions = importOptions
+        sesh.importOptions = importOptions.copy()
         print("\n=======================================")
         print(f"Starting session {sesh.name}:")
         print(f"\tfolder: {seshDir}:")
@@ -1538,12 +1547,16 @@ def extractAndSave(animalName, importOptions):
             continue
 
         print("Parsing info files")
-        parseInfoFiles(sesh)
+        try:
+            parseInfoFiles(sesh)
+        except:
+            print("Error parsing info file, skipping session", sesh.name)
+            continue
         print("Loading position data")
         loadPositionData(sesh)
         if sesh.isNoInterruption:
-            importOptions["skipLFP"] = True
-        if importOptions["skipLFP"]:
+            sesh.importOptions["skipLFP"] = True
+        if sesh.importOptions["skipLFP"]:
             print("!!!!!\tSKIPPING LFP\t!!!!!")
             lfpData = None
             baselineLfpData = None
@@ -1551,12 +1564,12 @@ def extractAndSave(animalName, importOptions):
             print("Loading LFP")
             lfpData, baselineLfpData = loadLFPData(sesh)
 
-        if importOptions["justExtractData"]:
+        if sesh.importOptions["justExtractData"]:
             print("Just extracting the data, continuing to next session...\n")
             numExtracted += 1
             continue
 
-        if not importOptions["skipLFP"]:
+        if not sesh.importOptions["skipLFP"]:
             print("Analyzing LFP")
             runLFPAnalyses(sesh, lfpData, baselineLfpData)
         print("Analyzing position")
@@ -1599,8 +1612,8 @@ if __name__ == "__main__":
         "runJustSpecified": False,
         "specifiedDays": [],
         "specifiedRuns": [],
-        "justExtractData": False,
-        "runInteractiveExtraction": True,
+        "justExtractData": True,
+        "runInteractiveExtraction": False,
         "consts": {
             "VEL_THRESH": 10,  # cm/s
             "PIXELS_PER_CM": None,
