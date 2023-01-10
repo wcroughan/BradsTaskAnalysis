@@ -435,7 +435,7 @@ def loadPositionData(sesh):
                 print("\tFound existing tracking data")
                 sesh.frameTimes = position_data['timestamp']
                 correctionDirectory = os.path.join(os.path.dirname(sesh.fileStartString), "trackingCorrections")
-                print(f"\tcorrectionDirectory is {correctionDirectory} ")
+                # print(f"\tcorrectionDirectory is {correctionDirectory} ")
                 xs, ys, ts = processPosData(position_data, xLim=(
                     sesh.animalInfo.X_START, sesh.animalInfo.X_FINISH), yLim=(sesh.animalInfo.Y_START, sesh.animalInfo.Y_FINISH),
                     excludeBoxes=sesh.animalInfo.excludeBoxes, correctionDirectory=correctionDirectory)
@@ -1512,6 +1512,7 @@ def extractAndSave(animalName, importOptions):
     lastPrevDateStr = ""
     sessionNumber = None
     prevSessionNumber = None
+    infoProblemSessions = []
     for seshDir, prevSeshDir in zip(sessionDirs, prevSessionDirs):
         dateStr = seshDir.split('_')[0][-8:]
         if dateStr == lastDateStr:
@@ -1546,11 +1547,19 @@ def extractAndSave(animalName, importOptions):
             numExcluded += 1
             continue
 
+        if sesh.importOptions["confirmAfterEachSession"]:
+            res = input("Press enter to continue, type s to skip, q to quit")
+            if res == "q":
+                return
+            elif res == "s":
+                continue
+
         print("Parsing info files")
         try:
             parseInfoFiles(sesh)
-        except:
+        except Exception as e:
             print("Error parsing info file, skipping session", sesh.name)
+            infoProblemSessions.append(sesh.name, e)
             continue
         print("Loading position data")
         loadPositionData(sesh)
@@ -1584,6 +1593,9 @@ def extractAndSave(animalName, importOptions):
     if importOptions["justExtractData"]:
         print(
             f"Extracted data from {numExtracted} sessions, excluded {numExcluded}. Not analyzing or saving")
+        print("Had problems with the following sessions:")
+        for name, e in infoProblemSessions:
+            print(name, e)
         return
 
     if not any([s.conditionGroup is not None for s in dataObj.allSessions]):
@@ -1597,6 +1609,10 @@ def extractAndSave(animalName, importOptions):
     print("Saved sessions:")
     for sesh in dataObj.allSessions:
         print(sesh.name)
+
+    print("Had problems with the following sessions:")
+    for name, e in infoProblemSessions:
+        print(name, e)
 
 
 if __name__ == "__main__":
@@ -1614,6 +1630,7 @@ if __name__ == "__main__":
         "specifiedRuns": [],
         "justExtractData": True,
         "runInteractiveExtraction": False,
+        "confirmAfterEachSession": True,
         "consts": {
             "VEL_THRESH": 10,  # cm/s
             "PIXELS_PER_CM": None,

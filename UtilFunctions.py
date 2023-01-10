@@ -153,6 +153,20 @@ def quickPosPlot(tt, xx, yy, title, irange=None):
         plt.scatter(tt, yy)
         plt.show()
 
+def timeStrForTrodesTimestamp(ts):
+    if ts is None:
+        return "[None]"
+    s = ts // TRODES_SAMPLING_RATE
+    ssecs = str(s % 60)
+    if len(ssecs) == 1:
+        ssecs = "0" + ssecs
+    s = s // 60
+    smins = str(s % 60)
+    if len(smins) == 1:
+        smins = "0" + smins
+    shrs = s // 60
+    return f"{shrs}:{smins}:{ssecs}"
+
 def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                           xLim=(100, 1050), yLim=(20, 900), smooth=None,
                           excludeBoxes=None, correctionDirectory=None):
@@ -184,19 +198,8 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
         t1 = int(validTpts[nc])
         t2 = int(validTpts[nc+1])
 
-        s1 = t1 // TRODES_SAMPLING_RATE
-        s1secs = s1 % 60
-        s1 = s1 // 60
-        s1mins = s1 % 60
-        s1hrs = s1 // 60
-        timeStr1 = f"{s1hrs}:{s1mins}:{s1secs}"
-
-        s2 = t2 // TRODES_SAMPLING_RATE
-        s2secs = s2 % 60
-        s2 = s2 // 60
-        s2mins = s2 % 60
-        s2hrs = s2 // 60
-        timeStr2 = f"{s2hrs}:{s2mins}:{s2secs}"
+        timeStr1 = timeStrForTrodesTimestamp(t1)
+        timeStr2 = timeStrForTrodesTimestamp(t2)
 
         entry = (
             t1,
@@ -223,6 +226,7 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
         gl = correctionDirectory + '/*.videoPositionTracking'
         cfiles = glob.glob(gl)
         # print(gl, cfiles)
+        numCorrectionsIntegrated = 0
         for cf in cfiles:
             _, posdata = readRawPositionData(cf)
             ct = np.array(posdata["timestamp"]).astype(float)
@@ -244,14 +248,15 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
 
             posStartTs = ct[0]
             posEndTs = ct[-1]
-            print(f"\tchecking {cf}\n\t\t{posStartTs} - {posEndTs}")
+            # print(f"\tchecking {cf}\n\t\t{posStartTs} - {posEndTs}")
             for entryi, entry in enumerate(correctionRegions):
                 t1 = entry[0]
                 t2 = entry[1]
                 # print("\t\tagainst entry\t", t1, t2)
                 if t1 > posStartTs and t2 < posEndTs:
                     correctedFlag[entryi] = True
-                    print("\tfound correction for", "\t".join([str(s) for s in entry]))
+                    numCorrectionsIntegrated += 1
+                    # print("\tfound correction for", "\t".join([str(s) for s in entry]))
                     # integrate this bit
                     # cleanupPos(ct, cx, cy, xLim=xLim, yLim=yLim, excludeBoxes=excludeBoxes, maxJumpDistance=maxJumpDistance)
                     # cx, cy = interpNanPositions(ct, cx, cy)
@@ -275,12 +280,13 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                     # quickPosPlot(tpts, x_pos, y_pos, "correction region integrated", irange=(max(0, tpi1 - MARGIN), min(len(tpts)-1, tpi2 + MARGIN)))
                     
 
+        print(f"\tCorrected {numCorrectionsIntegrated} regions with corrections files")
         # print("\tRemaining regions that are uncorrected:")
         lastEnd = None
         lastStart = None
         optimizedTimes = []
-        SPLITGAP = 30
-        COMBINEGAP = 5
+        SPLITGAP = 90
+        COMBINEGAP = 30
         MAXREC = 60*5
         for entryi, entry in enumerate(correctionRegions):
             if not correctedFlag[entryi]:
@@ -291,20 +297,30 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                     ((entry[0] - lastEnd) / TRODES_SAMPLING_RATE < SPLITGAP and \
                         (entry[1] - lastStart) / TRODES_SAMPLING_RATE < MAXREC)):
                     # combine this with last entry
-                    optimizedTimes[-1] = (optimizedTimes[-1][0], entry[3])
+                    currentOptimizedEntry = optimizedTimes[-1]
+                    gapLen = entry[0] - lastEnd
+                    if gapLen > currentOptimizedEntry[3]:
+                        gapStart = currentOptimizedEntry[1]
+                        gapEnd = entry[2]
+                    else:
+                        gapLen = currentOptimizedEntry[3]
+                        gapStart = currentOptimizedEntry[4]
+                        gapEnd = currentOptimizedEntry[5]
+                    optimizedTimes[-1] = (currentOptimizedEntry[0], entry[3], currentOptimizedEntry[2]+1, gapLen, gapStart, gapEnd)
                     lastEnd = entry[1]
                 else:
                     # new entry
                     lastStart = entry[0]
                     lastEnd = entry[1]
-                    optimizedTimes.append((entry[2], entry[3]))
+                    optimizedTimes.append((entry[2], entry[3], 1, -1, None, None))
 
         print("\toptimized corrections = ")
         for oe in optimizedTimes:
-            print("\t\t", oe[0], oe[1])
+            print(f"\t\t({oe[2]}) {oe[0]}\t{oe[1]}\t\t{oe[4]}\t{oe[5]}")
 
         correctionsFileName = os.path.join(correctionDirectory, "optimized.txt")
-        print(f"\tsaving optimized list to file {correctionsFileName}")
+        # print(f"\tsaving optimized list to file {correctionsFileName}")
+        print(f"\tsaving optimized list to file")
         with open(correctionsFileName, 'w') as f:
             f.writelines([f"{oe[0]} - {oe[1]}\n" for oe in optimizedTimes])
 
@@ -949,6 +965,9 @@ def getInfoForAnimal(animalName):
         ret.excluded_dates = []
         ret.minimum_date = None
         ret.excluded_sessions = []
+
+        # Trodes video skips
+        ret.excluded_sessions += ["20221104_1"]
 
         ret.DEFAULT_RIP_DET_TET = 6
         ret.DEFAULT_RIP_BAS_TET = 5
