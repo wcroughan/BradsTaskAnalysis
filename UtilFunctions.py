@@ -685,6 +685,7 @@ class AnimalInfo:
         self.DLC_dir = None
 
 
+
 def getInfoForAnimal(animalName):
     ret = AnimalInfo()
     if animalName == "Martin":
@@ -873,6 +874,9 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions += ["20221115_1"]
         ret.excluded_sessions += ["20221116_1"]
         ret.excluded_sessions += ["20221118_1"]
+
+        # Found wells doesn't seem like it lines up perfectly with usb video, check it out and fix
+        ret.excluded_sessions += ["20221113_2"]
 
         # Need to improve trodes tracking
         ret.excluded_sessions += ["20221108_1"]

@@ -55,7 +55,7 @@ class PositionPlot(QWidget):
 
     def __init__(self, xs, ys, ts):
         QWidget.__init__(self)
-        print("Hello from Position Plot!")
+        # print("Hello from Position Plot!")
         plt.ion()
 
         self.xs = - np.array(xs)
@@ -124,7 +124,7 @@ class PositionPlot(QWidget):
 class USBVideoWidget(QWidget):
     def __init__(self, usbVideoFileName, tsToFrameFunc, copyVideoFileToTmp=False):
         QWidget.__init__(self)
-        print("hello from usbvideowidghet!")
+        # print("hello from usbvideowidghet!")
 
         if copyVideoFileToTmp:
             tmpDir = "/tmp/clipmaker/"
@@ -153,7 +153,7 @@ class USBVideoWidget(QWidget):
         self.videoWidth = int(video_stream['width'])
         self.videoHeight = int(video_stream['height'])
 
-        print(self.videoWidth, self.videoHeight)
+        # print(self.videoWidth, self.videoHeight)
         if self.videoWidth == 252 and self.videoHeight == 288:
             # tall video
             self.videoType = 1
@@ -269,11 +269,12 @@ class USBVideoWidget(QWidget):
         self.mainMediaPlayer = QMediaPlayer(None, QMediaPlayer.VideoSurface)
         self.mainMediaPlayer.setVideoOutput(self.videoWidget)
         self.mainMediaPlayer.error.connect(self.handleMediaError)
+        # print(f"Loading media file {self.usbVideoFileName}")
         self.mainMediaPlayer.setMedia(QMediaContent(QUrl.fromLocalFile(self.usbVideoFileName)))
         self.mainMediaPlayer.positionChanged.connect(self.mediaPositionChanged)
         self.mainMediaPlayer.setVolume(0)
         self.mainMediaPlayer.setPlaybackRate(self.animationSpeed)
-        print(f"self.animationSpeed, {self.animationSpeed}")
+        # print(f"self.animationSpeed, {self.animationSpeed}")
 
         self.startFrameMediaPlayer = QMediaPlayer(None, QMediaPlayer.VideoSurface)
         self.startFrameMediaPlayer.setVideoOutput(self.startFrameVideoWidget)
@@ -327,15 +328,15 @@ class USBVideoWidget(QWidget):
             self.isAnimatingClip = False
             self.animPauseTimer.stop()
 
-        print("Updated USB clip edges")
+        # print("Updated USB clip edges")
 
         if self.isAnimatingClip:
             self.animateClip()
         elif (stopPositionUpdated and not startPositionUpdated) or (self.startPosition is None):
-            print("skipping to stop position")
+            # print("skipping to stop position")
             self.mainMediaPlayer.setPosition(self.stopPosition)
         else:
-            print("skipping to start position")
+            # print("skipping to start position")
             self.mainMediaPlayer.setPosition(self.startPosition)
 
     def animateClip(self):
@@ -344,7 +345,7 @@ class USBVideoWidget(QWidget):
             self.mainMediaPlayer.setPosition(self.startPosition)
             self.mainMediaPlayer.play()
             self.isAnimatingClip = True
-            print("started animation")
+            # print("started animation")
             # QTimer.singleShot(int((self.stopPosition - self.startPosition) // self.animationSpeed),
             #                   Qt.TimerType.PreciseTimer, self.endAnimateClip)
             self.animPauseTimer.stop()
@@ -356,7 +357,7 @@ class USBVideoWidget(QWidget):
         self.mainMediaPlayer.setPosition(self.stopPosition)
         self.isAnimatingClip = False
 
-        print("ended animation")
+        # print("ended animation")
 
     def mediaPositionChanged(self, position):
         # if self.isAnimatingClip:
@@ -394,7 +395,7 @@ class AnnotatorWindow(QMainWindow):
                  usbVideoFileName, wellEntryTimes, wellExitTimes, foundWells, skipProbe,
                  outputFileNameStart, wellCoordMap):
         QMainWindow.__init__(self)
-        print("Hello from annotator!")
+        # print("Hello from annotator!")
 
         self.smallMovementAmt = int(float(TRODES_SAMPLING_RATE) / 15.0)
         self.largeMovementAmt = TRODES_SAMPLING_RATE
@@ -417,7 +418,7 @@ class AnnotatorWindow(QMainWindow):
         self.trodesTs = trodesTs
         self.trodesLightOffTime = trodesLightOffTime
         self.trodesLightOnTime = trodesLightOnTime
-        print(self.trodesLightOffTime, self.trodesLightOnTime)
+        # print(self.trodesLightOffTime, self.trodesLightOnTime)
         self.wellEntryTimes = wellEntryTimes
         self.wellExitTimes = wellExitTimes
         self.foundWells = foundWells
@@ -427,32 +428,32 @@ class AnnotatorWindow(QMainWindow):
         self.usbVideoFileName = usbVideoFileName
         self.hasUsbVideo = self.usbVideoFileName is not None
         if self.hasUsbVideo:
-            print("Processing USB Video for light times")
+            # print("Processing USB Video for light times")
             self.usbLightOffFrame, self.usbLightOnFrame = processUSBVideoData(
                 usbVideoFileName, overwriteMode="loadOld", showVideo=False)
-            print("Done processing USB Video for light times")
+            # print("Done processing USB Video for light times")
 
             self.ttf_m = (float(self.usbLightOnFrame) - float(self.usbLightOffFrame)) / \
                 (float(trodesLightOnTime) - float(trodesLightOffTime))
             self.ttf_b = self.ttf_m * - float(trodesLightOffTime) + float(self.usbLightOffFrame)
 
-            print("USB frames: {}, {}".format(self.usbLightOffFrame, self.usbLightOnFrame))
-            print("timestamps: {}, {}".format(self.trodesLightOffTime, self.trodesLightOnTime))
-            print("func test : {}, {}".format(self.timestampToUSBFrame(
-                self.trodesLightOffTime), self.timestampToUSBFrame(self.trodesLightOnTime)))
+            # print("USB frames: {}, {}".format(self.usbLightOffFrame, self.usbLightOnFrame))
+            # print("timestamps: {}, {}".format(self.trodesLightOffTime, self.trodesLightOnTime))
+            # print("func test : {}, {}".format(self.timestampToUSBFrame(
+            #     self.trodesLightOffTime), self.timestampToUSBFrame(self.trodesLightOnTime)))
         else:
             print("No USB video")
-        print("initializing UI")
+        # print("initializing UI")
         self.initUI()
-        print("initializing menu items")
+        # print("initializing menu items")
         self.setupMenu()
 
         self.clipStart = -1
         self.clipEnd = -1
         self.currentFoundWellIdx = 0
-        print("displaying first well")
+        # print("displaying first well")
         self.setupForWell(0)
-        print("done setting up annotator window")
+        # print("done setting up annotator window")
 
     def timestampToUSBFrame(self, timestamp):
         return int(self.ttf_m * float(timestamp) + self.ttf_b)
@@ -587,12 +588,12 @@ class AnnotatorWindow(QMainWindow):
         entryIdx = None
         if reverseTime:
             for ei, et in reversed(list(enumerate(exitTimes))):
-                if et <= currentTime:
+                if et < currentTime:
                     entryIdx = ei
                     break
         else:
             for ei, et in enumerate(entryTimes):
-                if et >= currentTime:
+                if et > currentTime:
                     entryIdx = ei
                     break
 
@@ -604,8 +605,8 @@ class AnnotatorWindow(QMainWindow):
         self.clipStart = entryTimes[entryIdx]
         self.clipEnd = exitTimes[entryIdx]
 
-        print(
-            f"Setting up for visit {foundWellIdx} to well {wellName} ({entryIdx}th visit), ({self.clipStart} - {self.clipEnd})")
+        # print(
+        #     f"Setting up for visit {foundWellIdx} to well {wellName} ({entryIdx}th visit), ({self.clipStart} - {self.clipEnd})")
         self.statusLabel.setText("visit {}, well {}".format(foundWellIdx, wellName))
 
         self.positionPlot.setWellCoord(self.wellCoordMap[str(wellName)])
@@ -671,16 +672,16 @@ class AnnotatorWindow(QMainWindow):
     def saveClip(self):
         if self.currentState == self.STATE_FOUND_WELLS:
             clip = (0, int(self.clipStart), int(self.clipEnd))
-            print(f"saving clip: {clip}")
+            # print(f"saving clip: {clip}")
             self.clips[self.currentFoundWellIdx] = clip
             if self.hasUsbVideo:
                 self.videoWidget.updateClipList(self.clips)
         elif self.currentState == self.STATE_TASK_START:
             self.taskClipStart = int(self.clipStart)
-            print(self.taskClipStart)
+            # print(self.taskClipStart)
         elif self.currentState == self.STATE_TASK_END:
             self.taskClip = (0, self.taskClipStart, int(self.clipEnd))
-            print(self.taskClip)
+            # print(self.taskClip)
             if self.hasUsbVideo:
                 self.videoWidget.updateTaskClip(self.taskClip)
         elif self.currentState == self.STATE_PROBE_START:
@@ -775,7 +776,7 @@ class AnnotatorWindow(QMainWindow):
             self.videoWidget.updateClipList(self.clips)
             self.videoWidget.updateTaskClip(self.taskClip)
             self.videoWidget.updateProbeClip(self.probeClip)
-        print("displaying first well")
+        # print("displaying first well")
         self.setupForWell(0)
 
     def doneWithFoundWells(self):

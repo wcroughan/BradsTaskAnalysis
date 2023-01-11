@@ -25,6 +25,7 @@ importParentApp = QApplication(sys.argv)
 
 # TODO
 # Set a maximum gap for previous sessions, so large gaps aren't counted and prev dir goes back to None
+# Some "well visits" are just one time point. Need to smooth more and/or just generally change logic away from this visit stuff
 
 
 # Returns a list of directories that correspond to runs for analysis. Unless runJustSpecified is True,
@@ -1271,6 +1272,13 @@ def getCurvature(x, y, H):
             continue
         i1[pi] = ii
 
+        dxf[pi] = dxfi
+        dyf[pi] = dyfi
+        dxb[pi] = dxbi
+        dyb[pi] = dybi
+        magf[pi] = magfi
+        magb[pi] = magbi
+
     oldSettings = np.seterr(divide="ignore", invalid="ignore")
 
     uxf = dxf / np.sqrt(magf)
@@ -1513,7 +1521,9 @@ def extractAndSave(animalName, importOptions):
     sessionNumber = None
     prevSessionNumber = None
     infoProblemSessions = []
-    for seshDir, prevSeshDir in zip(sessionDirs, prevSessionDirs):
+    for seshi, (seshDir, prevSeshDir) in enumerate(zip(sessionDirs, prevSessionDirs)):
+        if importOptions["debug"]["debugMode"] and seshi > importOptions["debug"]["maxNumSessions"]:
+            break
         dateStr = seshDir.split('_')[0][-8:]
         if dateStr == lastDateStr:
             sessionNumber += 1
@@ -1593,9 +1603,10 @@ def extractAndSave(animalName, importOptions):
     if importOptions["justExtractData"]:
         print(
             f"Extracted data from {numExtracted} sessions, excluded {numExcluded}. Not analyzing or saving")
-        print("Had problems with the following sessions:")
-        for name, e in infoProblemSessions:
-            print(name, e)
+        if len(infoProblemSessions) > 0:
+            print("Had problems with the following sessions:")
+            for name, e in infoProblemSessions:
+                print(name, e)
         return
 
     if not any([s.conditionGroup is not None for s in dataObj.allSessions]):
@@ -1603,9 +1614,9 @@ def extractAndSave(animalName, importOptions):
             sesh.conditionGroup = sesh.animalName + "-" + str(si)
 
     # save all sessions to disk
-    print("Saving to file: {}".format(animalInfo.out_filename))
-    dataObj.saveToFile(os.path.join(
-        animalInfo.output_dir, animalInfo.out_filename))
+    outputFname = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
+    print("Saving to file: {}".format(outputFname))
+    dataObj.saveToFile(outputFname)
     print("Saved sessions:")
     for sesh in dataObj.allSessions:
         print(sesh.name)
@@ -1628,9 +1639,9 @@ if __name__ == "__main__":
         "runJustSpecified": False,
         "specifiedDays": [],
         "specifiedRuns": [],
-        "justExtractData": True,
+        "justExtractData": False,
         "runInteractiveExtraction": True,
-        "confirmAfterEachSession": True,
+        "confirmAfterEachSession": False,
         "consts": {
             "VEL_THRESH": 10,  # cm/s
             "PIXELS_PER_CM": None,
@@ -1650,6 +1661,10 @@ if __name__ == "__main__":
             # constants for ballisticity
             "BALL_TIME_INTERVALS": list(range(1, 24)),
             "KNOT_H_CM": 8.0
+        },
+        "debug": {
+            "debugMode": True,
+            "maxNumSessions": 1
         }
     }
 

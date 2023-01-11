@@ -141,14 +141,20 @@ class BTData:
                 saved = True
             elif 'list' in str(type(v)):  # check for list of numpy objects too
                 try:
-                    ar = np.array(v)
+                    ar = np.array(v, dtype=object)
                     kk = NP_LIST_KEY_PFX + k
                     vv = file_pfx + "__" + k + ".npy"
                     clean_di[kk] = vv
                     np.save(os.path.join(np_dir, vv), ar, allow_pickle=True)
                     saved = True
-                except Exception:
+                except Exception as e:
+                    print(e)
+                    print(v)
+                    exit()
                     saved = False
+            elif 'AnimalInfo' in str(type(v)):
+                clean_di[k] = v.__dict__
+                saved = True
             else:
                 saved = False
 
