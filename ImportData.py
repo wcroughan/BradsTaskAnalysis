@@ -1663,7 +1663,7 @@ if __name__ == "__main__":
             "KNOT_H_CM": 8.0
         },
         "debug": {
-            "debugMode": True,
+            "debugMode": False,
             "maxNumSessions": 1
         }
     }
