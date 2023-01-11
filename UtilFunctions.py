@@ -936,6 +936,10 @@ def getInfoForAnimal(animalName):
         ret.minimum_date = None
         ret.excluded_sessions = []
 
+        # Trodes video skips
+        ret.excluded_sessions += ["20221107_2"]
+        ret.excluded_sessions += ["20221116_1"]
+
         # Just annoying info file stuff, fix and add back in
         # ret.excluded_sessions += ["20221111_2"]
 

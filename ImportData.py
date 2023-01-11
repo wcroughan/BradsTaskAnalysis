@@ -1629,7 +1629,7 @@ if __name__ == "__main__":
         "specifiedDays": [],
         "specifiedRuns": [],
         "justExtractData": True,
-        "runInteractiveExtraction": False,
+        "runInteractiveExtraction": True,
         "confirmAfterEachSession": True,
         "consts": {
             "VEL_THRESH": 10,  # cm/s
