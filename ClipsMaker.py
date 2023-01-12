@@ -471,11 +471,17 @@ class AnnotatorWindow(QMainWindow):
         centralLayout.addWidget(self.positionPlot, 1)
         centralLayout.addWidget(self.videoWidget, 1)
 
+        statusLayout = QHBoxLayout()
         self.statusLabel = QLabel("hello!")
         self.statusLabel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.wellLabel = QLabel("Aloha!")
+        self.wellLabel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        statusLayout.addWidget(self.statusLabel)
+        statusLayout.addWidget(self.wellLabel)
+
         layout = QVBoxLayout()
         layout.addLayout(centralLayout)
-        layout.addWidget(self.statusLabel)
+        layout.addLayout(statusLayout)
 
         # self.setLayout(layout)
         wid = QWidget(self)
@@ -608,6 +614,7 @@ class AnnotatorWindow(QMainWindow):
         # print(
         #     f"Setting up for visit {foundWellIdx} to well {wellName} ({entryIdx}th visit), ({self.clipStart} - {self.clipEnd})")
         self.statusLabel.setText("visit {}, well {}".format(foundWellIdx, wellName))
+        self.wellLabel.setText(", ".join([f"<b>{str(w)}</b>" if wi == foundWellIdx else str(w) for wi, w in enumerate(self.foundWells) ]))
 
         self.positionPlot.setWellCoord(self.wellCoordMap[str(wellName)])
         self.updateClipInWidgets(animateAnew=True)

@@ -936,13 +936,18 @@ def getInfoForAnimal(animalName):
         ret.out_filename = "B16_bradtask.dat"
 
         ret.excluded_dates = []
-        # ret.minimum_date = "20221101"
-        ret.minimum_date = None
+        # Seems like the older usb videos are all skipping for some reason
+        ret.minimum_date = "20221101"
+        # ret.minimum_date = None
         ret.excluded_sessions = []
 
         # Trodes video skips
         ret.excluded_sessions += ["20221107_2"]
         ret.excluded_sessions += ["20221116_1"]
+
+        # USB video skips, can add back in later
+        ret.excluded_sessions += ["20220919_1"]
+        ret.excluded_sessions += ["20220919_2"]
 
         # Just annoying info file stuff, fix and add back in
         # ret.excluded_sessions += ["20221111_2"]

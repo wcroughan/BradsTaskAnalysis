@@ -1569,7 +1569,7 @@ def extractAndSave(animalName, importOptions):
             parseInfoFiles(sesh)
         except Exception as e:
             print("Error parsing info file, skipping session", sesh.name)
-            infoProblemSessions.append(sesh.name, e)
+            infoProblemSessions.append(( sesh.name, e ))
             continue
         print("Loading position data")
         loadPositionData(sesh)
@@ -1621,9 +1621,10 @@ def extractAndSave(animalName, importOptions):
     for sesh in dataObj.allSessions:
         print(sesh.name)
 
-    print("Had problems with the following sessions:")
-    for name, e in infoProblemSessions:
-        print(name, e)
+    if len(infoProblemSessions) > 0:
+        print("Had problems with the following sessions:")
+        for name, e in infoProblemSessions:
+            print(name, e)
 
 
 if __name__ == "__main__":
