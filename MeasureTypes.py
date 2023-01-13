@@ -69,7 +69,7 @@ class TrialMeasure():
                 ax = nf
 
             boxPlot(ax, self.measure, categories2=self.trialCategory, categories=self.conditionCategoryByTrial,
-                    axesNames=["Condition", self.name, "Trial type"], violin=True, doStats=False)
+                    axesNames=["Condition", self.name, "Trial type"], violin=True)
 
             if self.runStats:
                 yvals[figName] = self.measure
@@ -78,13 +78,15 @@ class TrialMeasure():
 
 
 class WellMeasure():
-    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, wellFilter=lambda ai, aw: offWall(aw), runStats=True):
+    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False,
+                 wellFilter=lambda ai, aw: offWall(aw), runStats=True):
         self.measure = []
         self.wellCategory = []
         self.conditionCategoryByWell = []
         self.conditionCategoryBySession = []
         self.name = name
         self.withinSessionMeasureDifference = []
+        self.acrossSessionMeasureDifference = []
         self.dotColors = []
         self.dotColorsBySession = []
         self.runStats = runStats
@@ -128,6 +130,19 @@ class WellMeasure():
                         awayMean = np.nanmean(awayVals)
                     self.withinSessionMeasureDifference.append(homeval - awayMean)
 
+                otherSeshVals = []
+                for isi, isesh in enumerate(sessionList):
+                    if isi == si:
+                        continue
+                    osv = measureFunc(isesh, sesh.home_well)
+                    otherSeshVals.append(osv)
+                    self.measure.append(osv)
+                    self.wellCategory.append("othersesh")
+                    self.dotColors.append(si)
+                    self.conditionCategoryByWell.append(
+                        "SWR" if sesh.isRippleInterruption else "Ctrl")
+                self.acrossSessionMeasureDifference.append(homeval - np.nanmean(otherSeshVals))
+
         self.measure = np.array(self.measure)
         self.wellCategory = np.array(self.wellCategory)
         self.dotColors = np.array(self.dotColors)
@@ -136,7 +151,8 @@ class WellMeasure():
         self.conditionCategoryBySession = np.array(self.conditionCategoryBySession)
         self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
 
-    def makeFigures(self, plotCtx: PlotCtx, makeMeasureBoxPlot=True, makeDiffBoxPlot=True):
+    def makeFigures(self, plotCtx: PlotCtx, makeMeasureBoxPlot=True, makeDiffBoxPlot=True,
+                    makeOtherSeshBoxPlot=True, makeOtherSeshDiffBoxPlot=True):
         figName = self.name.replace(" ", "_")
 
         if makeMeasureBoxPlot:
@@ -147,14 +163,20 @@ class WellMeasure():
                 else:
                     ax = nf
 
-                boxPlot(ax, self.measure, categories2=self.wellCategory, categories=self.conditionCategoryByWell,
-                        axesNames=["Condition", self.name, "Well type"], violin=True, doStats=False,
-                        dotColors=self.dotColors)
+                midx = [v in ["home", "away"] for v in self.wellCategory]
+                fmeasure = self.measure[midx]
+                fwellCat = self.wellCategory[midx]
+                fcondCat = self.conditionCategoryByWell[midx]
+                fdotColors = self.dotColors[midx]
+
+                boxPlot(ax, fmeasure, categories2=fwellCat, categories=fcondCat,
+                        axesNames=["Condition", self.name, "Well type"], violin=True,
+                        dotColors=fdotColors)
 
                 if self.runStats:
-                    yvals[figName] = self.measure
-                    cats["well"] = self.wellCategory
-                    cats["condition"] = self.conditionCategoryByWell
+                    yvals[figName] = fmeasure
+                    cats["well"] = fwellCat
+                    cats["condition"] = fcondCat
 
         if makeDiffBoxPlot:
             # print("Making diff, " + figName)
@@ -165,9 +187,48 @@ class WellMeasure():
                     ax = nf
 
                 boxPlot(ax, self.withinSessionMeasureDifference, self.conditionCategoryBySession,
-                        axesNames=["Contidion", self.name + " with-session difference"], violin=True, doStats=False,
+                        axesNames=["Contidion", self.name + " within-session difference"], violin=True,
                         dotColors=self.dotColorsBySession)
 
                 if self.runStats:
                     yvals[figName + "_diff"] = self.withinSessionMeasureDifference
+                    cats["condition"] = self.conditionCategoryBySession
+
+        if makeOtherSeshBoxPlot:
+            with plotCtx.newFig(figName + "_othersesh", withStats=self.runStats) as nf:
+                if self.runStats:
+                    ax, yvals, cats, info = nf
+                else:
+                    ax = nf
+
+                midx = [v in ["home", "othersesh"] for v in self.wellCategory]
+                fmeasure = self.measure[midx]
+                fwellCat = self.wellCategory[midx]
+                fwellCat[fwellCat == "home"] = "same"
+                fwellCat[fwellCat == "othersesh"] = "other"
+                fcondCat = self.conditionCategoryByWell[midx]
+                fdotColors = self.dotColors[midx]
+
+                boxPlot(ax, fmeasure, categories2=fwellCat, categories=fcondCat,
+                        axesNames=["Condition", self.name, "Session"], violin=True,
+                        dotColors=fdotColors)
+
+                if self.runStats:
+                    yvals[figName] = fmeasure
+                    cats["session"] = fwellCat
+                    cats["condition"] = fcondCat
+
+        if makeOtherSeshDiffBoxPlot:
+            with plotCtx.newFig(figName + "_othersesh_diff", withStats=self.runStats) as nf:
+                if self.runStats:
+                    ax, yvals, cats, info = nf
+                else:
+                    ax = nf
+
+                boxPlot(ax, self.acrossSessionMeasureDifference, self.conditionCategoryBySession,
+                        axesNames=["Contidion", self.name + " across-session difference"], violin=True,
+                        dotColors=self.dotColorsBySession)
+
+                if self.runStats:
+                    yvals[figName + "_othersesh_diff"] = self.acrossSessionMeasureDifference
                     cats["condition"] = self.conditionCategoryBySession

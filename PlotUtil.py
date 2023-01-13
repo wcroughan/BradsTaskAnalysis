@@ -9,8 +9,6 @@ import seaborn as sns
 import warnings
 import random
 from enum import IntEnum, auto
-import matplotlib
-import textwrap as twp
 import matplotlib.image as mpimg
 
 
@@ -115,8 +113,8 @@ class ShuffleResult:
                                   axis=0) / self.shuffleDiffs.shape[0]
         pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
                                   axis=0) / self.shuffleDiffs.shape[0]
-        ret = ["{}:".format(self.specs)] + [linePfx + "{}: {} ({}, {}) p1 = {}\tp2 = {}".format(self.dataNames[i], float(self.diff[i]),
-                                                                                                sdmin[i], sdmax[i], pvals1[i], pvals2[i]) for i in range(len(self.diff))]
+        ret = [f"{self.specs}:"] + [linePfx + f"{self.dataNames[i]}: {float(self.diff[i])} ({sdmin[i]}, {sdmax[i]}) "
+                                    f"p1 = {pvals1[i]}\tp2 = {pvals2[i]}" for i in range(len(self.diff))]
         return "\n".join(ret)
 
     def __str__(self):
@@ -254,14 +252,16 @@ class PlotCtx:
                         self.categories[k] = [self.persistentCategories[k]] * savedLen
                     else:
                         print(
-                            "WARNING: overlap between persistent category and this-plot category, both named {}".format(k))
+                            "WARNING: overlap between persistent category and this-plot category, "
+                            "both named {}".format(k))
 
                 for k in self.persistentInfoValues:
                     if k not in self.infoVals:
                         self.infoVals[k] = [self.persistentInfoValues[k]] * savedLen
                     else:
                         print(
-                            "WARNING: overlap between persistent info category and this-plot category, both named {}".format(k))
+                            "WARNING: overlap between persistent info category and this-plot category, "
+                            "both named {}".format(k))
 
                 if statsName in self.savedYVals:
                     savedYVals = self.savedYVals[statsName]
@@ -278,10 +278,12 @@ class PlotCtx:
                     self.savedCategories[statsName] = self.categories
                     self.savedInfoVals[statsName] = self.infoVals
 
-            if (self.temporarySavePlot is not None and self.temporarySavePlot) or (self.temporarySavePlot is None and self.savePlot):
+            if (self.temporarySavePlot is not None and self.temporarySavePlot) or \
+                    (self.temporarySavePlot is None and self.savePlot):
                 self.saveFig()
 
-            if (self.temporaryShowPlot is not None and self.temporaryShowPlot) or (self.temporaryShowPlot is None and self.showPlot):
+            if (self.temporaryShowPlot is not None and self.temporaryShowPlot) or \
+                    (self.temporaryShowPlot is None and self.showPlot):
                 self.showedLastFig = True
                 plt.show()
                 self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
@@ -778,7 +780,8 @@ def conditionShuffle(dataframe, colName, rng):
     return [swapFunc(val) if swapBool[cg] else val for cg, val in zip(dataframe["conditionGroup"], dataframe[colName])]
 
 
-def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAways=True, zorder=2, outlineColors=None, wellSize=mpl.rcParams['lines.markersize']**2):
+def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAways=True, zorder=2, outlineColors=None,
+                           wellSize=mpl.rcParams['lines.markersize']**2):
     if isinstance(axs, np.ndarray):
         axs = axs.flat
     elif not isinstance(axs, list):
@@ -823,7 +826,8 @@ def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAway
             # ax.setp([ax.get_xticklines(), ax.get_yticklines()], color=color)
 
 
-def plotIndividualAndAverage(ax, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std", individualZOrder=1, averageZOrder=2):
+def plotIndividualAndAverage(ax, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std",
+                             individualZOrder=1, averageZOrder=2):
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", r"Degrees of freedom <= 0 for slice")
         warnings.filterwarnings("ignore", r"Mean of empty slice")
@@ -839,180 +843,6 @@ def plotIndividualAndAverage(ax, dataPoints, xvals, individualColor="grey", avgC
     ax.fill_between(xvals, h1, h2, facecolor=avgColor, alpha=0.3, zorder=averageZOrder)
 
 
-def runTwoWayShuffle(vals, cat1, cat2, cat1Name="A", cat2Name="B", dataName="data", numShuffles=500, statsFile=None):
-    if statsFile is not None:
-        statsFile.write("=======================\nTwo way shuffle for {}\n\tcat1: {}\n\tcat2: {}\n\tnumShuffles: {}\n".format(
-            dataName, cat1Name, cat2Name, numShuffles))
-    df = pd.DataFrame(data={dataName: vals, cat1Name: cat1, cat2Name: cat2})
-
-    ma = df.groupby(cat1Name).mean()
-    observedADiff = ma.iat[1, 0] - ma.iat[0, 0]
-    mb = df.groupby(cat2Name).mean()
-    observedBDiff = mb.iat[1, 0] - mb.iat[0, 0]
-
-    sdf1 = df[df[cat2Name] == df.at[df.index[0], cat2Name]].drop(
-        columns=cat2Name).reset_index(drop=True)
-    sdf2 = df[df[cat2Name] != df.at[df.index[0], cat2Name]].drop(
-        columns=cat2Name).reset_index(drop=True)
-    mab1 = sdf1.groupby(cat1Name).mean()
-    mab2 = sdf2.groupby(cat1Name).mean()
-    observedABDiff = (mab2.iat[1, 0] - mab1.iat[1, 0]) - (mab2.iat[0, 0] - mab1.iat[0, 0])
-
-    sdf1 = df[df[cat1Name] == df.at[df.index[0], cat1Name]].drop(
-        columns=cat1Name).reset_index(drop=True)
-    sdf2 = df[df[cat1Name] != df.at[df.index[0], cat1Name]].drop(
-        columns=cat1Name).reset_index(drop=True)
-    mab1 = sdf1.groupby(cat2Name).mean()
-    mab2 = sdf2.groupby(cat2Name).mean()
-    observedBADiff = (mab2.iat[1, 0] - mab1.iat[1, 0]) - (mab2.iat[0, 0] - mab1.iat[0, 0])
-
-    retDict = {}
-
-    # global effect of A: ignore cat2, run 1-way shuffle on cat1
-    sdf = df.drop(columns=cat2Name)
-    shuffleValues = np.empty((numShuffles,))
-    for si in range(numShuffles):
-        sdf[cat1Name] = sdf[cat1Name].sample(frac=1, random_state=1).reset_index(drop=True)
-        ma = sdf.groupby(cat1Name).mean()
-        shuffleValues[si] = ma.iat[1, 0] - ma.iat[0, 0]
-    pctile = np.count_nonzero(shuffleValues < observedADiff) / numShuffles
-    retDict['Global ' + cat1Name] = pctile
-    if statsFile is not None:
-        shufMean = np.nanmean(shuffleValues)
-        shufStd = np.nanstd(shuffleValues)
-        statsFile.write("Global effect of {}\n\tShuffle mean: {}\tstd: {}\n\tObserved Value: {}\n\tpval={}\n".format(
-            cat1Name, shufMean, shufStd, observedADiff, pctile))
-
-    # global effect of B: same but drop cat1, run shuffle on cat2
-    sdf = df.drop(columns=cat1Name)
-    shuffleValues = np.empty((numShuffles,))
-    for si in range(numShuffles):
-        sdf[cat2Name] = sdf[cat2Name].sample(frac=1, random_state=1).reset_index(drop=True)
-        ma = sdf.groupby(cat2Name).mean()
-        shuffleValues[si] = ma.iat[1, 0] - ma.iat[0, 0]
-    pctile = np.count_nonzero(shuffleValues < observedBDiff) / numShuffles
-    retDict['Global ' + cat2Name] = pctile
-    if statsFile is not None:
-        shufMean = np.nanmean(shuffleValues)
-        shufStd = np.nanstd(shuffleValues)
-        statsFile.write("Global effect of {}\n\tShuffle mean: {}\tstd: {}\n\tObserved Value: {}\n\tpval={}\n".format(
-            cat2Name, shufMean, shufStd, observedBDiff, pctile))
-
-    # global effect of A-B: shuf cat1
-    sdf1 = df[df[cat2Name] == df.at[df.index[0], cat2Name]].drop(
-        columns=cat2Name).reset_index(drop=True)
-    sdf2 = df[df[cat2Name] != df.at[df.index[0], cat2Name]].drop(
-        columns=cat2Name).reset_index(drop=True)
-    shuffleValues = np.empty((numShuffles,))
-    for si in range(numShuffles):
-        sdf1[cat1Name] = sdf1[cat1Name].sample(frac=1, random_state=1).reset_index(drop=True)
-        sdf2[cat1Name] = sdf2[cat1Name].sample(frac=1, random_state=1).reset_index(drop=True)
-        mab1 = sdf1.groupby(cat1Name).mean()
-        mab2 = sdf2.groupby(cat1Name).mean()
-        shuffleValues[si] = (mab2.iat[1, 0] - mab1.iat[1, 0]) - \
-            (mab2.iat[0, 0] - mab1.iat[0, 0])
-    pctile = np.count_nonzero(shuffleValues < observedABDiff) / numShuffles
-    retDict[cat2Name + ' diff (' + cat1Name + ' effect)'] = pctile
-    if statsFile is not None:
-        shufMean = np.nanmean(shuffleValues)
-        shufStd = np.nanstd(shuffleValues)
-        statsFile.write("Interaction effect (shuffling {})\n\tShuffle mean: {}\tstd: {}\n\tObserved Value: {}\n\tpval={}\n".format(
-            cat1Name, shufMean, shufStd, observedABDiff, pctile))
-
-    # global effect of A-B: shuf cat2
-    sdf1 = df[df[cat1Name] == df.at[df.index[0], cat1Name]].drop(
-        columns=cat1Name).reset_index(drop=True)
-    sdf2 = df[df[cat1Name] != df.at[df.index[0], cat1Name]].drop(
-        columns=cat1Name).reset_index(drop=True)
-    shuffleValues = np.empty((numShuffles,))
-    for si in range(numShuffles):
-        sdf1[cat2Name] = sdf1[cat2Name].sample(frac=1, random_state=1).reset_index(drop=True)
-        sdf2[cat2Name] = sdf2[cat2Name].sample(frac=1, random_state=1).reset_index(drop=True)
-        mab1 = sdf1.groupby(cat2Name).mean()
-        mab2 = sdf2.groupby(cat2Name).mean()
-        shuffleValues[si] = (mab2.iat[1, 0] - mab1.iat[1, 0]) - \
-            (mab2.iat[0, 0] - mab1.iat[0, 0])
-    pctile = np.count_nonzero(shuffleValues < observedBADiff) / numShuffles
-    retDict[cat1Name + ' diff (' + cat2Name + ' effect)'] = pctile
-    if statsFile is not None:
-        shufMean = np.nanmean(shuffleValues)
-        shufStd = np.nanstd(shuffleValues)
-        statsFile.write("Interaction effect (shuffling {})\n\tShuffle mean: {}\tstd: {}\n\tObserved Value: {}\n\tpval={}\n".format(
-            cat2Name, shufMean, shufStd, observedBADiff, pctile))
-
-    # subgroup effect of A: separate df by cat2, for each unique cat2 value shuffle cat1
-    uniqueVals = df[cat2Name].unique()
-    for uv in uniqueVals:
-        sdf = df[df[cat2Name] == uv].drop(columns=cat2Name).reset_index(drop=True)
-        ma = sdf.groupby(cat1Name).mean()
-        observedADiffUV = ma.iat[1, 0] - ma.iat[0, 0]
-
-        shuffleValues = np.empty((numShuffles,))
-        for si in range(numShuffles):
-            sdf[cat1Name] = sdf[cat1Name].sample(frac=1, random_state=1).reset_index(drop=True)
-            ma = sdf.groupby(cat1Name).mean()
-            shuffleValues[si] = ma.iat[1, 0] - ma.iat[0, 0]
-        pctile = np.count_nonzero(shuffleValues < observedADiffUV) / numShuffles
-        retDict['within ' + str(uv)] = pctile
-        if statsFile is not None:
-            shufMean = np.nanmean(shuffleValues)
-            shufStd = np.nanstd(shuffleValues)
-            statsFile.write("Shuffling {} just in subset where {} == {}\n\tShuffle mean: {}\tstd: {}\n\tObserved Value: {}\n\tpval={}\n".format(
-                cat1Name, cat2Name, uv, shufMean, shufStd, observedADiffUV, pctile))
-
-    # subgroup effect of B: separate df by cat1, for each unique cat1 value shuffle cat2
-    uniqueVals = df[cat1Name].unique()
-    for uv in uniqueVals:
-        sdf = df[df[cat1Name] == uv].drop(columns=cat1Name).reset_index(drop=True)
-        ma = sdf.groupby(cat2Name).mean()
-        observedBDiffUV = ma.iat[1, 0] - ma.iat[0, 0]
-
-        shuffleValues = np.empty((numShuffles,))
-        for si in range(numShuffles):
-            sdf[cat2Name] = sdf[cat2Name].sample(frac=1, random_state=1).reset_index(drop=True)
-            ma = sdf.groupby(cat2Name).mean()
-            shuffleValues[si] = ma.iat[1, 0] - ma.iat[0, 0]
-        pctile = np.count_nonzero(shuffleValues < observedBDiffUV) / numShuffles
-        retDict['within ' + str(uv)] = pctile
-        if statsFile is not None:
-            shufMean = np.nanmean(shuffleValues)
-            shufStd = np.nanstd(shuffleValues)
-            statsFile.write("Shuffling {} just in subset where {} == {}\n\tShuffle mean: {}\tstd: {}\n\tObserved Value: {}\n\tpval={}\n".format(
-                cat2Name, cat1Name, uv, shufMean, shufStd, observedBDiffUV, pctile))
-
-    if statsFile is not None:
-        statsFile.write("\n")
-
-    return retDict
-
-
-def runOneWayShuffle(vals, cat, catName="A", dataName="data", numShuffles=500, statsFile=None):
-    if statsFile is not None:
-        statsFile.write("=======================\nOne way shuffle for {}\n\tcat: {}\n\tnumShuffles: {}\n".format(
-            dataName, catName, numShuffles))
-    df = pd.DataFrame(data={dataName: vals, catName: cat})
-
-    ma = df.groupby(catName).mean()
-    observedADiff = ma.iat[1, 0] - ma.iat[0, 0]
-
-    # global effect of category
-    sdf = df.copy()
-    shuffleValues = np.empty((numShuffles,))
-    for si in range(numShuffles):
-        sdf[catName] = sdf[catName].sample(frac=1, random_state=1).reset_index(drop=True)
-        ma = sdf.groupby(catName).mean()
-        shuffleValues[si] = ma.iat[1, 0] - ma.iat[0, 0]
-    pctile = np.count_nonzero(shuffleValues < observedADiff) / numShuffles
-    if statsFile is not None:
-        shufMean = np.nanmean(shuffleValues)
-        shufStd = np.nanstd(shuffleValues)
-        statsFile.write("Global effect of {}\n\tShuffle mean: {}\tstd: {}\n\tObserved Value: {}\n\tpval={}\n".format(
-            catName, shufMean, shufStd, observedADiff, pctile))
-        statsFile.write("\n")
-
-    return pctile
-
-
 def pctilePvalSig(val):
     if val > 0.1 and val < 0.9:
         return 0
@@ -1025,7 +855,7 @@ def pctilePvalSig(val):
     return 3
 
 
-def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=None, violin=False, doStats=True, statsFile=None, statsAx=None):
+def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=None, violin=False):
     if categories2 is None:
         categories2 = ["a" for _ in categories]
         sortingCategories2 = categories2
@@ -1036,6 +866,8 @@ def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=N
         cat2IsFake = False
         if len(set(categories2)) == 2 and "home" in categories2 and "away" in categories2:
             sortingCategories2 = ["aaahome" if c == "home" else "away" for c in categories2]
+        elif len(set(categories2)) == 2 and "same" in categories2 and "other" in categories2:
+            sortingCategories2 = ["aaasame" if c == "same" else "other" for c in categories2]
         else:
             sortingCategories2 = categories2
 
@@ -1076,9 +908,11 @@ def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=N
             while not plotWorked:
                 try:
                     # p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
-                    # y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
+                    # y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, linewidth=0.2, cut=0,
+                    # zorder=1)
                     # sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
-                    #   y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", size=swarmDotSize, dodge=True, zorder=3)
+                    #   y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color="0.25", size=swarmDotSize,
+                    # dodge=True, zorder=3)
 
                     sx = np.array(s[axesNamesNoSpaces[2]])
                     sy = np.array(s[axesNamesNoSpaces[1]]).astype(float)
@@ -1095,17 +929,19 @@ def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=N
                                   size=swarmDotSize, zorder=3, dodge=False, palette=swarmPallete)
                     # print("worked")
                     plotWorked = True
-                except UserWarning as e:
+                except UserWarning:
                     swarmDotSize /= 2
                     p1.cla()
 
-                    if swarmDotSize < 0.1:
-                        raise e
+                    # if swarmDotSize < 0.1:
+                    #     raise e
     else:
         p1 = sns.boxplot(
-            ax=ax, hue=axesNamesNoSpaces[0], y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, palette=pal, zorder=1)
+            ax=ax, hue=axesNamesNoSpaces[0], y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s,
+            palette=pal, zorder=1)
         sns.swarmplot(ax=ax, hue=axesNamesNoSpaces[0],
-                      y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color=s[axesNamesNoSpaces[3]], dodge=True, zorder=3)
+                      y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s, color=s[axesNamesNoSpaces[3]],
+                      dodge=True, zorder=3)
 
     if cat2IsFake:
         p1.set(xticklabels=[])
@@ -1116,50 +952,6 @@ def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=N
         if not cat2IsFake:
             ax.set_xlabel(axesNames[2])
         ax.set_ylabel(axesNames[1])
-
-    if doStats:
-        if cat2IsFake:
-            pval = runOneWayShuffle(
-                yvals, categories, catName=axesNamesNoSpaces[0], dataName=axesNamesNoSpaces[1], statsFile=statsFile)
-
-            if statsAx is not None:
-                statsAx.remove()
-                r = matplotlib.patches.Rectangle((0, 0), 1, 1, fill=False, edgecolor='none',
-                                                 visible=False)
-                pvalDisplay = str(min(pval, 1.0 - pval))
-                if len(pvalDisplay) > 5:
-                    pvalDisplay = pvalDisplay[:5]
-
-                pvalLabel = "".join(["*"] * pctilePvalSig(pval) +
-                                    ["p=" + pvalDisplay])
-                # print(pvalLabel)
-                handles, labels = ax.get_legend_handles_labels()
-                ax.legend(handles[:2] + [r], labels[:2] + [pvalLabel], fontsize=6).set_zorder(2)
-        else:
-            statsDict = runTwoWayShuffle(yvals, categories, categories2,
-                                         cat1Name=axesNamesNoSpaces[0], cat2Name=axesNamesNoSpaces[2], dataName=axesNamesNoSpaces[1], statsFile=statsFile)
-            if statsAx is not None:
-                statsAx.tick_params(axis="both", which="both", label1On=False,
-                                    label2On=False, tick1On=False, tick2On=False)
-                txtwidth = 20
-                fontsizelabel = 7
-                fontsizepval = 8
-
-                for li, (ll, lp) in enumerate(reversed(list(zip([twp.fill(str(s), txtwidth) for s in statsDict.keys()], [
-                        twp.fill(str(s), txtwidth) for s in statsDict.values()])))):
-
-                    pvalDisplay = str(min(float(lp), 1.0 - float(lp)))
-                    if len(pvalDisplay) > 5:
-                        pvalDisplay = pvalDisplay[:5]
-                    yp = (li + 0.75) / (len(statsDict) + 0.5)
-                    statsAx.text(0.15, yp, ll, fontsize=fontsizelabel, va="center")
-                    statsAx.text(0.75, yp, pvalDisplay, fontsize=fontsizepval, va="center")
-                    statsAx.text(0.13, yp, ''.join(
-                        ['*'] * pctilePvalSig(float(lp))), fontsize=fontsizepval, va="center", ha="right")
-
-                    # if li > 0:
-                    #     statsAx.plot([0, 1], [(li + 0.25) / (len(statsDict) + 0.5)] * 2,
-                    #                  c="grey", lw=0.5)
 
 
 def testShuffles():

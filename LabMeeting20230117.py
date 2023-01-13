@@ -7,29 +7,24 @@ from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal
 from PlotUtil import PlotCtx, setupBehaviorTracePlot
 from BTData import BTData
 from datetime import datetime
-from consts import offWallWellNames, all_well_names 
+from consts import offWallWellNames, all_well_names
 from BTSession import BTSession
 import numpy as np
 
 # TODOs
 # Add shuffles to all measures
-# 
+#
 # Away from home measures: spotlight, cross product
-# 
+#
 # Use dist from well and quantify each individually instead of dividing by nearest well
-# 
-# Set up cross validation so that first running all new measures on older data, then testing on larger newer dataset
-# 
-# Improved gravity logic. Also double check existing method, numbers might be off
-# 
+#
+# Improved gravity logic.
+#
 # Latency to interruption
-# 
-# Also use other sessions same well as comparison not just same session other wells
-#   b/c tracking is different around some specific wells
-#   Of course if DLC works well don't have to worry
+
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
-                RUN_MISC_PERSEV_PLOTS=True,
+                RUN_MISC_PERSEV_PLOTS=True, RUN_OLD_GRAVITY_PLOTS=True,
                 RUN_BASIC_PLOTS=None, RUN_BEHAVIOR_TRACE=None):
     if RUN_BASIC_PLOTS is None:
         RUN_BASIC_PLOTS = RUN_UNSPECIFIED
@@ -37,7 +32,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
         RUN_BEHAVIOR_TRACE = RUN_UNSPECIFIED
     if RUN_MISC_PERSEV_PLOTS is None:
         RUN_MISC_PERSEV_PLOTS = RUN_UNSPECIFIED
-
+    if RUN_OLD_GRAVITY_PLOTS is None:
+        RUN_OLD_GRAVITY_PLOTS = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "20230117_labmeeting")
@@ -69,8 +65,10 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
         numSessionsWithProbe = len(sessionsWithProbe)
         print(f"{len(sessions)} sessions ({len(sessionsWithProbe)} with probe)")
 
-        ctrlSessionsWithProbe = [sesh for sesh in sessions if (not sesh.isRippleInterruption) and sesh.probe_performed]
-        swrSessionsWithProbe = [sesh for sesh in sessions if sesh.isRippleInterruption and sesh.probe_performed]
+        ctrlSessionsWithProbe = [sesh for sesh in sessions if (
+            not sesh.isRippleInterruption) and sesh.probe_performed]
+        swrSessionsWithProbe = [
+            sesh for sesh in sessions if sesh.isRippleInterruption and sesh.probe_performed]
         nCtrlWithProbe = len(ctrlSessionsWithProbe)
         nSWRWithProbe = len(swrSessionsWithProbe)
 
@@ -86,13 +84,35 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
         if not RUN_BASIC_PLOTS:
             print("WARNING SKPPING BASIC PLOTS")
         else:
-            WellMeasure("probe avg dwell time 90sec", lambda s, h: s.avg_dwell_time(True, h, timeInterval=[0, 90]), sessionsWithProbeFillPast90).makeFigures(pp)
-            WellMeasure("probe avg curvature 90sec", lambda s, h: s.avg_curvature_at_well(True, h, timeInterval=[0, 90]), sessionsWithProbeFillPast90).makeFigures(pp)
-            WellMeasure("probe gravity from off wall", lambda s, h: s.gravityOfWell(True, h, fromWells=offWallWellNames), sessionsWithProbe).makeFigures(pp)
+            # WellMeasure("probe avg dwell time 90sec", lambda s, h: s.avg_dwell_time(
+            #     True, h, timeInterval=[0, 90]), sessionsWithProbeFillPast90).makeFigures(pp)
+            # WellMeasure("probe avg curvature 90sec", lambda s, h: s.avg_curvature_at_well(
+            #     True, h, timeInterval=[0, 90]), sessionsWithProbeFillPast90).makeFigures(pp)
+            WellMeasure("probe gravity from off wall", lambda s, h: s.gravityOfWell(
+                True, h, fromWells=offWallWellNames), sessionsWithProbe).makeFigures(pp)
+            WellMeasure("probe gravity from all", lambda s, h: s.gravityOfWell(
+                True, h), sessionsWithProbe).makeFigures(pp)
             if hasattr(sessions[0], "probe_fill_time"):
                 WellMeasure("probe gravity from off wall before fill", lambda s, h:
-                            s.gravityOfWell(True, h, fromWells=offWallWellNames, timeInterval=[0, s.probe_fill_time]), sessionsWithProbe).makeFigures(pp)
-            WellMeasure("task gravity from off wall", lambda s, h: s.gravityOfWell(False, h, fromWells=offWallWellNames), sessionsWithProbe).makeFigures(pp)
+                            s.gravityOfWell(True, h, fromWells=offWallWellNames,
+                                            timeInterval=[0, s.probe_fill_time]),
+                            sessionsWithProbe).makeFigures(pp)
+            WellMeasure("task gravity from off wall", lambda s, h: s.gravityOfWell(
+                False, h, fromWells=offWallWellNames), sessionsWithProbe).makeFigures(pp)
+            WellMeasure("task gravity from all", lambda s, h: s.gravityOfWell(
+                False, h), sessionsWithProbe).makeFigures(pp)
+
+        if not RUN_OLD_GRAVITY_PLOTS:
+            print("WARNING SKPPING OLD GRAVITY PLOTS")
+        else:
+            WellMeasure("probe gravity from off wall (old)", lambda s, h: s.gravityOfWell_old(
+                True, h, fromWells=offWallWellNames), sessionsWithProbe).makeFigures(pp)
+            WellMeasure("probe gravity from all (old)", lambda s, h: s.gravityOfWell_old(
+                True, h), sessionsWithProbe).makeFigures(pp)
+            WellMeasure("task gravity from off wall (old)", lambda s, h: s.gravityOfWell_old(
+                False, h, fromWells=offWallWellNames), sessionsWithProbe).makeFigures(pp)
+            WellMeasure("task gravity from all (old)", lambda s, h: s.gravityOfWell_old(
+                False, h), sessionsWithProbe).makeFigures(pp)
 
         if not RUN_BEHAVIOR_TRACE:
             print("warning: skipping raw probe trace plots")
@@ -152,9 +172,11 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 wellIdx = np.argmax(all_well_names == h)
                 fracSum = 0.0
                 for i1, i2 in zip(s.probe_excursion_starts, s.probe_excursion_ends):
-                    print(i1, i2, s.probe_pos_ts[i1], s.probe_pos_ts[i2-1])
-                    print(np.count_nonzero(np.diff(s.probe_pos_ts) == 0))
-                    print(len(s.probe_pos_ts))
+                    if i2 == i1 + 1:
+                        continue
+                    # print(i1, i2, s.probe_pos_ts[i1], s.probe_pos_ts[i2-1])
+                    # print(np.count_nonzero(np.diff(s.probe_pos_ts) == 0))
+                    # print(len(s.probe_pos_ts))
                     totalDur = s.probe_pos_ts[i2-1] - s.probe_pos_ts[i1]
                     durAtWell = 0.0
                     for ent, ext in zip(s.probe_well_entry_idxs[wellIdx], s.probe_well_exit_idxs[wellIdx]):
@@ -162,7 +184,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                             continue
                         if ent > i2-1:
                             continue
-                        durAtWell += s.probe_pos_ts[ext] - s.probe_pos_ts[ent] 
+                        durAtWell += s.probe_pos_ts[ext] - s.probe_pos_ts[ent]
 
                     fracSum += durAtWell / totalDur
                 return fracSum / len(s.probe_excursion_starts)
@@ -181,12 +203,14 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                             continue
                         if ent > i2-1:
                             continue
-                        durAtWell += s.probe_pos_ts[ext] - s.probe_pos_ts[ent] 
+                        durAtWell += s.probe_pos_ts[ext] - s.probe_pos_ts[ent]
 
                 return durAtWell / totalDur
 
-            WellMeasure("probe frac excursion at well over bouts", fracAtWellBoutAvg, sessionsWithProbeFillPast90).makeFigures(pp)
-            WellMeasure("probe frac excursion at well over time", fracAtWellTimeAvg, sessionsWithProbeFillPast90).makeFigures(pp)
+            WellMeasure("probe frac excursion at well over bouts", fracAtWellBoutAvg,
+                        sessionsWithProbeFillPast90).makeFigures(pp)
+            WellMeasure("probe frac excursion at well over time", fracAtWellTimeAvg,
+                        sessionsWithProbeFillPast90).makeFigures(pp)
 
     if len(animalNames) > 1:
         comboStr = "combo {}".format(" ".join(animalNames))
@@ -196,6 +220,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
     # if RUN_SHUFFLES:
         # pp.runShuffles()
 
+
 if __name__ == "__main__":
-    makeFigures( RUN_MISC_PERSEV_PLOTS=True,
-                RUN_BASIC_PLOTS=False, RUN_BEHAVIOR_TRACE=False)
+    makeFigures(RUN_MISC_PERSEV_PLOTS=False, RUN_BASIC_PLOTS=True,
+                RUN_BEHAVIOR_TRACE=False, RUN_OLD_GRAVITY_PLOTS=False)
+    # makeFigures()

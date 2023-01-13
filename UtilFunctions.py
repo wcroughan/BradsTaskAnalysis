@@ -21,13 +21,19 @@ def findDataDir(possibleDataDirs=["/media/WDC8/", "/media/WDC6/", "/media/foster
 
 def parseCmdLineAnimalNames(default=None):
     if len(sys.argv) >= 2:
+        if len(sys.argv) == 2 and sys.argv[1] == "new":
+            return ["B16", "B17", "B18"]
+        elif len(sys.argv) == 2 and sys.argv[1] == "old":
+            return ["B13", "B14", "Martin"]
+
         return sys.argv[1:]
     else:
         return default
 
 
 def readWellCoordsFile(well_coords_file):
-    # For some reason json saving and loading turns the keys into strings, just going to change that here so it's consistent
+    # For some reason json saving and loading turns the keys into strings, just going to change that here so
+    # it's consistent
     with open(well_coords_file, 'r') as wcf:
         well_coords_map = {}
         csv_reader = csv.reader(wcf)
@@ -87,7 +93,9 @@ def readClipData(data_filename):
         print(err)
     return time_clips
 
-def cleanupPos(tpts, x_pos, y_pos, xLim=(100, 1050), yLim=(20, 900), excludeBoxes=None, maxJumpDistance=50, makePlots=False):
+
+def cleanupPos(tpts, x_pos, y_pos, xLim=(100, 1050), yLim=(20, 900), excludeBoxes=None,
+               maxJumpDistance=50, makePlots=False):
     # only in bounds points pls
     points_in_range = np.ones_like(x_pos).astype(bool)
     if xLim is not None:
@@ -116,7 +124,7 @@ def cleanupPos(tpts, x_pos, y_pos, xLim=(100, 1050), yLim=(20, 900), excludeBoxe
     y_pos[~ clean_points] = np.nan
     if makePlots:
         quickPosPlot(tpts, x_pos, y_pos, "no jumps (single)")
-    
+
     # Dilate the excluded parts but only inward toward the noise
     MIN_CLEAN_TIME_FRAMES = 15
     nanidx = np.argwhere(np.isnan(x_pos)).reshape(-1)
@@ -128,6 +136,7 @@ def cleanupPos(tpts, x_pos, y_pos, xLim=(100, 1050), yLim=(20, 900), excludeBoxe
     if makePlots:
         quickPosPlot(tpts, x_pos, y_pos, "no jumps (dilated)")
 
+
 def interpNanPositions(tpts, x_pos, y_pos):
     nanpos = np.isnan(x_pos)
     ynanpos = np.isnan(y_pos)
@@ -136,6 +145,7 @@ def interpNanPositions(tpts, x_pos, y_pos):
     x_pos = np.interp(tpts, tpts[notnanpos], x_pos[notnanpos])
     y_pos = np.interp(tpts, tpts[notnanpos], y_pos[notnanpos])
     return x_pos, y_pos
+
 
 def quickPosPlot(tt, xx, yy, title, irange=None):
     if True:
@@ -153,6 +163,7 @@ def quickPosPlot(tt, xx, yy, title, irange=None):
         plt.scatter(tt, yy)
         plt.show()
 
+
 def timeStrForTrodesTimestamp(ts):
     if ts is None:
         return "[None]"
@@ -167,12 +178,12 @@ def timeStrForTrodesTimestamp(ts):
     shrs = s // 60
     return f"{shrs}:{smins}:{ssecs}"
 
+
 def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                           xLim=(100, 1050), yLim=(20, 900), smooth=None,
                           excludeBoxes=None, correctionDirectory=None):
     x_pos = np.array(x, dtype=float)
     y_pos = np.array(y, dtype=float)
-
 
     # Interpolate the position data into evenly sampled time points
 
@@ -183,7 +194,8 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
     # quickPosPlot(tpts, x_pos, y_pos, "raw")
 
     # Remove bad position points
-    cleanupPos(tpts, x_pos, y_pos, xLim=xLim, yLim=yLim, excludeBoxes=excludeBoxes, maxJumpDistance=maxJumpDistance)
+    cleanupPos(tpts, x_pos, y_pos, xLim=xLim, yLim=yLim,
+               excludeBoxes=excludeBoxes, maxJumpDistance=maxJumpDistance)
 
     # Now check for large gaps that were removed and fill in with correction files
     validTpts = tpts[~np.isnan(x_pos)]
@@ -213,7 +225,7 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
         correctedFlag.append(False)
 
         # print("\t" + "\t".join([str(s) for s in entry]))
-    
+
     if correctionDirectory is None:
         response = input("No corrections provided, interp all these gaps anyway (y/N)?")
         if response != "y":
@@ -233,14 +245,16 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
             cx = np.array(posdata["x1"]).astype(float)
             cy = np.array(posdata["y1"]).astype(float)
 
-            # Seems like it includes all the video timestamps, but just extends wherever tracking happened for some reason
+            # Seems like it includes all the video timestamps, but just extends wherever tracking happened for
+            # some reason
             cd = np.abs(np.diff(cx, prepend=cx[0])) + np.abs(np.diff(cy, prepend=cy[0]))
             nzcd = np.nonzero(cd)[0]
             ci1 = nzcd[0]
             ci2 = nzcd[-1]
             if False:
                 quickPosPlot(ct, cx, cy, "incoming correction points")
-                quickPosPlot(ct, cx, cy, "incoming correction points (just with tracking data)", irange=(ci1, ci2))
+                quickPosPlot(
+                    ct, cx, cy, "incoming correction points (just with tracking data)", irange=(ci1, ci2))
             ct = ct[ci1:ci2]
             cx = cx[ci1:ci2]
             cy = cy[ci1:ci2]
@@ -258,15 +272,16 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                     numCorrectionsIntegrated += 1
                     # print("\tfound correction for", "\t".join([str(s) for s in entry]))
                     # integrate this bit
-                    # cleanupPos(ct, cx, cy, xLim=xLim, yLim=yLim, excludeBoxes=excludeBoxes, maxJumpDistance=maxJumpDistance)
+                    # cleanupPos(ct, cx, cy, xLim=xLim, yLim=yLim, excludeBoxes=excludeBoxes,
+                    # maxJumpDistance=maxJumpDistance)
                     # cx, cy = interpNanPositions(ct, cx, cy)
 
-                    MARGIN = 20
+                    # MARGIN = 20
                     tpi1 = np.searchsorted(tpts, t1)
                     tpi2 = np.searchsorted(tpts, t2)
                     cpi1 = np.searchsorted(ct, t1)
                     cpi2 = np.searchsorted(ct, t2)
-                    
+
                     # quickPosPlot(ct, cx, cy, "incoming correction points, full")
                     # quickPosPlot(tpts, x_pos, y_pos, "correction region original",
                     #              irange=(max(0, tpi1 - MARGIN), min(len(tpts)-1, tpi2 + MARGIN)))
@@ -277,8 +292,8 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                         if np.isnan(x_pos[pi]):
                             x_pos[pi] = cx[ci]
                             y_pos[pi] = cy[ci]
-                    # quickPosPlot(tpts, x_pos, y_pos, "correction region integrated", irange=(max(0, tpi1 - MARGIN), min(len(tpts)-1, tpi2 + MARGIN)))
-                    
+                    # quickPosPlot(tpts, x_pos, y_pos, "correction region integrated",
+                    # irange=(max(0, tpi1 - MARGIN), min(len(tpts)-1, tpi2 + MARGIN)))
 
         print(f"\tCorrected {numCorrectionsIntegrated} regions with corrections files")
         # print("\tRemaining regions that are uncorrected:")
@@ -292,9 +307,9 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
             if not correctedFlag[entryi]:
                 # print("\t" + "\t".join([str(s) for s in entry]))
 
-                if lastEnd is not None and (\
-                    (entry[0] - lastEnd) / TRODES_SAMPLING_RATE < COMBINEGAP or \
-                    ((entry[0] - lastEnd) / TRODES_SAMPLING_RATE < SPLITGAP and \
+                if lastEnd is not None and (
+                    (entry[0] - lastEnd) / TRODES_SAMPLING_RATE < COMBINEGAP or
+                    ((entry[0] - lastEnd) / TRODES_SAMPLING_RATE < SPLITGAP and
                         (entry[1] - lastStart) / TRODES_SAMPLING_RATE < MAXREC)):
                     # combine this with last entry
                     currentOptimizedEntry = optimizedTimes[-1]
@@ -306,7 +321,8 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
                         gapLen = currentOptimizedEntry[3]
                         gapStart = currentOptimizedEntry[4]
                         gapEnd = currentOptimizedEntry[5]
-                    optimizedTimes[-1] = (currentOptimizedEntry[0], entry[3], currentOptimizedEntry[2]+1, gapLen, gapStart, gapEnd)
+                    optimizedTimes[-1] = (currentOptimizedEntry[0], entry[3],
+                                          currentOptimizedEntry[2]+1, gapLen, gapStart, gapEnd)
                     lastEnd = entry[1]
                 else:
                     # new entry
@@ -320,20 +336,19 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
 
         correctionsFileName = os.path.join(correctionDirectory, "optimized.txt")
         # print(f"\tsaving optimized list to file {correctionsFileName}")
-        print(f"\tsaving optimized list to file")
+        print("\tsaving optimized list to file")
         with open(correctionsFileName, 'w') as f:
             f.writelines([f"{oe[0]} - {oe[1]}\n" for oe in optimizedTimes])
 
     x_pos, y_pos = interpNanPositions(tpts, x_pos, y_pos)
 
     # quickPosPlot(tpts, x_pos, y_pos, "interp")
-   
+
     if smooth is not None:
         x_pos = gaussian_filter1d(x_pos, smooth)
         y_pos = gaussian_filter1d(y_pos, smooth)
 
         # quickPosPlot(tpts, x_pos, y_pos, "smooth")
-
 
     return list(x_pos), list(y_pos), list(tpts)
 
@@ -341,8 +356,9 @@ def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
 def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
                    xLim=(100, 1050), yLim=(20, 900), smooth=None, excludeBoxes=None, correctionDirectory=None):
     return processPosData_coords(position_data["x1"], position_data["y1"], position_data["timestamp"],
-            maxJumpDistance=maxJumpDistance, nCleaningReps=nCleaningReps, xLim=xLim, yLim=yLim, smooth=smooth,
-            excludeBoxes=excludeBoxes, correctionDirectory=correctionDirectory)
+                                 maxJumpDistance=maxJumpDistance, nCleaningReps=nCleaningReps, xLim=xLim,
+                                 yLim=yLim, smooth=smooth, excludeBoxes=excludeBoxes,
+                                 correctionDirectory=correctionDirectory)
 
 
 def getWellCoordinates(well_num, well_coords_map):
@@ -459,7 +475,8 @@ def getRipplePower(lfp_data, omit_artifacts=True, causal_smoothing=False,
             raise Exception("this hasn't been updated")
             # # Remove all the artifacts in the raw ripple amplitude data
             # deflection_metrics = signal.find_peaks(np.abs(np.diff(lfp_data,
-            #                                                       prepend=lfp_data[0])), height=DEFLECTION_THRESHOLD_LO,
+            #                                                       prepend=lfp_data[0])),
+            # height=DEFLECTION_THRESHOLD_LO,
             #                                        distance=MIN_ARTIFACT_DISTANCE)
             # lfp_deflections = deflection_metrics[0]
 
@@ -502,7 +519,8 @@ def getRipplePower(lfp_data, omit_artifacts=True, causal_smoothing=False,
 
         half_smoothing_signal = \
             np.exp(-np.square(np.linspace(0, -4 * smoothing_window_length, 4 *
-                                          smoothing_window_length)) / (2 * smoothing_window_length * smoothing_window_length))
+                                          smoothing_window_length)) / (
+                2 * smoothing_window_length * smoothing_window_length))
         smoothing_signal = np.concatenate(
             (np.zeros_like(half_smoothing_signal), half_smoothing_signal), axis=0)
         ripple_power = signal.convolve(np.abs(ripple_amplitude_copy),
@@ -685,7 +703,6 @@ class AnimalInfo:
         self.DLC_dir = None
 
 
-
 def getInfoForAnimal(animalName):
     ret = AnimalInfo()
     if animalName == "Martin":
@@ -790,7 +807,8 @@ def getInfoForAnimal(animalName):
         ret.out_filename = "B13_bradtask.dat"
 
         ret.excluded_dates = ["20220209"]
-        # minimum_date = "20211209"  # had one run on the 8th with probe but used high ripple threshold and a different reference tetrode
+        # minimum_date = "20211209"  # had one run on the 8th with probe but used high ripple threshold and a
+        # different reference tetrode
         ret.minimum_date = None
         # high ripple thresh on 12/08-1, forgot to turn stim on til after first home on 12/16-2
         ret.excluded_sessions = ["20211208_1", "20211216_2"]
@@ -799,15 +817,20 @@ def getInfoForAnimal(animalName):
 
         # Messed up away well order, marked down 20 when he got 12. Ended up giving him reward at 12 twice
         ret.excluded_sessions += ["20220131_2"]
-        # Made a custom foundwells field in the behaviornotes for this guy, but would need to update the rest of the import code
+        # Made a custom foundwells field in the behaviornotes for this guy, but would need to update the rest of the
+        # import code
         # (i.e. clips loading assumes alternation with home)
         ret.excluded_sessions += ["20220222_2"]
         # video skips
         ret.excluded_sessions += ["20220304_2"]
 
+        # Cable got messed up during the task, pulley wasn't rolling horizontally
+        ret.excluded_sessions += ["20211217_1"]
+
         # THE FOLLOWING SHOULD BE SALVAGABLE JUST NEED TO CLEAN IT
         #  timing is off and/or tracking not working maybe
-        ret.excluded_sessions += ["20220201_2"]
+        # ret.excluded_sessions += ["20220201_2"]
+        ret.minimum_date = "20220201"
         # timing a bit off, tracking not working
         ret.excluded_sessions += ["20220305_2"]
         # tracking didn't work
@@ -888,7 +911,8 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions += ["20220620_1"]
         ret.excluded_sessions += ["20220622_2"]
 
-        # Trodes camera partially blocked during probe by pulley system. It's just wells 7-4 ish, might be able to deal with it in analysis
+        # Trodes camera partially blocked during probe by pulley system. It's just wells 7-4 ish, might be able to
+        # deal with it in analysis
         # At least it shouldn't effect measures at off wall wells
         # ret.excluded_sessions += ["20220621_2"]
 
@@ -899,7 +923,8 @@ def getInfoForAnimal(animalName):
         # (both leads were disconnected, so no stim at all made it to brain)
         ret.excluded_sessions += ["20220624_2"]
 
-        # Messed up the well order, so current pipeline can't handle clips. SHould still be able to analyze probe behavior though if I wanted to
+        # Messed up the well order, so current pipeline can't handle clips. SHould still be able to analyze probe
+        # behavior though if I wanted to
         ret.excluded_sessions += ["20220621_2"]
 
         # Wasn't actually detecting ripples during these

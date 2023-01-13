@@ -47,9 +47,11 @@ class BTSession:
         self.name = ""
         # name of raw data folder in which brad's task part of session was recorded
         self.bt_dir = ""
-        # name of raw data folder in which ITI part of session was recorded. May be missing (empty string). May be same as bt_dir
+        # name of raw data folder in which ITI part of session was recorded. May be missing (empty string).
+        # May be same as bt_dir
         self.iti_dir = ""
-        # name of raw data folder in which probe part of session was recorded. May be missing (empty string). May be same as bt_dir
+        # name of raw data folder in which probe part of session was recorded. May be missing (empty string).
+        # May be same as bt_dir
         self.probe_dir = ""
 
         self.infoFileName = ""
@@ -356,10 +358,11 @@ class BTSession:
         """
         return units: cm
         """
-        return self.avg_dist_to_well(inProbe, self.home_well, timeInterval=timeInterval, moveFlag=moveFlag, avgFunc=avgFunc)
+        return self.avg_dist_to_well(inProbe, self.home_well, timeInterval=timeInterval,
+                                     moveFlag=moveFlag, avgFunc=avgFunc)
 
-    def entry_exit_times(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False, returnIdxs=False,
-                         includeEdgeOverlap=True, subtractT0=False):
+    def entry_exit_times(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False,
+                         returnIdxs=False, includeEdgeOverlap=True, subtractT0=False):
         """
         return units: trodes timestamps, unless returnIdxs==True
         """
@@ -507,7 +510,8 @@ class BTSession:
 
         return ents, exts
 
-    def sniff_entry_exit_times(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeEdgeOverlap=True, subtractT0=False):
+    def sniff_entry_exit_times(self, inProbe, wellName, timeInterval=None, excludeReward=False,
+                               includeEdgeOverlap=True, subtractT0=False):
         """
         return units: milliseconds
         """
@@ -603,12 +607,14 @@ class BTSession:
         return ents, exts
 
     def avg_continuous_measure_at_well(self, inProbe, wellName, yvals,
-                                       timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, excludeReward=False, includeNeighbors=False):
+                                       timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, excludeReward=False,
+                                       includeNeighbors=False):
         if avgTypeFlag is None:
             avgTypeFlag = BTSession.AVG_FLAG_OVER_TIME
 
         wenis, wexis = self.entry_exit_times(
-            inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward, includeNeighbors=includeNeighbors, returnIdxs=True)
+            inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward,
+            includeNeighbors=includeNeighbors, returnIdxs=True)
 
         if len(wenis) == 0:
             return np.nan
@@ -626,7 +632,8 @@ class BTSession:
         else:
             assert False
 
-    def avg_ballisticity_at_well(self, inProbe, wellName, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, includeNeighbors=False):
+    def avg_ballisticity_at_well(self, inProbe, wellName, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean,
+                                 includeNeighbors=False):
         if inProbe:
             yvals = self.probe_ballisticity
         else:
@@ -634,14 +641,18 @@ class BTSession:
         # note this method is slightly different from original (but better!)
         # original would count entire visit to well as long as entry was before cutoff point
 
-        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag,
+        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval,
+                                                   avgTypeFlag=avgTypeFlag,
                                                    avgFunc=avgFunc, includeNeighbors=includeNeighbors)
 
-    def avg_ballisticity_at_home_well(self, inProbe, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, includeNeighbors=False):
-        return self.avg_ballisticity_at_well(inProbe, self.home_well, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag,
-                                             avgFunc=avgFunc, includeNeighbors=includeNeighbors)
+    def avg_ballisticity_at_home_well(self, inProbe, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean,
+                                      includeNeighbors=False):
+        return self.avg_ballisticity_at_well(inProbe, self.home_well, timeInterval=timeInterval,
+                                             avgTypeFlag=avgTypeFlag, avgFunc=avgFunc,
+                                             includeNeighbors=includeNeighbors)
 
-    def avg_curvature_at_well(self, inProbe, wellName, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, includeNeighbors=False):
+    def avg_curvature_at_well(self, inProbe, wellName, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean,
+                              includeNeighbors=False):
         if inProbe:
             yvals = self.probe_curvature
         else:
@@ -649,25 +660,29 @@ class BTSession:
         # note this method is slightly different from original (but better!)
         # original would count entire visit to well as long as entry was before cutoff point
 
-        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag, avgFunc=avgFunc,
+        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval,
+                                                   avgTypeFlag=avgTypeFlag, avgFunc=avgFunc,
                                                    includeNeighbors=includeNeighbors)
 
-    def avg_curvature_at_home_well(self, inProbe, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, includeNeighbors=False):
-        return self.avg_curvature_at_well(inProbe, self.home_well, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag, avgFunc=avgFunc,
-                                          includeNeighbors=includeNeighbors)
+    def avg_curvature_at_home_well(self, inProbe, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean,
+                                   includeNeighbors=False):
+        return self.avg_curvature_at_well(inProbe, self.home_well, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag,
+                                          avgFunc=avgFunc, includeNeighbors=includeNeighbors)
 
     def dwell_times(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
         """
         return units: trodes timestamps
         """
         ents, exts = self.entry_exit_times(
-            inProbe, wellName, timeInterval=timeInterval, includeNeighbors=includeNeighbors, excludeReward=excludeReward, returnIdxs=False)
+            inProbe, wellName, timeInterval=timeInterval, includeNeighbors=includeNeighbors,
+            excludeReward=excludeReward, returnIdxs=False)
 
         return np.array(exts) - np.array(ents)
 
     def num_well_entries(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
         ents, _ = self.entry_exit_times(
-            inProbe, wellName, timeInterval=None, includeNeighbors=includeNeighbors, excludeReward=excludeReward, returnIdxs=False)
+            inProbe, wellName, timeInterval=None, includeNeighbors=includeNeighbors, excludeReward=excludeReward,
+            returnIdxs=False)
 
         if inProbe:
             t0 = self.probe_pos_ts[0]
@@ -701,7 +716,8 @@ class BTSession:
         k = m[0][0] / 1000.0
         return np.count_nonzero(self.sniffClassificationNearestWell == wellName) * k
 
-    def avg_dwell_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False, includeNeighbors=False, emptyVal=np.nan):
+    def avg_dwell_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False,
+                       includeNeighbors=False, emptyVal=np.nan):
         """
         return units: seconds
         """
@@ -739,7 +755,8 @@ class BTSession:
 
         return exts - ents
 
-    def avg_sniff_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False, emptyVal=None):
+    def avg_sniff_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False,
+                       emptyVal=None):
         """
         return units: seconds
         """
@@ -754,7 +771,8 @@ class BTSession:
         """
         return units: seconds
         """
-        return np.sum(self.sniff_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward) / 1000.0)
+        return np.sum(self.sniff_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward)
+                      / 1000.0)
 
     def num_bouts(self, inProbe, timeInterval=None):
         if inProbe:
@@ -771,9 +789,11 @@ class BTSession:
 
         return len(set(lbls) - set([0]))
 
-    def num_bouts_where_well_was_visited(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
+    def num_bouts_where_well_was_visited(self, inProbe, wellName, timeInterval=None, excludeReward=False,
+                                         includeNeighbors=False):
         ents, exts = self.entry_exit_times(
-            inProbe, wellName, timeInterval=timeInterval, includeNeighbors=includeNeighbors, excludeReward=excludeReward, returnIdxs=True)
+            inProbe, wellName, timeInterval=timeInterval, includeNeighbors=includeNeighbors,
+            excludeReward=excludeReward, returnIdxs=True)
 
         if inProbe:
             lbls = self.probe_bout_label
@@ -787,7 +807,8 @@ class BTSession:
         res = res - set([0])
         return len(res)
 
-    def pct_bouts_where_well_was_visited(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False, boutsInterval=None):
+    def pct_bouts_where_well_was_visited(self, inProbe, wellName, timeInterval=None, excludeReward=False,
+                                         includeNeighbors=False, boutsInterval=None):
         # bouts interval is inclusive first, exclusive last
         if boutsInterval is not None:
             assert timeInterval is None
@@ -807,8 +828,9 @@ class BTSession:
         if denom == 0:
             return np.nan
 
-        return self.num_bouts_where_well_was_visited(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward,
-                                                     includeNeighbors=includeNeighbors) / denom
+        return self.num_bouts_where_well_was_visited(inProbe, wellName, timeInterval=timeInterval,
+                                                     excludeReward=excludeReward, includeNeighbors=includeNeighbors) / \
+            denom
 
     def prop_time_in_bout_state(self, inProbe, boutState, timeInterval=None):
         if inProbe:
@@ -968,7 +990,8 @@ class BTSession:
         else:
             return res.total_seconds()
 
-    def getLatencyToWell(self, inProbe, wellName, startTime=None, returnIdxs=False, returnSeconds=False, emptyVal=np.nan):
+    def getLatencyToWell(self, inProbe, wellName, startTime=None, returnIdxs=False, returnSeconds=False,
+                         emptyVal=np.nan):
         """
         units are trodes timestamps or idxs or seconds
         startTime should be in the same units expected for return
@@ -1014,16 +1037,19 @@ class BTSession:
             nw = np.array(self.bt_nearest_wells)
             return np.count_nonzero(wellName == nw[ripPosIdxs])
 
-    def gravityOfWell(self, inProbe, wellName, timeInterval=None, fromWells=all_well_names, emptyVal=np.nan):
+    def gravityOfWell_old(self, inProbe, wellName, timeInterval=None, fromWells=all_well_names, emptyVal=np.nan):
         neighborWells = np.array([-9, -8, -7, -1, 1, 7, 8, 9]) + wellName
         neighborWells = [w for w in neighborWells if (w in fromWells)]
         neighborExitIdxs = []
         neighborEntryIdxs = []
+        # numNonZero = 0
         for nw in neighborWells:
             ents, exts = self.entry_exit_times(inProbe, nw,
                                                timeInterval=timeInterval, returnIdxs=True)
             neighborEntryIdxs += list(ents)
             neighborExitIdxs += list(exts)
+            # if len(ents) > 0:
+            #     numNonZero += 1
 
         if len(neighborExitIdxs) == 0:
             # print("emptyval ret, neighbor wells was {}".format(neighborWells))
@@ -1032,10 +1058,57 @@ class BTSession:
         wellEntryIdxs = self.entry_exit_times(
             inProbe, wellName, timeInterval=timeInterval, returnIdxs=True)[0] - 1
 
-        # print(neighborExitIdxs)
         # print(wellEntryIdxs)
         ret = len([nwei for nwei in neighborExitIdxs if nwei in wellEntryIdxs]) / \
             len([nwei for nwei in neighborExitIdxs if nwei + 1 not in neighborEntryIdxs])
         # print(timeInterval, ret)
+
+        return ret
+
+    def gravityOfWell(self, inProbe, wellName, timeInterval=None, fromWells=all_well_names, emptyVal=np.nan):
+        neighborWells = np.array([-9, -8, -7, -1, 0, 1, 7, 8, 9]) + wellName
+        neighborWells = [w for w in neighborWells if (w in fromWells)]
+        neighborExitIdxs = []
+        neighborEntryIdxs = []
+        # numNonZero = 0
+        for nw in neighborWells:
+            ents, exts = self.entry_exit_times(inProbe, nw,
+                                               timeInterval=timeInterval, returnIdxs=True)
+            neighborEntryIdxs += list(ents)
+            neighborExitIdxs += list(exts)
+            # if len(ents) > 0:
+            #     numNonZero += 1
+
+        if len(neighborExitIdxs) == 0:
+            # print("emptyval ret, neighbor wells was {}".format(neighborWells))
+            return emptyVal
+
+        neighborEntryIdxs_all = np.array(neighborEntryIdxs)
+        neighborExitIdxs_all = np.array(neighborExitIdxs)
+        keepEntryIdx = np.array([v-1 not in neighborExitIdxs_all for v in neighborEntryIdxs_all])
+        keepExitIdx = np.array([v+1 not in neighborEntryIdxs_all for v in neighborExitIdxs_all])
+        neighborEntryIdxs = sorted(neighborEntryIdxs_all[keepEntryIdx])
+        neighborExitIdxs = sorted(neighborExitIdxs_all[keepExitIdx])
+
+        wellEntryIdxs = self.entry_exit_times(
+            inProbe, wellName, timeInterval=timeInterval, returnIdxs=True)[0]
+        enteredHome = [any([wei < v2 and wei > v1 for wei in wellEntryIdxs])
+                       for v1, v2 in zip(neighborEntryIdxs, neighborExitIdxs)]
+
+        # print(wellEntryIdxs)
+        # ret = len([nwei for nwei in neighborExitIdxs if nwei + 1 in wellEntryIdxs]) / \
+        #     len([nwei for nwei in neighborExitIdxs if nwei + 1 not in neighborEntryIdxs])
+        # print(timeInterval, ret)
+        ret = np.count_nonzero(enteredHome) / len(neighborEntryIdxs)
+
+        if ret < 0 or ret > 1:
+            print(neighborEntryIdxs_all)
+            print(neighborExitIdxs_all)
+            print(neighborEntryIdxs)
+            print(neighborExitIdxs)
+            print(wellEntryIdxs)
+            print(enteredHome)
+            print(ret)
+            exit()
 
         return ret
