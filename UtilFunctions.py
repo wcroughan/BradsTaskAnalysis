@@ -949,6 +949,12 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions += ["20220919_1"]
         ret.excluded_sessions += ["20220919_2"]
 
+        # USB and trodes misaligned
+        ret.excluded_sessions += ["20221113_1"]
+
+        # Just stayed in the corner for ten minutes then I took him out
+        ret.excluded_sessions += ["20221118_1"]
+
         # Just annoying info file stuff, fix and add back in
         # ret.excluded_sessions += ["20221111_2"]
 

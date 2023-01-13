@@ -701,13 +701,13 @@ class BTSession:
         k = m[0][0] / 1000.0
         return np.count_nonzero(self.sniffClassificationNearestWell == wellName) * k
 
-    def avg_dwell_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False, includeNeighbors=False, emptyVal=None):
+    def avg_dwell_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False, includeNeighbors=False, emptyVal=np.nan):
         """
         return units: seconds
         """
         ret = self.dwell_times(inProbe, wellName, timeInterval=timeInterval,
                                excludeReward=excludeReward, includeNeighbors=includeNeighbors)
-        if emptyVal is not None and len(ret) == 0:
+        if len(ret) == 0:
             # print("returning emptyval for well {}".format(wellName))
             return emptyVal
         else:

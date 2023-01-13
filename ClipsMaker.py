@@ -472,11 +472,16 @@ class AnnotatorWindow(QMainWindow):
         centralLayout.addWidget(self.videoWidget, 1)
 
         statusLayout = QHBoxLayout()
+        statusLayoutL = QHBoxLayout()
         self.statusLabel = QLabel("hello!")
         self.statusLabel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        self.clipLabel = QLabel("Hola!")
+        self.clipLabel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        statusLayoutL.addWidget(self.statusLabel)
+        statusLayoutL.addWidget(self.clipLabel)
         self.wellLabel = QLabel("Aloha!")
         self.wellLabel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
-        statusLayout.addWidget(self.statusLabel)
+        statusLayout.addLayout(statusLayoutL)
         statusLayout.addWidget(self.wellLabel)
 
         layout = QVBoxLayout()
@@ -649,8 +654,18 @@ class AnnotatorWindow(QMainWindow):
         self.positionPlot.clearWellCoord()
         self.updateClipInWidgets()
 
+    def clipTimeString(self, clipTime):
+        if clipTime is None:
+            return "[None]"
+        seconds = clipTime / TRODES_SAMPLING_RATE
+        mins = int(seconds / 60)
+        seconds -= mins * 60
+        seconds = float(int(seconds * 10)) / 10
+        return "{}:{}".format(mins, seconds)
+
     def updateClipInWidgets(self, animateAnew=False):
         self.positionPlot.updateClipEdges(self.clipStart, self.clipEnd)
+        self.clipLabel.setText(f"{self.clipTimeString(self.clipStart)} - {self.clipTimeString(self.clipEnd)}")
         if self.hasUsbVideo:
             self.videoWidget.updateClipEdges(self.clipStart, self.clipEnd)
         if animateAnew:

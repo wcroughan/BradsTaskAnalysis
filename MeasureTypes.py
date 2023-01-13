@@ -120,7 +120,13 @@ class WellMeasure():
                         self.conditionCategoryByWell.append(self.conditionCategoryByWell[-1])
 
                     awayVals = np.array(awayVals)
-                    self.withinSessionMeasureDifference.append(homeval - np.nanmean(awayVals))
+                    if len(awayVals) == 0:
+                        assert False
+                    elif all(np.isnan(awayVals)):
+                        awayMean = np.nan
+                    else:
+                        awayMean = np.nanmean(awayVals)
+                    self.withinSessionMeasureDifference.append(homeval - awayMean)
 
         self.measure = np.array(self.measure)
         self.wellCategory = np.array(self.wellCategory)

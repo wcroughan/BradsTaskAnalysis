@@ -58,7 +58,7 @@ class BTData:
                     assert self.importOptions is None
                     line = f.readline()
                     self.importOptions = json.loads(line[:-1])
-                    print(self.importOptions)
+                    # print(self.importOptions)
                 else:
                     print("File parse error!")
                     return -2

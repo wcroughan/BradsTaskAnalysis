@@ -10,6 +10,7 @@ from datetime import datetime
 from consts import offWallWellNames
 from BTSession import BTSession
 
+# NOTE: never actually gave this lab meeting because strike, moving most of this to LabMeeting20230117
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 RUN_AWAY_FROM_HOME_PLOTS=None, RUN_MISC_PERSEV_PLOTS=None,
