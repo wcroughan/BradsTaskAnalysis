@@ -263,6 +263,8 @@ def parseInfoFiles(sesh):
                 sesh.conditionGroup = fieldVal
             elif fieldName.lower() == "probe home fill time":
                 sesh.probe_fill_time = int(fieldVal)
+            elif fieldName.lower() == "trodes lights skip start":
+                sesh.trodesLightsIgnoreSeconds = float(fieldVal)
             else:
                 sesh.notes.append(line)
 
@@ -539,7 +541,8 @@ def loadPositionData(sesh):
             else:
                 print(f"\tdoing the lights with file {sesh.fileStartString + '.1.h264'}")
                 sesh.trodesLightOffTime, sesh.trodesLightOnTime = getTrodesLightTimes(
-                    sesh.fileStartString + '.1.h264', showVideo=False)
+                    sesh.fileStartString + '.1.h264', showVideo=False,
+                    ignoreFirstSeconds=sesh.trodesLightsIgnoreSeconds)
                 print("\ttrodesLightFunc says trodes light Time {}, {} (/{})".format(
                     sesh.trodesLightOffTime, sesh.trodesLightOnTime, len(ts)))
 
@@ -566,8 +569,8 @@ def loadPositionData(sesh):
             print("\tRunning USB light time analysis, file", sesh.usbVidFile)
             sesh.usbLightOffFrame, sesh.usbLightOnFrame = processUSBVideoData(
                 sesh.usbVidFile, overwriteMode="loadOld", showVideo=False)
-            if sesh.usbLightOffFrame is None or sesh.usbLightOnFrame is None:
-                raise Exception("exclude me pls")
+            # if sesh.usbLightOffFrame is None or sesh.usbLightOnFrame is None:
+            #     raise Exception("exclude me pls")
 
         if not sesh.importOptions["justExtractData"] or sesh.importOptions["runInteractiveExtraction"]:
             clipsFileName = sesh.fileStartString + '.1.clips'

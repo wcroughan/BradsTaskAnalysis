@@ -104,6 +104,9 @@ class BTSession:
         # Rat weight if it was recorded
         self.rat_weight = 0
 
+        # For purposes of light on/off times, ignore this many seconds at start of video
+        self.trodesLightsIgnoreSeconds = None
+
         # ==================================
         # Raw data
         # ==================================
@@ -1112,3 +1115,90 @@ class BTSession:
             exit()
 
         return ret
+
+    def getPasses(self, w: int, inProbe: bool, distance=200.0):
+        if inProbe:
+            x = self.probe_pos_xs
+            y = self.probe_pos_ys
+        else:
+            x = self.bt_pos_xs
+            y = self.bt_pos_ys
+        wellCoords = self.well_coords_map[str(w)]
+        wellX, wellY = wellCoords
+
+        wellDist2 = np.power(x - np.array(wellX), 2) + np.power(y - np.array(wellY), 2)
+        inRange = wellDist2 <= distance * distance
+        borders = np.diff(inRange.astype(int), prepend=0, append=0)
+
+        ents = np.nonzero(borders == 1)[0]
+        exts = np.nonzero(borders == -1)[0]
+        return ents, exts, wellCoords
+
+    def getSpotlightScore(self, inProbe: bool, w: int, angleCutoff=70.0, timeInterval=None, test=False):
+        if timeInterval is not None:
+            raise Exception("Not implemented")
+
+        if test:
+            w11x, w11y = self.well_coords_map["11"]
+            w28x, w28y = self.well_coords_map["28"]
+            x = np.linspace(w11x, w28x, 100)
+            y = np.linspace(w11y, w28y, 100)
+            mv = np.ones((99,)).astype(bool)
+        elif inProbe:
+            x = self.probe_pos_xs
+            y = self.probe_pos_ys
+            # mv = self.probe_is_mv[:-1]
+            mv = self.probe_bout_category[:-1] == self.BOUT_STATE_EXPLORE
+        else:
+            x = self.bt_pos_xs
+            y = self.bt_pos_ys
+            # mv = self.bt_is_mv[:-1]
+            mv = self.bt_bout_category[:-1] == self.BOUT_STATE_EXPLORE
+        wellCoords = self.well_coords_map[str(w)]
+        wellX, wellY = wellCoords
+
+        dx = np.diff(x)
+        dy = np.diff(y)
+        dwx = wellX - np.array(x[1:])
+        dwy = wellY - np.array(y[1:])
+
+        dots = dx * dwx + dy * dwy
+        magp = np.sqrt(np.multiply(dx, dx) + np.multiply(dy, dy))
+        magw = np.sqrt(np.multiply(dwx, dwx) + np.multiply(dwy, dwy))
+        mags = np.multiply(magp, magw)
+        angle = np.arccos(np.divide(dots, mags))
+
+        inSpotlight = (angle < np.deg2rad(angleCutoff)).astype(float)
+        return np.mean(inSpotlight[mv])
+
+    def getDotProductScore(self, inProbe: bool, w: int, timeInterval=None, test=False):
+        if timeInterval is not None:
+            raise Exception("Not implemented")
+
+        if inProbe:
+            x = self.probe_pos_xs
+            y = self.probe_pos_ys
+            mv = self.probe_is_mv[:-1]
+        else:
+            x = self.bt_pos_xs
+            y = self.bt_pos_ys
+            mv = self.bt_is_mv[:-1]
+        wellCoords = self.well_coords_map[str(w)]
+        wellX, wellY = wellCoords
+
+        dx = np.diff(x)
+        dy = np.diff(y)
+        dwx = wellX - np.array(x[1:])
+        dwy = wellY - np.array(y[1:])
+
+        magp = np.sqrt(np.multiply(dx, dx) + np.multiply(dy, dy))
+        magw = np.sqrt(np.multiply(dwx, dwx) + np.multiply(dwy, dwy))
+
+        ux = np.divide(dx, magp)
+        uy = np.divide(dy, magp)
+        uwx = np.divide(dwx, magw)
+        uwy = np.divide(dwy, magw)
+
+        dots = ux * uwx + uy * uwy
+
+        return np.mean(dots[mv])

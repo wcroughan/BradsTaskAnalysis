@@ -3,10 +3,8 @@
 import io
 import ffmpeg
 import numpy as np
-import struct
 import os
 import matplotlib.pyplot as plt
-import time
 import glob
 
 if __name__ == "__main__":
@@ -52,7 +50,8 @@ def getSingleFrame(videoFileName, frameIdx):
     return getFrameBatch(videoFileName, frameIdx, numFrames=1)
 
 
-def getTrodesLightTimes(videoFileName, timestampFileName=None, initialSkipAmt=8, showVideo=False, outputFileName=None):
+def getTrodesLightTimes(videoFileName, timestampFileName=None, initialSkipAmt=8, showVideo=False, outputFileName=None,
+                        ignoreFirstSeconds=None):
     if outputFileName is None:
         outputFileName = '.'.join(videoFileName.split('.')[0:-1]) + '.justLights'
     initialFrameJump = np.power(2, initialSkipAmt)
@@ -63,24 +62,32 @@ def getTrodesLightTimes(videoFileName, timestampFileName=None, initialSkipAmt=8,
     with open(timestampFileName, "rb") as tsFile:
         max_iter = 8
         iter = 0
-        l = ''
-        while l != b'<end settings>\n':
-            l = tsFile.readline().lower()
-            # print(l)
+        line = ''
+        while line != b'<end settings>\n':
+            line = tsFile.readline().lower()
+            # print(line)
             iter += 1
             if iter > max_iter:
                 raise Exception
         timeStamps = np.fromfile(tsFile, np.uint32)
 
+    if ignoreFirstSeconds is None:
+        ignoreFirstFrames = None
+        # print("nothing to ignore at start of video")
+    else:
+        firstFrameTs = TRODES_SAMPLING_RATE * ignoreFirstSeconds + timeStamps[0]
+        ignoreFirstFrames = np.searchsorted(timeStamps, firstFrameTs)
+        # print(f"ignoreFirstSeconds={ignoreFirstSeconds}, ignoreFirstFrames={ignoreFirstFrames}")
+
     # Step one: find left and right bound on light off and on time
     loffF1, loffF2, lonF1, lonF2 = findLightTimesLinearTrodes(
-        videoFileName, 0, None, initialFrameJump, showVideo=showVideo)
+        videoFileName, 0, None, initialFrameJump, showVideo=showVideo, ignoreFirstFrames=ignoreFirstFrames)
     loffF1 *= initialFrameJump
     loffF2 *= initialFrameJump
     lonF1 *= initialFrameJump
     lonF2 *= initialFrameJump
 
-    print(loffF1, loffF2, lonF1, lonF2)
+    print("coarse frames ranges:", loffF1, loffF2, lonF1, lonF2)
 
     # Step two: for each of those intervals, get the video in that range and binary search that ish
     _, lightsOffFrame, _, _ = findLightTimesLinearTrodes(
@@ -158,10 +165,10 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
     with open(timestampFileName, "rb") as tsFile:
         max_iter = 8
         iter = 0
-        l = ''
-        while l != b'<end settings>\n':
-            l = tsFile.readline().lower()
-            # print(l)
+        line = ''
+        while line != b'<end settings>\n':
+            line = tsFile.readline().lower()
+            # print(line)
             iter += 1
             if iter > max_iter:
                 raise Exception
@@ -173,7 +180,7 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
     outputArray = np.zeros((len(timeStamps),), dtype=outputDataType)
     outputIdx = 0
     videoFrame = batchStart
-    timestampOffset = batchStart
+    # timestampOffset = batchStart
 
     lightsOnFrame = None
     lightsOffFrame = None
@@ -417,7 +424,8 @@ def runAllBradTask():
 
     for videoName in allTrodesVids:
         pass
-        # print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
+        # print(f"========================================\n\nRunning {videoName}"
+        # "\n\n==========================================")
         # processRawTrodesVideo(videoName, overwriteMode="never")
         # getTrodesLightTimes(videoFileName=videoName, showVideo=False, initialSkipAmt=5)
 
@@ -443,7 +451,9 @@ def rerunTrodesVideos(showVideo=False):
             allVids.append(vidFile)
 
     for videoName in allVids:
-        print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
+        print(
+            f"========================================\n\nRunning {videoName}"
+            "\n\n==========================================")
         if showVideo:
             processRawTrodesVideo(videoName, overwriteMode="ask", showVideo=True)
         else:
@@ -463,13 +473,17 @@ def rerunUSBVideos(showVideo=False):
             allVids.append(vidFile)
 
     for videoName in allVids:
-        print("========================================\n\nRunning {}\n\n==========================================".format(videoName))
+        print(
+            f"========================================\n\nRunning {videoName}"
+            "\n\n==========================================")
         if showVideo:
             processUSBVideoData(videoName, overwriteMode="ask", showVideo=True)
         else:
             res = processUSBVideoData(videoName, overwriteMode="always")
             if res[0] is None or res[1] is None:
-                print("================================================================================{} should be excluded==========================================".format(videoName))
+                print(f"================================================================================"
+                      f"{videoName} should be excluded"
+                      f"==========================================")
 
 
 def getFrameColorHeuristic(frame, greyDiffThreshLow=25, greyDiffThreshHigh=200):
@@ -485,8 +499,9 @@ def getFrameColorHeuristic(frame, greyDiffThreshLow=25, greyDiffThreshHigh=200):
     return h1[0], h2[0], h3[0]
 
 
-def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuristicFunction, findLightOff=True, findLightOn=True,
-                         showVideo=False, lightOnThreshold=None, lightOffThreshold=None):
+def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuristicFunction, findLightOff=True,
+                         findLightOn=True, showVideo=False, lightOnThreshold=None, lightOffThreshold=None,
+                         ignoreFirstFrames=None):
     """
     making a separate function here b/c hopefully that means freed memory?
     """
@@ -583,6 +598,11 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuri
     lonF2 = None
 
     for i in range(1, nFrames):
+        if ignoreFirstFrames is not None and i * frameStride < ignoreFirstFrames:
+            # print(f"ignoring frame {i} (stride={frameStride}, product={i*frameStride}), "
+            #       f"skpping first {ignoreFirstFrames}")
+            continue
+
         if allFrameH[i] < lightOffThreshold and allFrameH[i - 1] > lightOffThreshold and not loffSet and findLightOff:
             loffF1 = i - 1
             loffF2 = i
@@ -606,6 +626,7 @@ def findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, heuri
         #         frame = frames[frameI, :, :, :].reshape((height, width, 3))
         #         heur = getFrameColorHeuristic(frame)
         #         print(heur)
+        print("thresh={}, loffF2={}, lonF2={}".format(thresh, loffF2, lonF2))
 
         for frameI in range(nFrames):
             frame = frames[frameI, :, :, :].reshape((height, width, 3))
@@ -627,21 +648,23 @@ def findLightTimesLinearUSB(videoFileName, frameStart, frameEnd, frameStride, fi
                             showVideo=False, lightOnThreshold=None, lightOffThreshold=None):
     def hfunc(frame):
         return getFrameColorHeuristic(frame)[1][1]
-    return findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, hfunc, findLightOff=findLightOff, findLightOn=findLightOn,
-                                showVideo=showVideo, lightOnThreshold=lightOnThreshold, lightOffThreshold=lightOffThreshold)
+    return findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, hfunc, findLightOff=findLightOff,
+                                findLightOn=findLightOn, showVideo=showVideo, lightOnThreshold=lightOnThreshold,
+                                lightOffThreshold=lightOffThreshold)
 
 
 def findLightTimesLinearTrodes(videoFileName, frameStart, frameEnd, frameStride, findLightOff=True, findLightOn=True,
-                               showVideo=False, lightOnThreshold=None, lightOffThreshold=None):
+                               showVideo=False, lightOnThreshold=None, lightOffThreshold=None, ignoreFirstFrames=None):
     def hfunc(frame):
         return np.sum(frame)
-    return findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, hfunc, findLightOff=findLightOff, findLightOn=findLightOn,
-                                showVideo=showVideo, lightOnThreshold=lightOnThreshold, lightOffThreshold=lightOffThreshold)
+    return findLightTimesLinear(videoFileName, frameStart, frameEnd, frameStride, hfunc, findLightOff=findLightOff,
+                                findLightOn=findLightOn, showVideo=showVideo, lightOnThreshold=lightOnThreshold,
+                                lightOffThreshold=lightOffThreshold, ignoreFirstFrames=ignoreFirstFrames)
 
 
-def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
-                        greyDiffThreshHigh=100, greyDiffThreshLow=25, lightOnThreshold=0.1, lightOffThreshold=0.04,
-                        maxNumBatches=None, showVideo=False, outputFileName=None, overwriteMode="ask", initialSkipAmt=8):
+def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000, greyDiffThreshHigh=100, greyDiffThreshLow=25,
+                        lightOnThreshold=0.1, lightOffThreshold=0.04, maxNumBatches=None, showVideo=False,
+                        outputFileName=None, overwriteMode="ask", initialSkipAmt=8):
 
     if outputFileName is None:
         outputFileName = videoFileName + ".usbLightTimes"
@@ -671,11 +694,11 @@ def processUSBVideoData(videoFileName, batchStart=0, frameBatchSize=1000,
             print("Unknown overwrite mode {}".format(overwriteMode))
             return
 
-    probe = ffmpeg.probe(videoFileName)
-    video_stream = next(
-        (stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-    width = int(video_stream['width'])
-    height = int(video_stream['height'])
+    # probe = ffmpeg.probe(videoFileName)
+    # video_stream = next(
+    #     (stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+    # width = int(video_stream['width'])
+    # height = int(video_stream['height'])
 
     lightsOffFrame = None
     lightsOnFrame = None
@@ -813,4 +836,10 @@ if __name__ == "__main__":
     # videoName = "/media/WDC6/B13/bradtasksessions/20220308_140707/20220308_140707.1.h264"
     # processRawTrodesVideo(videoName, overwriteMode="always", showVideo=True, batchStart=15*12*60)
 
-    runAllBradTask()
+    # runAllBradTask()
+
+    toff, ton = getTrodesLightTimes(
+        "/media/WDC8/B16/bradtasksessions/20221113_105126/20221113_105126.1.h264", showVideo=True)
+
+    uoff, uon = processUSBVideoData(
+        "/media/WDC8/videos/labvideos/trimmed/B16/20221113_1.mkv", overwriteMode="rename", showVideo=True)

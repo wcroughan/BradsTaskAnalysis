@@ -825,6 +825,15 @@ def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAway
             # ax.setp(ax.spines.values(), color=color)
             # ax.setp([ax.get_xticklines(), ax.get_yticklines()], color=color)
 
+        # Flip things around so 2 is bottom left, 47 is top right
+        w2x, w2y = sesh.well_coords_map["2"]
+        w7x, w7y = sesh.well_coords_map["7"]
+        w47x, w47y = sesh.well_coords_map["47"]
+        if w2x > w7x:
+            ax.invert_xaxis()
+        if w47y < w7y:
+            ax.invert_yaxis()
+
 
 def plotIndividualAndAverage(ax, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std",
                              individualZOrder=1, averageZOrder=2):

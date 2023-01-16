@@ -1,6 +1,10 @@
 import numpy as np
 from UtilFunctions import offWall
 from PlotUtil import boxPlot, PlotCtx
+import math
+from consts import all_well_names
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 
 
 class TrialMeasure():
@@ -90,13 +94,36 @@ class WellMeasure():
         self.dotColors = []
         self.dotColorsBySession = []
         self.runStats = runStats
+        self.numSessions = len(sessionList)
+
+        self.allMeasureValsBySession = []
+        self.seshNames = []
+        self.homeWells = []
+        self.awayWells = []
+        self.measureMin = np.inf
+        self.measureMax = -np.inf
 
         if measureFunc is not None:
             assert sessionList is not None
             # print(sessionList)
             for si, sesh in enumerate(sessionList):
+                measureDict = {}
+                for well in all_well_names:
+                    v = measureFunc(sesh, well)
+                    measureDict[well] = v
+                    if v > self.measureMax:
+                        self.measureMax = v
+                    if v < self.measureMin:
+                        self.measureMin = v
+                self.allMeasureValsBySession.append(measureDict)
+                self.seshNames.append(sesh.name)
+                self.homeWells.append(sesh.home_well)
+                self.awayWells.append(sesh.visited_away_wells)
+
+            for si, sesh in enumerate(sessionList):
                 # print(sesh.home_well_find_times)
-                homeval = measureFunc(sesh, sesh.home_well)
+                # homeval = measureFunc(sesh, sesh.home_well)
+                homeval = self.allMeasureValsBySession[si][sesh.home_well]
                 self.measure.append(homeval)
                 self.wellCategory.append("home")
                 self.dotColors.append(si)
@@ -114,7 +141,8 @@ class WellMeasure():
                     self.withinSessionMeasureDifference.append(np.nan)
                 else:
                     for ai, aw in enumerate(aways):
-                        av = measureFunc(sesh, aw)
+                        # av = measureFunc(sesh, aw)
+                        av = self.allMeasureValsBySession[si][aw]
                         awayVals.append(av)
                         self.measure.append(av)
                         self.wellCategory.append("away")
@@ -134,7 +162,8 @@ class WellMeasure():
                 for isi, isesh in enumerate(sessionList):
                     if isi == si:
                         continue
-                    osv = measureFunc(isesh, sesh.home_well)
+                    # osv = measureFunc(isesh, sesh.home_well)
+                    osv = self.allMeasureValsBySession[isi][sesh.home_well]
                     otherSeshVals.append(osv)
                     self.measure.append(osv)
                     self.wellCategory.append("othersesh")
@@ -152,7 +181,7 @@ class WellMeasure():
         self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
 
     def makeFigures(self, plotCtx: PlotCtx, makeMeasureBoxPlot=True, makeDiffBoxPlot=True,
-                    makeOtherSeshBoxPlot=True, makeOtherSeshDiffBoxPlot=True):
+                    makeOtherSeshBoxPlot=True, makeOtherSeshDiffBoxPlot=True, makeEverySessionPlot=True):
         figName = self.name.replace(" ", "_")
 
         if makeMeasureBoxPlot:
@@ -232,3 +261,48 @@ class WellMeasure():
                 if self.runStats:
                     yvals[figName + "_othersesh_diff"] = self.acrossSessionMeasureDifference
                     cats["condition"] = self.conditionCategoryBySession
+
+        if makeEverySessionPlot:
+            numCols = math.ceil(math.sqrt(self.numSessions))
+            zorder = 2
+            wellSize = mpl.rcParams['lines.markersize']**2 / 4
+
+            with plotCtx.newFig(figName + "_every_session", subPlots=(numCols, numCols), figScale=0.3) as axs:
+                for si, (sk, cond) in enumerate(zip(self.allMeasureValsBySession, self.conditionCategoryBySession)):
+                    ax = axs[si // numCols, si % numCols]
+
+                    valImg = np.empty((6, 6))
+                    awayCoords = []
+                    for wr in range(6):
+                        for wc in range(6):
+                            wname = 8*wr + wc + 2
+                            valImg[wr, wc] = sk[wname]
+
+                            if wname == self.homeWells[si]:
+                                homeCoords = (wc, wr)
+                            elif wname in self.awayWells[si]:
+                                awayCoords.append((wc, wr))
+                    im = ax.imshow(valImg, cmap=mpl.colormaps["coolwarm"],
+                                   vmin=self.measureMin, vmax=self.measureMax)
+
+                    ax.scatter(homeCoords[0], homeCoords[1], c="red", zorder=zorder, s=wellSize)
+                    for awx, awy in awayCoords:
+                        ax.scatter(awx, awy, c="blue", zorder=zorder, s=wellSize)
+
+                    ax.invert_yaxis()
+                    ax.tick_params(axis="both", which="both", label1On=False,
+                                   label2On=False, tick1On=False, tick2On=False)
+
+                    c = "orange" if cond == "SWR" else "cyan"
+                    for v in ax.spines.values():
+                        v.set_color(c)
+                        v.set_linewidth(3)
+                    ax.set_title(self.seshNames[si], fontdict={'fontsize': 6})
+
+                for si in range(self.numSessions, numCols * numCols):
+                    ax = axs[si // numCols, si % numCols]
+                    ax.cla()
+                    ax.tick_params(axis="both", which="both", label1On=False,
+                                   label2On=False, tick1On=False, tick2On=False)
+
+                plt.colorbar(im, ax=ax)

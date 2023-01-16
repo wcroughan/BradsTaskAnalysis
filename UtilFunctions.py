@@ -823,21 +823,10 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions += ["20220222_2"]
         # video skips
         ret.excluded_sessions += ["20220304_2"]
+        ret.excluded_sessions += ["20220307_1"]
 
         # Cable got messed up during the task, pulley wasn't rolling horizontally
         ret.excluded_sessions += ["20211217_1"]
-
-        # THE FOLLOWING SHOULD BE SALVAGABLE JUST NEED TO CLEAN IT
-        #  timing is off and/or tracking not working maybe
-        # ret.excluded_sessions += ["20220201_2"]
-        ret.minimum_date = "20220201"
-        # timing a bit off, tracking not working
-        ret.excluded_sessions += ["20220305_2"]
-        # tracking didn't work
-        ret.excluded_sessions += ["20220306_2"]
-        ret.excluded_sessions += ["20220309_1"]
-        # timing off
-        ret.excluded_sessions += ["20220307_1"]
 
         ret.rerun_trodes_videos = []
         ret.rerun_usb_videos = []
@@ -860,16 +849,9 @@ def getInfoForAnimal(animalName):
         ret.DEFAULT_RIP_BAS_TET = 2
         # video skips
         ret.excluded_sessions += ["20220307_2"]
+        ret.excluded_sessions += ["20220310_2"]
         # forgot to turn stim on until after first home well
         ret.excluded_sessions += ["20220311_1"]
-
-        # THE FOLLOWING SHOULD BE SALVAGABLE JUST NEED TO CLEAN IT
-        # timing off
-        ret.excluded_sessions += ["20220306_2"]
-        # tracking didn't work
-        ret.excluded_sessions += ["20220310_1"]
-        ret.excluded_sessions += ["20220310_2"]
-        ret.excluded_sessions += ["20220311_2"]
 
         ret.rerun_usb_videos = []
         ret.rerun_trodes_videos = []
@@ -893,10 +875,10 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions = []
 
         # Add back in later, just issue with info file
-        ret.excluded_sessions += ["20221114_1"]
-        ret.excluded_sessions += ["20221115_1"]
-        ret.excluded_sessions += ["20221116_1"]
-        ret.excluded_sessions += ["20221118_1"]
+        # ret.excluded_sessions += ["20221114_1"]
+        # ret.excluded_sessions += ["20221115_1"]
+        # ret.excluded_sessions += ["20221116_1"]
+        # ret.excluded_sessions += ["20221118_1"]
 
         # Found wells doesn't seem like it lines up perfectly with usb video, check it out and fix
         ret.excluded_sessions += ["20221113_2"]
@@ -975,7 +957,7 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions += ["20220919_2"]
 
         # USB and trodes misaligned
-        ret.excluded_sessions += ["20221113_1"]
+        # ret.excluded_sessions += ["20221113_1"]
 
         # Just stayed in the corner for ten minutes then I took him out
         ret.excluded_sessions += ["20221118_1"]
@@ -989,7 +971,7 @@ def getInfoForAnimal(animalName):
         ret.excluded_sessions += ["20221103_1"]
 
         # USB video starts right after I put him in
-        ret.excluded_sessions += ["20221109_1"]
+        # ret.excluded_sessions += ["20221109_1"]
 
         ret.DEFAULT_RIP_DET_TET = 4
         ret.DEFAULT_RIP_BAS_TET = 7
