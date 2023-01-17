@@ -1135,9 +1135,6 @@ class BTSession:
         return ents, exts, wellCoords
 
     def getSpotlightScore(self, inProbe: bool, w: int, angleCutoff=70.0, timeInterval=None, test=False):
-        if timeInterval is not None:
-            raise Exception("Not implemented")
-
         if test:
             w11x, w11y = self.well_coords_map["11"]
             w28x, w28y = self.well_coords_map["28"]
@@ -1149,13 +1146,23 @@ class BTSession:
             y = self.probe_pos_ys
             # mv = self.probe_is_mv[:-1]
             mv = self.probe_bout_category[:-1] == self.BOUT_STATE_EXPLORE
+            ts = self.probe_pos_ts
         else:
             x = self.bt_pos_xs
             y = self.bt_pos_ys
             # mv = self.bt_is_mv[:-1]
             mv = self.bt_bout_category[:-1] == self.BOUT_STATE_EXPLORE
+            ts = self.bt_pos_ts
         wellCoords = self.well_coords_map[str(w)]
         wellX, wellY = wellCoords
+
+        if timeInterval is not None:
+            assert len(x) == len(ts)
+            dur_idx = np.searchsorted(ts, np.array(
+                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
+            x = x[dur_idx[0]:dur_idx[1]]
+            y = y[dur_idx[0]:dur_idx[1]]
+            mv = mv[dur_idx[0]:dur_idx[1]-1]
 
         dx = np.diff(x)
         dy = np.diff(y)
@@ -1172,19 +1179,26 @@ class BTSession:
         return np.mean(inSpotlight[mv])
 
     def getDotProductScore(self, inProbe: bool, w: int, timeInterval=None, test=False):
-        if timeInterval is not None:
-            raise Exception("Not implemented")
-
         if inProbe:
             x = self.probe_pos_xs
             y = self.probe_pos_ys
             mv = self.probe_is_mv[:-1]
+            ts = self.probe_pos_ts
         else:
             x = self.bt_pos_xs
             y = self.bt_pos_ys
             mv = self.bt_is_mv[:-1]
+            ts = self.bt_pos_ts
         wellCoords = self.well_coords_map[str(w)]
         wellX, wellY = wellCoords
+
+        if timeInterval is not None:
+            assert len(x) == len(ts)
+            dur_idx = np.searchsorted(ts, np.array(
+                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
+            x = x[dur_idx[0]:dur_idx[1]]
+            y = y[dur_idx[0]:dur_idx[1]]
+            mv = mv[dur_idx[0]:dur_idx[1]-1]
 
         dx = np.diff(x)
         dy = np.diff(y)

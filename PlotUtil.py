@@ -10,6 +10,9 @@ import warnings
 import random
 from enum import IntEnum, auto
 import matplotlib.image as mpimg
+from matplotlib.offsetbox import AnchoredText
+import pickle
+from matplotlib.axes import Axes
 
 
 class ShufRes:
@@ -89,6 +92,16 @@ class ShuffSpec:
             return False
         return self.value < other.value
 
+    def __eq__(self, __o: object) -> bool:
+        if not isinstance(__o, ShuffSpec):
+            return False
+        return self.shuffType == __o.shuffType and self.categoryName == __o.categoryName and \
+            (self.value is None) == (__o.value is None) and (
+                self.value is None or self.value == __o.value)
+
+    def __ne__(self, __o: object) -> bool:
+        return not self == __o
+
 
 class ShuffleResult:
     def __init__(self, specs=[], diff=np.nan, shuffleDiffs=None, dataNames=[]):
@@ -105,6 +118,13 @@ class ShuffleResult:
         ret.specs = [s.copy() for s in self.specs]
         ret.dataNames = self.dataNames.copy()
         return ret
+
+    def getPVals(self):
+        pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
+                                  axis=0) / self.shuffleDiffs.shape[0]
+        pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
+                                  axis=0) / self.shuffleDiffs.shape[0]
+        return (pvals1 + pvals2) / 2
 
     def getFullInfoString(self, linePfx=""):
         sdmin = np.min(self.shuffleDiffs, axis=0)
@@ -148,6 +168,7 @@ class PlotCtx:
         else:
             self.infoFileName = infoFileName
         self.outputSubDir = ""
+        self.outputSubDirStack = []
         self.setOutputDir(outputDir)
         self.figName = ""
         self.createdPlots = set()
@@ -160,7 +181,9 @@ class PlotCtx:
         self.persistentInfoValues = {}
         self.savedYVals = {}
         self.savedCategories = {}
+        self.savedPersistentCategories = {}
         self.savedInfoVals = {}
+        self.savedImmediateShuffles = {}
         self.numShuffles = 0
 
         self.rng = np.random.default_rng(seed=randomSeed)
@@ -169,13 +192,14 @@ class PlotCtx:
 
     def __enter__(self):
         if self.withStats:
-            return (self.axs, self.yvals, self.categories, self.infoVals)
+            return (self.axs, self.yvals, self.categories, self.infoVals, self.immediateShuffles)
         else:
             return self.axs
 
     def newFig(self, figName, subPlots=None, figScale=1.0, priority=None, withStats=False,
                showPlot=None, savePlot=None, enableOverwriteSameName=False):
 
+        # print(self.savedPersistentCategories)
         fname = os.path.join(self.outputDir, self.outputSubDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
@@ -185,6 +209,7 @@ class PlotCtx:
         self.priority = priority
         self.withStats = withStats
         self.yvals = {}
+        self.immediateShuffles = []
         self.categories = {}
         self.infoVals = {}
 
@@ -202,6 +227,7 @@ class PlotCtx:
             self.fig.set_figheight(self.figSizeY * figScale)
             self.fig.set_figwidth(self.figSizeX * figScale)
 
+        # print(self.savedPersistentCategories)
         return self
 
     def continueFig(self, figName, priority=None, showPlot=None, savePlot=None, enableOverwriteSameName=False):
@@ -213,6 +239,7 @@ class PlotCtx:
         self.figName = figName
         self.priority = priority
         self.yvals = {}
+        self.immediateShuffles = []
         self.categories = {}
         self.infoVals = {}
         return self
@@ -230,74 +257,133 @@ class PlotCtx:
         self.priorityLevel = priorityLevel
 
     def __exit__(self, *args):
-        if self.priority is None or self.priorityLevel is None or self.priority <= self.priorityLevel:
-            if self.withStats and len(self.yvals) > 0:
-                statsName = self.figName.split("/")[-1]
-                assert len(self.yvals) > 0
-                assert len(self.persistentCategories) + len(self.categories) > 0
+        if self.priority is not None and self.priorityLevel is not None and self.priority > self.priorityLevel:
+            return
 
-                savedLen = None
-                for k in self.yvals:
-                    if savedLen is None:
-                        savedLen = len(self.yvals[k])
-                    else:
-                        assert len(self.yvals[k]) == savedLen
-                for k in self.categories:
-                    assert len(self.categories[k]) == savedLen
-                for k in self.infoVals:
-                    assert len(self.infoVals[k]) == savedLen
+        if self.withStats and len(self.yvals) > 0:
+            # print(self.savedPersistentCategories)
+            statsName = self.figName.split("/")[-1]
+            assert len(self.yvals) > 0
+            assert len(self.persistentCategories) + len(self.categories) > 0
 
-                for k in self.persistentCategories:
-                    if k not in self.categories:
-                        self.categories[k] = [self.persistentCategories[k]] * savedLen
-                    else:
-                        print(
-                            "WARNING: overlap between persistent category and this-plot category, "
-                            "both named {}".format(k))
-
-                for k in self.persistentInfoValues:
-                    if k not in self.infoVals:
-                        self.infoVals[k] = [self.persistentInfoValues[k]] * savedLen
-                    else:
-                        print(
-                            "WARNING: overlap between persistent info category and this-plot category, "
-                            "both named {}".format(k))
-
-                if statsName in self.savedYVals:
-                    savedYVals = self.savedYVals[statsName]
-                    for k in savedYVals:
-                        savedYVals[k] = np.append(savedYVals[k], self.yvals[k])
-                    savedCategories = self.savedCategories[statsName]
-                    for k in savedCategories:
-                        savedCategories[k] = np.append(savedCategories[k], self.categories[k])
-                    savedInfoVals = self.savedInfoVals[statsName]
-                    for k in savedInfoVals:
-                        savedInfoVals[k] = np.append(savedInfoVals[k], self.infoVals[k])
+            savedLen = None
+            for k in self.yvals:
+                if savedLen is None:
+                    savedLen = len(self.yvals[k])
                 else:
-                    self.savedYVals[statsName] = self.yvals
-                    self.savedCategories[statsName] = self.categories
-                    self.savedInfoVals[statsName] = self.infoVals
+                    assert len(self.yvals[k]) == savedLen
+            for k in self.categories:
+                assert len(self.categories[k]) == savedLen
+            for k in self.infoVals:
+                assert len(self.infoVals[k]) == savedLen
 
-            if (self.temporarySavePlot is not None and self.temporarySavePlot) or \
-                    (self.temporarySavePlot is None and self.savePlot):
-                self.saveFig()
+            for k in self.persistentCategories:
+                if k not in self.categories:
+                    # self.categories[k] = [self.persistentCategories[k]] * savedLen
+                    # Now gonna save these separately
+                    pass
+                else:
+                    print(
+                        "WARNING: overlap between persistent category and this-plot category, "
+                        "both named {}".format(k))
 
-            if (self.temporaryShowPlot is not None and self.temporaryShowPlot) or \
-                    (self.temporaryShowPlot is None and self.showPlot):
-                self.showedLastFig = True
-                plt.show()
-                self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
+            for k in self.persistentInfoValues:
+                if k not in self.infoVals:
+                    self.infoVals[k] = [self.persistentInfoValues[k]] * savedLen
+                else:
+                    print(
+                        "WARNING: overlap between persistent info category and this-plot category, "
+                        "both named {}".format(k))
+
+            if statsName in self.savedYVals:
+                savedYVals = self.savedYVals[statsName]
+                for k in savedYVals:
+                    savedYVals[k] = np.append(savedYVals[k], self.yvals[k])
+                savedCategories = self.savedCategories[statsName]
+                for k in savedCategories:
+                    savedCategories[k] = np.append(savedCategories[k], self.categories[k])
+                savedPersistentCategories = self.savedPersistentCategories[statsName]
+                for k in savedPersistentCategories:
+                    savedPersistentCategories[k] = np.append(savedPersistentCategories[k], [
+                                                             self.persistentCategories[k]] * savedLen)
+                savedInfoVals = self.savedInfoVals[statsName]
+                for k in savedInfoVals:
+                    savedInfoVals[k] = np.append(savedInfoVals[k], self.infoVals[k])
+                savedImmediateShuffles = self.savedImmediateShuffles[statsName]
+                if savedImmediateShuffles is not None:
+                    print(savedImmediateShuffles)
+                    print(self.immediateShuffles)
+                    if len(self.immediateShuffles) == 0 or savedImmediateShuffles != self.immediateShuffles[0][0]:
+                        raise Exception("Repeated figure must have identical immediate shuffle")
+                elif len(self.immediateShuffles) != 0:
+                    raise Exception("Repeated figure must have identical immediate shuffle")
             else:
-                self.showedLastFig = False
+                self.savedYVals[statsName] = self.yvals
+                self.savedCategories[statsName] = self.categories
+                self.savedPersistentCategories[statsName] = self.persistentCategories.copy()
+                for k in self.savedPersistentCategories[statsName]:
+                    self.savedPersistentCategories[statsName][k] = [
+                        self.savedPersistentCategories[statsName][k]] * savedLen
+                self.savedInfoVals[statsName] = self.infoVals
+                self.savedImmediateShuffles[statsName] = None if len(
+                    self.immediateShuffles) == 0 else self.immediateShuffles[0][0].copy()
 
-    def setFigSize(self, width, height):
-        pass
+            if len(self.immediateShuffles) > 0:
+                ss = [len(s) for s, _ in self.immediateShuffles]
+                self.immediateShuffles = [x for _, x in sorted(zip(ss, self.immediateShuffles))]
+                shufSpecs = [x for x, _ in self.immediateShuffles]
+                numShuffles = [x for _, x in self.immediateShuffles]
+                shufCats = self.categories.copy()
+                shufCats.update(self.yvals)
+                shufCats.update(self.infoVals)
+                df = pd.DataFrame(data=shufCats)
+                # print("\n".join([str(s) for s in shufSpecs]))
+                immediateRes = self._doShuffles(df, shufSpecs, list(
+                    self.yvals.keys()), numShuffles=numShuffles)
+                # print(immediateRes)
+                pval = None
+                for rr in immediateRes:
+                    # print(rr)
+                    for r in rr:
+                        # print(r.getFullInfoString(linePfx="\t"))
+                        if pval is not None:
+                            raise Exception("Should only be doing one shuffle here!")
+                        pval = r.getPVals()[0]
+
+                if isinstance(self.axs, list):
+                    raise Exception("Can't have multiple plots and do shuffle")
+
+                self.axs.add_artist(AnchoredText(f"p={pval}", "upper center"))
+
+        if (self.temporarySavePlot is not None and self.temporarySavePlot) or \
+                (self.temporarySavePlot is None and self.savePlot):
+            self.saveFig()
+
+        if (self.temporaryShowPlot is not None and self.temporaryShowPlot) or \
+                (self.temporaryShowPlot is None and self.showPlot):
+            self.showedLastFig = True
+            plt.show()
+            self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
+        else:
+            self.showedLastFig = False
+
+        # print(self.savedPersistentCategories)
 
     def saveFig(self):
         if self.figName[0] != "/":
             fname = os.path.join(self.outputDir, self.outputSubDir, self.figName)
         else:
             fname = self.figName
+
+        if isinstance(self.axs, Axes):
+            for _ in range(3):
+                try:
+                    with open(fname + ".pkl", "wb") as fid:
+                        pickle.dump(self.axs, fid)
+                    break
+                except RuntimeError:
+                    pass
+
         plt.savefig(fname, bbox_inches="tight", dpi=200)
         self.writeToInfoFile("wrote file {}".format(fname))
         if self.verbosity >= 3:
@@ -323,7 +409,23 @@ class PlotCtx:
             outputDir, self.infoFileName)
 
     def setOutputSubDir(self, outputSubDir):
+        self.outputSubDirStack = [outputSubDir]
         self.outputSubDir = outputSubDir
+        if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
+            os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
+
+    def pushOutputSubDir(self, outputSubDir):
+        self.outputSubDirStack.append(outputSubDir)
+        self.outputSubDir = os.path.join(*self.outputSubDirStack)
+        if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
+            os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
+
+    def popOutputSubDir(self):
+        self.outputSubDirStack.pop()
+        if len(self.outputSubDirStack) == 0:
+            self.outputSubDir = ""
+        else:
+            self.outputSubDir = os.path.join(*self.outputSubDirStack)
         if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
             os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
 
@@ -331,31 +433,111 @@ class PlotCtx:
         with open(self.infoFileFullName, "a") as f:
             f.write(txt + suffix)
 
-    def makeCombinedFigs(self, outputSubDir="combined"):
+    def makeCombinedFigs(self, outputSubDir="combined", suggestedSubPlotLayout=None):
         if not os.path.exists(os.path.join(self.outputDir, outputSubDir)):
             os.makedirs(os.path.join(self.outputDir, outputSubDir))
+
+        if suggestedSubPlotLayout is not None:
+            assert len(suggestedSubPlotLayout) == 2
 
         for figFileName in self.savedFigsByName:
             figSubDirs = self.savedFigsByName[figFileName]
             if len(figSubDirs) <= 1:
                 continue
 
-            self.clearFig()
+            if suggestedSubPlotLayout is not None and \
+                    len(figSubDirs) == suggestedSubPlotLayout[0] * suggestedSubPlotLayout[1]:
+                subPlotLayout = suggestedSubPlotLayout
+            else:
+                subPlotLayout = (1, len(figSubDirs))
 
+            self.clearFig()
             self.axs.remove()
-            self.axs = self.fig.subplots(1, len(figSubDirs))
-            self.fig.set_figheight(self.figSizeY)
-            self.fig.set_figwidth(self.figSizeX * len(figSubDirs))
+            self.axs = self.fig.subplots(subPlotLayout[0], subPlotLayout[1])
+            self.fig.set_figheight(self.figSizeY * subPlotLayout[0])
+            self.fig.set_figwidth(self.figSizeX * subPlotLayout[1])
 
             for sdi, sd in enumerate(figSubDirs):
                 im = mpimg.imread(os.path.join(self.outputDir, sd, figFileName + ".png"))
                 # self.axs[sdi].set_xticks([])
                 # self.axs[sdi].set_yticks([])
-                self.axs[sdi].axis('off')
-                self.axs[sdi].set_title(sd)
-                self.axs[sdi].imshow(im)
+                if len(self.axs.shape) > 1:
+                    axc = sdi % subPlotLayout[1]
+                    ayc = sdi // subPlotLayout[1]
+                    self.axs[ayc, axc].axis('off')
+                    self.axs[ayc, axc].set_title(sd)
+                    self.axs[ayc, axc].imshow(im)
+                else:
+                    self.axs[sdi].axis('off')
+                    self.axs[sdi].set_title(sd)
+                    self.axs[sdi].imshow(im)
 
             fname = os.path.join(self.outputDir, outputSubDir, figFileName)
+            plt.savefig(fname, bbox_inches="tight", dpi=200)
+
+            self.writeToInfoFile("wrote file {}".format(fname))
+            if self.verbosity >= 3:
+                print("wrote file {}".format(fname))
+
+            firstPickleFName = os.path.join(self.outputDir, figSubDirs[0], figFileName + ".pkl")
+            if not os.path.exists(firstPickleFName):
+                continue
+
+            self.clearFig()
+            self.axs.remove()
+            self.axs = self.fig.subplots(subPlotLayout[0], subPlotLayout[1])
+            self.fig.set_figheight(self.figSizeY * subPlotLayout[0])
+            self.fig.set_figwidth(self.figSizeX * subPlotLayout[1])
+
+            ymin = np.inf
+            ymax = -np.inf
+
+            loaded_axs = []
+            for sdi, sd in enumerate(figSubDirs):
+                pickleFName = os.path.join(self.outputDir, sd, figFileName + ".pkl")
+                with open(pickleFName, "rb") as fid:
+                    ax = pickle.load(fid)
+                    ax.set_title(sd)
+                    loaded_axs.append(ax)
+                y1, y2 = ax.get_ylim()
+                if y1 < ymin:
+                    ymin = y1
+                if y2 > ymax:
+                    ymax = y2
+
+            # print(ymin, ymax)
+            ax_xbuf = 0.2
+            ax_xsz = 1.7
+            ax_ysz = 1.7
+            ax_xstep = 2
+            ax_ystep = 2
+            ax_ybuf = 0.1
+            for ai, ax in enumerate(loaded_axs):
+                axc = ai % subPlotLayout[1]
+                ayc = ai // subPlotLayout[1]
+                assert isinstance(ax, Axes)
+                ax.figure = self.fig
+                self.fig.add_axes(ax)
+                ax.set_ylim(ymin, ymax)
+                if len(self.axs.shape) > 1:
+                    self.axs[ayc, axc].remove()
+                else:
+                    self.axs[ai].remove()
+
+                p = (axc * ax_xstep + ax_xbuf, ax_ybuf +
+                     (subPlotLayout[0] - ayc - 1) * ax_ystep,  ax_xsz, ax_ysz)
+                # print(ax.get_title(), p)
+                ax.set_position(p)
+                if axc > 0:
+                    # ax.tick_params(axis="y", which="both", label1On=False,
+                    #                label2On=False)
+                    ax.set_ylabel("")
+                if ayc < subPlotLayout[1] - 1:
+                    ax.set_xlabel("")
+
+            plt.figure(self.fig)
+
+            fname = os.path.join(self.outputDir, outputSubDir, figFileName + "_aligned")
             plt.savefig(fname, bbox_inches="tight", dpi=200)
 
             self.writeToInfoFile("wrote file {}".format(fname))
@@ -365,10 +547,63 @@ class PlotCtx:
     def printShuffleResult(self, results):
         print("\n".join([str(v) for v in sorted(results)]))
 
+    def runImmidateShufflesAcrossPersistentCategories(self, numShuffles=100):
+        self.numShuffles = numShuffles
+        for plotName in self.savedCategories:
+            categories = self.savedCategories[plotName]
+            persistentCategories = self.savedPersistentCategories[plotName]
+            yvals = self.savedYVals[plotName]
+            infoVals = self.savedInfoVals[plotName]
+            immediateShuffles = self.savedImmediateShuffles[plotName]
+            if immediateShuffles is None:
+                print(f"No immediate shuffles for {plotName}, skipping")
+                continue
+            print("========================================\nRunning earlier shuffles from "
+                  f"{plotName} across persistent categories")
+            print("Evaluating {} yvals:".format(len(yvals)))
+            for yvalName in yvals:
+                print("\t{}".format(yvalName))
+            print(f"Original spec: {immediateShuffles}")
+            print("Shuffling {} categories:".format(len(persistentCategories)))
+            for catName in persistentCategories:
+                print("\t{}\t{}".format(catName, set(persistentCategories[catName])))
+                if not isinstance(persistentCategories[catName], np.ndarray):
+                    persistentCategories[catName] = np.array(persistentCategories[catName])
+
+            for yvalName in yvals:
+                assert yvalName not in categories
+                assert yvalName not in persistentCategories
+
+            catsToShuffle = list(persistentCategories.keys())
+            todel = set()
+            for cat in catsToShuffle:
+                vals = set(persistentCategories[cat])
+                if len(vals) <= 1:
+                    todel.add(cat)
+                    print("Category {} has only one val ({}). Not including in shuffle for plot {}".format(
+                        cat, vals, plotName))
+
+            for td in todel:
+                catsToShuffle.remove(td)
+
+            categories.update(yvals)
+            categories.update(infoVals)
+            categories.update(persistentCategories)
+            df = pd.DataFrame(data=categories)
+            specs = self.getAllShuffleSpecsWithLeaf(
+                df, leaf=immediateShuffles, columnsToShuffle=catsToShuffle)
+            ss = [len(s) for s in specs]
+            specs = [x for _, x in sorted(zip(ss, specs))]
+            print("\n".join([str(s) for s in specs]))
+            self._doShuffles(df, specs, list(yvals.keys()))
+            # print(sr)
+
     def runShuffles(self, numShuffles=100):
         self.numShuffles = numShuffles
         for plotName in self.savedCategories:
             categories = self.savedCategories[plotName]
+            persistentCategories = self.savedPersistentCategories[plotName]
+            categories.update(persistentCategories)
             yvals = self.savedYVals[plotName]
             infoVals = self.savedInfoVals[plotName]
             print("========================================\nRunning shuffles from plot", plotName)
@@ -586,6 +821,22 @@ class PlotCtx:
                 # print("{} ret: {}".format(catName, "\n\t".join([str(r) for r in ret])))
             return ret
 
+    def getAllShuffleSpecsWithLeaf(self, df: pd.DataFrame, leaf: ShuffSpec, columnsToShuffle=None):
+        if columnsToShuffle is None:
+            columnsToShuffle = set(df.columns)
+            columnsToShuffle.remove(leaf.categoryName)
+            columnsToShuffle = list(columnsToShuffle)
+
+        ret = [leaf]
+        for col in columnsToShuffle:
+            otherCols = [c for c in columnsToShuffle if c != col]
+            rec = self.getAllShuffleSpecsWithLeaf(df, leaf, otherCols)
+            for r in rec:
+                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL,
+                                      categoryName=col, value=None)] + r)
+
+        return ret
+
     def getAllShuffleSpecs(self, df, columnsToShuffle=None):
         if columnsToShuffle is None:
             columnsToShuffle = list(df.columns)
@@ -639,9 +890,6 @@ class PlotCtx:
             assert isinstance(s, ShuffSpec)
             assert s.shuffType != ShuffSpec.ShuffType.UNSPECIFIED
             assert s.shuffType != ShuffSpec.ShuffType.GLOBAL or si == len(spec) - 1
-
-        # print(df)
-        # print("\t", spec)
 
         s = spec[0]
         if s.shuffType == ShuffSpec.ShuffType.GLOBAL:
@@ -744,29 +992,37 @@ class PlotCtx:
 
             return ret
 
-    def _doShuffles(self, df, specs, dataNames):
+    def _doShuffles(self, df, specs, dataNames, numShuffles=None):
+        if numShuffles is not None:
+            assert len(numShuffles) == len(specs)
+
         columnsToShuffle = set()
         for spec in specs:
             for s in spec:
                 columnsToShuffle.add(s.categoryName)
 
-        print(df)
+        # print(df)
         valSet = {}
         for col in columnsToShuffle:
             vs = set(df[col])
             if len(vs) <= 1:
                 raise Exception("Only one value {} for category {}".format(vs, col))
             valSet[col] = vs
-        print("created valset:", valSet)
+        # print("created valset:", valSet)
 
+        ret = []
         with open(self.infoFileFullName, "a") as f:
-            for spec in specs:
-                print(f'\r{spec}                 ', end='')
+            for si, spec in enumerate(specs):
+                # print(f'\r{spec}                 ', end='')
+                if numShuffles is not None:
+                    self.numShuffles = numShuffles[si]
                 res = self._doShuffleSpec(df, spec, valSet, dataNames)
+                ret.append(res)
                 for r in res:
                     # print(r.getFullInfoString(linePfx="\t"))
                     f.write(r.getFullInfoString(linePfx="\t") + "\n")
-        print("")
+        # print("")
+        return ret
 
     def getUniqueInfoValue(self):
         self.uniqueInfoValue += 1
@@ -860,8 +1116,8 @@ def pctilePvalSig(val):
     if val > 0.01 and val < 0.99:
         return 2
     if val > 0.001 and val < 0.999:
-        return 2
-    return 3
+        return 3
+    return 4
 
 
 def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=None, violin=False):
@@ -914,6 +1170,7 @@ def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=N
         swarmDotSize = 3
         with warnings.catch_warnings():
             warnings.filterwarnings("error", category=UserWarning)
+            forcePlot = True
             while not plotWorked:
                 try:
                     # p1 = sns.violinplot(ax=ax, hue=axesNamesNoSpaces[0],
@@ -934,16 +1191,20 @@ def boxPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=N
 
                     p1 = sns.violinplot(ax=ax, hue=sh,
                                         y=sy, x=swarmx, data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
-                    sns.swarmplot(ax=ax, x=swarmx, y=sy, hue=dotColors, data=s,
-                                  size=swarmDotSize, zorder=3, dodge=False, palette=swarmPallete)
+                    # sns.swarmplot(ax=ax, x=swarmx, y=sy, hue=dotColors, data=s,
+                    #               size=swarmDotSize, zorder=3, dodge=False, palette=swarmPallete)
+                    sns.stripplot(ax=ax, x=swarmx, y=sy, hue=dotColors, data=s,
+                                  zorder=3, dodge=False, palette=swarmPallete)
                     # print("worked")
                     plotWorked = True
                 except UserWarning:
-                    swarmDotSize /= 2
-                    p1.cla()
-
-                    # if swarmDotSize < 0.1:
-                    #     raise e
+                    if forcePlot:
+                        plotWorked = True
+                    else:
+                        swarmDotSize /= 2
+                        p1.cla()
+                        if swarmDotSize < 0.75:
+                            forcePlot = True
     else:
         p1 = sns.boxplot(
             ax=ax, hue=axesNamesNoSpaces[0], y=axesNamesNoSpaces[1], x=axesNamesNoSpaces[2], data=s,

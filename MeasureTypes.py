@@ -1,6 +1,6 @@
 import numpy as np
 from UtilFunctions import offWall
-from PlotUtil import boxPlot, PlotCtx
+from PlotUtil import boxPlot, PlotCtx, ShuffSpec
 import math
 from consts import all_well_names
 import matplotlib as mpl
@@ -68,7 +68,7 @@ class TrialMeasure():
         figName = self.name.replace(" ", "_")
         with plotCtx.newFig(figName, withStats=self.runStats) as nf:
             if self.runStats:
-                ax, yvals, cats, info = nf
+                ax, yvals, cats, info, shufs = nf
             else:
                 ax = nf
 
@@ -188,7 +188,7 @@ class WellMeasure():
             # print("Making " + figName)
             with plotCtx.newFig(figName, withStats=self.runStats) as nf:
                 if self.runStats:
-                    ax, yvals, cats, info = nf
+                    ax, yvals, cats, info, shufs = nf
                 else:
                     ax = nf
 
@@ -211,7 +211,7 @@ class WellMeasure():
             # print("Making diff, " + figName)
             with plotCtx.newFig(figName + "_diff", withStats=self.runStats) as nf:
                 if self.runStats:
-                    ax, yvals, cats, info = nf
+                    ax, yvals, cats, info, shufs = nf
                 else:
                     ax = nf
 
@@ -222,11 +222,13 @@ class WellMeasure():
                 if self.runStats:
                     yvals[figName + "_diff"] = self.withinSessionMeasureDifference
                     cats["condition"] = self.conditionCategoryBySession
+                    shufs.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
 
         if makeOtherSeshBoxPlot:
             with plotCtx.newFig(figName + "_othersesh", withStats=self.runStats) as nf:
                 if self.runStats:
-                    ax, yvals, cats, info = nf
+                    ax, yvals, cats, info, shufs = nf
                 else:
                     ax = nf
 
@@ -250,7 +252,7 @@ class WellMeasure():
         if makeOtherSeshDiffBoxPlot:
             with plotCtx.newFig(figName + "_othersesh_diff", withStats=self.runStats) as nf:
                 if self.runStats:
-                    ax, yvals, cats, info = nf
+                    ax, yvals, cats, info, shufs = nf
                 else:
                     ax = nf
 
@@ -261,6 +263,8 @@ class WellMeasure():
                 if self.runStats:
                     yvals[figName + "_othersesh_diff"] = self.acrossSessionMeasureDifference
                     cats["condition"] = self.conditionCategoryBySession
+                    shufs.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
 
         if makeEverySessionPlot:
             numCols = math.ceil(math.sqrt(self.numSessions))

@@ -24,7 +24,9 @@ def parseCmdLineAnimalNames(default=None):
         if len(sys.argv) == 2 and sys.argv[1] == "new":
             return ["B16", "B17", "B18"]
         elif len(sys.argv) == 2 and sys.argv[1] == "old":
-            return ["B13", "B14", "Martin"]
+            return ["Martin", "B13", "B14"]
+        elif len(sys.argv) == 2 and sys.argv[1] == "all":
+            return ["Martin", "B13", "B14", "B16", "B17", "B18"]
 
         return sys.argv[1:]
     else:
