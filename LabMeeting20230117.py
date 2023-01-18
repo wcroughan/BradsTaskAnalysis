@@ -16,16 +16,6 @@ from BTSession import BTSession
 
 # TODOs
 # Cumulative number of stims
-#
-# Add shuffles to all measures
-#
-# Away from home measures: spotlight, cross product
-#
-# Use dist from well and quantify each individually instead of dividing by nearest well
-#
-# Improved gravity logic.
-#
-# Latency to interruption
 
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
