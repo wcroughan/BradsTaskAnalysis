@@ -1037,7 +1037,7 @@ def conditionShuffle(dataframe, colName, rng):
 
 
 def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAways=True, zorder=2, outlineColors=None,
-                           wellSize=mpl.rcParams['lines.markersize']**2):
+                           wellSize=mpl.rcParams['lines.markersize']**2, extent=None, reorient=True):
     if isinstance(axs, np.ndarray):
         axs = axs.flat
     elif not isinstance(axs, list):
@@ -1051,10 +1051,13 @@ def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAway
 
         assert len(outlineColors) == len(axs)
 
-    x1 = np.min(sesh.bt_pos_xs)
-    x2 = np.max(sesh.bt_pos_xs)
-    y1 = np.min(sesh.bt_pos_ys)
-    y2 = np.max(sesh.bt_pos_ys)
+    if extent is None:
+        x1 = np.min(sesh.bt_pos_xs)
+        x2 = np.max(sesh.bt_pos_xs)
+        y1 = np.min(sesh.bt_pos_ys)
+        y2 = np.max(sesh.bt_pos_ys)
+    else:
+        x1, x2, y1, y2 = extent
     for axi, ax in enumerate(axs):
         if showAllWells:
             for w in allWellNames:
@@ -1072,6 +1075,7 @@ def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAway
         ax.set_ylim(y1, y2)
         ax.tick_params(axis="both", which="both", label1On=False,
                        label2On=False, tick1On=False, tick2On=False)
+        ax.set_axisbelow(True)
 
         if outlineColors is not None:
             color = outlineColors[axi]
@@ -1081,14 +1085,15 @@ def setupBehaviorTracePlot(axs, sesh, showAllWells=True, showHome=True, showAway
             # ax.setp(ax.spines.values(), color=color)
             # ax.setp([ax.get_xticklines(), ax.get_yticklines()], color=color)
 
-        # Flip things around so 2 is bottom left, 47 is top right
-        w2x, w2y = sesh.well_coords_map["2"]
-        w7x, w7y = sesh.well_coords_map["7"]
-        w47x, w47y = sesh.well_coords_map["47"]
-        if w2x > w7x:
-            ax.invert_xaxis()
-        if w47y < w7y:
-            ax.invert_yaxis()
+        if reorient:
+            # Flip things around so 2 is bottom left, 47 is top right
+            w2x, w2y = sesh.well_coords_map["2"]
+            w7x, w7y = sesh.well_coords_map["7"]
+            w47x, w47y = sesh.well_coords_map["47"]
+            if w2x > w7x:
+                ax.invert_xaxis()
+            if w47y < w7y:
+                ax.invert_yaxis()
 
 
 def plotIndividualAndAverage(ax, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std",

@@ -1,14 +1,18 @@
 import numpy as np
-from UtilFunctions import offWall
-from PlotUtil import boxPlot, PlotCtx, ShuffSpec
 import math
-from consts import all_well_names
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from typing import Callable
+
+from UtilFunctions import offWall, correctFishEye
+from PlotUtil import boxPlot, PlotCtx, ShuffSpec, setupBehaviorTracePlot
+from consts import all_well_names, TRODES_SAMPLING_RATE
+from BTSession import BTSession
 
 
 class TrialMeasure():
-    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False, trialFilter=None, runStats=True):
+    def __init__(self, name="", measureFunc=None, sessionList=None, trialFilter=None, runStats=True):
         self.measure = []
         self.trialCategory = []
         self.conditionCategoryByTrial = []
@@ -82,8 +86,11 @@ class TrialMeasure():
 
 
 class WellMeasure():
-    def __init__(self, name="", measureFunc=None, sessionList=None, forceRemake=False,
-                 wellFilter=lambda ai, aw: offWall(aw), runStats=True):
+    def __init__(self, name: str = "",
+                 measureFunc: None | Callable[[BTSession, int], float] = None,
+                 sessionList: list = [],
+                 wellFilter: Callable[[int, int], bool] = lambda ai, aw: offWall(aw),
+                 runStats: bool = True):
         self.measure = []
         self.wellCategory = []
         self.conditionCategoryByWell = []
@@ -97,11 +104,10 @@ class WellMeasure():
         self.numSessions = len(sessionList)
 
         self.allMeasureValsBySession = []
-        self.seshNames = []
-        self.homeWells = []
-        self.awayWells = []
         self.measureMin = np.inf
         self.measureMax = -np.inf
+
+        self.sessionList = sessionList
 
         if measureFunc is not None:
             assert sessionList is not None
@@ -116,9 +122,6 @@ class WellMeasure():
                     if v < self.measureMin:
                         self.measureMin = v
                 self.allMeasureValsBySession.append(measureDict)
-                self.seshNames.append(sesh.name)
-                self.homeWells.append(sesh.home_well)
-                self.awayWells.append(sesh.visited_away_wells)
 
             for si, sesh in enumerate(sessionList):
                 # print(sesh.home_well_find_times)
@@ -180,8 +183,12 @@ class WellMeasure():
         self.conditionCategoryBySession = np.array(self.conditionCategoryBySession)
         self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
 
-    def makeFigures(self, plotCtx: PlotCtx, makeMeasureBoxPlot=True, makeDiffBoxPlot=True,
-                    makeOtherSeshBoxPlot=True, makeOtherSeshDiffBoxPlot=True, makeEverySessionPlot=True):
+    def makeFigures(self,
+                    plotCtx: PlotCtx,
+                    makeMeasureBoxPlot=True, makeDiffBoxPlot=True, makeOtherSeshBoxPlot=True,
+                    makeOtherSeshDiffBoxPlot=True, makeEverySessionPlot=True,
+                    everySessionTraceType: None | str = None,
+                    everySessionTraceTimeInterval: None | Callable[[BTSession], tuple | list] = None):
         figName = self.name.replace(" ", "_")
 
         if makeMeasureBoxPlot:
@@ -267,41 +274,118 @@ class WellMeasure():
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
 
         if makeEverySessionPlot:
+            assert everySessionTraceType is None or everySessionTraceType in [
+                "task", "probe", "task_bouts", "probe_bouts", "test"
+            ]
+
             numCols = math.ceil(math.sqrt(self.numSessions))
-            zorder = 2
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
+            zorder = 2
 
             with plotCtx.newFig(figName + "_every_session", subPlots=(numCols, numCols), figScale=0.3) as axs:
-                for si, (sk, cond) in enumerate(zip(self.allMeasureValsBySession, self.conditionCategoryBySession)):
+                # for si, (sk, cond) in enumerate(zip(self.allMeasureValsBySession, self.conditionCategoryBySession)):
+                for si, sesh in enumerate(self.sessionList):
+                    sk = self.allMeasureValsBySession[si]
+                    cond = self.conditionCategoryBySession[si]
                     ax = axs[si // numCols, si % numCols]
+                    assert isinstance(ax, Axes)
+
+                    # ax.invert_yaxis()
+                    # ax.tick_params(axis="both", which="both", label1On=False,
+                    #                label2On=False, tick1On=False, tick2On=False)
+
+                    if everySessionTraceType is not None:
+                        if "task" in everySessionTraceType:
+                            xs = np.array(sesh.bt_pos_xs)
+                            ys = np.array(sesh.bt_pos_ys)
+                            mv = np.array(sesh.bt_bout_category == BTSession.BOUT_STATE_EXPLORE)
+                            ts = np.array(sesh.bt_pos_ts)
+                        elif "probe" in everySessionTraceType:
+                            xs = np.array(sesh.probe_pos_xs)
+                            ys = np.array(sesh.probe_pos_ys)
+                            mv = np.array(sesh.probe_bout_category == BTSession.BOUT_STATE_EXPLORE)
+                            ts = np.array(sesh.probe_pos_ts)
+                        elif "test" in everySessionTraceType:
+                            xs = np.linspace(34, 1100, 1000)
+                            ys = np.linspace(-40, 960, 1000)
+                            mv = np.ones_like(xs).astype(bool)
+                            ts = np.arange(len(xs)) * TRODES_SAMPLING_RATE / 15
+
+                        if everySessionTraceTimeInterval is not None:
+                            if callable(everySessionTraceTimeInterval):
+                                timeInterval = everySessionTraceTimeInterval(sesh)
+                            else:
+                                timeInterval = everySessionTraceTimeInterval
+                            assert len(xs) == len(ts)
+                            dur_idx = np.searchsorted(ts, np.array(
+                                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] +
+                                 timeInterval[1] * TRODES_SAMPLING_RATE]))
+                            xs = xs[dur_idx[0]:dur_idx[1]]
+                            ys = ys[dur_idx[0]:dur_idx[1]]
+                            mv = mv[dur_idx[0]:dur_idx[1]]
+
+                        if "_bouts" in everySessionTraceType:
+                            xs = xs[mv]
+                            ys = ys[mv]
+
+                        xs, ys = correctFishEye(sesh, xs, ys)
+                        ax.plot(xs, ys, c="#deac7f")
+                        # print(np.min(xs), np.max(xs), np.min(ys), np.max(ys))
+
+                    c = "orange" if cond == "SWR" else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=wellSize,
+                                           showAllWells=False, showAways=False, showHome=False,
+                                           extent=(-0.5, 6.5, -0.5, 6.5), reorient=False)
+
+                    def wellCoordsToPlotCoords(x, y):
+                        xr = x + 0.5
+                        yr = y + 0.5
+                        # xr = np.interp(x, [-0.5, 5.5], [x1, x2])
+                        # yr = np.interp(y, [-0.5, 5.5], [y1, y2])
+                        return xr, yr
+
+                    for v in ax.spines.values():
+                        v.set_zorder(0)
+                    ax.set_title(sesh.name, fontdict={'fontsize': 6})
 
                     valImg = np.empty((6, 6))
                     awayCoords = []
+                    homeCoords = None
                     for wr in range(6):
                         for wc in range(6):
                             wname = 8*wr + wc + 2
                             valImg[wr, wc] = sk[wname]
 
-                            if wname == self.homeWells[si]:
-                                homeCoords = (wc, wr)
-                            elif wname in self.awayWells[si]:
-                                awayCoords.append((wc, wr))
-                    im = ax.imshow(valImg, cmap=mpl.colormaps["coolwarm"],
-                                   vmin=self.measureMin, vmax=self.measureMax)
+                            if wname == sesh.home_well:
+                                homeCoords = wellCoordsToPlotCoords(wc, wr)
+                                # homeCoords = (wc, wr)
+                            elif wname in sesh.visited_away_wells:
+                                awayCoords.append(wellCoordsToPlotCoords(wc, wr))
+                                # awayCoords.append((wc, wr))
 
                     ax.scatter(homeCoords[0], homeCoords[1], c="red", zorder=zorder, s=wellSize)
                     for awx, awy in awayCoords:
                         ax.scatter(awx, awy, c="blue", zorder=zorder, s=wellSize)
 
-                    ax.invert_yaxis()
-                    ax.tick_params(axis="both", which="both", label1On=False,
-                                   label2On=False, tick1On=False, tick2On=False)
+                    im = ax.imshow(valImg, cmap=mpl.colormaps["coolwarm"],
+                                   vmin=self.measureMin, vmax=self.measureMax,
+                                   interpolation="nearest", extent=(0, 6, 0, 6),
+                                   origin="lower")
 
-                    c = "orange" if cond == "SWR" else "cyan"
-                    for v in ax.spines.values():
-                        v.set_color(c)
-                        v.set_linewidth(3)
-                    ax.set_title(self.seshNames[si], fontdict={'fontsize': 6})
+                    # some stuff to stretch the image out to the edges
+                    z = im.get_zorder()
+                    ax.imshow(valImg, cmap=mpl.colormaps["coolwarm"],
+                              vmin=self.measureMin, vmax=self.measureMax,
+                              interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
+                              origin="lower", zorder=z-0.03)
+                    ax.imshow(valImg, cmap=mpl.colormaps["coolwarm"],
+                              vmin=self.measureMin, vmax=self.measureMax,
+                              interpolation="nearest", extent=(-0, 6, -0.5, 6.5),
+                              origin="lower", zorder=z-0.02)
+                    ax.imshow(valImg, cmap=mpl.colormaps["coolwarm"],
+                              vmin=self.measureMin, vmax=self.measureMax,
+                              interpolation="nearest", extent=(-0.5, 6.5, 0, 6),
+                              origin="lower", zorder=z-0.02)
 
                 for si in range(self.numSessions, numCols * numCols):
                     ax = axs[si // numCols, si % numCols]

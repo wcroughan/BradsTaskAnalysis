@@ -1,6 +1,6 @@
 import numpy as np
 import scipy
-from consts import TRODES_SAMPLING_RATE
+from consts import TRODES_SAMPLING_RATE, allWellNames
 
 
 class BTSession:
@@ -22,8 +22,6 @@ class BTSession:
 
     EXCURSION_STATE_OFF_WALL = 0
     EXCURSION_STATE_ON_WALL = 1
-
-    all_well_names = np.array([i + 1 for i in range(48) if not i % 8 in [0, 7]])
 
     PIXELS_PER_CM = 5.0
 
@@ -378,7 +376,7 @@ class BTSession:
             quadName = int(wellName[1])
         else:
             isQuad = False
-            wellIdx = np.argmax(self.all_well_names == wellName)
+            wellIdx = np.argmax(allWellNames == wellName)
 
         assert not (includeNeighbors and isQuad)
         assert (not excludeReward) or ((not isQuad) and (not includeNeighbors))
@@ -521,7 +519,7 @@ class BTSession:
         if subtractT0 or excludeReward:
             raise Exception("Unimplemented")
 
-        wellIdx = np.argmax(self.all_well_names == wellName)
+        wellIdx = np.argmax(allWellNames == wellName)
 
         if inProbe:
             ents = np.array(self.probe_well_sniff_times_entry[wellIdx])
@@ -1040,7 +1038,7 @@ class BTSession:
             nw = np.array(self.bt_nearest_wells)
             return np.count_nonzero(wellName == nw[ripPosIdxs])
 
-    def gravityOfWell_old(self, inProbe, wellName, timeInterval=None, fromWells=all_well_names, emptyVal=np.nan):
+    def gravityOfWell_old(self, inProbe, wellName, timeInterval=None, fromWells=allWellNames, emptyVal=np.nan):
         neighborWells = np.array([-9, -8, -7, -1, 1, 7, 8, 9]) + wellName
         neighborWells = [w for w in neighborWells if (w in fromWells)]
         neighborExitIdxs = []
@@ -1068,7 +1066,7 @@ class BTSession:
 
         return ret
 
-    def gravityOfWell(self, inProbe, wellName, timeInterval=None, fromWells=all_well_names, emptyVal=np.nan):
+    def gravityOfWell(self, inProbe, wellName, timeInterval=None, fromWells=allWellNames, emptyVal=np.nan):
         neighborWells = np.array([-9, -8, -7, -1, 0, 1, 7, 8, 9]) + wellName
         neighborWells = [w for w in neighborWells if (w in fromWells)]
         neighborExitIdxs = []
@@ -1178,17 +1176,33 @@ class BTSession:
         inSpotlight = (angle < np.deg2rad(angleCutoff)).astype(float)
         return np.mean(inSpotlight[mv])
 
-    def getDotProductScore(self, inProbe: bool, w: int, timeInterval=None, test=False):
-        if inProbe:
+    def getDotProductScore(self, inProbe: bool, w: int,
+                           timeInterval: None | list | tuple = None,
+                           excludeTimesAtWell=True,
+                           test=False):
+        wellIdx = np.argmax(allWellNames == w)
+        if test:
+            w11x, w11y = self.well_coords_map["11"]
+            w29x, w29y = self.well_coords_map["29"]
+            x = np.linspace(w11x, w29x, 100)
+            y = np.linspace(w11y, w29y, 100)
+            mv = np.ones((99,)).astype(bool)
+            ents = [80]
+            exts = [99]
+        elif inProbe:
             x = self.probe_pos_xs
             y = self.probe_pos_ys
-            mv = self.probe_is_mv[:-1]
+            mv = self.probe_bout_category[:-1] == self.BOUT_STATE_EXPLORE
             ts = self.probe_pos_ts
+            ents = self.probe_well_entry_idxs[wellIdx]
+            exts = self.probe_well_exit_idxs[wellIdx]
         else:
             x = self.bt_pos_xs
             y = self.bt_pos_ys
-            mv = self.bt_is_mv[:-1]
+            mv = self.bt_bout_category[:-1] == self.BOUT_STATE_EXPLORE
             ts = self.bt_pos_ts
+            ents = self.bt_well_entry_idxs[wellIdx]
+            exts = self.bt_well_exit_idxs[wellIdx]
         wellCoords = self.well_coords_map[str(w)]
         wellX, wellY = wellCoords
 
@@ -1196,23 +1210,42 @@ class BTSession:
             assert len(x) == len(ts)
             dur_idx = np.searchsorted(ts, np.array(
                 [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
-            x = x[dur_idx[0]:dur_idx[1]]
-            y = y[dur_idx[0]:dur_idx[1]]
-            mv = mv[dur_idx[0]:dur_idx[1]-1]
+            # x = x[dur_idx[0]:dur_idx[1]]
+            # y = y[dur_idx[0]:dur_idx[1]]
+            # mv = mv[dur_idx[0]:dur_idx[1]-1]
+            inTime = np.zeros_like(mv).astype(bool)
+            inTime[dur_idx[0]:dur_idx[1]-1] = 1
+        else:
+            inTime = np.ones_like(mv).astype(bool)
+
+        notAtWell = np.ones_like(mv).astype(bool)
+        if excludeTimesAtWell:
+            for ent, ext in zip(ents, exts):
+                notAtWell[ent:ext+1] = False
 
         dx = np.diff(x)
         dy = np.diff(y)
         dwx = wellX - np.array(x[1:])
         dwy = wellY - np.array(y[1:])
 
-        magp = np.sqrt(np.multiply(dx, dx) + np.multiply(dy, dy))
-        magw = np.sqrt(np.multiply(dwx, dwx) + np.multiply(dwy, dwy))
+        notStill = (dx != 0).astype(bool) | (dy != 0).astype(bool)
 
-        ux = np.divide(dx, magp)
-        uy = np.divide(dy, magp)
-        uwx = np.divide(dwx, magw)
-        uwy = np.divide(dwy, magw)
+        magp = np.sqrt(dx * dx + dy * dy)
+        magw = np.sqrt(dwx * dwx + dwy * dwy)
+
+        ux = dx / magp
+        uy = dy / magp
+        uwx = dwx / magw
+        uwy = dwy / magw
 
         dots = ux * uwx + uy * uwy
 
-        return np.mean(dots[mv])
+        keepFlag = mv & inTime & notAtWell & notStill
+
+        return np.sum(dots[keepFlag])
+
+    def fillTimeCutoff(self):
+        if hasattr(self, "probe_fill_time"):
+            return self.probe_fill_time
+        else:
+            return 60*5

@@ -9,6 +9,8 @@ from itertools import groupby
 from datetime import date
 import sys
 import os
+from scipy.interpolate import griddata
+from BTSession import BTSession
 
 
 def findDataDir(possibleDataDirs=["/media/WDC8/", "/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]):
@@ -1132,3 +1134,55 @@ def fillCounts(dest, src, t0, t1, windowSize):
     h = np.histogram(ts, bins=bins)
     dest[0:len(bins) - 1] = h[0]
     dest[len(bins) - 1:] = np.nan
+
+
+# returns position given by xs, ys in the context of sesh but corrected so
+# well locations would lay on a grid at x and y values 0.5, 1.5, ... 5.5
+def correctFishEye(sesh: BTSession, xs, ys):
+    # Here's the lattice we're mapping to, including imaginary wells that encircle the real wells
+    xv, yv = np.meshgrid(np.linspace(-0.5, 6.5, 8), np.linspace(-0.5, 6.5, 8))
+    xpts = xv.reshape((-1))
+    ypts = yv.reshape((-1))
+    # print(f"xpts={xpts}")
+    # print(f"ypts={ypts}")
+
+    def getWellCoords(xp, yp):
+        if xp > 0 and xp < 6 and yp > 0 and yp < 6:
+            wellName = int(2 + (xp - 0.5) + 8 * (yp - 0.5))
+            return np.array(getWellCoordinates(wellName, sesh.well_coords_map))
+        if xp > 0 and xp < 6:
+            # vertical extrapolation. p1 next well, p2 is further
+            if yp > 6:
+                p1 = getWellCoords(xp, yp-1)
+                p2 = getWellCoords(xp, yp-2)
+            else:
+                p1 = getWellCoords(xp, yp+1)
+                p2 = getWellCoords(xp, yp+2)
+        else:
+            if xp > 6:
+                p1 = getWellCoords(xp-1, yp)
+                p2 = getWellCoords(xp-2, yp)
+            else:
+                p1 = getWellCoords(xp+1, yp)
+                p2 = getWellCoords(xp+2, yp)
+
+        return p1 + (p1 - p2)
+
+    cameraWellLocations = np.array([getWellCoords(x, y) for x, y in zip(xpts, ypts)])
+    # print(xpts)
+    # print(ypts)
+    # print(cameraWellLocations)
+    # plt.clf()
+    # plt.scatter(cameraWellLocations[:, 0], cameraWellLocations[:, 1])
+    # plt.show()
+    # exit()
+
+    pathCoords = np.vstack((np.array(xs), np.array(ys))).T
+    xres = griddata(cameraWellLocations, xpts, pathCoords, method="cubic")
+    yres = griddata(cameraWellLocations, ypts, pathCoords, method="cubic")
+    # print(xs)
+    # print(xres)
+    # print(ys)
+    # print(yres)
+
+    return xres, yres
