@@ -10,6 +10,7 @@ from BTData import BTData
 from MeasureTypes import WellMeasure
 from BTSession import BTSession
 
+#
 # TODOs
 # Debug dotprod
 # Anything else look fishy?
