@@ -7,6 +7,7 @@ from functools import reduce
 from BTSession import BTSession
 from BTRestSession import BTRestSession
 from datetime import datetime
+from typing import List
 
 NP_KEY_PFX = '__numpy_ref__'
 NP_LIST_KEY_PFX = '__numpy_list_ref__'
@@ -181,8 +182,8 @@ class BTData:
         return processed_dict
 
     # can pass in optional filter function, otherwise returns all blocks
-    def getSessions(self, predicate=lambda b: True):
+    def getSessions(self, predicate=lambda b: True) -> List[BTSession]:
         return list(filter(predicate, self.allSessions))
 
-    def getRestSessions(self, predicate=lambda b: True):
+    def getRestSessions(self, predicate=lambda b: True) -> List[BTRestSession]:
         return list(filter(predicate, self.allRestSessions))

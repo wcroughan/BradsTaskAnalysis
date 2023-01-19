@@ -1,6 +1,7 @@
 import numpy as np
 import scipy
 from consts import TRODES_SAMPLING_RATE, allWellNames
+from scipy.ndimage.filters import gaussian_filter1d
 
 
 class BTSession:
@@ -1179,6 +1180,7 @@ class BTSession:
     def getDotProductScore(self, inProbe: bool, w: int,
                            timeInterval: None | list | tuple = None,
                            excludeTimesAtWell=True,
+                           #    smooth: None | float = None,
                            test=False):
         wellIdx = np.argmax(allWellNames == w)
         if test:
@@ -1205,6 +1207,10 @@ class BTSession:
             exts = self.bt_well_exit_idxs[wellIdx]
         wellCoords = self.well_coords_map[str(w)]
         wellX, wellY = wellCoords
+
+        # if smooth is not None:
+        #     x_pos = gaussian_filter1d(x_pos, smooth)
+        #     y_pos = gaussian_filter1d(y_pos, smooth)
 
         if timeInterval is not None:
             assert len(x) == len(ts)

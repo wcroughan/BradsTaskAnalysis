@@ -1,11 +1,14 @@
 import os
 import time
 from datetime import datetime
+import numpy as np
+from scipy.ndimage.filters import gaussian_filter1d
 
-from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal
-from PlotUtil import PlotCtx
+from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal, correctFishEye
+from PlotUtil import PlotCtx, setupBehaviorTracePlot
 from BTData import BTData
 from MeasureTypes import WellMeasure
+from BTSession import BTSession
 
 # TODOs
 # Debug dotprod
@@ -50,12 +53,14 @@ from MeasureTypes import WellMeasure
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
-                RUN_DOT_PROD=None,
+                RUN_DOT_PROD=None, RUN_FISHEYE_INSPECTION=None,
                 RUN_TESTS=False, MAKE_COMBINED=True):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
     if RUN_DOT_PROD is None:
         RUN_DOT_PROD = RUN_UNSPECIFIED
+    if RUN_FISHEYE_INSPECTION is None:
+        RUN_FISHEYE_INSPECTION = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -117,22 +122,42 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            # WellMeasure("well test", lambda s, h: float(h),
-            #             sessionsWithProbe).makeFigures(pp,
-            #                                            #    everySessionTraceTimeInterval=lambda s: [
-            #                                            #    0, 120],
-            #                                            #    everySessionTraceType="probe_bouts",
-            #                                            everySessionTraceType="probe",
-            #                                            makeDiffBoxPlot=False,
-            #                                            makeMeasureBoxPlot=False,
-            #                                            makeOtherSeshBoxPlot=False,
-            #                                            makeOtherSeshDiffBoxPlot=False)
-            WellMeasure("dotprod test", lambda s, h: s.getDotProductScore(
-                True, h, test=True),
-                sessionsWithProbe).makeFigures(pp,
-                                               everySessionTraceTimeInterval=lambda s: [
-                                                   0, s.fillTimeCutoff()],
-                                               everySessionTraceType="probe_bouts")
+            pass
+
+        if RUN_FISHEYE_INSPECTION:
+            for sesh in sessions:
+                assert isinstance(sesh, BTSession)
+                pp.pushOutputSubDir(sesh.name)
+
+                with pp.newFig(f"probeTrace") as ax:
+                    setupBehaviorTracePlot(ax, sesh, showAllWells=False,
+                                           showHome=False, showAways=False)
+                    ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys)
+
+                for smooth in np.power(np.linspace(-1, 4), 2):
+                    with pp.newFig(f"probeTraceSmooth_{smooth}") as ax:
+                        setupBehaviorTracePlot(ax, sesh, showAllWells=False,
+                                               showHome=False, showAways=False)
+                        x, y = sesh.probe_pos_xs, sesh.probe_pos_ys
+                        x = gaussian_filter1d(x, smooth)
+                        y = gaussian_filter1d(y, smooth)
+                        ax.plot(x, y)
+
+                xs, ys = correctFishEye(sesh, sesh.probe_pos_xs, sesh.probe_pos_ys)
+                with pp.newFig("probeFisheyeCorrected") as ax:
+                    ax.plot(xs, ys, c="#deac7f")
+                    setupBehaviorTracePlot(ax, sesh, showAllWells=False, showAways=False, showHome=False,
+                                           extent=(-0.5, 6.5, -0.5, 6.5), reorient=False)
+
+                for smooth in np.power(np.linspace(-1, 4), 2):
+                    with pp.newFig(f"probeTraceSmoothFisheye_{smooth}") as ax:
+                        setupBehaviorTracePlot(ax, sesh, showAllWells=False, showAways=False, showHome=False,
+                                               extent=(-0.5, 6.5, -0.5, 6.5), reorient=False)
+                        x = gaussian_filter1d(xs, smooth)
+                        y = gaussian_filter1d(ys, smooth)
+                        ax.plot(x, y)
+
+                pp.popOutputSubDir()
 
         if not RUN_SPOTLIGHT:
             print("Warning: skipping spotlight plots")
