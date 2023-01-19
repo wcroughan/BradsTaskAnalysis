@@ -11,9 +11,13 @@ import sys
 import os
 from scipy.interpolate import griddata
 from BTSession import BTSession
+from typing import List, Dict, Tuple, Optional
 
 
-def findDataDir(possibleDataDirs=["/media/WDC8/", "/media/WDC6/", "/media/fosterlab/WDC6/", "/home/wcroughan/data/"]):
+def findDataDir(possibleDataDirs=["/media/WDC8/",
+                                  "/media/WDC6/",
+                                  "/media/fosterlab/WDC6/",
+                                  "/home/wcroughan/data/"]) -> str:
     for dd in possibleDataDirs:
         if os.path.exists(dd):
             return dd
@@ -21,7 +25,7 @@ def findDataDir(possibleDataDirs=["/media/WDC8/", "/media/WDC6/", "/media/foster
     return None
 
 
-def parseCmdLineAnimalNames(default=None):
+def parseCmdLineAnimalNames(default: Optional[List[str]] = None) -> List[str]:
     if len(sys.argv) >= 2:
         if len(sys.argv) == 2 and sys.argv[1] == "new":
             return ["B16", "B17", "B18"]
@@ -35,7 +39,7 @@ def parseCmdLineAnimalNames(default=None):
         return default
 
 
-def readWellCoordsFile(well_coords_file):
+def readWellCoordsFile(well_coords_file: str) -> Dict[str, Tuple[int, int]]:
     # For some reason json saving and loading turns the keys into strings, just going to change that here so
     # it's consistent
     with open(well_coords_file, 'r') as wcf:
@@ -1010,7 +1014,7 @@ def getInfoForAnimal(animalName):
     return ret
 
 
-def generateFoundWells(home_well, away_wells, last_away_well, ended_on_home, found_first_home):
+def generateFoundWells(home_well, away_wells, last_away_well, ended_on_home, found_first_home) -> List[int]:
     if not found_first_home:
         return []
     elif last_away_well is None:

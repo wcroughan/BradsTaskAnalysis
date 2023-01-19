@@ -375,6 +375,9 @@ class PlotCtx:
         else:
             fname = self.figName
 
+        if fname[-4:] != ".png":
+            fname += ".png"
+
         if isinstance(self.axs, Axes):
             for _ in range(3):
                 try:

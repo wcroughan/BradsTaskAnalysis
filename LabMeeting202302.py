@@ -125,37 +125,42 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
             pass
 
         if RUN_FISHEYE_INSPECTION:
+            smoothVals = np.power(2.0, np.arange(-1, 5))
             for sesh in sessions:
                 assert isinstance(sesh, BTSession)
                 pp.pushOutputSubDir(sesh.name)
 
-                with pp.newFig(f"probeTrace") as ax:
-                    setupBehaviorTracePlot(ax, sesh, showAllWells=False,
+                xs, ys = correctFishEye(sesh, sesh.probe_pos_xs, sesh.probe_pos_ys)
+                with pp.newFig("probeTraceVariations", subPlots=(2, 1+len(smoothVals)), showPlot=True, savePlot=False) \
+                        as axs:
+                    setupBehaviorTracePlot(axs[0, 0], sesh, showAllWells=False,
                                            showHome=False, showAways=False)
-                    ax.plot(sesh.probe_pos_xs, sesh.probe_pos_ys)
+                    axs[0, 0].plot(sesh.probe_pos_xs, sesh.probe_pos_ys)
+                    axs[0, 0].set_title("raw")
 
-                for smooth in np.power(np.linspace(-1, 4), 2):
-                    with pp.newFig(f"probeTraceSmooth_{smooth}") as ax:
+                    for si, smooth in enumerate(smoothVals):
+                        ax = axs[0, si+1]
                         setupBehaviorTracePlot(ax, sesh, showAllWells=False,
                                                showHome=False, showAways=False)
                         x, y = sesh.probe_pos_xs, sesh.probe_pos_ys
                         x = gaussian_filter1d(x, smooth)
                         y = gaussian_filter1d(y, smooth)
                         ax.plot(x, y)
+                        ax.set_title(f"smooth {smooth}")
 
-                xs, ys = correctFishEye(sesh, sesh.probe_pos_xs, sesh.probe_pos_ys)
-                with pp.newFig("probeFisheyeCorrected") as ax:
-                    ax.plot(xs, ys, c="#deac7f")
-                    setupBehaviorTracePlot(ax, sesh, showAllWells=False, showAways=False, showHome=False,
+                    axs[1, 0].plot(xs, ys, c="#deac7f")
+                    setupBehaviorTracePlot(axs[1, 0], sesh, showAllWells=False, showAways=False, showHome=False,
                                            extent=(-0.5, 6.5, -0.5, 6.5), reorient=False)
+                    axs[1, 0].set_title("fisheye corrected")
 
-                for smooth in np.power(np.linspace(-1, 4), 2):
-                    with pp.newFig(f"probeTraceSmoothFisheye_{smooth}") as ax:
+                    for si, smooth in enumerate(smoothVals):
+                        ax = axs[1, si+1]
                         setupBehaviorTracePlot(ax, sesh, showAllWells=False, showAways=False, showHome=False,
                                                extent=(-0.5, 6.5, -0.5, 6.5), reorient=False)
                         x = gaussian_filter1d(xs, smooth)
                         y = gaussian_filter1d(ys, smooth)
                         ax.plot(x, y)
+                        ax.set_title(f"smooth {smooth}")
 
                 pp.popOutputSubDir()
 
@@ -195,5 +200,5 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
 
 
 if __name__ == "__main__":
-    makeFigures(RUN_UNSPECIFIED=False, RUN_DOT_PROD=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_FISHEYE_INSPECTION=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)

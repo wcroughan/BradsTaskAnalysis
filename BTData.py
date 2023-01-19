@@ -1,13 +1,10 @@
-import operator
-import pandas as pd
 import json
 import numpy as np
 import os
-from functools import reduce
 from BTSession import BTSession
 from BTRestSession import BTRestSession
 from datetime import datetime
-from typing import List
+from typing import List, Callable
 
 NP_KEY_PFX = '__numpy_ref__'
 NP_LIST_KEY_PFX = '__numpy_list_ref__'
@@ -22,13 +19,13 @@ def is_jsonable(x):
 
 
 class BTData:
-    def __init__(self):
+    def __init__(self) -> None:
         self.filename = ""
         self.allSessions = []
         self.allRestSessions = []
         self.importOptions = None
 
-    def loadFromFile(self, filename):
+    def loadFromFile(self, filename: str) -> int:
         with open(filename, 'r') as f:
             np_dir = filename + ".numpy_objs"
             self.allSessions = []
@@ -84,7 +81,7 @@ class BTData:
         print("Couldn't open file %s" % filename)
         return -1
 
-    def saveToFile(self, filename):
+    def saveToFile(self, filename: str) -> int:
         with open(filename, 'w') as f:
             np_dir = filename + ".numpy_objs"
             try:
@@ -128,7 +125,7 @@ class BTData:
         print("Couldn't open file %s" % filename)
         return -1
 
-    def filterAndSaveDict(self, di, file_pfx, np_dir):
+    def filterAndSaveDict(self, di: dict, file_pfx: str, np_dir: str) -> dict:
         clean_di = dict()
         for k, v in di.items():
             if is_jsonable(v):
@@ -160,12 +157,12 @@ class BTData:
                 saved = False
 
             if not saved:
-                print("WARNING: member variable {0} of type {1} is not json serializable. It is not being saved!".format(
-                    k, type(v)))
+                print(
+                    f"WARNING: member variable {k} of type {type(v)} is not json serializable. It is not being saved!")
 
         return clean_di
 
-    def processAndLoadDict(self, load_dict, np_dir):
+    def processAndLoadDict(self, load_dict: dict, np_dir: str) -> dict:
         processed_dict = dict()
         for k, v in load_dict.items():
             if NP_KEY_PFX in k:
@@ -182,8 +179,8 @@ class BTData:
         return processed_dict
 
     # can pass in optional filter function, otherwise returns all blocks
-    def getSessions(self, predicate=lambda b: True) -> List[BTSession]:
+    def getSessions(self, predicate: Callable[[BTSession], bool] = lambda b: True) -> List[BTSession]:
         return list(filter(predicate, self.allSessions))
 
-    def getRestSessions(self, predicate=lambda b: True) -> List[BTRestSession]:
+    def getRestSessions(self, predicate: Callable[[BTSession], bool] = lambda b: True) -> List[BTSession]:
         return list(filter(predicate, self.allRestSessions))

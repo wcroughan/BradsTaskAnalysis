@@ -1,7 +1,9 @@
 import numpy as np
 import scipy
+from typing import Optional, List, Tuple, Dict
+
 from consts import TRODES_SAMPLING_RATE, allWellNames
-from scipy.ndimage.filters import gaussian_filter1d
+# from scipy.ndimage.filters import gaussian_filter1d
 
 
 class BTSession:
@@ -26,15 +28,15 @@ class BTSession:
 
     PIXELS_PER_CM = 5.0
 
-    def __init__(self):
+    def __init__(self) -> None:
         # ==================================
         # Info about the session
         # ==================================
         # The previous session chronologically, if one exists
-        self.prevSession = None
-        self.prevSessionDir = None
+        self.prevSession: Optional[BTSession] = None
+        self.prevSessionDir: Optional[str] = None
         # The next session chronologically, if one exists
-        self.nextSession = None
+        self.nextSession: Optional[BTSession] = None
         # date object representing the day of this recording
         self.date = None
 
@@ -68,9 +70,9 @@ class BTSession:
         self.ITI_stim_on = False
         self.probe_stim_on = False
 
-        self.bt_ended_at_well = None
-        self.probe_ended_at_well = None
-        self.probe_performed = None
+        self.bt_ended_at_well: Optional[int] = None
+        self.probe_ended_at_well: Optional[int] = None
+        self.probe_performed: Optional[bool] = None
 
         # Any other notes that are stored in the info file are added here. Each list entry is one line from that file
         self.notes = []
@@ -90,7 +92,7 @@ class BTSession:
         self.away_wells = []
         self.num_away_found = 0
         self.num_home_found = 0
-        self.foundWells = None
+        self.foundWells: Optional[List[int]] = None
 
         # Flags indicating stim condition
         self.isRippleInterruption = False
@@ -122,7 +124,7 @@ class BTSession:
         # LFP data is huge, so only load on demand
         # brad's task
         self.bt_lfp_fnames = []
-        self.bt_lfp_baseline_fname = None
+        self.bt_lfp_baseline_fname: Optional[str] = None
         self.bt_lfp_start_ts = 0
         self.bt_lfp_end_ts = 0
         self.bt_lfp_start_idx = 0
@@ -190,13 +192,7 @@ class BTSession:
         self.probe_well_exit_times = []
         self.probe_home_well_entry_times = []
         self.probe_home_well_exit_times = []
-        # self.probe_mean_dist_to_home_well = []
-        # self.probe_mv_mean_dist_to_home_well = []
-        # self.probe_still_mean_dist_to_home_well = []
         self.probe_ctrl_home_well_entry_times = []
-        # self.probe_mean_dist_to_ctrl_home_well = []
-        # self.probe_mv_mean_dist_to_ctrl_home_well = []
-        # self.probe_still_mean_dist_to_ctrl_home_well = []
 
         self.bt_nearest_wells = []
         self.bt_well_entry_idxs = []
@@ -205,13 +201,7 @@ class BTSession:
         self.bt_well_exit_times = []
         self.bt_home_well_entry_times = []
         self.bt_home_well_exit_times = []
-        # self.bt_mean_dist_to_home_well = []
-        # self.bt_mv_mean_dist_to_home_well = []
-        # self.bt_still_mean_dist_to_home_well = []
         self.bt_ctrl_home_well_entry_times = []
-        # self.bt_mean_dist_to_ctrl_home_well = []
-        # self.bt_mv_mean_dist_to_ctrl_home_well = []
-        # self.bt_still_mean_dist_to_ctrl_home_well = []
 
         self.bt_quadrants = []
         self.home_quadrant = None
@@ -234,7 +224,7 @@ class BTSession:
         self.probe_quadrant_entry_times = []
         self.probe_quadrant_exit_times = []
 
-        self.well_coords_map = {}
+        self.well_coords_map: Dict[str, Tuple[int, int]] = {}
 
         self.bt_ball_displacement = None
         self.bt_ballisticity = np.array([])
@@ -294,19 +284,20 @@ class BTSession:
         self.probe_well_sniff_times_entry = []
         self.probe_well_sniff_times_exit = []
 
-        self.sniff_pre_trial_light_off = None
-        self.sniff_trial_start = None
-        self.sniff_trial_stop = None
-        self.sniff_probe_start = None
-        self.sniff_probe_stop = None
-        self.sniff_post_probe_light_on = None
+        self.sniff_pre_trial_light_off: Optional[int] = None
+        self.sniff_trial_start: Optional[int] = None
+        self.sniff_trial_stop: Optional[int] = None
+        self.sniff_probe_start: Optional[int] = None
+        self.sniff_probe_stop: Optional[int] = None
+        self.sniff_post_probe_light_on: Optional[int] = None
 
-        self.positionFromDeepLabCut = None
+        self.positionFromDeepLabCut: Optional[bool] = None
 
-    def get_well_coordinates(self, wellName):
+    def get_well_coordinates(self, wellName: int | str) -> Tuple[int, int]:
         return self.well_coords_map[str(wellName)]
 
-    def avg_dist_to_well(self, inProbe, wellName, timeInterval=None, moveFlag=None, avgFunc=np.nanmean):
+    def avg_dist_to_well(self, inProbe: bool, wellName: int,
+                         timeInterval=None, moveFlag=None, avgFunc=np.nanmean) -> float:
         """
         timeInterval is in seconds, where 0 == start of probe or task (as specified in inProbe flag)
         return units: cm
@@ -1133,7 +1124,7 @@ class BTSession:
         exts = np.nonzero(borders == -1)[0]
         return ents, exts, wellCoords
 
-    def getSpotlightScore(self, inProbe: bool, w: int, angleCutoff=70.0, timeInterval=None, test=False):
+    def getSpotlightScore(self, inProbe: bool, w: int, angleCutoff=70.0, timeInterval=None, test=False) -> float:
         if test:
             w11x, w11y = self.well_coords_map["11"]
             w28x, w28y = self.well_coords_map["28"]
@@ -1181,7 +1172,7 @@ class BTSession:
                            timeInterval: None | list | tuple = None,
                            excludeTimesAtWell=True,
                            #    smooth: None | float = None,
-                           test=False):
+                           test=False) -> float:
         wellIdx = np.argmax(allWellNames == w)
         if test:
             w11x, w11y = self.well_coords_map["11"]
@@ -1250,7 +1241,7 @@ class BTSession:
 
         return np.sum(dots[keepFlag])
 
-    def fillTimeCutoff(self):
+    def fillTimeCutoff(self) -> int:
         if hasattr(self, "probe_fill_time"):
             return self.probe_fill_time
         else:
