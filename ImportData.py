@@ -945,7 +945,8 @@ def loadPositionData(sesh: BTSession):
             "/media/WDC8/{}/".format(sesh.animalName),
             "/media/WDC8/videos/",
             "/media/WDC7/videos/B16-20/",
-            "/media/WDC4/lab_videos"
+            "/media/WDC4/lab_videos",
+            f"/home/wcroughan/data/videos/{sesh.animalName}/"
         ]
         useSeshIdxDirectly = sesh.animalName == "B18" or sesh.dateStr > "20221100"
         sesh.usbVidFile = getUSBVideoFile(

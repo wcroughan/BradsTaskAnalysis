@@ -581,9 +581,13 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.X_FINISH = 1050
         ret.Y_START = 20
         ret.Y_FINISH = 900
-        ret.data_dir = "/media/WDC8/B16/bradtasksessions/"
-        ret.output_dir = "/media/WDC8/B16/processed_data/"
-        ret.fig_output_dir = "/media/WDC8/B16/processed_data/"
+        # ret.data_dir = "/media/WDC8/B16/bradtasksessions/"
+        # ret.output_dir = "/media/WDC8/B16/processed_data/"
+        # ret.fig_output_dir = "/media/WDC8/B16/processed_data/"
+        # TODO make this dynamic like findDataDir
+        ret.data_dir = "/home/wcroughan/data/B16/bradtasksessions/"
+        ret.output_dir = "/home/wcroughan/data/B16/processed_data/"
+        ret.fig_output_dir = "/home/wcroughan/data/B16/processed_data/"
         ret.out_filename = "B16_bradtask.dat"
 
         ret.excluded_dates = []
