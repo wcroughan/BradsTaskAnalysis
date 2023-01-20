@@ -69,11 +69,11 @@ if __name__ == "__main__":
 
         dir_split = restDir.split('_')
         date_str = dir_split[0][-8:]
-        time_str = dir_split[1]
+        timeStr = dir_split[1]
         restSession.date_str = date_str
-        restSession.time_str = time_str
+        restSession.timeStr = timeStr
         restSession.name = restDir
-        s = "{}_{}".format(date_str, time_str)
+        s = "{}_{}".format(date_str, timeStr)
         print(s)
         restSession.date = datetime.strptime(s, "%Y%m%d_%H%M%S")
 

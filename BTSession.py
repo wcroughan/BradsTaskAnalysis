@@ -1,9 +1,37 @@
+from __future__ import annotations
+
 import numpy as np
 import scipy
-from typing import Optional, List, Tuple, Dict
+from typing import Optional, List, Dict
+from datetime import datetime
 
 from consts import TRODES_SAMPLING_RATE, allWellNames
+from UtilFunctions import AnimalInfo
 # from scipy.ndimage.filters import gaussian_filter1d
+
+# TODO
+# Modify latency function or write another one so can easily plot latency and optimality over trials
+
+# A few design decisions I'm implementing now:
+#
+# - No more wellIdx. Whenever you refer to a well, use an int or str that is what I call the well
+#   i.e. well 2 always refers to the well in the bottom left corner
+#
+# - Position is always normalized and corrected. During import, this correction is done according to the
+#   manually annotated well locations. These well locations never need to be accessed again, and should
+#   probably be destroyed
+#
+# - exit idxs are exclusive. Thus the exit idx from one well is equal to the entrance idx of the
+#   next well, and the final exit idx is the length of the pos vector
+#
+# - quantities like curvature for which a calculation should be made over the whole behavior and then
+#   a subset is referenced later get computed in ImportData for efficiency. However, simple calculations
+#   like latency are now moved to here as functions
+#
+# Unit guide:
+# *_ts - trodes timestamps
+# *_posIdx - index in probe_pos* or bt_pos*
+# *_lfpIdx - index in lfp data
 
 
 class BTSession:
@@ -26,9 +54,15 @@ class BTSession:
     EXCURSION_STATE_OFF_WALL = 0
     EXCURSION_STATE_ON_WALL = 1
 
-    PIXELS_PER_CM = 5.0
+    CONDITION_INTERRUPTION = 0
+    CONDITION_DELAY = 1
+    CONDITION_NO_STIM = 2
 
     def __init__(self) -> None:
+        self.animalInfo: Optional[AnimalInfo] = None
+        self.importOptions: Optional[Dict] = None
+        self.animalName = ""
+
         # ==================================
         # Info about the session
         # ==================================
@@ -38,266 +72,310 @@ class BTSession:
         # The next session chronologically, if one exists
         self.nextSession: Optional[BTSession] = None
         # date object representing the day of this recording
-        self.date = None
+        self.date: Optional[datetime] = None
 
         # Just the date part of session filename (i.e. "20200112")
-        self.date_str = ""
+        self.dateStr = ""
         # Just the time part of session filename (i.e. "140259")
-        self.time_str = ""
+        self.timeStr = ""
         # Data string in general. May modify in future by appending "S1" for first session if doing multiple in one day
         self.name = ""
         # name of raw data folder in which brad's task part of session was recorded
-        self.bt_dir = ""
+        self.btDir = ""
         # name of raw data folder in which ITI part of session was recorded. May be missing (empty string).
-        # May be same as bt_dir
-        self.iti_dir = ""
+        # May be same as btDir
+        self.itiDir = ""
         # name of raw data folder in which probe part of session was recorded. May be missing (empty string).
-        # May be same as bt_dir
-        self.probe_dir = ""
+        # May be same as btDir
+        self.probeDir = ""
+        self.fileStartString = ""
 
         self.infoFileName = ""
-        self.conditionGroup = -1
+        self.seshIdx = -1
+        self.conditionGroup = ""
+
+        self.prevInfoFileName = ""
+        self.prevSessionInfoParsed = False
+        self.prevSessionHome = -1
+        self.prevSessionAways = []
+        self.prevSessionLastAwayWell = -1
+        self.prevSessionEndedOnHome = False
+        self.prevSessionItiStimOn = False
+        self.prevSessionProbeStimOn = False
+        self.prevSessionRippleDetectionThreshold = 0.0
+        self.prevSessionItiStimOn = False
+        self.prevSessionIdx = -1
 
         # Some flags indicated whether ITI was recorded and whether ITI and probe are in the same rec file or not
-        self.separate_iti_file = False
-        self.recorded_iti = False
-        self.separate_probe_file = False
+        self.separateItiFile = False
+        self.recordedIti = False
+        self.separateProbeFile = False
 
         # more flags from info file
-        self.ripple_detection_threshold = 0.0
-        self.last_away_well = 0
-        self.ended_on_home = False
-        self.ITI_stim_on = False
-        self.probe_stim_on = False
+        self.rippleDetectionThreshold = 0.0
+        self.lastAwayWell = 0
+        self.endedOnHome = False
+        self.ItiStimOn = False
+        self.probeStimOn = False
 
-        self.bt_ended_at_well: Optional[int] = None
-        self.probe_ended_at_well: Optional[int] = None
-        self.probe_performed: Optional[bool] = None
+        self.btEndedAtWell: Optional[int] = None
+        self.probeEndedAtWell: Optional[int] = None
+        self.probePerformed: Optional[bool] = None
 
         # Any other notes that are stored in the info file are added here. Each list entry is one line from that file
         self.notes = []
 
-        # position coordinates of home well
-        self.home_x = 0
-        self.home_y = 0
-        self.away_xs = []
-        self.away_ys = []
-
         # Well number of home well
-        self.home_well = 0
-        self.home_well_idx_in_allwells = 0
-        self.ctrl_home_well = 0
-        self.ctrl_home_well_idx_in_allwells = 0
+        self.homeWell = 0
         # Well number of away wells
-        self.away_wells = []
-        self.num_away_found = 0
-        self.num_home_found = 0
+        self.awayWells = []
+        self.numAwayFound = 0
+        self.numHomeFound = 0
         self.foundWells: Optional[List[int]] = None
 
         # Flags indicating stim condition
-        self.isRippleInterruption = False
-        self.isDelayedInterruption = False
-        self.isNoInterruption = False
-        self.ripple_detection_tetrodes = []
-        self.ripple_baseline_tetrode = None
-        # self.ripple_detection_tetrodes = [37]
+        self.rippleDetectionTetrodes = []
+        self.rippleBaselineTetrode = None
+        self.condition: Optional[int] = None
+        self.prevSessionCondition: Optional[int] = None
 
-        # Rat weight if it was recorded
-        self.rat_weight = 0
+        self.probeFillTime = 0
+
+        # indicates that any well at all was found
+        self.foundFirstHome = False
 
         # For purposes of light on/off times, ignore this many seconds at start of video
         self.trodesLightsIgnoreSeconds = None
 
         # ==================================
-        # Raw data
+        # Raw data (ish ... position data is fisheye corrected and scaled)
         # ==================================
+        self.hasPositionData = False
+
         # Position data during brad's task
-        self.bt_pos_ts = []
-        self.bt_pos_xs = []
-        self.bt_pos_ys = []
+        self.btPos_ts = np.array([])
+        self.btPosXs = np.array([])
+        self.btPosYs = np.array([])
+        self.btRecall_posIdx = -1
 
         # Position data during probe
-        self.probe_pos_ts = []
-        self.probe_pos_xs = []
-        self.probe_pos_ys = []
+        self.probePos_ts = np.array([])
+        self.probePosXs = np.array([])
+        self.probePosYs = np.array([])
+        self.probeRecall_posIdx = -1
 
         # LFP data is huge, so only load on demand
         # brad's task
-        self.bt_lfp_fnames = []
-        self.bt_lfp_baseline_fname: Optional[str] = None
-        self.bt_lfp_start_ts = 0
-        self.bt_lfp_end_ts = 0
-        self.bt_lfp_start_idx = 0
-        self.bt_lfp_end_idx = 0
+        self.btLfpFnames = []
+        self.btLfpBaselineFname: Optional[str] = None
+        self.btLfpStart_ts = 0
+        self.btLfpEnd_ts = 0
+        self.btLfpStart_lfpIdx = 0
+        self.btLfpEnd_lfpIdx = 0
 
         # ITI
-        self.iti_lfp_fnames = []
-        self.iti_lfp_start_ts = 0
-        self.iti_lfp_end_ts = 0
-        self.iti_lfp_start_idx = 0
-        self.iti_lfp_end_idx = 0
+        self.itiLfpFnames = []
+        self.itiLfpStart_ts = 0
+        self.itiLfpEnd_ts = 0
+        self.itiLfpStartIdx = 0
+        self.itiLfpEndIdx = 0
 
         # probe
-        self.probe_lfp_fnames = []
-        self.probe_lfp_start_ts = 0
-        self.probe_lfp_end_ts = 0
-        self.probe_lfp_start_idx = 0
-        self.probe_lfp_end_idx = 0
+        self.probeLfpFnames = []
+        self.probeLfpStart_ts = 0
+        self.probeLfpEnd_ts = 0
+        self.probeLfpStartIdx = 0
+        self.probeLfpEndIdx = 0
 
-        self.interruption_timestamps = np.array([])
-        self.artifact_timestamps = np.array([])
+        self.interruption_ts = np.array([])
+        self.interruptions_lfpIdx = np.array([])
+        self.btInterruption_posIdx = np.array([])
+        self.artifact_ts = np.array([])
+        self.artifacts_lfpIdx = np.array([])
+        self.btLfpArtifacts_lfpIdx = np.array([])
+        self.prebtMeanRipplePower = 0.0
+        self.prebtStdRipplePower = 0.0
+        self.btRipStartsPreStats_lfpIdx = np.array([])
+        self.btRipLensPreStats_lfpIdx = np.array([])
+        self.btRipPeaksPreStats_lfpIdx = np.array([])
+        self.btRipPeakAmpsPreStats = np.array([])
+        self.btRipCrossThreshPreStats_lfpIdx = np.array([])
+        self.btRipStartsPreStats_ts = np.array([])
+        self.itiLfpStart_lfpIdx = 0
+        self.itiMeanRipplePower = 0.0
+        self.itiStdRipplePower = 0.0
+        self.itiRipStarts_lfpIdx = np.array([])
+        self.itiRipLens_lfpIdx = np.array([])
+        self.itiRipPeaks_lfpIdx = np.array([])
+        self.itiRipPeakAmps = np.array([])
+        self.itiRipCrossThresh_lfpIdxs = np.array([])
+        self.itiRipStarts_ts = np.array([])
+        self.itiDuration = 0.0
+        self.probeRippleIdxOffset = 0
+        self.probeLfpStart_lfpIdx = 0
+        self.probeLfpEnd_lfpIdx = 0
+        self.probeMeanRipplePower = 0.0
+        self.probeStdRipplePower = 0.0
+        self.probeRipStarts_lfpIdx = np.array([])
+        self.probeRipLens_lfpIdx = np.array([])
+        self.probeRipPeakIdxs_lfpIdx = np.array([])
+        self.probeRipPeakAmps = np.array([])
+        self.probeRipCrossThreshIdxs_lfpIdx = np.array([])
+        self.probeRipStarts_ts = np.array([])
+        self.probeDuration = 0.0
+        self.itiRipStartIdxsProbeStats_lfpIdx = np.array([])
+        self.itiRipLensProbeStats_lfpIdx = np.array([])
+        self.itiRipPeakIdxsProbeStats_lfpIdx = np.array([])
+        self.itiRipPeakAmpsProbeStats = np.array([])
+        self.itiRipCrossThreshIdxsProbeStats_lfpIdx = np.array([])
+        self.itiRipStartsProbeStats_ts = np.array([])
+        self.btRipStartIdxsProbeStats_lfpIdx = np.array([])
+        self.btRipLensProbeStats_lfpIdx = np.array([])
+        self.btRipPeakIdxsProbeStats_lfpIdx = np.array([])
+        self.btRipPeakAmpsProbeStats = np.array([])
+        self.btRipCrossThreshIdxsProbeStats_lfpIdx = np.array([])
+        self.btRipStartsProbeStats_ts = np.array([])
+        self.btWithBaseRipStartIdx_lfpIdx = np.array([])
+        self.btWithBaseRipLens_lfpIdx = np.array([])
+        self.btWithBaseRipPeakIdx_lfpIdx = np.array([])
+        self.btWithBaseRipPeakAmps = np.array([])
+        self.btWithBaseRipCrossThreshIdxs_lfpIdx = np.array([])
+        self.btWithBaseRipStarts_ts = np.array([])
+
+        # Lighting stuff
+        self.frameTimes = np.array([])
+        self.trodesLightOffTime = 0
+        self.trodesLightOnTime = 0
+        self.usbVidFile = ""
+        self.usbLightOffFrame = -1
+        self.usbLightOnFrame = -1
 
         # ==================================
         # Analyzed data: Brad's task
         # ==================================
-        self.home_well_find_times = []
-        self.home_well_find_pos_idxs = []
-        self.home_well_leave_times = []
-        self.home_well_leave_pos_idxs = []
-        self.home_well_latencies = []
-        self.home_well_displacements = []
-        self.home_well_distances = []
+        self.hasRewardFindTimes = False
+        self.homeRewardEnter_ts = []
+        self.homeRewardEnter_posIdx = []
+        self.homeRewardExit_ts = []
+        self.homeRewardExit_posIdx = []
 
-        self.away_well_find_times = []
-        self.away_well_find_pos_idxs = []
-        self.away_well_leave_times = []
-        self.away_well_leave_pos_idxs = []
-        self.away_well_latencies = []
-        self.away_well_displacements = []
-        self.away_well_distances = []
-        self.visited_away_wells = []
+        self.awayRewardEnter_ts = []
+        self.awayRewardEnter_posIdx = []
+        self.awayRewardExit_ts = []
+        self.awayRewardExit_posIdx = []
+        self.visitedAwayWells = []
 
         # ==================================
         # Analyzed data: Probe
         # ==================================
-        # analyzing paths, separating by velocity
-        self.bt_vel_cm_s = []
-        self.bt_is_mv = []
-        self.bt_mv_xs = []
-        self.bt_still_xs = []
-        self.bt_mv_ys = []
-        self.bt_still_ys = []
-        self.probe_vel_cm_s = []
-        self.probe_is_mv = []
-        self.probe_mv_xs = []
-        self.probe_still_xs = []
-        self.probe_mv_ys = []
-        self.probe_still_ys = []
+        self.btVelCmPerS = []
+        self.btIsMv = []
+        self.probeVelCmPerS = []
+        self.probeIsMv = []
 
-        # avg dist to home and times at which rat entered home region
-        self.probe_nearest_wells = []
-        self.probe_well_entry_idxs = []
-        self.probe_well_exit_idxs = []
-        self.probe_well_entry_times = []
-        self.probe_well_exit_times = []
-        self.probe_home_well_entry_times = []
-        self.probe_home_well_exit_times = []
-        self.probe_ctrl_home_well_entry_times = []
+        self.probeNearestWells = []
+        self.probeWellEntryTimes_posIdx = []
+        self.probeWellExitTimes_posIdx = []
+        self.probeWellEntryTimes_ts = []
+        self.probeWellExitTimes_ts = []
 
-        self.bt_nearest_wells = []
-        self.bt_well_entry_idxs = []
-        self.bt_well_exit_idxs = []
-        self.bt_well_entry_times = []
-        self.bt_well_exit_times = []
-        self.bt_home_well_entry_times = []
-        self.bt_home_well_exit_times = []
-        self.bt_ctrl_home_well_entry_times = []
+        self.btNearestWells = []
+        self.btWellEntryTimes_posIdx = []
+        self.btWellExitTimes_posIdx = []
+        self.btWellEntryTimes_ts = []
+        self.btWellExitTimes_ts = []
 
-        self.bt_quadrants = []
-        self.home_quadrant = None
-        self.bt_well_entry_idxs_ninc = []
-        self.bt_well_exit_idxs_ninc = []
-        self.bt_well_entry_times_ninc = []
-        self.bt_well_exit_times_ninc = []
-        self.bt_quadrant_entry_idxs = []
-        self.bt_quadrant_exit_idxs = []
-        self.bt_quadrant_entry_times = []
-        self.bt_quadrant_exit_times = []
+        self.btQuadrants = []
+        self.btWellEntryTimesNinc_posIdx = []
+        self.btWellExitTimesNinc_posIdx = []
+        self.btWellEntryTimesNinc_ts = []
+        self.btWellExitTimesNinc_ts = []
+        self.btQuadrantEntryTimes_posIdxs = []
+        self.btQuadrantExitTimes_posIdxs = []
+        self.btQuadrantEntryTimes_ts = []
+        self.btQuadrantExitTimes_ts = []
 
-        self.probe_quadrants = []
-        self.probe_well_entry_idxs_ninc = []
-        self.probe_well_exit_idxs_ninc = []
-        self.probe_well_entry_times_ninc = []
-        self.probe_well_exit_times_ninc = []
-        self.probe_quadrant_entry_idxs = []
-        self.probe_quadrant_exit_idxs = []
-        self.probe_quadrant_entry_times = []
-        self.probe_quadrant_exit_times = []
+        self.probeQuadrants = []
+        self.probeWellEntryTimesNinc_posIdx = []
+        self.probeWellExitTimesNinc_posIdx = []
+        self.probeWellEntryTimesNinc_ts = []
+        self.probeWellExitTimesNinc_ts = []
+        self.probeQuadrantEntryTimes_posIdx = []
+        self.probeQuadrantExitTimes_posIdx = []
+        self.probeQuadrantEntryTimes_ts = []
+        self.probeQuadrantExitTimes_ts = []
 
-        self.well_coords_map: Dict[str, Tuple[int, int]] = {}
+        self.btCurvature = np.array([])
+        self.btCurvatureI1 = np.array([])
+        self.btCurvatureI2 = np.array([])
+        self.btCurvatureDxf = np.array([])
+        self.btCurvatureDyf = np.array([])
+        self.btCurvatureDxb = np.array([])
+        self.btCurvatureDyb = np.array([])
 
-        self.bt_ball_displacement = None
-        self.bt_ballisticity = np.array([])
-        self.probe_ball_displacement = None
-        self.probe_ballisticity = None
+        self.probeCurvature = np.array([])
+        self.probeCurvatureI1 = np.array([])
+        self.probeCurvatureI2 = np.array([])
+        self.probeCurvatureDxf = np.array([])
+        self.probeCurvatureDyf = np.array([])
+        self.probeCurvatureDxb = np.array([])
+        self.probeCurvatureDyb = np.array([])
 
-        self.bt_curvature = np.array([])
-        self.bt_curvature_i1 = np.array([])
-        self.bt_curvature_i2 = np.array([])
-        self.bt_curvature_dxf = np.array([])
-        self.bt_curvature_dyf = np.array([])
-        self.bt_curvature_dxb = np.array([])
-        self.bt_curvature_dyb = np.array([])
+        self.btSmoothVel = []
+        self.btExploreBoutStart_posIdx = []
+        self.btExploreBoutEnd_posIdx = []
+        self.btExploreBoutLensSecs = []
+        self.btBoutCategory = np.array([])
+        self.btBoutLabel = np.array([])
 
-        self.probe_curvature = np.array([])
-        self.probe_curvature_i1 = np.array([])
-        self.probe_curvature_i2 = np.array([])
-        self.probe_curvature_dxf = np.array([])
-        self.probe_curvature_dyf = np.array([])
-        self.probe_curvature_dxb = np.array([])
-        self.probe_curvature_dyb = np.array([])
+        self.probeSmoothVel = []
+        self.probeExploreBoutStart_posIdx = []
+        self.probeExploreBoutEnd_posIdx = []
+        self.probeExploreBoutLensSecs = []
+        self.probeBoutCategory = np.array([])
+        self.probeBoutLabel = np.array([])
 
-        self.probe_latency_to_well = []
+        self.btExcursionCategory = []
+        self.btExcursionStart_posIdx = []
+        self.btExcursionEnd_posIdx = []
+        self.btExcursionLensSecs = np.array([])
 
-        self.bt_sm_vel = []
-        self.bt_is_in_pause = []
-        self.bt_is_in_explore = []
-        self.bt_explore_bout_starts = []
-        self.bt_explore_bout_ends = []
-        self.bt_explore_bout_lens = []
-        self.bt_bout_category = np.array([])
-        self.bt_bout_label = np.array([])
+        self.probeExcursionCategory = []
+        self.probeExcursionStart_posIdx = []
+        self.probeExcursionEnd_posIdx = []
+        self.probeExcursionLensSecs = np.array([])
 
-        self.probe_sm_vel = []
-        self.probe_is_in_pause = []
-        self.probe_is_in_explore = []
-        self.probe_explore_bout_starts = []
-        self.probe_explore_bout_ends = []
-        self.probe_explore_bout_lens = []
-        self.probe_bout_category = np.array([])
-        self.probe_bout_label = np.array([])
+        self.hasSniffTimes = False
+        self.wellSniffTimesEntry = []
+        self.wellSniffTimesExit = []
+        self.btWellSniffTimesEntry = []
+        self.btWellSniffTimesExit = []
+        self.probeWellSniffTimesEntry = []
+        self.probeWellSniffTimesExit = []
 
-        self.bt_excursion_category = []
-        self.bt_excursion_starts = []
-        self.bt_excursion_ends = []
-        self.bt_excursion_lens_secs = np.array([])
-
-        self.probe_excursion_category = []
-        self.probe_excursion_starts = []
-        self.probe_excursion_ends = []
-        self.probe_excursion_lens_secs = np.array([])
-
-        self.well_sniff_times_entry = []
-        self.well_sniff_times_exit = []
-        self.bt_well_sniff_times_entry = []
-        self.bt_well_sniff_times_exit = []
-        self.probe_well_sniff_times_entry = []
-        self.probe_well_sniff_times_exit = []
-
-        self.sniff_pre_trial_light_off: Optional[int] = None
-        self.sniff_trial_start: Optional[int] = None
-        self.sniff_trial_stop: Optional[int] = None
-        self.sniff_probe_start: Optional[int] = None
-        self.sniff_probe_stop: Optional[int] = None
-        self.sniff_post_probe_light_on: Optional[int] = None
+        self.sniffPreTrialLightOff: Optional[int] = None
+        self.sniffTrialStart: Optional[int] = None
+        self.sniffTrialStop: Optional[int] = None
+        self.sniffProbeStart: Optional[int] = None
+        self.sniffProbeStop: Optional[int] = None
+        self.sniffPostProbeLightOn: Optional[int] = None
 
         self.positionFromDeepLabCut: Optional[bool] = None
 
-    def get_well_coordinates(self, wellName: int | str) -> Tuple[int, int]:
-        return self.well_coords_map[str(wellName)]
+    @property
+    def isRippleInterruption(self):
+        return self.condition == BTSession.CONDITION_INTERRUPTION
 
-    def avg_dist_to_well(self, inProbe: bool, wellName: int,
-                         timeInterval=None, moveFlag=None, avgFunc=np.nanmean) -> float:
+    @property
+    def isDelayedInterruption(self):
+        return self.condition == BTSession.CONDITION_DELAY
+
+    @property
+    def isNoInterruption(self):
+        return self.condition == BTSession.CONDITION_NO_STIM
+
+    def avgDistToWell(self, inProbe: bool, wellName: int,
+                      timeInterval=None, moveFlag=None, avgFunc=np.nanmean) -> float:
         """
         timeInterval is in seconds, where 0 == start of probe or task (as specified in inProbe flag)
         return units: cm
@@ -309,13 +387,13 @@ class BTSession:
         wx, wy = self.get_well_coordinates(wellName)
 
         if inProbe:
-            ts = np.array(self.probe_pos_ts)
+            ts = np.array(self.probePosTs)
             if moveFlag == self.MOVE_FLAG_MOVING:
-                xs = np.array(self.probe_mv_xs)
-                ys = np.array(self.probe_mv_ys)
+                xs = np.array(self.probeMvXs)
+                ys = np.array(self.probeMvYs)
             elif moveFlag == self.MOVE_FLAG_STILL:
-                xs = np.array(self.probe_still_xs)
-                ys = np.array(self.probe_still_ys)
+                xs = np.array(self.probeStillXs)
+                ys = np.array(self.probeStillYs)
             else:
                 assert moveFlag == BTSession.MOVE_FLAG_ALL
                 xs = np.array(self.probe_pos_xs)
@@ -354,8 +432,8 @@ class BTSession:
         return self.avg_dist_to_well(inProbe, self.home_well, timeInterval=timeInterval,
                                      moveFlag=moveFlag, avgFunc=avgFunc)
 
-    def entry_exit_times(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False,
-                         returnIdxs=False, includeEdgeOverlap=True, subtractT0=False):
+    def entry_exit_ts(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False,
+                      returnIdxs=False, includeEdgeOverlap=True, subtractT0=False):
         """
         return units: trodes timestamps, unless returnIdxs==True
         """
@@ -379,54 +457,54 @@ class BTSession:
                     ents = self.probe_quadrant_entry_idxs[quadName]
                     exts = self.probe_quadrant_entry_idxs[quadName]
                 else:
-                    ents = self.probe_quadrant_entry_times[quadName]
-                    exts = self.probe_quadrant_exit_times[quadName]
+                    ents = self.probe_quadrant_entry_ts[quadName]
+                    exts = self.probe_quadrant_exit_ts[quadName]
             else:
                 if includeNeighbors:
                     if returnIdxs:
                         ents = self.probe_well_entry_idxs_ninc[wellIdx]
                         exts = self.probe_well_exit_idxs_ninc[wellIdx]
                     else:
-                        ents = self.probe_well_entry_times_ninc[wellIdx]
-                        exts = self.probe_well_exit_times_ninc[wellIdx]
+                        ents = self.probe_well_entry_ts_ninc[wellIdx]
+                        exts = self.probe_well_exit_ts_ninc[wellIdx]
                 else:
                     if returnIdxs:
-                        ents = self.probe_well_entry_idxs[wellIdx]
-                        exts = self.probe_well_exit_idxs[wellIdx]
+                        ents = self.probe_well_entry_times_posIdx[wellIdx]
+                        exts = self.probe_well_exit_times_posIdx[wellIdx]
                     else:
-                        ents = self.probe_well_entry_times[wellIdx]
-                        exts = self.probe_well_exit_times[wellIdx]
+                        ents = self.probe_well_entry_times_ts[wellIdx]
+                        exts = self.probe_well_exit_times_ts[wellIdx]
         else:
             if isQuad:
                 if returnIdxs:
                     ents = self.bt_quadrant_entry_idxs[quadName]
                     ents = self.bt_quadrant_entry_idxs[quadName]
                 else:
-                    ents = self.bt_quadrant_entry_times[quadName]
-                    exts = self.bt_quadrant_exit_times[quadName]
+                    ents = self.bt_quadrant_entry_ts[quadName]
+                    exts = self.bt_quadrant_exit_ts[quadName]
             else:
                 if includeNeighbors:
                     if returnIdxs:
                         ents = self.bt_well_entry_idxs_ninc[wellIdx]
                         exts = self.bt_well_exit_idxs_ninc[wellIdx]
                     else:
-                        ents = self.bt_well_entry_times_ninc[wellIdx]
-                        exts = self.bt_well_exit_times_ninc[wellIdx]
+                        ents = self.bt_well_entry_ts_ninc[wellIdx]
+                        exts = self.bt_well_exit_ts_ninc[wellIdx]
                 else:
                     if returnIdxs:
-                        ents = self.bt_well_entry_idxs[wellIdx]
-                        exts = self.bt_well_exit_idxs[wellIdx]
+                        ents = self.bt_well_entry_times_posIdx[wellIdx]
+                        exts = self.bt_well_exit_times_posIdx[wellIdx]
                     else:
-                        ents = self.bt_well_entry_times[wellIdx]
-                        exts = self.bt_well_exit_times[wellIdx]
+                        ents = self.bt_well_entry_times_ts[wellIdx]
+                        exts = self.bt_well_exit_times_ts[wellIdx]
 
         if excludeReward:
             if wellName == self.home_well:
-                if len(self.home_well_find_times) == 0:
+                if len(self.home_reward_enter_ts) == 0:
                     # don't know when reward was delivered
                     raise Exception("missing home well find times")
 
-                for ft, lt in zip(self.home_well_find_times, self.home_well_leave_times):
+                for ft, lt in zip(self.home_reward_enter_ts, self.home_reward_exit_ts):
                     wt = (ft + lt) / 2.0
                     found = False
                     todel = -1
@@ -443,14 +521,14 @@ class BTSession:
                     exts = np.delete(exts, todel)
 
             elif wellName in self.visited_away_wells:
-                if len(self.away_well_find_times) == 0:
+                if len(self.away_reward_enter_ts) == 0:
                     # don't know when rward was deliveered
                     raise Exception("missing away well find times")
 
                 found = False
                 for ei, awi in enumerate(self.visited_away_wells):
                     if awi == wellName:
-                        wt = (self.away_well_find_times[ei] + self.away_well_leave_times[ei]) / 2.0
+                        wt = (self.away_reward_enter_ts[ei] + self.away_reward_exit_ts[ei]) / 2.0
                         found = True
                         break
 
@@ -522,11 +600,11 @@ class BTSession:
 
         if excludeReward:
             if wellName == self.home_well:
-                if len(self.home_well_find_times) == 0:
+                if len(self.home_reward_enter_ts) == 0:
                     # don't know when reward was delivered
                     raise Exception("missing home well find times")
 
-                for ft, lt in zip(self.home_well_find_times, self.home_well_leave_times):
+                for ft, lt in zip(self.home_reward_enter_ts, self.home_reward_exit_ts):
                     wt = (ft + lt) / 2.0
                     found = False
                     todel = -1
@@ -543,14 +621,14 @@ class BTSession:
                     exts = np.delete(exts, todel)
 
             elif wellName in self.visited_away_wells:
-                if len(self.away_well_find_times) == 0:
+                if len(self.away_reward_enter_ts) == 0:
                     # don't know when rward was deliveered
                     raise Exception("missing away well find times")
 
                 found = False
                 for ei, awi in enumerate(self.visited_away_wells):
                     if awi == wellName:
-                        wt = (self.away_well_find_times[ei] + self.away_well_leave_times[ei]) / 2.0
+                        wt = (self.away_reward_enter_ts[ei] + self.away_reward_exit_ts[ei]) / 2.0
                         found = True
                         break
 
@@ -605,7 +683,7 @@ class BTSession:
         if avgTypeFlag is None:
             avgTypeFlag = BTSession.AVG_FLAG_OVER_TIME
 
-        wenis, wexis = self.entry_exit_times(
+        wenis, wexis = self.entry_exit_ts(
             inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward,
             includeNeighbors=includeNeighbors, returnIdxs=True)
 
@@ -666,14 +744,14 @@ class BTSession:
         """
         return units: trodes timestamps
         """
-        ents, exts = self.entry_exit_times(
+        ents, exts = self.entry_exit_ts(
             inProbe, wellName, timeInterval=timeInterval, includeNeighbors=includeNeighbors,
             excludeReward=excludeReward, returnIdxs=False)
 
         return np.array(exts) - np.array(ents)
 
     def num_well_entries(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
-        ents, _ = self.entry_exit_times(
+        ents, _ = self.entry_exit_ts(
             inProbe, wellName, timeInterval=None, includeNeighbors=includeNeighbors, excludeReward=excludeReward,
             returnIdxs=False)
 
@@ -784,7 +862,7 @@ class BTSession:
 
     def num_bouts_where_well_was_visited(self, inProbe, wellName, timeInterval=None, excludeReward=False,
                                          includeNeighbors=False):
-        ents, exts = self.entry_exit_times(
+        ents, exts = self.entry_exit_ts(
             inProbe, wellName, timeInterval=timeInterval, includeNeighbors=includeNeighbors,
             excludeReward=excludeReward, returnIdxs=True)
 
@@ -806,11 +884,11 @@ class BTSession:
         if boutsInterval is not None:
             assert timeInterval is None
             if inProbe:
-                bout_starts = self.probe_explore_bout_starts
-                bout_ends = self.probe_explore_bout_ends
+                bout_starts = self.probe_explore_bout_start_posIdx
+                bout_ends = self.probe_explore_bout_end_posIdx
             else:
-                bout_starts = self.bt_explore_bout_starts
-                bout_ends = self.bt_explore_bout_ends
+                bout_starts = self.bt_explore_bout_start_posIdx
+                bout_ends = self.bt_explore_bout_end_posIdx
 
             if len(bout_ends) >= boutsInterval[1]:
                 timeInterval = [bout_starts[boutsInterval[0]], bout_ends[boutsInterval[1] - 1]]
@@ -889,7 +967,7 @@ class BTSession:
             ts = self.bt_pos_ts
 
         if wellName is not None:
-            ents = self.entry_exit_times(inProbe, wellName, returnIdxs=True)[0]
+            ents = self.entry_exit_ts(inProbe, wellName, returnIdxs=True)[0]
             if len(ents) == 0:
                 return emptyVal
             ei = ents[0]
@@ -969,14 +1047,11 @@ class BTSession:
         tdiff = np.diff(ts, prepend=ts[0])
         return np.sum(tdiff[count_point])
 
-    def getDelayFromSession(self, prevsession, returnDateTimeDelta=False):
+    def getDelayFromSession(self, prevsession: BTSession, returnDateTimeDelta=False):
         """
         units: seconds (or dattimedelta if returnDateTimeDelta set to true)
         positive results indicates the session passed as an argument occured before this one
         """
-        # res = "this ({}) to other ({}) = {}".format(
-        # self.date_str, prevsession.date_str, self.date-prevsession.date)
-        # return res
         res = self.date - prevsession.date
         if returnDateTimeDelta:
             return res
@@ -991,7 +1066,7 @@ class BTSession:
         """
         assert not (returnIdxs and returnSeconds)
 
-        ts = self.entry_exit_times(inProbe, wellName, returnIdxs=returnIdxs)[0]
+        ts = self.entry_exit_ts(inProbe, wellName, returnIdxs=returnIdxs)[0]
 
         if len(ts) == 0:
             return emptyVal
@@ -1015,7 +1090,7 @@ class BTSession:
         how many times did stim happen while rat was at the well during the task?
         """
         nw = np.array(self.bt_nearest_wells)
-        return np.count_nonzero(wellName == nw[self.bt_interruption_pos_idxs])
+        return np.count_nonzero(wellName == nw[self.bt_interruption_posIdx])
 
     def numRipplesAtWell(self, inProbe, wellName):
         """
@@ -1037,8 +1112,8 @@ class BTSession:
         neighborEntryIdxs = []
         # numNonZero = 0
         for nw in neighborWells:
-            ents, exts = self.entry_exit_times(inProbe, nw,
-                                               timeInterval=timeInterval, returnIdxs=True)
+            ents, exts = self.entry_exit_ts(inProbe, nw,
+                                            timeInterval=timeInterval, returnIdxs=True)
             neighborEntryIdxs += list(ents)
             neighborExitIdxs += list(exts)
             # if len(ents) > 0:
@@ -1048,7 +1123,7 @@ class BTSession:
             # print("emptyval ret, neighbor wells was {}".format(neighborWells))
             return emptyVal
 
-        wellEntryIdxs = self.entry_exit_times(
+        wellEntryIdxs = self.entry_exit_ts(
             inProbe, wellName, timeInterval=timeInterval, returnIdxs=True)[0] - 1
 
         # print(wellEntryIdxs)
@@ -1065,8 +1140,8 @@ class BTSession:
         neighborEntryIdxs = []
         # numNonZero = 0
         for nw in neighborWells:
-            ents, exts = self.entry_exit_times(inProbe, nw,
-                                               timeInterval=timeInterval, returnIdxs=True)
+            ents, exts = self.entry_exit_ts(inProbe, nw,
+                                            timeInterval=timeInterval, returnIdxs=True)
             neighborEntryIdxs += list(ents)
             neighborExitIdxs += list(exts)
             # if len(ents) > 0:
@@ -1083,7 +1158,7 @@ class BTSession:
         neighborEntryIdxs = sorted(neighborEntryIdxs_all[keepEntryIdx])
         neighborExitIdxs = sorted(neighborExitIdxs_all[keepExitIdx])
 
-        wellEntryIdxs = self.entry_exit_times(
+        wellEntryIdxs = self.entry_exit_ts(
             inProbe, wellName, timeInterval=timeInterval, returnIdxs=True)[0]
         enteredHome = [any([wei < v2 and wei > v1 for wei in wellEntryIdxs])
                        for v1, v2 in zip(neighborEntryIdxs, neighborExitIdxs)]
@@ -1187,15 +1262,15 @@ class BTSession:
             y = self.probe_pos_ys
             mv = self.probe_bout_category[:-1] == self.BOUT_STATE_EXPLORE
             ts = self.probe_pos_ts
-            ents = self.probe_well_entry_idxs[wellIdx]
-            exts = self.probe_well_exit_idxs[wellIdx]
+            ents = self.probe_well_entry_times_posIdx[wellIdx]
+            exts = self.probe_well_exit_times_posIdx[wellIdx]
         else:
             x = self.bt_pos_xs
             y = self.bt_pos_ys
             mv = self.bt_bout_category[:-1] == self.BOUT_STATE_EXPLORE
             ts = self.bt_pos_ts
-            ents = self.bt_well_entry_idxs[wellIdx]
-            exts = self.bt_well_exit_idxs[wellIdx]
+            ents = self.bt_well_entry_times_posIdx[wellIdx]
+            exts = self.bt_well_exit_times_posIdx[wellIdx]
         wellCoords = self.well_coords_map[str(w)]
         wellX, wellY = wellCoords
 

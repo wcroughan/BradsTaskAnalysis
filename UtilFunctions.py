@@ -3,15 +3,15 @@ from consts import allWellNames, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE
 import csv
 import glob
 from scipy import signal
-from scipy.ndimage.filters import gaussian_filter, gaussian_filter1d
+from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 from itertools import groupby
 from datetime import date
 import sys
 import os
-from scipy.interpolate import griddata
-from BTSession import BTSession
 from typing import List, Dict, Tuple, Optional
+import functools
+import time
 
 
 def findDataDir(possibleDataDirs=["/media/WDC8/",
@@ -39,21 +39,21 @@ def parseCmdLineAnimalNames(default: Optional[List[str]] = None) -> List[str]:
         return default
 
 
-def readWellCoordsFile(well_coords_file: str) -> Dict[str, Tuple[int, int]]:
+def readWellCoordsFile(wellCoordsFile: str) -> Dict[str, Tuple[int, int]]:
     # For some reason json saving and loading turns the keys into strings, just going to change that here so
     # it's consistent
-    with open(well_coords_file, 'r') as wcf:
-        well_coords_map = {}
-        csv_reader = csv.reader(wcf)
-        for data_row in csv_reader:
+    with open(wellCoordsFile, 'r') as wcf:
+        wellCoordsMap = {}
+        csvReader = csv.reader(wcf)
+        for dataRow in csvReader:
             try:
-                well_coords_map[str(int(data_row[0]))] = (
-                    int(data_row[1]), int(data_row[2]))
+                wellCoordsMap[str(int(dataRow[0]))] = (
+                    int(dataRow[1]), int(dataRow[2]))
             except Exception as err:
-                if data_row[1] != '':
+                if dataRow[1] != '':
                     print(err)
 
-        return well_coords_map
+        return wellCoordsMap
 
 
 def readRawPositionData(data_filename):
@@ -79,80 +79,6 @@ def readRawPositionData(data_filename):
     except Exception as err:
         print(err)
         return None, None
-
-
-def readClipData(data_filename):
-    time_clips = None
-    try:
-        with open(data_filename, 'r') as data_file:
-            start_times = list()
-            finish_times = list()
-            csv_reader = csv.reader(data_file)
-            n_time_clips = 0
-            for data_row in csv_reader:
-                if data_row:
-                    n_time_clips += 1
-                    start_times.append(int(data_row[1]))
-                    finish_times.append(int(data_row[2]))
-            time_clips = np.empty((n_time_clips, 2), dtype=np.uint32)
-            time_clips[:, 0] = start_times[:]
-            time_clips[:, 1] = finish_times[:]
-    except Exception as err:
-        print(err)
-    return time_clips
-
-
-def cleanupPos(tpts, x_pos, y_pos, xLim=(100, 1050), yLim=(20, 900), excludeBoxes=None,
-               maxJumpDistance=50, makePlots=False):
-    # only in bounds points pls
-    points_in_range = np.ones_like(x_pos).astype(bool)
-    if xLim is not None:
-        points_in_range &= (x_pos > xLim[0]) & (x_pos < xLim[1])
-    if yLim is not None:
-        points_in_range &= (y_pos > yLim[0]) & (y_pos < yLim[1])
-    x_pos[~ points_in_range] = np.nan
-    y_pos[~ points_in_range] = np.nan
-    if makePlots:
-        quickPosPlot(tpts, x_pos, y_pos, "in bounds only")
-
-    # exclude boxes
-    if excludeBoxes is not None:
-        for x1, y1, x2, y2 in excludeBoxes:
-            inBox = (x_pos > x1) & (x_pos < x2) & (y_pos > y1) & (y_pos < y2)
-            x_pos[inBox] = np.nan
-            y_pos[inBox] = np.nan
-    if makePlots:
-        quickPosPlot(tpts, x_pos, y_pos, "excluded boxes")
-
-    # Remove large jumps in position (tracking errors)
-    jump_distance = np.sqrt(np.square(np.diff(x_pos, prepend=x_pos[0])) +
-                            np.square(np.diff(y_pos, prepend=y_pos[0])))
-    clean_points = jump_distance < maxJumpDistance
-    x_pos[~ clean_points] = np.nan
-    y_pos[~ clean_points] = np.nan
-    if makePlots:
-        quickPosPlot(tpts, x_pos, y_pos, "no jumps (single)")
-
-    # Dilate the excluded parts but only inward toward the noise
-    MIN_CLEAN_TIME_FRAMES = 15
-    nanidx = np.argwhere(np.isnan(x_pos)).reshape(-1)
-    nidiff = np.diff(nanidx)
-    takeout = np.argwhere((nidiff > 1) & (nidiff < MIN_CLEAN_TIME_FRAMES))
-    for t in takeout:
-        x_pos[nanidx[t][0]:nanidx[t+1][0]] = np.nan
-        y_pos[nanidx[t][0]:nanidx[t+1][0]] = np.nan
-    if makePlots:
-        quickPosPlot(tpts, x_pos, y_pos, "no jumps (dilated)")
-
-
-def interpNanPositions(tpts, x_pos, y_pos):
-    nanpos = np.isnan(x_pos)
-    ynanpos = np.isnan(y_pos)
-    assert all(ynanpos == nanpos)
-    notnanpos = np.logical_not(nanpos)
-    x_pos = np.interp(tpts, tpts[notnanpos], x_pos[notnanpos])
-    y_pos = np.interp(tpts, tpts[notnanpos], y_pos[notnanpos])
-    return x_pos, y_pos
 
 
 def quickPosPlot(tt, xx, yy, title, irange=None):
@@ -187,274 +113,11 @@ def timeStrForTrodesTimestamp(ts):
     return f"{shrs}:{smins}:{ssecs}"
 
 
-def processPosData_coords(x, y, t, maxJumpDistance=50, nCleaningReps=2,
-                          xLim=(100, 1050), yLim=(20, 900), smooth=None,
-                          excludeBoxes=None, correctionDirectory=None):
-    x_pos = np.array(x, dtype=float)
-    y_pos = np.array(y, dtype=float)
-
-    # Interpolate the position data into evenly sampled time points
-
-    tpts = np.array(t).astype(float)
-    x_pos = np.array(x).astype(float)
-    y_pos = np.array(y).astype(float)
-
-    # quickPosPlot(tpts, x_pos, y_pos, "raw")
-
-    # Remove bad position points
-    cleanupPos(tpts, x_pos, y_pos, xLim=xLim, yLim=yLim,
-               excludeBoxes=excludeBoxes, maxJumpDistance=maxJumpDistance)
-
-    # Now check for large gaps that were removed and fill in with correction files
-    validTpts = tpts[~np.isnan(x_pos)]
-    notnandiff = np.diff(validTpts)
-    MIN_CORRECTION_SECS = 1.0
-    MIN_CORRECTION_TS = MIN_CORRECTION_SECS * TRODES_SAMPLING_RATE
-    needsCorrection = np.argwhere((notnandiff >= MIN_CORRECTION_TS)).reshape(-1)
-    correctionRegions = []
-    correctedFlag = []
-    # print("\tLarge gaps that are being interped:")
-    for nc in needsCorrection:
-        t1 = int(validTpts[nc])
-        t2 = int(validTpts[nc+1])
-
-        timeStr1 = timeStrForTrodesTimestamp(t1)
-        timeStr2 = timeStrForTrodesTimestamp(t2)
-
-        entry = (
-            t1,
-            t2,
-            timeStr1,
-            timeStr2,
-            (t2-t1) / TRODES_SAMPLING_RATE,
-            False
-        )
-        correctionRegions.append(entry)
-        correctedFlag.append(False)
-
-        # print("\t" + "\t".join([str(s) for s in entry]))
-
-    if correctionDirectory is None:
-        response = input("No corrections provided, interp all these gaps anyway (y/N)?")
-        if response != "y":
-            exit()
-
-    if correctionDirectory is not None:
-        if not os.path.exists(correctionDirectory):
-            os.makedirs(correctionDirectory)
-
-        gl = correctionDirectory + '/*.videoPositionTracking'
-        cfiles = glob.glob(gl)
-        # print(gl, cfiles)
-        numCorrectionsIntegrated = 0
-        for cf in cfiles:
-            _, posdata = readRawPositionData(cf)
-            ct = np.array(posdata["timestamp"]).astype(float)
-            cx = np.array(posdata["x1"]).astype(float)
-            cy = np.array(posdata["y1"]).astype(float)
-
-            # Seems like it includes all the video timestamps, but just extends wherever tracking happened for
-            # some reason
-            cd = np.abs(np.diff(cx, prepend=cx[0])) + np.abs(np.diff(cy, prepend=cy[0]))
-            nzcd = np.nonzero(cd)[0]
-            ci1 = nzcd[0]
-            ci2 = nzcd[-1]
-            if False:
-                quickPosPlot(ct, cx, cy, "incoming correction points")
-                quickPosPlot(
-                    ct, cx, cy, "incoming correction points (just with tracking data)", irange=(ci1, ci2))
-            ct = ct[ci1:ci2]
-            cx = cx[ci1:ci2]
-            cy = cy[ci1:ci2]
-            # quickPosPlot(ct, cx, cy, "incoming correction points")
-
-            posStartTs = ct[0]
-            posEndTs = ct[-1]
-            # print(f"\tchecking {cf}\n\t\t{posStartTs} - {posEndTs}")
-            for entryi, entry in enumerate(correctionRegions):
-                t1 = entry[0]
-                t2 = entry[1]
-                # print("\t\tagainst entry\t", t1, t2)
-                if t1 > posStartTs and t2 < posEndTs:
-                    correctedFlag[entryi] = True
-                    numCorrectionsIntegrated += 1
-                    # print("\tfound correction for", "\t".join([str(s) for s in entry]))
-                    # integrate this bit
-                    # cleanupPos(ct, cx, cy, xLim=xLim, yLim=yLim, excludeBoxes=excludeBoxes,
-                    # maxJumpDistance=maxJumpDistance)
-                    # cx, cy = interpNanPositions(ct, cx, cy)
-
-                    # MARGIN = 20
-                    tpi1 = np.searchsorted(tpts, t1)
-                    tpi2 = np.searchsorted(tpts, t2)
-                    cpi1 = np.searchsorted(ct, t1)
-                    cpi2 = np.searchsorted(ct, t2)
-
-                    # quickPosPlot(ct, cx, cy, "incoming correction points, full")
-                    # quickPosPlot(tpts, x_pos, y_pos, "correction region original",
-                    #              irange=(max(0, tpi1 - MARGIN), min(len(tpts)-1, tpi2 + MARGIN)))
-                    # quickPosPlot(ct, cx, cy, "incoming correction points", irange=(cpi1, cpi2))
-                    for t in ct:
-                        assert t in tpts
-                    for ci, pi in zip(range(cpi1, cpi2), range(tpi1, tpi2)):
-                        if np.isnan(x_pos[pi]):
-                            x_pos[pi] = cx[ci]
-                            y_pos[pi] = cy[ci]
-                    # quickPosPlot(tpts, x_pos, y_pos, "correction region integrated",
-                    # irange=(max(0, tpi1 - MARGIN), min(len(tpts)-1, tpi2 + MARGIN)))
-
-        print(f"\tCorrected {numCorrectionsIntegrated} regions with corrections files")
-        # print("\tRemaining regions that are uncorrected:")
-        lastEnd = None
-        lastStart = None
-        optimizedTimes = []
-        SPLITGAP = 90
-        COMBINEGAP = 30
-        MAXREC = 60*5
-        for entryi, entry in enumerate(correctionRegions):
-            if not correctedFlag[entryi]:
-                # print("\t" + "\t".join([str(s) for s in entry]))
-
-                if lastEnd is not None and (
-                    (entry[0] - lastEnd) / TRODES_SAMPLING_RATE < COMBINEGAP or
-                    ((entry[0] - lastEnd) / TRODES_SAMPLING_RATE < SPLITGAP and
-                        (entry[1] - lastStart) / TRODES_SAMPLING_RATE < MAXREC)):
-                    # combine this with last entry
-                    currentOptimizedEntry = optimizedTimes[-1]
-                    gapLen = entry[0] - lastEnd
-                    if gapLen > currentOptimizedEntry[3]:
-                        gapStart = currentOptimizedEntry[1]
-                        gapEnd = entry[2]
-                    else:
-                        gapLen = currentOptimizedEntry[3]
-                        gapStart = currentOptimizedEntry[4]
-                        gapEnd = currentOptimizedEntry[5]
-                    optimizedTimes[-1] = (currentOptimizedEntry[0], entry[3],
-                                          currentOptimizedEntry[2]+1, gapLen, gapStart, gapEnd)
-                    lastEnd = entry[1]
-                else:
-                    # new entry
-                    lastStart = entry[0]
-                    lastEnd = entry[1]
-                    optimizedTimes.append((entry[2], entry[3], 1, -1, None, None))
-
-        print("\toptimized corrections = ")
-        for oe in optimizedTimes:
-            print(f"\t\t({oe[2]}) {oe[0]}\t{oe[1]}\t\t{oe[4]}\t{oe[5]}")
-
-        correctionsFileName = os.path.join(correctionDirectory, "optimized.txt")
-        # print(f"\tsaving optimized list to file {correctionsFileName}")
-        print("\tsaving optimized list to file")
-        with open(correctionsFileName, 'w') as f:
-            f.writelines([f"{oe[0]} - {oe[1]}\n" for oe in optimizedTimes])
-
-    x_pos, y_pos = interpNanPositions(tpts, x_pos, y_pos)
-
-    # quickPosPlot(tpts, x_pos, y_pos, "interp")
-
-    if smooth is not None:
-        x_pos = gaussian_filter1d(x_pos, smooth)
-        y_pos = gaussian_filter1d(y_pos, smooth)
-
-        # quickPosPlot(tpts, x_pos, y_pos, "smooth")
-
-    return list(x_pos), list(y_pos), list(tpts)
-
-
-def processPosData(position_data, maxJumpDistance=50, nCleaningReps=2,
-                   xLim=(100, 1050), yLim=(20, 900), smooth=None, excludeBoxes=None, correctionDirectory=None):
-    return processPosData_coords(position_data["x1"], position_data["y1"], position_data["timestamp"],
-                                 maxJumpDistance=maxJumpDistance, nCleaningReps=nCleaningReps, xLim=xLim,
-                                 yLim=yLim, smooth=smooth, excludeBoxes=excludeBoxes,
-                                 correctionDirectory=correctionDirectory)
-
-
-def getWellCoordinates(well_num, well_coords_map):
-    return well_coords_map[str(well_num)]
-
-
-def getMeanDistToWell(xs, ys, wellx, welly, duration=-1, ts=np.array([])):
-    # Note nan values are ignored. This is intentional, so caller
-    # can just consider some time points by making all other values nan
-    # If duration == -1, use all times points. Otherwise, take only duration in seconds
-    if duration != -1:
-        assert xs.shape == ts.shape
-        dur_idx = np.searchsorted(ts, ts[0] + duration)
-        xs = xs[0:dur_idx]
-        ys = ys[0:dur_idx]
-
-    dist_to_well = np.sqrt(np.power(wellx - np.array(xs), 2) +
-                           np.power(welly - np.array(ys), 2))
-    return np.nanmean(dist_to_well)
-
-
-def getMedianDistToWell(xs, ys, wellx, welly, duration=-1, ts=np.array([])):
-    # Note nan values are ignored. This is intentional, so caller
-    # can just consider some time points by making all other values nan
-    # If duration == -1, use all times points. Otherwise, take only duration in seconds
-    if duration != -1:
-        assert xs.shape == ts.shape
-        dur_idx = np.searchsorted(ts, ts[0] + duration)
-        xs = xs[0:dur_idx]
-        ys = ys[0:dur_idx]
-
-    dist_to_well = np.sqrt(np.power(wellx - np.array(xs), 2) +
-                           np.power(welly - np.array(ys), 2))
-    return np.nanmedian(dist_to_well)
-
-
-def getMeanDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
-    res = []
-    for wi in allWellNames:
-        wx, wy = getWellCoordinates(wi, well_coords)
-        res.append(getMeanDistToWell(np.array(xs), np.array(
-            ys), wx, wy, duration=duration, ts=np.array(ts)))
-
-    return res
-
-
-def getMedianDistToWells(xs, ys, well_coords, duration=-1, ts=np.array([])):
-    res = []
-    for wi in allWellNames:
-        wx, wy = getWellCoordinates(wi, well_coords)
-        res.append(getMedianDistToWell(np.array(xs), np.array(
-            ys), wx, wy, duration=duration, ts=np.array(ts)))
-
-    return res
-
-
-# switchWellFactor of 0.8 means transition from well a -> b requires rat dist to b to be 0.8 * dist to a
-def getNearestWell(xs, ys, well_coords, well_idxs=allWellNames, switchWellFactor=0.8):
-    well_coords = np.array(
-        [getWellCoordinates(i, well_coords) for i in well_idxs])
-    tiled_x = np.tile(xs, (len(well_idxs), 1)).T  # each row is one time point
-    tiled_y = np.tile(ys, (len(well_idxs), 1)).T
-
-    tiled_wells_x = np.tile(well_coords[:, 0], (len(xs), 1))
-    tiled_wells_y = np.tile(well_coords[:, 1], (len(ys), 1))
-
-    delta_x = tiled_wells_x - tiled_x
-    delta_y = tiled_wells_y - tiled_y
-    delta = np.sqrt(np.power(delta_x, 2) + np.power(delta_y, 2))
-
-    raw_nearest_wells = np.argmin(delta, axis=1)
-    nearest_well = raw_nearest_wells
-    curr_well = nearest_well[0]
-    for i in range(np.shape(xs)[0]):
-        if curr_well != nearest_well[i]:
-            if delta[i, nearest_well[i]] < switchWellFactor * delta[i, curr_well]:
-                curr_well = nearest_well[i]
-            else:
-                nearest_well[i] = curr_well
-
-    # if TEST_NEAREST_WELL:
-    #     print("delta_x", delta_x)
-    #     print("delta_y", delta_y)
-    #     print("delta", delta)
-    #     print("raw_nearest_wells", raw_nearest_wells)
-    #     print("nearest_well", nearest_well)
-
-    return well_idxs[nearest_well]
+def getWellPosCoordinates(wellName: int) -> Tuple[float, float]:
+    assert wellName in allWellNames
+    y = float(wellName // 8) + 0.5
+    x = float(wellName % 8 - 2) + 0.5
+    return x, y
 
 
 # def detectStimArtifacts(lfp_data):
@@ -465,86 +128,86 @@ def getNearestWell(xs, ys, well_coords, well_idxs=allWellNames, switchWellFactor
 #     return deflection_metrics[0]
 
 
-def getRipplePower(lfp_data, omit_artifacts=True, causal_smoothing=False,
-                   lfp_deflections=None, meanPower=None, stdPower=None,
+def getRipplePower(lfpData, omitArtifacts=True, causalSmoothing=False,
+                   lfpDeflections=None, meanPower=None, stdPower=None,
                    showPlot=False, rippleFilterBand=(150, 250), rippleFilterOrder=4,
                    skipTimePointsFoward=int(0.075 * LFP_SAMPLING_RATE),
                    skipTimePointsBackward=int(0.02 * LFP_SAMPLING_RATE)):
     """
     Get ripple power in LFP
     """
-    lfp_data_copy = lfp_data.copy().astype(float)
+    lfpDataCopy = lfpData.copy().astype(float)
 
     if (meanPower is None) != (stdPower is None):
         raise Exception("meanPower and stdPower must both be provided or None")
 
-    if lfp_deflections is None:
-        if omit_artifacts:
+    if lfpDeflections is None:
+        if omitArtifacts:
             raise Exception("this hasn't been updated")
             # # Remove all the artifacts in the raw ripple amplitude data
-            # deflection_metrics = signal.find_peaks(np.abs(np.diff(lfp_data,
-            #                                                       prepend=lfp_data[0])),
+            # deflectionMetrics = signal.find_peaks(np.abs(np.diff(lfpData,
+            #                                                       prepend=lfpData[0])),
             # height=DEFLECTION_THRESHOLD_LO,
             #                                        distance=MIN_ARTIFACT_DISTANCE)
-            # lfp_deflections = deflection_metrics[0]
+            # lfpDeflections = deflectionMetrics[0]
 
     # After this preprocessing, clean up the data if needed.
-    lfp_mask = np.zeros_like(lfp_data_copy)
-    if lfp_deflections is not None:
-        for artifact_idx in lfp_deflections:
-            if artifact_idx < 0 or artifact_idx > len(lfp_data):
+    lfpMask = np.zeros_like(lfpDataCopy)
+    if lfpDeflections is not None:
+        for artifactIdx in lfpDeflections:
+            if artifactIdx < 0 or artifactIdx > len(lfpData):
                 continue
-            cleanup_start = max(0, artifact_idx - skipTimePointsBackward)
-            cleanup_finish = min(len(lfp_data), artifact_idx +
-                                 skipTimePointsFoward)
-            # lfp_data_copy[cleanup_start:cleanup_finish] = np.nan
-            lfp_mask[cleanup_start:cleanup_finish] = 1
+            cleanupStart = max(0, artifactIdx - skipTimePointsBackward)
+            cleanupFinish = min(len(lfpData), artifactIdx +
+                                skipTimePointsFoward)
+            # lfpDataCopy[cleanupStart:cleanupFinish] = np.nan
+            lfpMask[cleanupStart:cleanupFinish] = 1
 
         # print("LFP mask letting {} of signal through".format(
-        #     1 - (np.count_nonzero(lfp_mask) / len(lfp_mask))))
+        #     1 - (np.count_nonzero(lfpMask) / len(lfpMask))))
 
-    nyq_freq = LFP_SAMPLING_RATE * 0.5
-    lo_cutoff = rippleFilterBand[0] / nyq_freq
-    hi_cutoff = rippleFilterBand[1] / nyq_freq
-    pl, ph = signal.butter(rippleFilterOrder, [lo_cutoff, hi_cutoff], btype='band')
-    if causal_smoothing:
-        ripple_amplitude = signal.lfilter(pl, ph, lfp_data_copy)
+    nyqFreq = LFP_SAMPLING_RATE * 0.5
+    loCutoff = rippleFilterBand[0] / nyqFreq
+    hiCutoff = rippleFilterBand[1] / nyqFreq
+    pl, ph = signal.butter(rippleFilterOrder, [loCutoff, hiCutoff], btype='band')
+    if causalSmoothing:
+        rippleAmplitude = signal.lfilter(pl, ph, lfpDataCopy)
     else:
-        ripple_amplitude = signal.filtfilt(pl, ph, lfp_data_copy)
+        rippleAmplitude = signal.filtfilt(pl, ph, lfpDataCopy)
 
-    ripple_amplitude[lfp_mask == 1] = np.nan
+    rippleAmplitude[lfpMask == 1] = np.nan
 
     # Smooth this data and get ripple power
-    # smoothing_window_length = RIPPLE_POWER_SMOOTHING_WINDOW * LFP_SAMPLING_RATE
-    # smoothing_weights = np.ones(int(smoothing_window_length))/smoothing_window_length
-    # ripple_power = np.convolve(np.abs(ripple_amplitude), smoothing_weights, mode='same')
+    # smoothingWindowLength = RIPPLE_POWER_SMOOTHING_WINDOW * LFP_SAMPLING_RATE
+    # smoothingWeights = np.ones(int(smoothingWindowLength))/smoothingWindowLength
+    # ripplePower = np.convolve(np.abs(rippleAmplitude), smoothingWeights, mode='same')
 
     # Use a Gaussian kernel for filtering - Make the Kernel Causal bu keeping only one half of the values
-    smoothing_window_length = 10
-    if causal_smoothing:
+    smoothingWindowLength = 10
+    if causalSmoothing:
         # In order to no have NaN values affect the filter output, create a copy with the artifacts
-        ripple_amplitude_copy = ripple_amplitude.copy()
+        rippleAmplitudeCopy = rippleAmplitude.copy()
 
-        half_smoothing_signal = \
-            np.exp(-np.square(np.linspace(0, -4 * smoothing_window_length, 4 *
-                                          smoothing_window_length)) / (
-                2 * smoothing_window_length * smoothing_window_length))
-        smoothing_signal = np.concatenate(
-            (np.zeros_like(half_smoothing_signal), half_smoothing_signal), axis=0)
-        ripple_power = signal.convolve(np.abs(ripple_amplitude_copy),
-                                       smoothing_signal, mode='same') / np.sum(smoothing_signal)
-        ripple_power[np.isnan(ripple_amplitude)] = np.nan
+        halfSmoothingSignal = \
+            np.exp(-np.square(np.linspace(0, -4 * smoothingWindowLength, 4 *
+                                          smoothingWindowLength)) / (
+                2 * smoothingWindowLength * smoothingWindowLength))
+        smoothingSignal = np.concatenate(
+            (np.zeros_like(halfSmoothingSignal), halfSmoothingSignal), axis=0)
+        ripplePower = signal.convolve(np.abs(rippleAmplitudeCopy),
+                                      smoothingSignal, mode='same') / np.sum(smoothingSignal)
+        ripplePower[np.isnan(rippleAmplitude)] = np.nan
     else:
-        ripple_power = gaussian_filter(np.abs(ripple_amplitude), smoothing_window_length)
+        ripplePower = gaussian_filter(np.abs(rippleAmplitude), smoothingWindowLength)
 
     # Get the mean/standard deviation for ripple power and adjust for those
     if meanPower is None:
-        meanPower = np.nanmean(ripple_power)
-        stdPower = np.nanstd(ripple_power)
-    zpower = (ripple_power - meanPower) / stdPower
+        meanPower = np.nanmean(ripplePower)
+        stdPower = np.nanstd(ripplePower)
+    zpower = (ripplePower - meanPower) / stdPower
 
     if showPlot:
-        lc = lfp_data.copy()
+        lc = lfpData.copy()
         lc = lc / np.nanmax(np.abs(lc)) * 10
         rc = np.array([min(10, p) for p in zpower])
         ts = np.linspace(0, len(lc) / 1500, len(lc))
@@ -552,12 +215,12 @@ def getRipplePower(lfp_data, omit_artifacts=True, causal_smoothing=False,
         plt.plot(ts, lc, c="blue", zorder=1)
         # plt.plot(np.diff(lc), c="red")
         # plt.plot([0, len(lc)], [3, 3], color="red", zorder=-1)
-        if lfp_deflections is not None:
-            plt.scatter(lfp_deflections / 1500, [0] * len(lfp_deflections), zorder=2, c="red")
+        if lfpDeflections is not None:
+            plt.scatter(lfpDeflections / 1500, [0] * len(lfpDeflections), zorder=2, c="red")
 
         plt.show()
 
-    return ripple_power, zpower, meanPower, stdPower
+    return ripplePower, zpower, meanPower, stdPower
 
 
 def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0):
@@ -609,33 +272,6 @@ def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThres
             i += 1
 
     return ripStartIdxs, ripLens, ripPeakIdxs, ripPeakAmps, ripCrossThreshIdx
-
-
-def getWellEntryAndExitTimes(nearest_wells, ts, well_idxs=allWellNames, include_neighbors=False):
-    entry_times = []
-    exit_times = []
-    entry_idxs = []
-    exit_idxs = []
-
-    ts = np.array(ts)
-    for wi in well_idxs:
-        # last data point should count as an exit, so appending a false
-        # same for first point should count as entry, prepending
-        if include_neighbors:
-            neighbors = list({wi, wi - 1, wi + 1, wi - 7, wi - 8, wi - 9,
-                              wi + 7, wi + 8, wi + 9}.intersection(allWellNames))
-            near_well = np.concatenate(
-                ([False], np.isin(nearest_wells, neighbors), [False]))
-        else:
-            near_well = np.concatenate(([False], nearest_wells == wi, [False]))
-        idx = np.argwhere(np.diff(np.array(near_well, dtype=float)) == 1)
-        idx2 = np.argwhere(np.diff(np.array(near_well, dtype=float)) == -1) - 1
-        entry_idxs.append(idx.T[0])
-        exit_idxs.append(idx2.T[0])
-        entry_times.append(ts[idx.T[0]])
-        exit_times.append(ts[idx2.T[0]])
-
-    return entry_idxs, exit_idxs, entry_times, exit_times
 
 
 def getSingleWellEntryAndExitTimes(xs, ys, ts, wellx, welly, radius=50):
@@ -711,7 +347,7 @@ class AnimalInfo:
         self.DLC_dir = None
 
 
-def getInfoForAnimal(animalName):
+def getInfoForAnimal(animalName: str) -> AnimalInfo:
     ret = AnimalInfo()
     if animalName == "Martin":
         ret.X_START = 200
@@ -723,9 +359,9 @@ def getInfoForAnimal(animalName):
         ret.fig_output_dir = ret.output_dir
         ret.out_filename = "martin_bradtask.dat"
 
-        ret.excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
-        ret.excluded_dates += ["20200531", "20200603", "20200602",
-                               "20200606", "20200605", "20200601"]
+        ret.excludedDates = ["20200528", "20200630", "20200702", "20200703"]
+        ret.excludedDates += ["20200531", "20200603", "20200602",
+                              "20200606", "20200605", "20200601"]
         ret.excluded_dates += ["20200526"]
         ret.excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
         ret.minimum_date = None
@@ -1014,22 +650,6 @@ def getInfoForAnimal(animalName):
     return ret
 
 
-def generateFoundWells(home_well, away_wells, last_away_well, ended_on_home, found_first_home) -> List[int]:
-    if not found_first_home:
-        return []
-    elif last_away_well is None:
-        return [home_well]
-
-    foundWells = []
-    for aw in away_wells:
-        foundWells += [home_well, aw]
-        if aw == last_away_well:
-            break
-    if ended_on_home:
-        foundWells.append(home_well)
-    return foundWells
-
-
 def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirectly=False):
     # print(seshName)
     seshDate, seshTime = seshName.split("_")
@@ -1140,53 +760,16 @@ def fillCounts(dest, src, t0, t1, windowSize):
     dest[len(bins) - 1:] = np.nan
 
 
-# returns position given by xs, ys in the context of sesh but corrected so
-# well locations would lay on a grid at x and y values 0.5, 1.5, ... 5.5
-def correctFishEye(sesh: BTSession, xs, ys):
-    # Here's the lattice we're mapping to, including imaginary wells that encircle the real wells
-    xv, yv = np.meshgrid(np.linspace(-0.5, 6.5, 8), np.linspace(-0.5, 6.5, 8))
-    xpts = xv.reshape((-1))
-    ypts = yv.reshape((-1))
-    # print(f"xpts={xpts}")
-    # print(f"ypts={ypts}")
+class TimeThisFunction:
+    def __init__(self, func):
+        functools.update_wrapper(self, func)
+        self.func = func
+        self.totalTime = 0
 
-    def getWellCoords(xp, yp):
-        if xp > 0 and xp < 6 and yp > 0 and yp < 6:
-            wellName = int(2 + (xp - 0.5) + 8 * (yp - 0.5))
-            return np.array(getWellCoordinates(wellName, sesh.well_coords_map))
-        if xp > 0 and xp < 6:
-            # vertical extrapolation. p1 next well, p2 is further
-            if yp > 6:
-                p1 = getWellCoords(xp, yp-1)
-                p2 = getWellCoords(xp, yp-2)
-            else:
-                p1 = getWellCoords(xp, yp+1)
-                p2 = getWellCoords(xp, yp+2)
-        else:
-            if xp > 6:
-                p1 = getWellCoords(xp-1, yp)
-                p2 = getWellCoords(xp-2, yp)
-            else:
-                p1 = getWellCoords(xp+1, yp)
-                p2 = getWellCoords(xp+2, yp)
-
-        return p1 + (p1 - p2)
-
-    cameraWellLocations = np.array([getWellCoords(x, y) for x, y in zip(xpts, ypts)])
-    # print(xpts)
-    # print(ypts)
-    # print(cameraWellLocations)
-    # plt.clf()
-    # plt.scatter(cameraWellLocations[:, 0], cameraWellLocations[:, 1])
-    # plt.show()
-    # exit()
-
-    pathCoords = np.vstack((np.array(xs), np.array(ys))).T
-    xres = griddata(cameraWellLocations, xpts, pathCoords, method="cubic")
-    yres = griddata(cameraWellLocations, ypts, pathCoords, method="cubic")
-    # print(xs)
-    # print(xres)
-    # print(ys)
-    # print(yres)
-
-    return xres, yres
+    def __call__(self, *args, **kwargs):
+        start_time = time.perf_counter()    # 1
+        value = self.func(*args, **kwargs)
+        end_time = time.perf_counter()      # 2
+        run_time = end_time - start_time    # 3
+        self.totalTime += run_time
+        return value

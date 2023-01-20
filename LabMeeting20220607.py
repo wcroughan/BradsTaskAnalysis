@@ -845,7 +845,7 @@ def makeFigures():
             for si, sesh in enumerate(sessions):
                 t1 = np.array(sesh.home_well_find_times)
                 t0 = np.array(np.hstack(([sesh.bt_pos_ts[0]], sesh.away_well_leave_times)))
-                if not sesh.ended_on_home:
+                if not sesh.endedOnHome:
                     t0 = t0[0:-1]
                 times = (t1 - t0) / TRODES_SAMPLING_RATE
                 homeFindLatencies[si, 0:sesh.num_home_found] = times
@@ -855,7 +855,7 @@ def makeFigures():
             for si, sesh in enumerate(sessions):
                 t1 = np.array(sesh.away_well_find_times)
                 t0 = np.array(sesh.home_well_leave_times)
-                if sesh.ended_on_home:
+                if sesh.endedOnHome:
                     t0 = t0[0:-1]
                 times = (t1 - t0) / TRODES_SAMPLING_RATE
                 awayFindLatencies[si, 0:sesh.num_away_found] = times
@@ -940,7 +940,7 @@ def makeFigures():
             for si, sesh in enumerate(sessions):
                 t1 = np.array(sesh.home_well_find_times)
                 t0 = np.array(np.hstack(([sesh.bt_pos_ts[0]], sesh.away_well_leave_times)))
-                if not sesh.ended_on_home:
+                if not sesh.endedOnHome:
                     t0 = t0[0:-1]
                 ts0 = (t0 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
                 ts1 = (t1 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
@@ -952,7 +952,7 @@ def makeFigures():
             for si, sesh in enumerate(sessions):
                 t1 = np.array(sesh.away_well_find_times)
                 t0 = np.array(sesh.home_well_leave_times)
-                if sesh.ended_on_home:
+                if sesh.endedOnHome:
                     t0 = t0[0:-1]
                 ts0 = (t0 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
                 ts1 = (t1 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
@@ -995,7 +995,7 @@ def makeFigures():
             for si, sesh in enumerate(sessions):
                 t1 = np.array(sesh.away_well_find_times)
                 t0 = np.array(sesh.home_well_leave_times)
-                if sesh.ended_on_home:
+                if sesh.endedOnHome:
                     t0 = t0[0:-1]
                 ts0 = (t0 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
                 ts1 = (t1 - sesh.bt_pos_ts[0]) / TRODES_SAMPLING_RATE
@@ -1092,7 +1092,7 @@ def makeFigures():
             for si, sesh in enumerate(sessions):
                 t1 = np.array(sesh.home_well_find_pos_idxs)
                 t0 = np.array(np.hstack(([0], sesh.away_well_leave_pos_idxs)))
-                if not sesh.ended_on_home:
+                if not sesh.endedOnHome:
                     t0 = t0[0:-1]
                 assert len(t1) == len(t0)
 
@@ -1132,7 +1132,7 @@ def makeFigures():
 
                 t1 = np.array(sesh.away_well_find_pos_idxs)
                 t0 = np.array(sesh.home_well_leave_pos_idxs)
-                if sesh.ended_on_home:
+                if sesh.endedOnHome:
                     t0 = t0[0:-1]
                 assert len(t1) == len(t0)
                 awayNumRepeatsVisited = []

@@ -16,6 +16,7 @@ import numpy as np
 
 from TrodesCameraExtrator import processUSBVideoData
 from consts import TRODES_SAMPLING_RATE, all_well_names
+from UtilFunctions import getWellPosCoordinates
 
 
 class AnnotatorRegionListItem(QListWidgetItem):
@@ -56,7 +57,7 @@ class PositionPlot(QWidget):
         # print("Hello from Position Plot!")
         plt.ion()
 
-        self.xs = - np.array(xs)
+        self.xs = np.array(xs)
         self.ys = np.array(ys)
         self.ts = np.array(ts)
 
@@ -82,8 +83,8 @@ class PositionPlot(QWidget):
 
     def clearAxes(self):
         self.position_axes.clear()
-        self.position_axes.set_xlabel('X (px)')
-        self.position_axes.set_ylabel('Y (px)')
+        self.position_axes.set_xlabel('X')
+        self.position_axes.set_ylabel('Y')
         self.position_axes.grid(True)
 
         self.canvas.draw()
@@ -112,7 +113,7 @@ class PositionPlot(QWidget):
     def setWellCoord(self, wellCoord):
         if self.wellCoordPlot is not None:
             self.wellCoordPlot.remove()
-        self.wellCoordPlot = self.position_axes.scatter(-wellCoord[0], wellCoord[1], zorder=2)
+        self.wellCoordPlot = self.position_axes.scatter(wellCoord[0], wellCoord[1], zorder=2)
 
     def clearWellCoord(self):
         if self.wellCoordPlot is not None:
@@ -405,7 +406,7 @@ class USBVideoWidget(QWidget):
 class AnnotatorWindow(QMainWindow):
     def __init__(self, trodesXs, trodesYs, trodesTs, trodesLightOffTime, trodesLightOnTime,
                  usbVideoFileName, wellEntryTimes, wellExitTimes, foundWells, skipProbe,
-                 outputFileNameStart, wellCoordMap):
+                 outputFileNameStart):
         QMainWindow.__init__(self)
         # print("Hello from annotator!")
 
@@ -434,8 +435,6 @@ class AnnotatorWindow(QMainWindow):
         self.wellEntryTimes = wellEntryTimes
         self.wellExitTimes = wellExitTimes
         self.foundWells = foundWells
-        self.wellCoordMap = wellCoordMap
-        # print(wellCoordMap)
 
         self.usbVideoFileName = usbVideoFileName
         self.hasUsbVideo = self.usbVideoFileName is not None
@@ -653,7 +652,7 @@ class AnnotatorWindow(QMainWindow):
         self.wellLabel.setText(", ".join(
             [f"<b>{str(w)}</b>" if wi == foundWellIdx else str(w) for wi, w in enumerate(self.foundWells)]))
 
-        self.positionPlot.setWellCoord(self.wellCoordMap[str(wellName)])
+        self.positionPlot.setWellCoord(getWellPosCoordinates(wellName))
         self.updateClipInWidgets(animateAnew=True)
 
     def setupForTaskStart(self):

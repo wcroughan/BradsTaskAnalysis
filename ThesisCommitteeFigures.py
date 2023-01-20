@@ -484,7 +484,7 @@ def makeThesisCommitteeFigs():
             for si, sesh in enumerate(sessions):
                 t1 = np.array(sesh.home_well_find_times)
                 t0 = np.array(np.hstack(([sesh.bt_pos_ts[0]], sesh.away_well_leave_times)))
-                if not sesh.ended_on_home:
+                if not sesh.endedOnHome:
                     t0 = t0[0:-1]
                 times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
                 homeFindTimes[si, 0:sesh.num_home_found] = times
@@ -494,7 +494,7 @@ def makeThesisCommitteeFigs():
             for si, sesh in enumerate(sessions):
                 t1 = np.array(sesh.away_well_find_times)
                 t0 = np.array(sesh.home_well_leave_times)
-                if sesh.ended_on_home:
+                if sesh.endedOnHome:
                     t0 = t0[0:-1]
                 times = (t1 - t0) / BTSession.TRODES_SAMPLING_RATE
                 awayFindTimes[si, 0:sesh.num_away_found] = times
@@ -2579,7 +2579,7 @@ def makeThesisCommitteeFigs():
                     awx, awy = sesh.well_coords_map[str(sesh.visited_away_wells[fti])]
                     axs[1, fti].scatter(awx, awy, c="blue", zorder=2)
                 setupBehaviorTracePlot(axs, sesh, showAllWells=True, showAways=False, zorder=1)
-                if sesh.ended_on_home:
+                if sesh.endedOnHome:
                     axs[1, -1].cla()
                 axs = saveOrShow("task_all_trials", outputDir=seshOutputDir, statsFile=statsFile)
                 fig.set_figheight(FIG_SCALE)

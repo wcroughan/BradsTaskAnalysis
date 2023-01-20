@@ -4,15 +4,13 @@ import io
 import ffmpeg
 import numpy as np
 import os
-import matplotlib.pyplot as plt
 import glob
 
 if __name__ == "__main__":
     import cv2
 
-from UtilFunctions import readRawPositionData, processPosData, getInfoForAnimal, getTrodesVideoFile, getUSBVideoFile
+from UtilFunctions import getInfoForAnimal, getTrodesVideoFile, getUSBVideoFile
 from consts import TRODES_SAMPLING_RATE
-from BTData import BTData
 
 
 def getFrameBatch(videoFileName, startFrame, numFrames=None, frameStride=1):
@@ -372,42 +370,42 @@ def processRawTrodesVideo(videoFileName, timestampFileName=None, lightOffThresho
     return outputFileName
 
 
-def runTest():
-    videoFileName = "/home/wcroughan/Desktop/20211215_140433.1.h264"
-    # videoFileName = "/home/wcroughan/Desktop/20220224_192509.1.h264"
+# def runTest():
+#     videoFileName = "/home/wcroughan/Desktop/20211215_140433.1.h264"
+#     # videoFileName = "/home/wcroughan/Desktop/20220224_192509.1.h264"
 
-    # t1 = time.perf_counter()
-    # processRawTrodesVideo(videoFileName, timestampFileName=None,
-    #                       threshold=50, searchDist=150, showVideo=False, frameBatchSize=2000,
-    #                       maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteMode=True)
-    # t2 = time.perf_counter()
-    processRawTrodesVideo(videoFileName, timestampFileName=None,
-                          threshold=50, searchDist=150, showVideo=False, frameBatchSize=1000,
-                          maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteMode=True)
-    # t3 = time.perf_counter()
-    # print("batch size 500: ", t2 - t1)
-    # print("batch size 1000: ", t3 - t2)
-    # batch size 2000 gets killed ... batch size 1000 is twice as fast as 500
+#     # t1 = time.perf_counter()
+#     # processRawTrodesVideo(videoFileName, timestampFileName=None,
+#     #                       threshold=50, searchDist=150, showVideo=False, frameBatchSize=2000,
+#     #                       maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteMode=True)
+#     # t2 = time.perf_counter()
+#     processRawTrodesVideo(videoFileName, timestampFileName=None,
+#                           threshold=50, searchDist=150, showVideo=False, frameBatchSize=1000,
+#                           maxNumBatches=None, outputFileName=None, batchStart=4000, overwriteMode=True)
+#     # t3 = time.perf_counter()
+#     # print("batch size 500: ", t2 - t1)
+#     # print("batch size 1000: ", t3 - t2)
+#     # batch size 2000 gets killed ... batch size 1000 is twice as fast as 500
 
-    posFileName = "/home/wcroughan/Desktop/20211215_140433.1.videoPositionTracking"
-    originalPosFileName = "/home/wcroughan/Desktop/originalTracking.videoPositionTracking"
+#     posFileName = "/home/wcroughan/Desktop/20211215_140433.1.videoPositionTracking"
+#     originalPosFileName = "/home/wcroughan/Desktop/originalTracking.videoPositionTracking"
 
-    settings, position_data = readRawPositionData(posFileName)
-    # print(position_data)
-    print(position_data.shape)
-    xs, ys, ts = processPosData(position_data)
-    # plt.plot(xs, ys)
-    plt.plot(ts, xs)
-    plt.xlim(ts[0], ts[-1])
+#     settings, position_data = readRawPositionData(posFileName)
+#     # print(position_data)
+#     print(position_data.shape)
+#     xs, ys, ts = processPosData(position_data)
+#     # plt.plot(xs, ys)
+#     plt.plot(ts, xs)
+#     plt.xlim(ts[0], ts[-1])
 
-    settings, position_data = readRawPositionData(originalPosFileName)
-    # print(position_data)
-    print(position_data.shape)
-    xs, ys, ts = processPosData(position_data)
-    # plt.plot(xs, ys)
-    plt.plot(ts, xs)
-    plt.legend(["py", "trodes"])
-    plt.show()
+#     settings, position_data = readRawPositionData(originalPosFileName)
+#     # print(position_data)
+#     print(position_data.shape)
+#     xs, ys, ts = processPosData(position_data)
+#     # plt.plot(xs, ys)
+#     plt.plot(ts, xs)
+#     plt.legend(["py", "trodes"])
+#     plt.show()
 
 
 def runAllBradTask():
@@ -769,59 +767,59 @@ def playFrames(videoFileName, frameStart, frameEnd):
     cv2.destroyAllWindows()
 
 
-def testUSBAlignment():
-    usbVideoFile = "/home/wcroughan/Desktop/2021-12-09_18-04-47.mkv"
-    usbLightOffFrame, usbLightOnFrame = processUSBVideoData(
-        usbVideoFile, overwriteMode="loadOld", showVideo=False)
-    print(usbLightOffFrame, usbLightOnFrame)
-    # playFrames(usbVideoFile, usbLightOffFrame - 20, usbLightOffFrame + 20)
-    # playFrames(usbVideoFile, usbLightOnFrame - 20, usbLightOnFrame + 20)
-    sesh_name = "20211209_180352"
-    dataFileName = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
-    ratData = BTData()
-    ratData.loadFromFile(dataFileName)
-    sesh = ratData.getSessions(lambda s: s.name == sesh_name)[0]
-    trodesVideoFile = "/media/WDC6/B13/bradtasksessions/20211209_180352/20211209_180352.1.h264"
-    trodesOutputFileName = '.'.join(trodesVideoFile.split('.')[0:-1]) + '.videoPositionTracking.tce'
-    processedTrodesVideoFileName = processRawTrodesVideo(
-        trodesVideoFile, overwriteMode="never", outputFileName=trodesOutputFileName)
-    print("trodesVideoOutput in {}".format(processedTrodesVideoFileName))
-    settings, position_data = readRawPositionData(processedTrodesVideoFileName)
+# def testUSBAlignment():
+#     usbVideoFile = "/home/wcroughan/Desktop/2021-12-09_18-04-47.mkv"
+#     usbLightOffFrame, usbLightOnFrame = processUSBVideoData(
+#         usbVideoFile, overwriteMode="loadOld", showVideo=False)
+#     print(usbLightOffFrame, usbLightOnFrame)
+#     # playFrames(usbVideoFile, usbLightOffFrame - 20, usbLightOffFrame + 20)
+#     # playFrames(usbVideoFile, usbLightOnFrame - 20, usbLightOnFrame + 20)
+#     sesh_name = "20211209_180352"
+#     dataFileName = "/media/WDC7/B13/processed_data/B13_bradtask.dat"
+#     ratData = BTData()
+#     ratData.loadFromFile(dataFileName)
+#     sesh = ratData.getSessions(lambda s: s.name == sesh_name)[0]
+#     trodesVideoFile = "/media/WDC6/B13/bradtasksessions/20211209_180352/20211209_180352.1.h264"
+#     trodesOutputFileName = '.'.join(trodesVideoFile.split('.')[0:-1]) + '.videoPositionTracking.tce'
+#     processedTrodesVideoFileName = processRawTrodesVideo(
+#         trodesVideoFile, overwriteMode="never", outputFileName=trodesOutputFileName)
+#     print("trodesVideoOutput in {}".format(processedTrodesVideoFileName))
+#     settings, position_data = readRawPositionData(processedTrodesVideoFileName)
 
-    trodesLightOnFrame = None
-    trodesLightOffFrame = None
-    for s in settings:
-        s = str(s).lower()
-        print(s)
-        if "lightonframe" in s:
-            ss = s.split(":")[1].strip()
-            if ss[-3:] == "\\n'":
-                ss = ss[0:-3]
-            print(ss)
-            trodesLightOnFrame = int(ss)
-        if "lightoffframe" in s:
-            ss = s.split(":")[1].strip()
-            if ss[-3:] == "\\n'":
-                ss = ss[0:-3]
-            print(ss)
-            trodesLightOffFrame = int(ss)
-    print(trodesLightOnFrame, trodesLightOffFrame)
+#     trodesLightOnFrame = None
+#     trodesLightOffFrame = None
+#     for s in settings:
+#         s = str(s).lower()
+#         print(s)
+#         if "lightonframe" in s:
+#             ss = s.split(":")[1].strip()
+#             if ss[-3:] == "\\n'":
+#                 ss = ss[0:-3]
+#             print(ss)
+#             trodesLightOnFrame = int(ss)
+#         if "lightoffframe" in s:
+#             ss = s.split(":")[1].strip()
+#             if ss[-3:] == "\\n'":
+#                 ss = ss[0:-3]
+#             print(ss)
+#             trodesLightOffFrame = int(ss)
+#     print(trodesLightOnFrame, trodesLightOffFrame)
 
-    trodesLightOnTime = position_data[trodesLightOnFrame]['timestamp']
-    trodesLightOffTime = position_data[trodesLightOffFrame]['timestamp']
-    print(trodesLightOnTime, trodesLightOffTime)
+#     trodesLightOnTime = position_data[trodesLightOnFrame]['timestamp']
+#     trodesLightOffTime = position_data[trodesLightOffFrame]['timestamp']
+#     print(trodesLightOnTime, trodesLightOffTime)
 
-    bufferTime = 1
+#     bufferTime = 1
 
-    for wft, wlt in reversed(list(zip(sesh.home_well_find_times, sesh.home_well_leave_times))):
-        t1 = wft - bufferTime * TRODES_SAMPLING_RATE
-        t2 = wlt + bufferTime * TRODES_SAMPLING_RATE
-        print(t1, t2)
+#     for wft, wlt in reversed(list(zip(sesh.home_well_find_times, sesh.home_well_leave_times))):
+#         t1 = wft - bufferTime * TRODES_SAMPLING_RATE
+#         t2 = wlt + bufferTime * TRODES_SAMPLING_RATE
+#         print(t1, t2)
 
-        wellFrames = np.floor(np.interp([t1, t2], [trodesLightOffTime, trodesLightOnTime],
-                                        [usbLightOffFrame, usbLightOnFrame])).astype(int)
+#         wellFrames = np.floor(np.interp([t1, t2], [trodesLightOffTime, trodesLightOnTime],
+#                                         [usbLightOffFrame, usbLightOnFrame])).astype(int)
 
-        playFrames(usbVideoFile, wellFrames[0], wellFrames[1])
+#         playFrames(usbVideoFile, wellFrames[0], wellFrames[1])
 
 
 def runBatchTest():

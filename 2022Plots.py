@@ -139,11 +139,11 @@ for animal_name in animals:
         # behavior trace for each well during task
         P.makeALinePlot(lambda s: [] if not s.found_first_home else [(s.bt_pos_xs[i1:i2], s.bt_pos_ys[i1:i2]) for (i1, i2) in zip(
             np.hstack(
-                ([0], s.away_well_leave_pos_idxs if s.ended_on_home else s.away_well_leave_pos_idxs[0:-1])),
+                ([0], s.away_well_leave_pos_idxs if s.endedOnHome else s.away_well_leave_pos_idxs[0:-1])),
             s.home_well_find_pos_idxs
         )], "path_to_well_home", saveAllValuePairsSeparately=True, axisLims="environment")
         P.makeALinePlot(lambda s: [(s.bt_pos_xs[i1:i2], s.bt_pos_ys[i1:i2]) for (i1, i2) in zip(
-            s.home_well_leave_pos_idxs[0:-1] if s.ended_on_home else s.home_well_leave_pos_idxs,
+            s.home_well_leave_pos_idxs[0:-1] if s.endedOnHome else s.home_well_leave_pos_idxs,
             s.away_well_find_pos_idxs
         )], "path_to_well_away", saveAllValuePairsSeparately=True, axisLims="environment")
 
@@ -300,7 +300,7 @@ for animal_name in animals:
         # Latency to each well during task (line plot)
         P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
                                     (s.home_well_find_times -
-                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
+                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.endedOnHome else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
                                     )], "home_find_times", individualSessions=False,
                         colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))]], plotAverage=True)
         P.makeALinePlot(lambda s: [(np.arange(s.num_away_found) + 1,
@@ -311,7 +311,7 @@ for animal_name in animals:
 
         P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
                                     (s.home_well_find_times -
-                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
+                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.endedOnHome else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
                                     )] if s.isRippleInterruption else [], "home_find_times_just_swr", individualSessions=False,
                         colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))]], plotAverage=True)
         P.makeALinePlot(lambda s: [(np.arange(s.num_away_found) + 1,
@@ -322,7 +322,7 @@ for animal_name in animals:
 
         P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
                                     (s.home_well_find_times -
-                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
+                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.endedOnHome else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
                                     )] if not s.isRippleInterruption else [], "home_find_times_just_delay", individualSessions=False,
                         colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))]], plotAverage=True)
         P.makeALinePlot(lambda s: [(np.arange(s.num_away_found) + 1,
@@ -334,14 +334,14 @@ for animal_name in animals:
         # ==================
         # Task behavior comparisons between conditions
         P.makeASimpleBoxPlot(lambda s: np.sum(s.home_well_find_times -
-                                              np.hstack(([s.bt_pos_ts[0]], s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))) / BTSession.TRODES_SAMPLING_RATE,
+                                              np.hstack(([s.bt_pos_ts[0]], s.away_well_leave_times if s.endedOnHome else s.away_well_leave_times[0:-1]))) / BTSession.TRODES_SAMPLING_RATE,
                              "total home search time")
         P.makeASimpleBoxPlot(lambda s: s.num_away_found, "num aways found")
         P.makeASimpleBoxPlot(lambda s: (
             s.bt_pos_ts[s.bt_recall_pos_idx] - s.bt_pos_ts[0]) / BTSession.TRODES_SAMPLING_RATE, "Total task time")
 
         P.makeASimpleBoxPlot(lambda s: np.sum(s.home_well_find_times -
-                                              np.hstack(([s.bt_pos_ts[0]], s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))) / BTSession.TRODES_SAMPLING_RATE,
+                                              np.hstack(([s.bt_pos_ts[0]], s.away_well_leave_times if s.endedOnHome else s.away_well_leave_times[0:-1]))) / BTSession.TRODES_SAMPLING_RATE,
                              "total home search time NP inc", includeNoProbeSessions=True)
         P.makeASimpleBoxPlot(lambda s: s.num_away_found, "num aways found NP inc",
                              includeNoProbeSessions=True)
@@ -1152,7 +1152,7 @@ for animal_name in animals:
         # home vs away latencies
         P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
                                     (s.home_well_find_times -
-                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
+                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.endedOnHome else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
                                     )], "home_find_times", individualSessions=False,
                         colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))]], plotAverage=True)
         P.makeALinePlot(lambda s: [(np.arange(s.num_away_found) + 1,
@@ -1163,7 +1163,7 @@ for animal_name in animals:
 
         P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
                                     (s.home_well_find_times -
-                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
+                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.endedOnHome else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
                                     )] if s.isRippleInterruption else [], "home_find_times_just_swr", individualSessions=False,
                         colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))]], plotAverage=True)
         P.makeALinePlot(lambda s: [(np.arange(s.num_away_found) + 1,
@@ -1173,7 +1173,7 @@ for animal_name in animals:
                         colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.away_well_find_times))]], plotAverage=True)
         P.makeALinePlot(lambda s: [(np.arange(s.num_home_found) + 1,
                                     (s.home_well_find_times -
-                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.ended_on_home else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
+                                    (np.hstack(([s.bt_pos_ts[0]], (s.away_well_leave_times if s.endedOnHome else s.away_well_leave_times[0:-1]))))) / BTSession.TRODES_SAMPLING_RATE
                                     )] if not s.isRippleInterruption else [], "home_find_times_just_delay", individualSessions=False,
                         colorFunc=lambda s: [[("orange" if s.isRippleInterruption else "cyan") for v in range(len(s.home_well_find_times))]], plotAverage=True)
         P.makeALinePlot(lambda s: [(np.arange(s.num_away_found) + 1,

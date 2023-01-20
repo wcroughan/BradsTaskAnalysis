@@ -35,11 +35,11 @@ class TrialMeasure():
                 # home trials
                 t1 = np.array(sesh.home_well_find_pos_idxs)
                 t0 = np.array(np.hstack(([0], sesh.away_well_leave_pos_idxs)))
-                if not sesh.ended_on_home:
+                if not sesh.endedOnHome:
                     t0 = t0[0:-1]
                 # print(t0)
                 # print(t1)
-                # print(sesh.ended_on_home)
+                # print(sesh.endedOnHome)
                 # print(sesh.name)
                 assert len(t1) == len(t0)
 
@@ -57,7 +57,7 @@ class TrialMeasure():
                 # away trials
                 t1 = np.array(sesh.away_well_find_pos_idxs)
                 t0 = np.array(sesh.home_well_leave_pos_idxs)
-                if sesh.ended_on_home:
+                if sesh.endedOnHome:
                     t0 = t0[0:-1]
                 assert len(t1) == len(t0)
 

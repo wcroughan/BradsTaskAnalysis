@@ -1114,7 +1114,7 @@ else:
     P.makeABoxPlot([sesh.num_well_entries(True, sesh.home_well, timeInterval=[0, 90]) for sesh in all_sessions],
                    tlbls, ['Condition', 'probe_num_entries_to_well_90sec'])
 
-    P.makeABoxPlot([(sesh.entry_exit_times(True, sesh.home_well)[0][0] - sesh.probe_pos_ts[0]) / TRODES_SAMPLING_RATE for sesh in all_sessions],
+    P.makeABoxPlot([(sesh.entry_exit_ts(True, sesh.home_well)[0][0] - sesh.probe_pos_ts[0]) / TRODES_SAMPLING_RATE for sesh in all_sessions],
                    tlbls, ['Condition', 'probe_latency_to_home'])
     P.makeABoxPlot([sesh.path_optimality(True, wellName=sesh.home_well) for sesh in all_sessions],
                    tlbls, ['Condition', 'probe_optimality_to_home'])
