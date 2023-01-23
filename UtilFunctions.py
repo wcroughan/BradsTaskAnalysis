@@ -274,28 +274,6 @@ def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThres
     return ripStartIdxs, ripLens, ripPeakIdxs, ripPeakAmps, ripCrossThreshIdx
 
 
-def getSingleWellEntryAndExitTimes(xs, ys, ts, wellx, welly, radius=50):
-    """
-    returns tuple of entry and exit times
-    """
-    # Note nan values are filled in. Cannot use nan as a valid way to
-    # mask part of the values, just pass in the relevant portions
-    xs = np.array(xs)
-    ys = np.array(ys)
-    ts = np.array(ts)
-    nanmask = np.logical_or(np.isnan(xs), np.isnan(ys))
-    notnanmask = np.logical_not(nanmask)
-    xs[nanmask] = np.interp(ts[nanmask], ts[notnanmask], xs[notnanmask])
-    ys[nanmask] = np.interp(ts[nanmask], ts[notnanmask], ys[notnanmask])
-    dist_to_well = np.sqrt(np.power(wellx - np.array(xs), 2) +
-                           np.power(welly - np.array(ys), 2))
-
-    near_well = dist_to_well < radius
-    idx = np.argwhere(np.diff(np.array(near_well, dtype=float)) == 1)
-    idx2 = np.argwhere(np.diff(np.array(near_well, dtype=float)) == -1)
-    return ts[idx.T[0]], ts[idx2.T[0]]
-
-
 # 2 3
 # 0 1
 def quadrantOfWell(well_idx):
@@ -359,9 +337,9 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.fig_output_dir = ret.output_dir
         ret.out_filename = "martin_bradtask.dat"
 
-        ret.excludedDates = ["20200528", "20200630", "20200702", "20200703"]
-        ret.excludedDates += ["20200531", "20200603", "20200602",
-                              "20200606", "20200605", "20200601"]
+        ret.excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
+        ret.excluded_dates += ["20200531", "20200603", "20200602",
+                               "20200606", "20200605", "20200601"]
         ret.excluded_dates += ["20200526"]
         ret.excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
         ret.minimum_date = None
@@ -748,20 +726,6 @@ def numWellsVisited(nearestWells, countReturns=False, wellSubset=None):
 def weekIdxForDateStr(datestr, d0=date(2016, 1, 4)):
     d = date(int(datestr[0:4]), int(datestr[4:6]), int(datestr[6:8]))
     return (d - d0).days // 7
-
-
-def fillCounts(dest, src, t0, t1, windowSize):
-    """
-    t0, t1, src all in trodes timestamp units
-    windowSize in seconds
-    """
-    ts = np.array(src)
-    ts = ts[(ts > t0) & (ts < t1)] - t0
-    ts /= TRODES_SAMPLING_RATE
-    bins = np.arange(0, (t1 - t0) / TRODES_SAMPLING_RATE + windowSize, windowSize)
-    h = np.histogram(ts, bins=bins)
-    dest[0:len(bins) - 1] = h[0]
-    dest[len(bins) - 1:] = np.nan
 
 
 class TimeThisFunction:

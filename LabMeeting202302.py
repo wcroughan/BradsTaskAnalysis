@@ -2,10 +2,10 @@ import os
 import time
 from datetime import datetime
 import numpy as np
-from scipy.ndimage.filters import gaussian_filter1d
+from scipy.ndimage import gaussian_filter1d
 
-from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal, correctFishEye
-from PlotUtil import PlotCtx, setupBehaviorTracePlot
+from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal
+from PlotUtil import PlotManager, setupBehaviorTracePlot
 from BTData import BTData
 from MeasureTypes import WellMeasure
 from BTSession import BTSession
@@ -53,14 +53,16 @@ from BTSession import BTSession
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
-                RUN_DOT_PROD=None, RUN_FISHEYE_INSPECTION=None,
+                RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_TESTS=False, MAKE_COMBINED=True):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
     if RUN_DOT_PROD is None:
         RUN_DOT_PROD = RUN_UNSPECIFIED
-    if RUN_FISHEYE_INSPECTION is None:
-        RUN_FISHEYE_INSPECTION = RUN_UNSPECIFIED
+    if RUN_SMOOTHING_TEST is None:
+        RUN_SMOOTHING_TEST = RUN_UNSPECIFIED
+    if RUN_MANY_DOTPROD is None:
+        RUN_MANY_DOTPROD = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -75,8 +77,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
         sessionToRun = RUN_JUST_THIS_SESSION[1]
 
     infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
-    pp = PlotCtx(outputDir=globalOutputDir, randomSeed=rseed,
-                 priorityLevel=1, infoFileName=infoFileName)
+    pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
+                     priorityLevel=1, infoFileName=infoFileName)
 
     allSessionsByRat = {}
     for animalName in animalNames:
@@ -94,13 +96,13 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
         if sessionToRun is not None:
             sessions = [s for s in sessions if sessionToRun in s.name or sessionToRun in s.infoFileName]
         # nSessions = len(sessions)
-        sessionsWithProbe = [sesh for sesh in sessions if sesh.probe_performed]
+        sessionsWithProbe = [sesh for sesh in sessions if sesh.probePerformed]
         # numSessionsWithProbe = len(sessionsWithProbe)
 
         ctrlSessionsWithProbe = [sesh for sesh in sessions if (
-            not sesh.isRippleInterruption) and sesh.probe_performed]
+            not sesh.isRippleInterruption) and sesh.probePerformed]
         swrSessionsWithProbe = [
-            sesh for sesh in sessions if sesh.isRippleInterruption and sesh.probe_performed]
+            sesh for sesh in sessions if sesh.isRippleInterruption and sesh.probePerformed]
         nCtrlWithProbe = len(ctrlSessionsWithProbe)
         nSWRWithProbe = len(swrSessionsWithProbe)
 
@@ -112,8 +114,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
         print(f"{len(sessions)} sessions ({len(sessionsWithProbe)} "
               f"with probe: {nCtrlWithProbe} Ctrl, {nSWRWithProbe} SWR)")
 
-        # if hasattr(sessions[0], "probe_fill_time"):
-        #     sessionsWithProbeFillPast90 = [s for s in sessionsWithProbe if s.probe_fill_time > 90]
+        # if hasattr(sessions[0], "probeFillTime"):
+        #     sessionsWithProbeFillPast90 = [s for s in sessionsWithProbe if s.probeFillTime > 90]
         # else:
         #     sessionsWithProbeFillPast90 = sessionsWithProbe
 
@@ -122,43 +124,28 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            pass
+            with pp.newFig("test", priority=0) as pc:
+                print("I'm in the block!")
+                pc.ax.plot(np.arange(5))
 
-        if RUN_FISHEYE_INSPECTION:
+        if RUN_SMOOTHING_TEST:
             smoothVals = np.power(2.0, np.arange(-1, 5))
             for sesh in sessions:
                 assert isinstance(sesh, BTSession)
                 pp.pushOutputSubDir(sesh.name)
 
-                xs, ys = correctFishEye(sesh, sesh.probe_pos_xs, sesh.probe_pos_ys)
-                with pp.newFig("probeTraceVariations", subPlots=(2, 1+len(smoothVals)), showPlot=True, savePlot=False) \
-                        as axs:
-                    setupBehaviorTracePlot(axs[0, 0], sesh, showAllWells=False,
-                                           showHome=False, showAways=False)
-                    axs[0, 0].plot(sesh.probe_pos_xs, sesh.probe_pos_ys)
-                    axs[0, 0].set_title("raw")
+                with pp.newFig("probeTraceVariations", subPlots=(1, 1+len(smoothVals))) \
+                        as pc:
+                    setupBehaviorTracePlot(pc.ax, sesh, showWells="")
+                    pc.ax.plot(sesh.probePosXs, sesh.probePosYs)
+                    pc.ax.set_title("raw")
 
                     for si, smooth in enumerate(smoothVals):
-                        ax = axs[0, si+1]
-                        setupBehaviorTracePlot(ax, sesh, showAllWells=False,
-                                               showHome=False, showAways=False)
-                        x, y = sesh.probe_pos_xs, sesh.probe_pos_ys
+                        ax = pc.axs[si+1]
+                        setupBehaviorTracePlot(ax, sesh, showWells="")
+                        x, y = sesh.probePosXs, sesh.probePosYs
                         x = gaussian_filter1d(x, smooth)
                         y = gaussian_filter1d(y, smooth)
-                        ax.plot(x, y)
-                        ax.set_title(f"smooth {smooth}")
-
-                    axs[1, 0].plot(xs, ys, c="#deac7f")
-                    setupBehaviorTracePlot(axs[1, 0], sesh, showAllWells=False, showAways=False, showHome=False,
-                                           extent=(-0.5, 6.5, -0.5, 6.5), reorient=False)
-                    axs[1, 0].set_title("fisheye corrected")
-
-                    for si, smooth in enumerate(smoothVals):
-                        ax = axs[1, si+1]
-                        setupBehaviorTracePlot(ax, sesh, showAllWells=False, showAways=False, showHome=False,
-                                               extent=(-0.5, 6.5, -0.5, 6.5), reorient=False)
-                        x = gaussian_filter1d(xs, smooth)
-                        y = gaussian_filter1d(ys, smooth)
                         ax.plot(x, y)
                         ax.set_title(f"smooth {smooth}")
 
@@ -167,8 +154,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
         if not RUN_SPOTLIGHT:
             print("Warning: skipping spotlight plots")
         else:
-            WellMeasure("probe spotlight score before fill", lambda s, h: s.getSpotlightScore(
-                True, h, timeInterval=[0, s.fillTimeCutoff()]),
+            WellMeasure("probe spotlight score before fill", lambda s, h: s.getDotProductScore(
+                True, h, timeInterval=[0, s.fillTimeCutoff()], binarySpotlight=True),
                 sessionsWithProbe).makeFigures(pp,
                                                everySessionTraceTimeInterval=lambda s: [
                                                    0, s.fillTimeCutoff()],
@@ -181,9 +168,31 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 True, h, timeInterval=[0, s.fillTimeCutoff()]),
                 sessionsWithProbe).makeFigures(pp, everySessionTraceTimeInterval=lambda s: [0, s.fillTimeCutoff()],
                                                everySessionTraceType="probe_bouts")
-            WellMeasure("task dotprod score before fill", lambda s, h: s.getDotProductScore(
-                False, h),
-                sessionsWithProbe).makeFigures(pp, everySessionTraceType="task_bouts")
+            WellMeasure("task dotprod score", lambda s, h: s.getDotProductScore(False, h),
+                        sessionsWithProbe).makeFigures(pp, everySessionTraceType="task_bouts")
+
+        if not RUN_MANY_DOTPROD:
+            pass
+        else:
+            SECTION_LEN = 5
+            WellMeasure("short dotprod 1", lambda s, h: s.getDotProductScore(
+                True, h, timeInterval=[0, SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
+            ), sessionsWithProbe).makeFigures(pp, makeDiffBoxPlot=False, makeMeasureBoxPlot=False,
+                                              makeOtherSeshBoxPlot=False, makeOtherSeshDiffBoxPlot=False,
+                                              everySessionTraceTimeInterval=lambda _: [
+                                                  0, SECTION_LEN], everySessionTraceType="probe")
+            WellMeasure("short dotprod 2", lambda s, h: s.getDotProductScore(
+                True, h, timeInterval=[SECTION_LEN, 2*SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
+            ), sessionsWithProbe).makeFigures(pp, makeDiffBoxPlot=False, makeMeasureBoxPlot=False,
+                                              makeOtherSeshBoxPlot=False, makeOtherSeshDiffBoxPlot=False,
+                                              everySessionTraceTimeInterval=lambda _: [
+                                                  SECTION_LEN, 2*SECTION_LEN], everySessionTraceType="probe")
+            WellMeasure("short dotprod 1 and 2", lambda s, h: s.getDotProductScore(
+                True, h, timeInterval=[0, 2*SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
+            ), sessionsWithProbe).makeFigures(pp, makeDiffBoxPlot=False, makeMeasureBoxPlot=False,
+                                              makeOtherSeshBoxPlot=False, makeOtherSeshDiffBoxPlot=False,
+                                              everySessionTraceTimeInterval=lambda _: [
+                                                  0, 2*SECTION_LEN], everySessionTraceType="probe")
 
         pp.popOutputSubDir()
 
@@ -200,5 +209,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
 
 
 if __name__ == "__main__":
-    makeFigures(RUN_UNSPECIFIED=False, RUN_FISHEYE_INSPECTION=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_MANY_DOTPROD=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_SMOOTHING_TEST=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    # makeFigures(RUN_SMOOTHING_TEST=False)

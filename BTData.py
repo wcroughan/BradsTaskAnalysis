@@ -40,7 +40,7 @@ class BTData:
 
                     self.allSessions[-1].__dict__ = self.processAndLoadDict(load_dict, np_dir)
                     self.allSessions[-1].date = datetime.strptime("{}_{}".format(
-                        self.allSessions[-1].date_str, self.allSessions[-1].timeStr), "%Y%m%d_%H%M%S")
+                        self.allSessions[-1].dateStr, self.allSessions[-1].timeStr), "%Y%m%d_%H%M%S")
                 elif line == "!!RestSession\n":
                     self.allRestSessions.append(BTRestSession())
                     line = f.readline()
@@ -49,7 +49,7 @@ class BTData:
 
                     self.allRestSessions[-1].__dict__ = self.processAndLoadDict(load_dict, np_dir)
                     self.allRestSessions[-1].date = datetime.strptime("{}_{}".format(
-                        self.allRestSessions[-1].date_str, self.allRestSessions[-1].timeStr), "%Y%m%d_%H%M%S")
+                        self.allRestSessions[-1].dateStr, self.allRestSessions[-1].timeStr), "%Y%m%d_%H%M%S")
 
                     # print(self.allRestSessions[-1].restDuration)
                 elif line == "!!ImportOptions\n":

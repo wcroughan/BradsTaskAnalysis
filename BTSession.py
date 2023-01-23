@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import numpy as np
-import scipy
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from datetime import datetime
 
-from consts import TRODES_SAMPLING_RATE, allWellNames
-from UtilFunctions import AnimalInfo
-# from scipy.ndimage.filters import gaussian_filter1d
+from consts import TRODES_SAMPLING_RATE, allWellNames, CM_PER_FT
+from UtilFunctions import AnimalInfo, getWellPosCoordinates
 
 # TODO
 # Modify latency function or write another one so can easily plot latency and optimality over trials
@@ -139,7 +137,7 @@ class BTSession:
         self.condition: Optional[int] = None
         self.prevSessionCondition: Optional[int] = None
 
-        self.probeFillTime = 0
+        self.probeFillTime = None
 
         # indicates that any well at all was found
         self.foundFirstHome = False
@@ -290,8 +288,8 @@ class BTSession:
         self.btWellExitTimesNinc_posIdx = []
         self.btWellEntryTimesNinc_ts = []
         self.btWellExitTimesNinc_ts = []
-        self.btQuadrantEntryTimes_posIdxs = []
-        self.btQuadrantExitTimes_posIdxs = []
+        self.btQuadrantEntryTimes_posIdx = []
+        self.btQuadrantExitTimes_posIdx = []
         self.btQuadrantEntryTimes_ts = []
         self.btQuadrantExitTimes_ts = []
 
@@ -345,21 +343,6 @@ class BTSession:
         self.probeExcursionEnd_posIdx = []
         self.probeExcursionLensSecs = np.array([])
 
-        self.hasSniffTimes = False
-        self.wellSniffTimesEntry = []
-        self.wellSniffTimesExit = []
-        self.btWellSniffTimesEntry = []
-        self.btWellSniffTimesExit = []
-        self.probeWellSniffTimesEntry = []
-        self.probeWellSniffTimesExit = []
-
-        self.sniffPreTrialLightOff: Optional[int] = None
-        self.sniffTrialStart: Optional[int] = None
-        self.sniffTrialStop: Optional[int] = None
-        self.sniffProbeStart: Optional[int] = None
-        self.sniffProbeStop: Optional[int] = None
-        self.sniffPostProbeLightOn: Optional[int] = None
-
         self.positionFromDeepLabCut: Optional[bool] = None
 
     @property
@@ -384,176 +367,127 @@ class BTSession:
         if moveFlag is None:
             moveFlag = BTSession.MOVE_FLAG_ALL
 
-        wx, wy = self.get_well_coordinates(wellName)
+        wx, wy = getWellPosCoordinates(wellName)
 
         if inProbe:
-            ts = np.array(self.probePosTs)
-            if moveFlag == self.MOVE_FLAG_MOVING:
-                xs = np.array(self.probeMvXs)
-                ys = np.array(self.probeMvYs)
-            elif moveFlag == self.MOVE_FLAG_STILL:
-                xs = np.array(self.probeStillXs)
-                ys = np.array(self.probeStillYs)
-            else:
-                assert moveFlag == BTSession.MOVE_FLAG_ALL
-                xs = np.array(self.probe_pos_xs)
-                ys = np.array(self.probe_pos_ys)
+            ts = self.probePos_ts
+            mv = self.probeIsMv
+            xs = self.probePosXs
+            ys = self.probePosYs
         else:
-            ts = np.array(self.bt_pos_ts)
-            if moveFlag == self.MOVE_FLAG_MOVING:
-                xs = np.array(self.bt_mv_xs)
-                ys = np.array(self.bt_mv_ys)
-            if moveFlag == self.MOVE_FLAG_STILL:
-                xs = np.array(self.bt_still_xs)
-                ys = np.array(self.bt_still_ys)
-            else:
-                assert moveFlag == BTSession.MOVE_FLAG_ALL
-                xs = np.array(self.bt_pos_xs)
-                ys = np.array(self.bt_pos_ys)
+            ts = self.btPos_ts
+            mv = self.btIsMv
+            xs = self.btPosXs
+            ys = self.btPosYs
 
-        # Note nan values are ignored. This is intentional, so caller
-        # can just consider some time points by making all other values nan
-        # If timeInterval is None, use all times points. Otherwise, take only timeInterval in seconds
-        if timeInterval is not None:
+        if moveFlag == self.MOVE_FLAG_MOVING:
+            keepMv = mv
+        elif moveFlag == self.MOVE_FLAG_STILL:
+            keepMv = ~ mv
+        else:
+            keepMv = np.ones_like(mv).astype(bool)
+
+        if timeInterval is None:
+            keepTimeInt = np.ones_like(keepMv)
+        else:
             assert xs.shape == ts.shape
-            dur_idx = np.searchsorted(ts, np.array(
+            keepTimeInt = np.zeros_like(keepMv).astype(bool)
+            durIdx = np.searchsorted(ts, np.array(
                 [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
-            xs = xs[dur_idx[0]:dur_idx[1]]
-            ys = ys[dur_idx[0]:dur_idx[1]]
+            keepTimeInt[durIdx[0]:durIdx[1]] = True
 
-        dist_to_well = np.sqrt(np.power(wx - np.array(xs), 2) +
-                               np.power(wy - np.array(ys), 2))
-        return avgFunc(dist_to_well / self.PIXELS_PER_CM)
+        keepFlag = keepTimeInt & keepMv
 
-    def avg_dist_to_home_well(self, inProbe, timeInterval=None, moveFlag=None, avgFunc=np.nanmean):
-        """
-        return units: cm
-        """
-        return self.avg_dist_to_well(inProbe, self.home_well, timeInterval=timeInterval,
-                                     moveFlag=moveFlag, avgFunc=avgFunc)
+        distToWell = np.sqrt(np.power(wx - xs[keepFlag], 2) +
+                             np.power(wy - ys[keepFlag], 2))
+        return avgFunc(distToWell * CM_PER_FT)
 
-    def entry_exit_ts(self, inProbe, wellName, timeInterval=None, includeNeighbors=False, excludeReward=False,
-                      returnIdxs=False, includeEdgeOverlap=True, subtractT0=False):
+    def entryExitTimes(self, inProbe: bool, wellName: int | str,
+                       timeInterval: Optional[Tuple | list] = None,
+                       includeNeighbors: bool = False, excludeReward: bool = False,
+                       returnIdxs: bool = False,
+                       includeEdgeOverlap: str | Tuple[str, str] = "clip"):
         """
         return units: trodes timestamps, unless returnIdxs==True
+        includeEdgeOverlap: if one str given, applies to start and end of timeInterval.
+            If pair given, first element applies to start of time interval, second applied to end
+            If only visit overlaps start and end of timeInterval and pair given and either is omit, whole visit will be omitted,
+                otherwise each end is treated separately
+            Values can be:
+                "clip" (default) - If edge of a visit goes beyond timeInterval, truncate start and/or end to be exactly the time interval edge
+                "omit" - don't include any visits that overlap edge. Edges that lie exactly on time interval are still included
+                "full" - Include visits where the edge overlaps with timeInterval and don't clip to be within timeInterval
         """
-        if subtractT0:
-            raise Exception("Unimplemented")
-
         # wellName == "QX" ==> look at quadrant X instead of a well
         if isinstance(wellName, str) and wellName[0] == 'Q':
             isQuad = True
-            quadName = int(wellName[1])
+            wellName = int(wellName[1])
         else:
             isQuad = False
-            wellIdx = np.argmax(allWellNames == wellName)
 
         assert not (includeNeighbors and isQuad)
         assert (not excludeReward) or ((not isQuad) and (not includeNeighbors))
 
         if inProbe:
-            if isQuad:
-                if returnIdxs:
-                    ents = self.probe_quadrant_entry_idxs[quadName]
-                    exts = self.probe_quadrant_entry_idxs[quadName]
-                else:
-                    ents = self.probe_quadrant_entry_ts[quadName]
-                    exts = self.probe_quadrant_exit_ts[quadName]
-            else:
-                if includeNeighbors:
-                    if returnIdxs:
-                        ents = self.probe_well_entry_idxs_ninc[wellIdx]
-                        exts = self.probe_well_exit_idxs_ninc[wellIdx]
-                    else:
-                        ents = self.probe_well_entry_ts_ninc[wellIdx]
-                        exts = self.probe_well_exit_ts_ninc[wellIdx]
-                else:
-                    if returnIdxs:
-                        ents = self.probe_well_entry_times_posIdx[wellIdx]
-                        exts = self.probe_well_exit_times_posIdx[wellIdx]
-                    else:
-                        ents = self.probe_well_entry_times_ts[wellIdx]
-                        exts = self.probe_well_exit_times_ts[wellIdx]
+            varName1 = "probe"
         else:
-            if isQuad:
-                if returnIdxs:
-                    ents = self.bt_quadrant_entry_idxs[quadName]
-                    ents = self.bt_quadrant_entry_idxs[quadName]
-                else:
-                    ents = self.bt_quadrant_entry_ts[quadName]
-                    exts = self.bt_quadrant_exit_ts[quadName]
+            varName1 = "bt"
+
+        if isQuad:
+            varName1 += "Quadrant"
+        else:
+            varName1 += "Well"
+
+        varName2 = "Times"
+        if includeNeighbors:
+            varName2 += "Ninc"
+
+        if returnIdxs:
+            varName2 += "_posIdx"
+        else:
+            varName2 += "_ts"
+
+        entryVarName = f"{varName1}Entry{varName2}"
+        exitVarName = f"{varName1}Exit{varName2}"
+
+        ents = self.__getattribute__(entryVarName)[wellName]
+        exts = self.__getattribute__(exitVarName)[wellName]
+
+        if excludeReward and not inProbe and self.foundFirstHome:
+            assert self.hasRewardFindTimes
+
+            # Arrays of the times to remove
+            if wellName == self.homeWell:
+                rewardEnter = self.homeRewardEnter_posIdx if returnIdxs else self.homeRewardEnter_ts
+                rewardExit = self.homeRewardExit_posIdx if returnIdxs else self.homeRewardExit_ts
+            elif wellName in self.visitedAwayWells:
+                awayIdx = np.argmax(self.visitedAwayWells == wellName)
+                rewardEnter = np.array([self.awayRewardEnter_posIdx[awayIdx]
+                                       if returnIdxs else self.awayRewardEnter_ts[awayIdx]])
+                rewardExit = np.array([self.awayRewardExit_posIdx[awayIdx]
+                                      if returnIdxs else self.awayRewardExit_ts[awayIdx]])
             else:
-                if includeNeighbors:
-                    if returnIdxs:
-                        ents = self.bt_well_entry_idxs_ninc[wellIdx]
-                        exts = self.bt_well_exit_idxs_ninc[wellIdx]
-                    else:
-                        ents = self.bt_well_entry_ts_ninc[wellIdx]
-                        exts = self.bt_well_exit_ts_ninc[wellIdx]
-                else:
-                    if returnIdxs:
-                        ents = self.bt_well_entry_times_posIdx[wellIdx]
-                        exts = self.bt_well_exit_times_posIdx[wellIdx]
-                    else:
-                        ents = self.bt_well_entry_times_ts[wellIdx]
-                        exts = self.bt_well_exit_times_ts[wellIdx]
+                rewardEnter = np.array([])
+                rewardExit = np.array([])
+            removeTimes = (rewardEnter + rewardExit) / 2
 
-        if excludeReward:
-            if wellName == self.home_well:
-                if len(self.home_reward_enter_ts) == 0:
-                    # don't know when reward was delivered
-                    raise Exception("missing home well find times")
+            for rt in removeTimes:
+                whichPassFlags = (ents < rt) & (exts > rt)
+                if np.count_nonzero(whichPassFlags) != 0:
+                    raise Exception("Couldn't find correct reward time to exclude")
 
-                for ft, lt in zip(self.home_reward_enter_ts, self.home_reward_exit_ts):
-                    wt = (ft + lt) / 2.0
-                    found = False
-                    todel = -1
-                    for ei, (ent, ext) in enumerate(zip(ents, exts)):
-                        if wt >= ent and wt <= ext:
-                            found = True
-                            todel = ei
-                            break
-
-                    if not found:
-                        raise Exception("couldn't find home well find time")
-
-                    ents = np.delete(ents, todel)
-                    exts = np.delete(exts, todel)
-
-            elif wellName in self.visited_away_wells:
-                if len(self.away_reward_enter_ts) == 0:
-                    # don't know when rward was deliveered
-                    raise Exception("missing away well find times")
-
-                found = False
-                for ei, awi in enumerate(self.visited_away_wells):
-                    if awi == wellName:
-                        wt = (self.away_reward_enter_ts[ei] + self.away_reward_exit_ts[ei]) / 2.0
-                        found = True
-                        break
-
-                if not found:
-                    raise Exception("can't find this away well find time")
-
-                found = False
-                todel = -1
-                for ei, (ent, ext) in enumerate(zip(ents, exts)):
-                    if wt >= ent and wt <= ext:
-                        found = True
-                        todel = ei
-                        break
-
-                if not found:
-                    raise Exception("can't find this away well find time")
-
+                todel = np.argmax(whichPassFlags)
                 ents = np.delete(ents, todel)
                 exts = np.delete(exts, todel)
 
         if timeInterval is not None:
             if inProbe:
-                ts = self.probe_pos_ts
+                ts = self.probePos_ts
             else:
-                ts = self.bt_pos_ts
+                ts = self.btPos_ts
+
+            if isinstance(includeEdgeOverlap, str):
+                includeEdgeOverlap = (includeEdgeOverlap, includeEdgeOverlap)
 
             mint = ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE
             maxt = ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE
@@ -566,292 +500,98 @@ class BTSession:
             exts = exts[keepflag]
             if len(ents) > 0:
                 if ents[0] < mint:
-                    if includeEdgeOverlap:
+                    if includeEdgeOverlap[0] == "clip":
                         ents[0] = mint
-                    else:
+                    elif includeEdgeOverlap[0] == "omit":
                         ents = np.delete(ents, 0)
                         exts = np.delete(exts, 0)
+                    elif includeEdgeOverlap[0] == "full":
+                        pass
+                    else:
+                        raise ValueError("Edge overlaps but invalid overlap rule given")
             if len(ents) > 0:
                 if exts[-1] > maxt:
-                    if includeEdgeOverlap:
+                    if includeEdgeOverlap[1] == "clip":
                         exts[-1] = maxt
-                    else:
+                    elif includeEdgeOverlap[1] == "omit":
                         ents = np.delete(ents, -1)
                         exts = np.delete(exts, -1)
+                    elif includeEdgeOverlap[1] == "full":
+                        pass
+                    else:
+                        raise ValueError("Edge overlaps but invalid overlap rule given")
 
         return ents, exts
 
-    def sniff_entry_exit_times(self, inProbe, wellName, timeInterval=None, excludeReward=False,
-                               includeEdgeOverlap=True, subtractT0=False):
-        """
-        return units: milliseconds
-        """
-        if subtractT0 or excludeReward:
-            raise Exception("Unimplemented")
-
-        wellIdx = np.argmax(allWellNames == wellName)
-
-        if inProbe:
-            ents = np.array(self.probe_well_sniff_times_entry[wellIdx])
-            exts = np.array(self.probe_well_sniff_times_exit[wellIdx])
-        else:
-            ents = np.array(self.bt_well_sniff_times_entry[wellIdx])
-            exts = np.array(self.bt_well_sniff_times_exit[wellIdx])
-
-        if excludeReward:
-            if wellName == self.home_well:
-                if len(self.home_reward_enter_ts) == 0:
-                    # don't know when reward was delivered
-                    raise Exception("missing home well find times")
-
-                for ft, lt in zip(self.home_reward_enter_ts, self.home_reward_exit_ts):
-                    wt = (ft + lt) / 2.0
-                    found = False
-                    todel = -1
-                    for ei, (ent, ext) in enumerate(zip(ents, exts)):
-                        if wt >= ent and wt <= ext:
-                            found = True
-                            todel = ei
-                            break
-
-                    if not found:
-                        raise Exception("couldn't find home well find time")
-
-                    ents = np.delete(ents, todel)
-                    exts = np.delete(exts, todel)
-
-            elif wellName in self.visited_away_wells:
-                if len(self.away_reward_enter_ts) == 0:
-                    # don't know when rward was deliveered
-                    raise Exception("missing away well find times")
-
-                found = False
-                for ei, awi in enumerate(self.visited_away_wells):
-                    if awi == wellName:
-                        wt = (self.away_reward_enter_ts[ei] + self.away_reward_exit_ts[ei]) / 2.0
-                        found = True
-                        break
-
-                if not found:
-                    raise Exception("can't find this away well find time")
-
-                found = False
-                todel = -1
-                for ei, (ent, ext) in enumerate(zip(ents, exts)):
-                    if wt >= ent and wt <= ext:
-                        found = True
-                        todel = ei
-                        break
-
-                if not found:
-                    raise Exception("can't find this away well find time")
-
-                ents = np.delete(ents, todel)
-                exts = np.delete(exts, todel)
-
-        if timeInterval is not None:
-            if inProbe:
-                mint = self.sniff_probe_start + timeInterval[0] * 1000
-                maxt = self.sniff_probe_start + timeInterval[1] * 1000
-            else:
-                mint = self.sniff_bt_start + timeInterval[0] * 1000
-                maxt = self.sniff_bt_start + timeInterval[1] * 1000
-
-            keepflag = np.logical_and(np.array(ents) < maxt, np.array(exts) > mint)
-            ents = ents[keepflag]
-            exts = exts[keepflag]
-            if len(ents) > 0:
-                if ents[0] < mint:
-                    if includeEdgeOverlap:
-                        ents[0] = mint
-                    else:
-                        ents = np.delete(ents, 0)
-                        exts = np.delete(exts, 0)
-            if len(ents) > 0:
-                if exts[-1] > maxt:
-                    if includeEdgeOverlap:
-                        exts[-1] = maxt
-                    else:
-                        ents = np.delete(ents, -1)
-                        exts = np.delete(exts, -1)
-
-        return ents, exts
-
-    def avg_continuous_measure_at_well(self, inProbe, wellName, yvals,
-                                       timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, excludeReward=False,
-                                       includeNeighbors=False):
+    def avgContinuousMeasureAtWell(self, inProbe, wellName, yvals,
+                                   timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean, excludeReward=False,
+                                   includeNeighbors=False, emptyVal=np.nan):
         if avgTypeFlag is None:
             avgTypeFlag = BTSession.AVG_FLAG_OVER_TIME
 
-        wenis, wexis = self.entry_exit_ts(
+        wenis, wexis = self.entryExitTimes(
             inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward,
             includeNeighbors=includeNeighbors, returnIdxs=True)
 
         if len(wenis) == 0:
-            return np.nan
+            return emptyVal
 
-        res_all = []
+        resAll = []
         for weni, wexi in zip(wenis, wexis):
             if wexi > yvals.size:
                 continue
-            res_all.append(yvals[weni:wexi])
+            resAll.append(yvals[weni:wexi])
 
         if avgTypeFlag == BTSession.AVG_FLAG_OVER_TIME:
-            return avgFunc(np.concatenate(res_all))
+            return avgFunc(np.concatenate(resAll))
         elif avgTypeFlag == BTSession.AVG_FLAG_OVER_VISITS:
-            return avgFunc([avgFunc(x) for x in res_all])
+            return avgFunc([avgFunc(x) for x in resAll])
         else:
             assert False
 
-    def avg_ballisticity_at_well(self, inProbe, wellName, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean,
-                                 includeNeighbors=False):
+    def avgCurvatureAtWell(self, inProbe, wellName, **kwargs):
         if inProbe:
-            yvals = self.probe_ballisticity
+            yvals = self.probeCurvature
         else:
-            yvals = self.bt_ballisticity
-        # note this method is slightly different from original (but better!)
-        # original would count entire visit to well as long as entry was before cutoff point
+            yvals = self.btCurvature
 
-        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval,
-                                                   avgTypeFlag=avgTypeFlag,
-                                                   avgFunc=avgFunc, includeNeighbors=includeNeighbors)
+        return self.avgContinuousMeasureAtWell(inProbe, wellName, yvals, **kwargs)
 
-    def avg_ballisticity_at_home_well(self, inProbe, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean,
-                                      includeNeighbors=False):
-        return self.avg_ballisticity_at_well(inProbe, self.home_well, timeInterval=timeInterval,
-                                             avgTypeFlag=avgTypeFlag, avgFunc=avgFunc,
-                                             includeNeighbors=includeNeighbors)
-
-    def avg_curvature_at_well(self, inProbe, wellName, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean,
-                              includeNeighbors=False):
-        if inProbe:
-            yvals = self.probe_curvature
-        else:
-            yvals = self.bt_curvature
-        # note this method is slightly different from original (but better!)
-        # original would count entire visit to well as long as entry was before cutoff point
-
-        return self.avg_continuous_measure_at_well(inProbe, wellName, yvals, timeInterval=timeInterval,
-                                                   avgTypeFlag=avgTypeFlag, avgFunc=avgFunc,
-                                                   includeNeighbors=includeNeighbors)
-
-    def avg_curvature_at_home_well(self, inProbe, timeInterval=None, avgTypeFlag=None, avgFunc=np.nanmean,
-                                   includeNeighbors=False):
-        return self.avg_curvature_at_well(inProbe, self.home_well, timeInterval=timeInterval, avgTypeFlag=avgTypeFlag,
-                                          avgFunc=avgFunc, includeNeighbors=includeNeighbors)
-
-    def dwell_times(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
+    def dwellTimes(self, inProbe, wellName, **kwargs):
         """
         return units: trodes timestamps
         """
-        ents, exts = self.entry_exit_ts(
-            inProbe, wellName, timeInterval=timeInterval, includeNeighbors=includeNeighbors,
-            excludeReward=excludeReward, returnIdxs=False)
-
-        return np.array(exts) - np.array(ents)
-
-    def num_well_entries(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
-        ents, _ = self.entry_exit_ts(
-            inProbe, wellName, timeInterval=None, includeNeighbors=includeNeighbors, excludeReward=excludeReward,
-            returnIdxs=False)
-
-        if inProbe:
-            t0 = self.probe_pos_ts[0]
-        else:
-            t0 = self.bt_pos_ts[0]
-
-        # now we have ents, exts, t0
-        # should filter for timeInterval
-        if timeInterval is not None:
-            mint = t0 + timeInterval[0] * TRODES_SAMPLING_RATE
-            maxt = t0 + timeInterval[1] * TRODES_SAMPLING_RATE
-            ents = ents[np.logical_and(ents > mint, ents < maxt)]
-
-        return ents.size
-
-    def total_dwell_time(self, inProbe, wellName, timeInterval=None, excludeReward=False, includeNeighbors=False):
-        """
-        return units: seconds
-        """
-        return np.sum(self.dwell_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward,
-                                       includeNeighbors=includeNeighbors) / TRODES_SAMPLING_RATE)
-
-    def total_converted_dwell_time(self, inProbe, wellName):
-        """
-        return units: seconds
-        """
-        if not inProbe:
-            raise Exception("Unimplemented")
-
-        m = scipy.stats.mode(np.diff(self.sniffClassificationT))
-        k = m[0][0] / 1000.0
-        return np.count_nonzero(self.sniffClassificationNearestWell == wellName) * k
-
-    def avg_dwell_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False,
-                       includeNeighbors=False, emptyVal=np.nan):
-        """
-        return units: seconds
-        """
-        ret = self.dwell_times(inProbe, wellName, timeInterval=timeInterval,
-                               excludeReward=excludeReward, includeNeighbors=includeNeighbors)
-        if len(ret) == 0:
-            # print("returning emptyval for well {}".format(wellName))
-            return emptyVal
-        else:
-            # print("ret is {} for well {}".format(ret, wellName))
-            return avgFunc(ret / TRODES_SAMPLING_RATE)
-
-    def num_sniffs(self, inProbe, wellName, timeInterval=None, excludeReward=False):
-        # Just for now, hacking in excluded rewards
-        ents, _ = self.sniff_entry_exit_times(
-            inProbe, wellName, timeInterval=timeInterval)
-        # inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward)
-
-        ret = ents.size
-
-        if excludeReward and not inProbe:
-            if wellName == self.home_well:
-                ret -= self.num_home_found
-            elif wellName in self.visited_away_wells:
-                ret -= 1
-
-        return ret
-
-    def sniff_times(self, inProbe, wellName, timeInterval=None, excludeReward=False):
-        """
-        return units: milliseconds
-        """
-        ents, exts = self.sniff_entry_exit_times(
-            inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward)
-
+        ents, exts = self.entryExitTimes(inProbe, wellName, returnIdxs=False, **kwargs)
         return exts - ents
 
-    def avg_sniff_time(self, inProbe, wellName, timeInterval=None, avgFunc=np.nanmean, excludeReward=False,
-                       emptyVal=None):
+    def numWellEntries(self, inProbe, wellName, **kwargs):
+        ents, _ = self.entryExitTimes(
+            inProbe, wellName, includeEdgeOverlap=("omit", "full"), **kwargs)
+        return ents.size
+
+    def totalDwellTime(self, inProbe, wellName, **kwargs):
         """
         return units: seconds
         """
-        ret = self.sniff_times(inProbe, wellName, timeInterval=timeInterval,
-                               excludeReward=excludeReward)
-        if emptyVal is not None and len(ret) == 0:
+        return np.sum(self.dwellTimes(inProbe, wellName, **kwargs) / TRODES_SAMPLING_RATE)
+
+    def avgDwellTime(self, inProbe, wellName, avgFunc=np.nanmean, emptyVal=np.nan, **kwargs):
+        """
+        return units: seconds
+        """
+        ret = self.dwellTimes(inProbe, wellName, **kwargs)
+        if len(ret) == 0:
             return emptyVal
         else:
-            return avgFunc(ret / 1000.0)
+            return avgFunc(ret / TRODES_SAMPLING_RATE)
 
-    def total_sniff_time(self, inProbe, wellName, timeInterval=None, excludeReward=False):
-        """
-        return units: seconds
-        """
-        return np.sum(self.sniff_times(inProbe, wellName, timeInterval=timeInterval, excludeReward=excludeReward)
-                      / 1000.0)
-
-    def num_bouts(self, inProbe, timeInterval=None):
+    def numBouts(self, inProbe, timeInterval=None):
         if inProbe:
-            lbls = self.probe_bout_label
-            ts = self.probe_pos_ts
+            lbls = self.probeBoutLabel
+            ts = self.probePos_ts
         else:
-            lbls = self.bt_bout_label
-            ts = self.bt_pos_ts
+            lbls = self.btBoutLabel
+            ts = self.btPos_ts
 
         if timeInterval is not None:
             imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
@@ -860,16 +600,13 @@ class BTSession:
 
         return len(set(lbls) - set([0]))
 
-    def num_bouts_where_well_was_visited(self, inProbe, wellName, timeInterval=None, excludeReward=False,
-                                         includeNeighbors=False):
-        ents, exts = self.entry_exit_ts(
-            inProbe, wellName, timeInterval=timeInterval, includeNeighbors=includeNeighbors,
-            excludeReward=excludeReward, returnIdxs=True)
+    def numBoutsWhereWellWasVisited(self, inProbe, wellName, **kwargs):
+        ents, exts = self.entryExitTimes(inProbe, wellName, **kwargs, returnIdxs=True)
 
         if inProbe:
-            lbls = self.probe_bout_label
+            lbls = self.probeBoutLabel
         else:
-            lbls = self.bt_bout_label
+            lbls = self.btBoutLabel
 
         res = set([])
         for enti, exti in zip(ents, exts):
@@ -878,38 +615,35 @@ class BTSession:
         res = res - set([0])
         return len(res)
 
-    def pct_bouts_where_well_was_visited(self, inProbe, wellName, timeInterval=None, excludeReward=False,
-                                         includeNeighbors=False, boutsInterval=None):
+    def pctBoutsWhereWellWasVisited(self, inProbe, wellName, timeInterval=None, boutsInterval=None, emptyVal=np.nan, **kwargs):
         # bouts interval is inclusive first, exclusive last
         if boutsInterval is not None:
             assert timeInterval is None
             if inProbe:
-                bout_starts = self.probe_explore_bout_start_posIdx
-                bout_ends = self.probe_explore_bout_end_posIdx
+                boutStarts = self.probeExploreBoutStart_posIdx
+                boutEnds = self.probeExploreBoutEnd_posIdx
             else:
-                bout_starts = self.bt_explore_bout_start_posIdx
-                bout_ends = self.bt_explore_bout_end_posIdx
+                boutStarts = self.btExploreBoutStart_posIdx
+                boutEnds = self.btExploreBoutEnd_posIdx
 
-            if len(bout_ends) >= boutsInterval[1]:
-                timeInterval = [bout_starts[boutsInterval[0]], bout_ends[boutsInterval[1] - 1]]
+            if len(boutEnds) >= boutsInterval[1]:
+                timeInterval = [boutStarts[boutsInterval[0]], boutEnds[boutsInterval[1] - 1]]
             else:
-                timeInterval = [bout_starts[boutsInterval[0]], bout_ends[len(bout_ends) - 1]]
+                timeInterval = [boutStarts[boutsInterval[0]], boutEnds[len(boutEnds) - 1]]
 
-        denom = self.num_bouts(inProbe, timeInterval=timeInterval)
+        denom = self.numBouts(inProbe, timeInterval=timeInterval)
         if denom == 0:
-            return np.nan
+            return emptyVal
 
-        return self.num_bouts_where_well_was_visited(inProbe, wellName, timeInterval=timeInterval,
-                                                     excludeReward=excludeReward, includeNeighbors=includeNeighbors) / \
-            denom
+        return self.numBoutsWhereWellWasVisited(inProbe, wellName, timeInterval=timeInterval, **kwargs) / denom
 
-    def prop_time_in_bout_state(self, inProbe, boutState, timeInterval=None):
+    def propTimeInBoutState(self, inProbe, boutState, timeInterval=None):
         if inProbe:
-            cats = self.probe_bout_category
-            ts = self.probe_pos_ts
+            cats = self.probeBoutCategory
+            ts = self.probePos_ts
         else:
-            cats = self.bt_bout_category
-            ts = self.bt_pos_ts
+            cats = self.btBoutCategory
+            ts = self.btPos_ts
 
         if timeInterval is None:
             imin = 0
@@ -920,75 +654,80 @@ class BTSession:
 
         cats = cats[imin:imax]
         if float(cats.size) == 0:
-            print(len(self.bt_bout_category))
+            print(len(self.btBoutCategory))
             print(inProbe, imin, imax, timeInterval)
         return float(np.count_nonzero(cats == boutState)) / float(cats.size)
 
-    def mean_vel(self, inProbe, onlyMoving=False, timeInterval=None):
+    def meanVel(self, inProbe, moveFlag=None, timeInterval=None):
         """
         return units: cm/s
         """
+        if moveFlag is None:
+            moveFlag = BTSession.MOVE_FLAG_ALL
+
         if inProbe:
-            vel = self.probe_vel_cm_s
-            ts = self.probe_pos_ts
-            is_mv = self.probe_is_mv
+            vel = self.probeVelCmPerS
+            ts = self.probePos_ts
+            mv = self.probeIsMv
         else:
-            vel = self.bt_vel_cm_s
-            ts = self.bt_pos_ts
-            is_mv = self.bt_is_mv
+            vel = self.btVelCmPerS
+            ts = self.btPos_ts
+            mv = self.btIsMv
 
         if timeInterval is None:
-            imin = 0
-            imax = len(ts)
+            inTime = np.ones_like(mv).astype(bool)
         else:
             imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
             imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+            inTime = np.zeros_like(mv).astype(bool)
+            inTime[imin:imax] = True
 
-        vel = vel[imin:imax]
-        if onlyMoving:
-            vel = vel[is_mv[imin:imax]]
+        if moveFlag == self.MOVE_FLAG_MOVING:
+            keepMv = mv
+        elif moveFlag == self.MOVE_FLAG_STILL:
+            keepMv = ~ mv
+        else:
+            keepMv = np.ones_like(mv).astype(bool)
 
-        return np.nanmean(vel)
+        keepFlag = keepMv & inTime
+        return np.nanmean(vel[keepFlag])
 
-    def ctrl_well_for_well(self, wellName):
-        return 49 - wellName
-
-    def path_optimality(self, inProbe, timeInterval=None, wellName=None, emptyVal=np.nan):
+    def pathOptimality(self, inProbe, timeInterval=None, wellName=None, emptyVal=np.nan):
         if (timeInterval is None) == (wellName is None):
             raise Exception("Gimme a time interval or a well name plz (but not both)")
 
         if inProbe:
-            xs = self.probe_pos_xs
-            ys = self.probe_pos_ys
-            ts = self.probe_pos_ts
+            xs = self.probePosXs
+            ys = self.probePosYs
+            ts = self.probePos_ts
         else:
-            xs = self.bt_pos_xs
-            ys = self.bt_pos_ys
-            ts = self.bt_pos_ts
+            xs = self.btPosXs
+            ys = self.btPosYs
+            ts = self.btPos_ts
 
         if wellName is not None:
-            ents = self.entry_exit_ts(inProbe, wellName, returnIdxs=True)[0]
+            ents = self.entryExitTimes(inProbe, wellName, returnIdxs=True)[0]
             if len(ents) == 0:
                 return emptyVal
             ei = ents[0]
-            displacement_x = xs[ei] - xs[0]
-            displacement_y = ys[ei] - ys[0]
+            displacementX = xs[ei] - xs[0]
+            displacementY = ys[ei] - ys[0]
             dx = np.diff(xs[0:ei])
             dy = np.diff(ys[0:ei])
 
         if timeInterval is not None:
             idxs = np.searchsorted(ts, np.array(timeInterval) * TRODES_SAMPLING_RATE + ts[0])
-            displacement_x = xs[idxs[1]] - xs[idxs[0]]
-            displacement_y = ys[idxs[1]] - ys[idxs[0]]
+            displacementX = xs[idxs[1]] - xs[idxs[0]]
+            displacementY = ys[idxs[1]] - ys[idxs[0]]
             dx = np.diff(xs[idxs[0]:idxs[1]])
             dy = np.diff(ys[idxs[0]:idxs[1]])
 
-        displacement = np.sqrt(displacement_x * displacement_x + displacement_y * displacement_y)
+        displacement = np.sqrt(displacementX * displacementX + displacementY * displacementY)
         distance = np.sum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
 
         return distance / displacement
 
-    def total_time_near_well(self, inProbe, wellName, radius=None, timeInterval=None, moveFlag=None):
+    def totalTimeNearWell(self, inProbe, wellName, radius=None, timeInterval=None, moveFlag=None):
         """
         timeInterval is in seconds, where 0 == start of probe or task (as specified in inProbe flag)
         radius is in cm
@@ -1002,50 +741,41 @@ class BTSession:
         if moveFlag is None:
             moveFlag = BTSession.MOVE_FLAG_ALL
 
-        wx, wy = self.get_well_coordinates(wellName)
+        wx, wy = getWellPosCoordinates(wellName)
 
         if inProbe:
-            ts = np.array(self.probe_pos_ts)
-            if moveFlag == self.MOVE_FLAG_MOVING:
-                xs = np.array(self.probe_mv_xs)
-                ys = np.array(self.probe_mv_ys)
-            elif moveFlag == self.MOVE_FLAG_STILL:
-                xs = np.array(self.probe_still_xs)
-                ys = np.array(self.probe_still_ys)
-            else:
-                assert moveFlag == BTSession.MOVE_FLAG_ALL
-                xs = np.array(self.probe_pos_xs)
-                ys = np.array(self.probe_pos_ys)
+            ts = self.probePos_ts
+            xs = self.probePosXs
+            ys = self.probePosYs
+            mv = self.probeIsMv
         else:
-            ts = np.array(self.bt_pos_ts)
-            if moveFlag == self.MOVE_FLAG_MOVING:
-                xs = np.array(self.bt_mv_xs)
-                ys = np.array(self.bt_mv_ys)
-            if moveFlag == self.MOVE_FLAG_STILL:
-                xs = np.array(self.bt_still_xs)
-                ys = np.array(self.bt_still_ys)
-            else:
-                assert moveFlag == BTSession.MOVE_FLAG_ALL
-                xs = np.array(self.bt_pos_xs)
-                ys = np.array(self.bt_pos_ys)
+            ts = self.btPos_ts
+            xs = self.btPosXs
+            ys = self.btPosYs
+            mv = self.btIsMv
 
-        # Note nan values are ignored. This is intentional, so caller
-        # can just consider some time points by making all other values nan
-        # If timeInterval is None, use all times points. Otherwise, take only timeInterval in seconds
-        if timeInterval is not None:
-            assert xs.shape == ts.shape
-            dur_idx = np.searchsorted(ts, np.array(
-                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
-            xs = xs[dur_idx[0]:dur_idx[1]]
-            ys = ys[dur_idx[0]:dur_idx[1]]
-            ts = ts[dur_idx[0]:dur_idx[1]]
+        if moveFlag == self.MOVE_FLAG_MOVING:
+            keepMv = mv
+        elif moveFlag == self.MOVE_FLAG_STILL:
+            keepMv = ~ mv
+        else:
+            keepMv = np.ones_like(mv).astype(bool)
 
-        dist_to_well = np.sqrt(np.power(wx - np.array(xs), 2) +
-                               np.power(wy - np.array(ys), 2)) / self.PIXELS_PER_CM
+        if timeInterval is None:
+            inTime = np.ones_like(mv).astype(bool)
+        else:
+            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
+            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+            inTime = np.zeros_like(mv).astype(bool)
+            inTime[imin:imax] = True
 
-        count_point = dist_to_well < radius
+        distToWell = np.sqrt(np.power(wx - xs, 2) + np.power(wy - ys, 2)) * CM_PER_FT
+
+        inRange = distToWell < radius
+        keepFlag = inRange & inTime & keepMv
+
         tdiff = np.diff(ts, prepend=ts[0])
-        return np.sum(tdiff[count_point])
+        return np.sum(tdiff[keepFlag])
 
     def getDelayFromSession(self, prevsession: BTSession, returnDateTimeDelta=False):
         """
@@ -1058,29 +788,29 @@ class BTSession:
         else:
             return res.total_seconds()
 
-    def getLatencyToWell(self, inProbe, wellName, startTime=None, returnIdxs=False, returnSeconds=False,
-                         emptyVal=np.nan):
+    def getLatencyToWell(self, inProbe, wellName, startTime=None, returnUnits: str = "ts", emptyVal=np.nan):
         """
-        units are trodes timestamps or idxs or seconds
+        returnUnits in ["ts", "secs", "posIdx"]
         startTime should be in the same units expected for return
         """
-        assert not (returnIdxs and returnSeconds)
+        if not returnUnits in ["ts", "secs", "posIdx"]:
+            raise ValueError("returnUnits incorrect")
 
-        ts = self.entry_exit_ts(inProbe, wellName, returnIdxs=returnIdxs)[0]
+        ents = self.entryExitTimes(inProbe, wellName, returnIdxs=(returnUnits == "posIdx"))[0]
 
-        if len(ts) == 0:
+        if len(ents) == 0:
             return emptyVal
 
-        res = ts[0]
-        if returnIdxs:
+        res = ents[0]
+        if returnUnits == "posIdx":
             return res
 
         if inProbe:
-            res -= self.probe_pos_ts[0]
+            res -= self.probePos_ts[0]
         else:
-            res -= self.bt_pos_ts[0]
+            res -= self.btPos_ts[0]
 
-        if returnSeconds:
+        if returnUnits == "secs":
             res /= TRODES_SAMPLING_RATE
 
         return res
@@ -1089,235 +819,150 @@ class BTSession:
         """
         how many times did stim happen while rat was at the well during the task?
         """
-        nw = np.array(self.bt_nearest_wells)
-        return np.count_nonzero(wellName == nw[self.bt_interruption_posIdx])
+        nw = np.array(self.btNearestWells)
+        return np.count_nonzero(wellName == nw[self.btInterruption_posIdx])
 
     def numRipplesAtWell(self, inProbe, wellName):
         """
         how many times did ripple happen while rat was at the well?
         """
         if inProbe:
-            ripPosIdxs = np.searchsorted(self.probe_pos_ts, self.probeRipStartTimestamps)
-            nw = np.array(self.probe_nearest_wells)
+            ripPosIdxs = np.searchsorted(self.probePos_ts, self.probeRipStarts_ts)
+            nw = np.array(self.probeNearestWells)
             return np.count_nonzero(wellName == nw[ripPosIdxs])
         else:
-            ripPosIdxs = np.searchsorted(self.bt_pos_ts, self.btRipStartTimestampsPreStats)
-            nw = np.array(self.bt_nearest_wells)
+            ripPosIdxs = np.searchsorted(self.btPos_ts, self.btRipStartsPreStats_ts)
+            nw = np.array(self.btNearestWells)
             return np.count_nonzero(wellName == nw[ripPosIdxs])
 
-    def gravityOfWell_old(self, inProbe, wellName, timeInterval=None, fromWells=allWellNames, emptyVal=np.nan):
-        neighborWells = np.array([-9, -8, -7, -1, 1, 7, 8, 9]) + wellName
-        neighborWells = [w for w in neighborWells if (w in fromWells)]
-        neighborExitIdxs = []
-        neighborEntryIdxs = []
-        # numNonZero = 0
-        for nw in neighborWells:
-            ents, exts = self.entry_exit_ts(inProbe, nw,
-                                            timeInterval=timeInterval, returnIdxs=True)
-            neighborEntryIdxs += list(ents)
-            neighborExitIdxs += list(exts)
-            # if len(ents) > 0:
-            #     numNonZero += 1
-
-        if len(neighborExitIdxs) == 0:
-            # print("emptyval ret, neighbor wells was {}".format(neighborWells))
-            return emptyVal
-
-        wellEntryIdxs = self.entry_exit_ts(
-            inProbe, wellName, timeInterval=timeInterval, returnIdxs=True)[0] - 1
-
-        # print(wellEntryIdxs)
-        ret = len([nwei for nwei in neighborExitIdxs if nwei in wellEntryIdxs]) / \
-            len([nwei for nwei in neighborExitIdxs if nwei + 1 not in neighborEntryIdxs])
-        # print(timeInterval, ret)
-
-        return ret
-
-    def gravityOfWell(self, inProbe, wellName, timeInterval=None, fromWells=allWellNames, emptyVal=np.nan):
+    def gravityOfWell(self, inProbe, wellName, fromWells=allWellNames, emptyVal=np.nan, **kwargs):
         neighborWells = np.array([-9, -8, -7, -1, 0, 1, 7, 8, 9]) + wellName
         neighborWells = [w for w in neighborWells if (w in fromWells)]
-        neighborExitIdxs = []
-        neighborEntryIdxs = []
-        # numNonZero = 0
+        neighborExitIdxs = np.array([])
+        neighborEntryIdxs = np.array([])
         for nw in neighborWells:
-            ents, exts = self.entry_exit_ts(inProbe, nw,
-                                            timeInterval=timeInterval, returnIdxs=True)
-            neighborEntryIdxs += list(ents)
-            neighborExitIdxs += list(exts)
-            # if len(ents) > 0:
-            #     numNonZero += 1
+            ents, exts = self.entryExitTimes(inProbe, nw, returnIdxs=True, **kwargs)
+            neighborEntryIdxs = np.concatenate((neighborEntryIdxs, ents))
+            neighborExitIdxs = np.concatenate((neighborExitIdxs, exts))
 
         if len(neighborExitIdxs) == 0:
-            # print("emptyval ret, neighbor wells was {}".format(neighborWells))
             return emptyVal
 
-        neighborEntryIdxs_all = np.array(neighborEntryIdxs)
-        neighborExitIdxs_all = np.array(neighborExitIdxs)
-        keepEntryIdx = np.array([v-1 not in neighborExitIdxs_all for v in neighborEntryIdxs_all])
-        keepExitIdx = np.array([v+1 not in neighborEntryIdxs_all for v in neighborExitIdxs_all])
-        neighborEntryIdxs = sorted(neighborEntryIdxs_all[keepEntryIdx])
-        neighborExitIdxs = sorted(neighborExitIdxs_all[keepExitIdx])
+        keepEntryIdx = np.array([v not in neighborExitIdxs for v in neighborEntryIdxs])
+        keepExitIdx = np.array([v not in neighborEntryIdxs for v in neighborExitIdxs])
+        neighborEntryIdxs = sorted(neighborEntryIdxs[keepEntryIdx])
+        neighborExitIdxs = sorted(neighborExitIdxs[keepExitIdx])
 
-        wellEntryIdxs = self.entry_exit_ts(
-            inProbe, wellName, timeInterval=timeInterval, returnIdxs=True)[0]
-        enteredHome = [any([wei < v2 and wei > v1 for wei in wellEntryIdxs])
+        wellEntryIdxs = self.entryExitTimes(inProbe, wellName, returnIdxs=True, **kwargs)[0]
+        enteredHome = [any([wei <= v2 and wei >= v1 for wei in wellEntryIdxs])
                        for v1, v2 in zip(neighborEntryIdxs, neighborExitIdxs)]
 
-        # print(wellEntryIdxs)
-        # ret = len([nwei for nwei in neighborExitIdxs if nwei + 1 in wellEntryIdxs]) / \
-        #     len([nwei for nwei in neighborExitIdxs if nwei + 1 not in neighborEntryIdxs])
-        # print(timeInterval, ret)
         ret = np.count_nonzero(enteredHome) / len(neighborEntryIdxs)
 
-        if ret < 0 or ret > 1:
-            print(neighborEntryIdxs_all)
-            print(neighborExitIdxs_all)
-            print(neighborEntryIdxs)
-            print(neighborExitIdxs)
-            print(wellEntryIdxs)
-            print(enteredHome)
-            print(ret)
-            exit()
+        assert 0.0 <= ret <= 1.0
 
         return ret
 
-    def getPasses(self, w: int, inProbe: bool, distance=200.0):
+    def getPasses(self, wellName: int, inProbe: bool, distance=1.5):
         if inProbe:
-            x = self.probe_pos_xs
-            y = self.probe_pos_ys
+            x = self.probePosXs
+            y = self.probePosYs
         else:
-            x = self.bt_pos_xs
-            y = self.bt_pos_ys
-        wellCoords = self.well_coords_map[str(w)]
-        wellX, wellY = wellCoords
+            x = self.btPosXs
+            y = self.btPosYs
 
-        wellDist2 = np.power(x - np.array(wellX), 2) + np.power(y - np.array(wellY), 2)
+        wx, wy = getWellPosCoordinates(wellName)
+
+        wellDist2 = np.power(x - np.array(wx), 2) + np.power(y - np.array(wy), 2)
         inRange = wellDist2 <= distance * distance
         borders = np.diff(inRange.astype(int), prepend=0, append=0)
 
         ents = np.nonzero(borders == 1)[0]
         exts = np.nonzero(borders == -1)[0]
-        return ents, exts, wellCoords
+        return ents, exts
 
-    def getSpotlightScore(self, inProbe: bool, w: int, angleCutoff=70.0, timeInterval=None, test=False) -> float:
+    def getDotProductScore(self, inProbe: bool, wellName: int, timeInterval=None, test=False, moveFlag=None,
+                           boutFlag=None, excludeTimesAtWell=True, binarySpotlight=False, spotlightAngle=70) -> float:
+        if moveFlag is None:
+            moveFlag = BTSession.MOVE_FLAG_ALL
+
         if test:
-            w11x, w11y = self.well_coords_map["11"]
-            w28x, w28y = self.well_coords_map["28"]
+            w11x, w11y = 1.5, 1.5
+            w28x, w28y = 3.5, 3.5
             x = np.linspace(w11x, w28x, 100)
             y = np.linspace(w11y, w28y, 100)
             mv = np.ones((99,)).astype(bool)
+            boutCats = np.ones((99,)) * self.BOUT_STATE_EXPLORE
         elif inProbe:
-            x = self.probe_pos_xs
-            y = self.probe_pos_ys
-            # mv = self.probe_is_mv[:-1]
-            mv = self.probe_bout_category[:-1] == self.BOUT_STATE_EXPLORE
-            ts = self.probe_pos_ts
+            x = self.probePosXs
+            y = self.probePosYs
+            mv = self.probeIsMv[:-1]
+            boutCats = self.probeBoutCategory[:-1]
+            ts = self.probePos_ts
         else:
-            x = self.bt_pos_xs
-            y = self.bt_pos_ys
-            # mv = self.bt_is_mv[:-1]
-            mv = self.bt_bout_category[:-1] == self.BOUT_STATE_EXPLORE
-            ts = self.bt_pos_ts
-        wellCoords = self.well_coords_map[str(w)]
-        wellX, wellY = wellCoords
+            x = self.btPosXs
+            y = self.btPosYs
+            mv = self.btIsMv[:-1]
+            boutCats = self.btBoutCategory[:-1]
+            ts = self.btPos_ts
+        wx, wy = getWellPosCoordinates(wellName)
 
-        if timeInterval is not None:
-            assert len(x) == len(ts)
-            dur_idx = np.searchsorted(ts, np.array(
+        if moveFlag == self.MOVE_FLAG_MOVING:
+            keepMv = mv
+        elif moveFlag == self.MOVE_FLAG_STILL:
+            keepMv = ~ mv
+        else:
+            keepMv = np.ones_like(mv).astype(bool)
+
+        if timeInterval is None:
+            keepTimeInt = np.ones_like(keepMv)
+        else:
+            assert x.shape == ts.shape
+            keepTimeInt = np.zeros_like(keepMv).astype(bool)
+            durIdx = np.searchsorted(ts, np.array(
                 [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
-            x = x[dur_idx[0]:dur_idx[1]]
-            y = y[dur_idx[0]:dur_idx[1]]
-            mv = mv[dur_idx[0]:dur_idx[1]-1]
+            keepTimeInt[durIdx[0]:durIdx[1]] = True
 
-        dx = np.diff(x)
-        dy = np.diff(y)
-        dwx = wellX - np.array(x[1:])
-        dwy = wellY - np.array(y[1:])
-
-        dots = dx * dwx + dy * dwy
-        magp = np.sqrt(np.multiply(dx, dx) + np.multiply(dy, dy))
-        magw = np.sqrt(np.multiply(dwx, dwx) + np.multiply(dwy, dwy))
-        mags = np.multiply(magp, magw)
-        angle = np.arccos(np.divide(dots, mags))
-
-        inSpotlight = (angle < np.deg2rad(angleCutoff)).astype(float)
-        return np.mean(inSpotlight[mv])
-
-    def getDotProductScore(self, inProbe: bool, w: int,
-                           timeInterval: None | list | tuple = None,
-                           excludeTimesAtWell=True,
-                           #    smooth: None | float = None,
-                           test=False) -> float:
-        wellIdx = np.argmax(allWellNames == w)
-        if test:
-            w11x, w11y = self.well_coords_map["11"]
-            w29x, w29y = self.well_coords_map["29"]
-            x = np.linspace(w11x, w29x, 100)
-            y = np.linspace(w11y, w29y, 100)
-            mv = np.ones((99,)).astype(bool)
-            ents = [80]
-            exts = [99]
-        elif inProbe:
-            x = self.probe_pos_xs
-            y = self.probe_pos_ys
-            mv = self.probe_bout_category[:-1] == self.BOUT_STATE_EXPLORE
-            ts = self.probe_pos_ts
-            ents = self.probe_well_entry_times_posIdx[wellIdx]
-            exts = self.probe_well_exit_times_posIdx[wellIdx]
+        if boutFlag is None:
+            keepBout = np.ones_like(boutCats).astype(bool)
         else:
-            x = self.bt_pos_xs
-            y = self.bt_pos_ys
-            mv = self.bt_bout_category[:-1] == self.BOUT_STATE_EXPLORE
-            ts = self.bt_pos_ts
-            ents = self.bt_well_entry_times_posIdx[wellIdx]
-            exts = self.bt_well_exit_times_posIdx[wellIdx]
-        wellCoords = self.well_coords_map[str(w)]
-        wellX, wellY = wellCoords
+            keepBout = boutCats == boutFlag
 
-        # if smooth is not None:
-        #     x_pos = gaussian_filter1d(x_pos, smooth)
-        #     y_pos = gaussian_filter1d(y_pos, smooth)
-
-        if timeInterval is not None:
-            assert len(x) == len(ts)
-            dur_idx = np.searchsorted(ts, np.array(
-                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
-            # x = x[dur_idx[0]:dur_idx[1]]
-            # y = y[dur_idx[0]:dur_idx[1]]
-            # mv = mv[dur_idx[0]:dur_idx[1]-1]
-            inTime = np.zeros_like(mv).astype(bool)
-            inTime[dur_idx[0]:dur_idx[1]-1] = 1
-        else:
-            inTime = np.ones_like(mv).astype(bool)
-
-        notAtWell = np.ones_like(mv).astype(bool)
+        ents, exts = self.entryExitTimes(inProbe, wellName, returnIdxs=True)
+        notAtWellFlag = np.ones_like(mv).astype(bool)
         if excludeTimesAtWell:
             for ent, ext in zip(ents, exts):
-                notAtWell[ent:ext+1] = False
+                notAtWellFlag[ent:ext+1] = False
 
         dx = np.diff(x)
         dy = np.diff(y)
-        dwx = wellX - np.array(x[1:])
-        dwy = wellY - np.array(y[1:])
+        dwx = wx - np.array(x[1:])
+        dwy = wy - np.array(y[1:])
 
         notStill = (dx != 0).astype(bool) | (dy != 0).astype(bool)
+        keepFlag = keepBout & keepMv & keepTimeInt & notAtWellFlag & notStill
 
+        dx = dx[keepFlag]
+        dy = dy[keepFlag]
+        dwx = dwx[keepFlag]
+        dwy = dwy[keepFlag]
+
+        dots = dx * dwx + dy * dwy
         magp = np.sqrt(dx * dx + dy * dy)
         magw = np.sqrt(dwx * dwx + dwy * dwy)
+        mags = magp * magw
+        udots = dots / mags
 
-        ux = dx / magp
-        uy = dy / magp
-        uwx = dwx / magw
-        uwy = dwy / magw
+        if binarySpotlight:
+            angle = np.arccos(udots)
+            allVals = (angle < np.deg2rad(spotlightAngle)).astype(float)
+        else:
+            allVals = udots
 
-        dots = ux * uwx + uy * uwy
-
-        keepFlag = mv & inTime & notAtWell & notStill
-
-        return np.sum(dots[keepFlag])
+        return np.sum(allVals)
 
     def fillTimeCutoff(self) -> int:
-        if hasattr(self, "probe_fill_time"):
-            return self.probe_fill_time
+        if self.probeFillTime is not None:
+            return self.probeFillTime
         else:
             return 60*5

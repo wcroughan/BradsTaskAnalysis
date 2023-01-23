@@ -709,7 +709,7 @@ def getWellEntryAndExitTimes(nearestWells, ts, quads=False, includeNeighbors=Fal
     entryIdxs = []
     exitIdxs = []
 
-    ts = np.append(np.array(ts), ts[-1])
+    ts = np.append(np.array(ts), ts[-1] + (ts[-1] - ts[-2]))
     if quads:
         wellIdxs = [0, 1, 2, 3]
     else:
@@ -1056,73 +1056,6 @@ def loadPositionData(sesh: BTSession):
         sesh.awayRewardExit_posIdx = np.searchsorted(
             sesh.btPos_ts, sesh.awayRewardExit_ts)
 
-    if sesh.importOptions["skipSniff"]:
-        sesh.hasSniffTimes = False
-    else:
-        gl = sesh.animalInfo.data_dir + sesh.name + '/*.rgs'
-        dir_list = glob.glob(gl)
-        if len(dir_list) == 0:
-            print("\tCouldn't find sniff times files")
-            sesh.hasSniffTimes = False
-        else:
-            sesh.hasSniffTimes = True
-
-            sesh.sniffTimesFile = dir_list[0]
-            if len(dir_list) > 1:
-                print("!!!!!!\tWarning, multiple rgs files found: {}!!!!!!".format(dir_list))
-
-            if not os.path.exists(sesh.sniffTimesFile):
-                raise Exception("Couldn't find rgs file")
-            else:
-                print("\tgetting rgs from {}".format(sesh.sniffTimesFile))
-                with open(sesh.sniffTimesFile, 'r') as stf:
-                    streader = csv.reader(stf)
-                    sniffData = [v for v in streader]
-
-                    sesh.well_sniff_times_entry = [[] for _ in allWellNames]
-                    sesh.well_sniff_times_exit = [[] for _ in allWellNames]
-                    sesh.bt_well_sniff_times_entry = [
-                        [] for _ in allWellNames]
-                    sesh.bt_well_sniff_times_exit = [
-                        [] for _ in allWellNames]
-                    sesh.probe_well_sniff_times_entry = [
-                        [] for _ in allWellNames]
-                    sesh.probe_well_sniff_times_exit = [
-                        [] for _ in allWellNames]
-
-                    sesh.sniff_pre_trial_light_off = int(sniffData[0][0])
-                    sesh.sniff_trial_start = int(sniffData[0][1])
-                    sesh.sniff_trial_stop = int(sniffData[0][2])
-                    sesh.sniff_probe_start = int(sniffData[1][0])
-                    sesh.sniff_probe_stop = int(sniffData[1][1])
-                    sesh.sniff_post_probe_light_on = int(sniffData[1][2])
-
-                    well_name_to_idx = np.empty((np.max(allWellNames) + 1))
-                    well_name_to_idx[:] = np.nan
-                    for widx, wname in enumerate(allWellNames):
-                        well_name_to_idx[wname] = widx
-
-                    for i in sniffData[2:]:
-                        w = int(well_name_to_idx[int(i[2])])
-                        entry_time = int(i[0])
-                        exit_time = int(i[1])
-                        sesh.well_sniff_times_entry[w].append(entry_time)
-                        sesh.well_sniff_times_exit[w].append(exit_time)
-
-                        if exit_time < entry_time:
-                            print(
-                                "mismatched interval: {} - {}".format(entry_time, exit_time))
-                            assert False
-                        if exit_time < sesh.sniff_trial_stop:
-                            sesh.bt_well_sniff_times_entry[w].append(
-                                entry_time)
-                            sesh.bt_well_sniff_times_exit[w].append(exit_time)
-                        else:
-                            sesh.probe_well_sniff_times_entry[w].append(
-                                entry_time)
-                            sesh.probe_well_sniff_times_exit[w].append(
-                                exit_time)
-
 
 def loadLFPData(sesh):
     lfpData = []
@@ -1385,8 +1318,8 @@ def runSanityChecks(sesh: BTSession, lfpData, baselineLfpData, showPlots=False, 
         #     lfpV, prepend=lfpV[0])), height=C["DEFLECTION_THRESHOLD_HI"], distance=C["MIN_ARTIFACT_DISTANCE"])
         # interruptions_lfpIdx = lfpDeflections[0]
         # interruption_ts = lfp_ts[interruptions_lfpIdx]
-        # btInterruption_posIdxs = np.searchsorted(sesh.btPos_ts, interruption_ts)
-        # btInterruption_posIdxs = sesh.btInterruption_posIdx[btInterruption_posIdxs < len(
+        # btInterruption_posIdx = np.searchsorted(sesh.btPos_ts, interruption_ts)
+        # btInterruption_posIdx = sesh.btInterruption_posIdx[btInterruption_posIdx < len(
         #     sesh.btPos_ts)]
 
         numInterruptions = len(sesh.btInterruption_posIdx)
@@ -1486,7 +1419,7 @@ def posCalcEntryExitTimes(sesh):
         sesh.btWellEntryTimesNinc_ts, sesh.btWellExitTimesNinc_ts = \
         getWellEntryAndExitTimes(sesh.btNearestWells, sesh.btPos_ts, includeNeighbors=True)
 
-    sesh.btQuadrantEntryTimes_posIdxs, sesh.btQuadrantExitTimes_posIdxs, \
+    sesh.btQuadrantEntryTimes_posIdx, sesh.btQuadrantExitTimes_posIdx, \
         sesh.btQuadrantEntryTimes_ts, sesh.btQuadrantExitTimes_ts = \
         getWellEntryAndExitTimes(
             sesh.btQuadrants, sesh.btPos_ts, quads=True)
@@ -1927,7 +1860,6 @@ if __name__ == "__main__":
         "skipLFP": False,
         "skipUSB": False,
         "skipPrevSession": True,
-        "skipSniff": True,
         "forceAllTrackingAuto": False,
         "skipConfirmTrackingFileExtension": True,
         "skipCurvature": False,
