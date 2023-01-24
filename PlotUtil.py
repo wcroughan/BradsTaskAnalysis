@@ -14,12 +14,19 @@ import matplotlib.image as mpimg
 from matplotlib.offsetbox import AnchoredText
 import pickle
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from UtilFunctions import getWellPosCoordinates
 from dataclasses import dataclass, field
 from typing import Optional, Tuple
+from numpy.typing import ArrayLike
 
 
 class ShuffSpec:
+    """
+    Specifies one shuffle to run
+    if type is WITHIN, GLOBAL, or INTERACTION, value is a single value
+    if type is ACROSS or RECURSIVE_ALL, value is None
+    """
     class ShuffType(IntEnum):
         UNSPECIFIED = auto()
         GLOBAL = auto()
@@ -35,10 +42,6 @@ class ShuffSpec:
             return self.name[0:3]
 
     def __init__(self, shuffType=ShuffType.UNSPECIFIED, categoryName="", value=None):
-        """
-        if type is WITHIN, GLOBAL, or INTERACTION, value is a single value
-        if type is ACROSS or RECURSIVE_ALL, value is None
-        """
         self.shuffType = shuffType
         self.categoryName = categoryName
         self.value = value
@@ -129,13 +132,10 @@ class ShuffleResult:
             return "{}: {} ({}-{})".format(self.specs, self.diff, np.min(self.shuffleDiffs), np.max(self.shuffleDiffs))
 
 
-# TODO just created this class, need to go through and move all the things like
-# self.yvals from manager to here, change all the references, and destroy this object
-# when __exit__ing, create new one with newFig, figure out continue fig, etc
 @dataclass
 class PlotContext:
     figName: str
-    axs: np.ndarray
+    axs: ArrayLike[Axes]
     yvals: dict = field(default_factory=dict)
     immediateShuffles: list = field(default_factory=list)
     categories: dict = field(default_factory=dict)
@@ -158,6 +158,10 @@ class PlotContext:
     @property
     def isSinglePlot(self) -> bool:
         return self.axs.size == 1
+
+    @property
+    def figure(self) -> Figure:
+        return self.ax.figure
 
 
 class PlotManager:
@@ -182,7 +186,6 @@ class PlotManager:
         self.outputSubDir = ""
         self.outputSubDirStack = []
         self.setOutputDir(outputDir)
-        self.figName = ""
         self.createdPlots = set()
         self.savedFigsByName = {}
 
@@ -205,20 +208,18 @@ class PlotManager:
 
     def __enter__(self) -> PlotContext:
         return self.plotContext
-        if self.withStats:
-            return (self.axs, self.yvals, self.categories, self.infoVals, self.immediateShuffles)
-        else:
-            return self.axs
 
     def newFig(self, figName, subPlots=None, figScale=1.0, priority=None,
                showPlot=None, savePlot=None, enableOverwriteSameName=False) -> PlotManager:
         # print(self.savedPersistentCategories)
-        fname = os.path.join(self.outputDir, self.outputSubDir, figName)
+        if figName[0] != "/":
+            fname = os.path.join(self.outputDir, self.outputSubDir, figName)
+        else:
+            fname = self.plotContext.figName
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
 
         self.clearFig()
-        self.figName = figName
         self.priority = priority
 
         if subPlots is not None:
@@ -235,25 +236,29 @@ class PlotManager:
             self.fig.set_figheight(self.figSizeY * figScale)
             self.fig.set_figwidth(self.figSizeX * figScale)
 
-        self.plotContext = PlotContext(figName, self.axs, showPlot=showPlot, savePlot=savePlot)
+        self.plotContext = PlotContext(fname, self.axs, showPlot=showPlot, savePlot=savePlot)
 
         # print(self.savedPersistentCategories)
         return self
 
     def continueFig(self, figName, priority=None, showPlot=None, savePlot=None, enableOverwriteSameName=False):
-        # TODO use plotcontext
-        raise Exception("UNIMPLEMENTED")
         if self.showedLastFig:
             raise Exception("currently unable to show a figure and then continue it")
 
-        self.temporaryShowPlot = showPlot
-        self.temporarySavePlot = savePlot
-        self.figName = figName
+        self.plotContext.showPlot = showPlot
+        self.plotContext.savePlot = savePlot
+        if figName[0] != "/":
+            fname = os.path.join(self.outputDir, self.outputSubDir, figName)
+        else:
+            fname = self.plotContext.figName
+        if fname in self.createdPlots and not enableOverwriteSameName:
+            raise Exception("Would overwrite file {} that was just made!".format(fname))
+        self.plotContext.figName = fname
         self.priority = priority
-        self.yvals = {}
-        self.immediateShuffles = []
-        self.categories = {}
-        self.infoVals = {}
+        self.plotContext.yvals = {}
+        self.plotContext.immediateShuffles = []
+        self.plotContext.categories = {}
+        self.plotContext.infoVals = {}
         return self
 
     def setStatCategory(self, category, value):
@@ -274,7 +279,7 @@ class PlotManager:
 
         if len(self.plotContext.yvals) > 0:
             # print(self.savedPersistentCategories)
-            statsName = self.figName.split("/")[-1]
+            statsName = self.plotContext.figName.split("/")[-1]
             assert len(self.plotContext.yvals) > 0
             assert len(self.persistentCategories) + len(self.plotContext.categories) > 0
 
@@ -384,10 +389,10 @@ class PlotManager:
         # print(self.savedPersistentCategories)
 
     def saveFig(self):
-        if self.figName[0] != "/":
-            fname = os.path.join(self.outputDir, self.outputSubDir, self.figName)
+        if self.plotContext.figName[0] != "/":
+            fname = os.path.join(self.outputDir, self.outputSubDir, self.plotContext.figName)
         else:
-            fname = self.figName
+            fname = self.plotContext.figName
 
         if fname[-4:] != ".png":
             fname += ".png"

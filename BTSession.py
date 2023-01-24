@@ -882,7 +882,8 @@ class BTSession:
         return ents, exts
 
     def getDotProductScore(self, inProbe: bool, wellName: int, timeInterval=None, test=False, moveFlag=None,
-                           boutFlag=None, excludeTimesAtWell=True, binarySpotlight=False, spotlightAngle=70) -> float:
+                           boutFlag=None, excludeTimesAtWell=True, binarySpotlight=False, spotlightAngle=70,
+                           excursionFlag=None) -> float:
         if moveFlag is None:
             moveFlag = BTSession.MOVE_FLAG_ALL
 
@@ -898,12 +899,14 @@ class BTSession:
             y = self.probePosYs
             mv = self.probeIsMv[:-1]
             boutCats = self.probeBoutCategory[:-1]
+            excursionCats = self.probeExcursionCategory[:-1]
             ts = self.probePos_ts
         else:
             x = self.btPosXs
             y = self.btPosYs
             mv = self.btIsMv[:-1]
             boutCats = self.btBoutCategory[:-1]
+            excursionCats = self.btExcursionCategory[:-1]
             ts = self.btPos_ts
         wx, wy = getWellPosCoordinates(wellName)
 
@@ -928,6 +931,11 @@ class BTSession:
         else:
             keepBout = boutCats == boutFlag
 
+        if excursionFlag is None:
+            keepExcursion = np.ones_like(excursionCats).astype(bool)
+        else:
+            keepExcursion = excursionCats == excursionFlag
+
         ents, exts = self.entryExitTimes(inProbe, wellName, returnIdxs=True)
         notAtWellFlag = np.ones_like(mv).astype(bool)
         if excludeTimesAtWell:
@@ -940,7 +948,7 @@ class BTSession:
         dwy = wy - np.array(y[1:])
 
         notStill = (dx != 0).astype(bool) | (dy != 0).astype(bool)
-        keepFlag = keepBout & keepMv & keepTimeInt & notAtWellFlag & notStill
+        keepFlag = keepBout & keepMv & keepTimeInt & notAtWellFlag & notStill & keepExcursion
 
         dx = dx[keepFlag]
         dy = dy[keepFlag]

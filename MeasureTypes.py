@@ -3,7 +3,7 @@ import math
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from typing import Callable
+from typing import Callable, List
 
 from UtilFunctions import offWall
 from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot
@@ -12,57 +12,67 @@ from BTSession import BTSession
 
 
 class TrialMeasure():
-    def __init__(self, name="", measureFunc=None, sessionList=None, trialFilter=None, runStats=True):
+    """
+    A measure that has a value for every trial during a task, such as trial duration.
+
+    Callbacks:
+    measureFunc(session, trialStart_posIdx, trialEnd_posIdx, trial type ("home" | "away")) -> measure value
+
+    optional trial filter
+    trialFilter(session, trial type ("home" | "away"), trial index, trialStart_posIdx, trialEnd_posIdx, well number)
+        -> True if trial should be included, False if if should be skipped
+    trial index is independently tracked for home and away. So the first home and first away trials will both have index 0
+    These functions are not called in the order in which they occur during the task
+    """
+
+    def __init__(self, name: str = "",
+                 measureFunc: Callable[[BTSession, int, int, str], float] = lambda _: np.nan,
+                 sessionList: List[BTSession] = [],
+                 trialFilter: None | Callable[[BTSession, str, int, int, int, int], bool] = None,
+                 runStats=True):
         self.measure = []
         self.trialCategory = []
         self.conditionCategoryByTrial = []
         self.dotColors = []
         self.name = name
         self.runStats = runStats
+        self.sessionList: List[BTSession] = sessionList
 
-        if measureFunc is not None:
-            assert sessionList is not None
-            for si, sesh in enumerate(sessionList):
-                assert isinstance(sesh, BTSession)
-                # home trials
-                t1 = np.array(sesh.homeRewardEnter_posIdx)
-                t0 = np.array(np.hstack(([0], sesh.awayRewardExit_posIdx)))
-                if not sesh.endedOnHome:
-                    t0 = t0[0:-1]
-                # print(t0)
-                # print(t1)
-                # print(sesh.endedOnHome)
-                # print(sesh.name)
-                assert len(t1) == len(t0)
+        for si, sesh in enumerate(sessionList):
+            t1 = np.array(sesh.homeRewardEnter_posIdx)
+            t0 = np.array(np.hstack(([0], sesh.awayRewardExit_posIdx)))
+            if not sesh.endedOnHome:
+                t0 = t0[0:-1]
+            assert len(t1) == len(t0)
 
-                for ii, (i0, i1) in enumerate(zip(t0, t1)):
-                    if trialFilter is not None and not trialFilter("home", ii, i0, i1, sesh.homeWell):
-                        continue
+            for ii, (i0, i1) in enumerate(zip(t0, t1)):
+                if trialFilter is not None and not trialFilter(sesh, "home", ii, i0, i1, sesh.homeWell):
+                    continue
 
-                    val = measureFunc(sesh, i0, i1, "home")
-                    self.measure.append(val)
-                    self.trialCategory.append("home")
-                    self.conditionCategoryByTrial.append(
-                        "SWR" if sesh.isRippleInterruption else "Ctrl")
-                    self.dotColors.append(si)
+                val = measureFunc(sesh, i0, i1, "home")
+                self.measure.append(val)
+                self.trialCategory.append("home")
+                self.conditionCategoryByTrial.append(
+                    "SWR" if sesh.isRippleInterruption else "Ctrl")
+                self.dotColors.append(si)
 
-                # away trials
-                t1 = np.array(sesh.awayRewardEnter_posIdx)
-                t0 = np.array(sesh.homeRewardExit_posIdx)
-                if sesh.endedOnHome:
-                    t0 = t0[0:-1]
-                assert len(t1) == len(t0)
+            # away trials
+            t1 = np.array(sesh.awayRewardEnter_posIdx)
+            t0 = np.array(sesh.homeRewardExit_posIdx)
+            if sesh.endedOnHome:
+                t0 = t0[0:-1]
+            assert len(t1) == len(t0)
 
-                for ii, (i0, i1) in enumerate(zip(t0, t1)):
-                    if trialFilter is not None and not trialFilter("away", ii, i0, i1, sesh.visitedAwayWells[ii]):
-                        continue
+            for ii, (i0, i1) in enumerate(zip(t0, t1)):
+                if trialFilter is not None and not trialFilter(sesh, "away", ii, i0, i1, sesh.visitedAwayWells[ii]):
+                    continue
 
-                    val = measureFunc(sesh, i0, i1, "away")
-                    self.measure.append(val)
-                    self.trialCategory.append("away")
-                    self.conditionCategoryByTrial.append(
-                        "SWR" if sesh.isRippleInterruption else "Ctrl")
-                    self.dotColors.append(si)
+                val = measureFunc(sesh, i0, i1, "away")
+                self.measure.append(val)
+                self.trialCategory.append("away")
+                self.conditionCategoryByTrial.append(
+                    "SWR" if sesh.isRippleInterruption else "Ctrl")
+                self.dotColors.append(si)
 
         self.measure = np.array(self.measure)
         self.dotColors = np.array(self.dotColors)
@@ -70,6 +80,10 @@ class TrialMeasure():
         self.conditionCategoryByTrial = np.array(self.conditionCategoryByTrial)
 
     def makeFigures(self, plotManager: PlotManager):
+        # TODO:
+        # flags for what to make
+        # every_trial plot
+        # maybe individual and average for i.e. trial duration plot
         figName = self.name.replace(" ", "_")
         with plotManager.newFig(figName) as pc:
             violinPlot(pc.ax, self.measure, categories2=self.trialCategory, categories=self.conditionCategoryByTrial,
@@ -82,9 +96,20 @@ class TrialMeasure():
 
 
 class WellMeasure():
+    """
+    A measure that has a value for every well, such as probe well time
+
+    Callbacks:
+    measureFunc(session, wellname) -> measure value
+
+    optional well filter for away wells
+    wellFilter(away trial index, away well name)
+        -> True if away well should be included, False if if should be skipped
+    """
+
     def __init__(self, name: str = "",
-                 measureFunc: None | Callable[[BTSession, int], float] = None,
-                 sessionList: list = [],
+                 measureFunc: Callable[[BTSession, int], float] = lambda _: np.nan,
+                 sessionList: List[BTSession] = [],
                  wellFilter: Callable[[int, int], bool] = lambda ai, aw: offWall(aw),
                  runStats: bool = True):
         self.measure = []
@@ -105,68 +130,65 @@ class WellMeasure():
 
         self.sessionList = sessionList
 
-        if measureFunc is not None:
-            assert sessionList is not None
-            # print(sessionList)
-            for si, sesh in enumerate(sessionList):
-                measureDict = {}
-                for well in allWellNames:
-                    v = measureFunc(sesh, well)
-                    measureDict[well] = v
-                    if v > self.measureMax:
-                        self.measureMax = v
-                    if v < self.measureMin:
-                        self.measureMin = v
-                self.allMeasureValsBySession.append(measureDict)
+        for si, sesh in enumerate(sessionList):
+            measureDict = {}
+            for well in allWellNames:
+                v = measureFunc(sesh, well)
+                measureDict[well] = v
+                if v > self.measureMax:
+                    self.measureMax = v
+                if v < self.measureMin:
+                    self.measureMin = v
+            self.allMeasureValsBySession.append(measureDict)
 
-            for si, sesh in enumerate(sessionList):
-                homeval = self.allMeasureValsBySession[si][sesh.homeWell]
-                self.measure.append(homeval)
-                self.wellCategory.append("home")
-                self.dotColors.append(si)
-                self.dotColorsBySession.append(si)
-                self.conditionCategoryByWell.append("SWR" if sesh.isRippleInterruption else "Ctrl")
-                self.conditionCategoryBySession.append(
-                    "SWR" if sesh.isRippleInterruption else "Ctrl")
+        for si, sesh in enumerate(sessionList):
+            homeval = self.allMeasureValsBySession[si][sesh.homeWell]
+            self.measure.append(homeval)
+            self.wellCategory.append("home")
+            self.dotColors.append(si)
+            self.dotColorsBySession.append(si)
+            self.conditionCategoryByWell.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+            self.conditionCategoryBySession.append(
+                "SWR" if sesh.isRippleInterruption else "Ctrl")
 
-                awayVals = []
-                aways = sesh.visitedAwayWells
-                if wellFilter is not None:
-                    aways = [aw for ai, aw in enumerate(aways) if wellFilter(ai, aw)]
-                if len(aways) == 0:
-                    print("warning: no off wall aways for session {}".format(sesh.name))
-                    self.withinSessionMeasureDifference.append(np.nan)
-                else:
-                    for ai, aw in enumerate(aways):
-                        # av = measureFunc(sesh, aw)
-                        av = self.allMeasureValsBySession[si][aw]
-                        awayVals.append(av)
-                        self.measure.append(av)
-                        self.wellCategory.append("away")
-                        self.dotColors.append(si)
-                        self.conditionCategoryByWell.append(self.conditionCategoryByWell[-1])
-
-                    awayVals = np.array(awayVals)
-                    if len(awayVals) == 0:
-                        assert False
-                    elif all(np.isnan(awayVals)):
-                        awayMean = np.nan
-                    else:
-                        awayMean = np.nanmean(awayVals)
-                    self.withinSessionMeasureDifference.append(homeval - awayMean)
-
-                otherSeshVals = []
-                for isi, isesh in enumerate(sessionList):
-                    if isi == si:
-                        continue
-                    osv = self.allMeasureValsBySession[isi][sesh.homeWell]
-                    otherSeshVals.append(osv)
-                    self.measure.append(osv)
-                    self.wellCategory.append("othersesh")
+            awayVals = []
+            aways = sesh.visitedAwayWells
+            if wellFilter is not None:
+                aways = [aw for ai, aw in enumerate(aways) if wellFilter(ai, aw)]
+            if len(aways) == 0:
+                print("warning: no off wall aways for session {}".format(sesh.name))
+                self.withinSessionMeasureDifference.append(np.nan)
+            else:
+                for ai, aw in enumerate(aways):
+                    # av = measureFunc(sesh, aw)
+                    av = self.allMeasureValsBySession[si][aw]
+                    awayVals.append(av)
+                    self.measure.append(av)
+                    self.wellCategory.append("away")
                     self.dotColors.append(si)
-                    self.conditionCategoryByWell.append(
-                        "SWR" if sesh.isRippleInterruption else "Ctrl")
-                self.acrossSessionMeasureDifference.append(homeval - np.nanmean(otherSeshVals))
+                    self.conditionCategoryByWell.append(self.conditionCategoryByWell[-1])
+
+                awayVals = np.array(awayVals)
+                if len(awayVals) == 0:
+                    assert False
+                elif all(np.isnan(awayVals)):
+                    awayMean = np.nan
+                else:
+                    awayMean = np.nanmean(awayVals)
+                self.withinSessionMeasureDifference.append(homeval - awayMean)
+
+            otherSeshVals = []
+            for isi, isesh in enumerate(sessionList):
+                if isi == si:
+                    continue
+                osv = self.allMeasureValsBySession[isi][sesh.homeWell]
+                otherSeshVals.append(osv)
+                self.measure.append(osv)
+                self.wellCategory.append("othersesh")
+                self.dotColors.append(si)
+                self.conditionCategoryByWell.append(
+                    "SWR" if sesh.isRippleInterruption else "Ctrl")
+            self.acrossSessionMeasureDifference.append(homeval - np.nanmean(otherSeshVals))
 
         self.measure = np.array(self.measure)
         self.wellCategory = np.array(self.wellCategory)
@@ -250,26 +272,19 @@ class WellMeasure():
 
         if makeEverySessionPlot:
             assert everySessionTraceType is None or everySessionTraceType in [
-                "task", "probe", "task_bouts", "probe_bouts", "test"
+                "task", "probe", "task_bouts", "probe_bouts"
             ]
 
             numCols = math.ceil(math.sqrt(self.numSessions))
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
-            zorder = 2
 
             with plotManager.newFig(figName + "_every_session", subPlots=(numCols, numCols), figScale=0.3) as pc:
                 # for si, (sk, cond) in enumerate(zip(self.allMeasureValsBySession, self.conditionCategoryBySession)):
                 for si, sesh in enumerate(self.sessionList):
-                    assert isinstance(sesh, BTSession)
-
                     sk = self.allMeasureValsBySession[si]
                     cond = self.conditionCategoryBySession[si]
                     ax = pc.axs[si // numCols, si % numCols]
                     assert isinstance(ax, Axes)
-
-                    # ax.invert_yaxis()
-                    # ax.tick_params(axis="both", which="both", label1On=False,
-                    #                label2On=False, tick1On=False, tick2On=False)
 
                     if everySessionTraceType is not None:
                         if "task" in everySessionTraceType:
@@ -282,11 +297,6 @@ class WellMeasure():
                             ys = np.array(sesh.probePosYs)
                             mv = np.array(sesh.probeBoutCategory == BTSession.BOUT_STATE_EXPLORE)
                             ts = np.array(sesh.probePos_ts)
-                        elif "test" in everySessionTraceType:
-                            xs = np.linspace(34, 1100, 1000)
-                            ys = np.linspace(-40, 960, 1000)
-                            mv = np.ones_like(xs).astype(bool)
-                            ts = np.arange(len(xs)) * TRODES_SAMPLING_RATE / 15
 
                         if everySessionTraceTimeInterval is not None:
                             if callable(everySessionTraceTimeInterval):
@@ -306,8 +316,8 @@ class WellMeasure():
                             ys = ys[mv]
 
                         ax.plot(xs, ys, c="#deac7f")
-                        ax.scatter(xs[-1], ys[-1], marker="*")
-                        # print(np.min(xs), np.max(xs), np.min(ys), np.max(ys))
+                        if len(xs) > 0:
+                            ax.scatter(xs[-1], ys[-1], marker="*")
 
                     c = "orange" if cond == "SWR" else "cyan"
                     setupBehaviorTracePlot(ax, sesh, outlineColors=c,
