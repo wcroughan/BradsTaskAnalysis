@@ -4,7 +4,6 @@ import numpy as np
 import os
 import csv
 import glob
-import scipy
 from scipy import stats, signal
 import MountainViewIO
 from datetime import datetime, date
@@ -1047,15 +1046,6 @@ def loadPositionData(sesh: BTSession):
         sesh.awayRewardEnter_ts = wellVisitTimes[1::2, 0]
         sesh.awayRewardExit_ts = wellVisitTimes[1::2, 1]
 
-        sesh.homeRewardEnter_posIdx = np.searchsorted(
-            sesh.btPos_ts, sesh.homeRewardEnter_ts)
-        sesh.homeRewardExit_posIdx = np.searchsorted(
-            sesh.btPos_ts, sesh.homeRewardExit_ts)
-        sesh.awayRewardEnter_posIdx = np.searchsorted(
-            sesh.btPos_ts, sesh.awayRewardEnter_ts)
-        sesh.awayRewardExit_posIdx = np.searchsorted(
-            sesh.btPos_ts, sesh.awayRewardExit_ts)
-
 
 def loadLFPData(sesh):
     lfpData = []
@@ -1373,15 +1363,19 @@ def runSanityChecks(sesh: BTSession, lfpData, baselineLfpData, showPlots=False, 
 
 
 @TimeThisFunction
-def posCalcVelocity(sesh):
+def posCalcVelocity(sesh: BTSession):
     btVel = np.sqrt(np.power(np.diff(sesh.btPosXs), 2) +
                     np.power(np.diff(sesh.btPosYs), 2))
 
     oldSettings = np.seterr(invalid="ignore")
-    sesh.btVelCmPerS = np.divide(btVel, np.diff(sesh.btPos_ts) /
-                                 TRODES_SAMPLING_RATE) * CM_PER_FT
+    sesh.btVelCmPerSRaw = np.divide(btVel, np.diff(sesh.btPos_ts) /
+                                    TRODES_SAMPLING_RATE) * CM_PER_FT
     np.seterr(**oldSettings)
-
+    POS_FRAME_RATE = stats.mode(np.diff(sesh.btPos_ts), keepdims=True)[
+        0] / float(TRODES_SAMPLING_RATE)
+    BOUT_VEL_SM_SIGMA = sesh.importOptions["consts"]["MOVE_THRESH_SM_SIGMA_SECS"] / POS_FRAME_RATE
+    # print(f"{BOUT_VEL_SM_SIGMA =}")
+    sesh.btVelCmPerS = gaussian_filter1d(sesh.btVelCmPerSRaw, BOUT_VEL_SM_SIGMA)
     btIsMv = sesh.btVelCmPerS > sesh.importOptions["consts"]["VEL_THRESH"]
     if len(btIsMv) > 0:
         btIsMv = np.append(btIsMv, np.array(btIsMv[-1]))
@@ -1391,9 +1385,10 @@ def posCalcVelocity(sesh):
         probeVel = np.sqrt(np.power(np.diff(sesh.probePosXs), 2) +
                            np.power(np.diff(sesh.probePosYs), 2))
         oldSettings = np.seterr(invalid="ignore")
-        sesh.probeVelCmPerS = np.divide(probeVel, np.diff(sesh.probePos_ts) /
-                                        TRODES_SAMPLING_RATE) * CM_PER_FT
+        sesh.probeVelCmPerSRaw = np.divide(probeVel, np.diff(sesh.probePos_ts) /
+                                           TRODES_SAMPLING_RATE) * CM_PER_FT
         np.seterr(**oldSettings)
+        sesh.probeVelCmPerS = gaussian_filter1d(sesh.probeVelCmPerSRaw, BOUT_VEL_SM_SIGMA)
         probeIsMv = sesh.probeVelCmPerS > sesh.importOptions["consts"]["VEL_THRESH"]
         if len(probeIsMv) > 0:
             probeIsMv = np.append(probeIsMv, np.array(probeIsMv[-1]))
@@ -1401,7 +1396,7 @@ def posCalcVelocity(sesh):
 
 
 @TimeThisFunction
-def posCalcEntryExitTimes(sesh):
+def posCalcEntryExitTimes(sesh: BTSession):
     # ===================================
     # Well and quadrant entry and exit times
     # ===================================
@@ -1447,6 +1442,64 @@ def posCalcEntryExitTimes(sesh):
 
         for i in allWellNames:
             assert len(sesh.probeWellEntryTimes_ts[i]) == len(sesh.probeWellExitTimes_ts[i])
+
+    homeMiddle_ts = (sesh.homeRewardEnter_ts + sesh.homeRewardExit_ts) / 2
+    for ti, ts in enumerate(homeMiddle_ts):
+        # print(ti, ts)
+        # print(sesh.btWellEntryTimes_ts[sesh.homeWell], sesh.btWellExitTimes_ts[sesh.homeWell])
+        nz = np.nonzero((sesh.btWellEntryTimes_ts[sesh.homeWell] < ts) & (
+            sesh.btWellExitTimes_ts[sesh.homeWell] > ts))
+        assert len(nz) == 1
+        nz = nz[0]
+        # print(f"{nz = }")
+        assert len(nz) == 1
+        encompassingVisitIdx = nz[0]
+        if sesh.homeRewardEnter_ts[ti] < \
+                sesh.btWellEntryTimes_ts[sesh.homeWell][encompassingVisitIdx]:
+            print(f"Note: Fixing home well entry time {ti} for session {sesh.name}")
+            sesh.homeRewardEnter_ts[ti] = \
+                sesh.btWellEntryTimes_ts[sesh.homeWell][encompassingVisitIdx]
+        if sesh.homeRewardExit_ts[ti] > sesh.btWellExitTimes_ts[sesh.homeWell][encompassingVisitIdx]:
+            print(f"Note: Fixing home well Exit time {ti} for session {sesh.name}")
+            sesh.homeRewardExit_ts[ti] = sesh.btWellExitTimes_ts[sesh.homeWell][encompassingVisitIdx]
+
+    awayMiddle_ts = (sesh.awayRewardEnter_ts + sesh.awayRewardExit_ts) / 2
+    for ti, (ts, aw) in enumerate(zip(awayMiddle_ts, sesh.visitedAwayWells)):
+        nz = np.nonzero((sesh.btWellEntryTimes_ts[aw] < ts) & (sesh.btWellExitTimes_ts[aw] > ts))
+        assert len(nz) == 1
+        nz = nz[0]
+        if len(nz) == 0:
+            print(f"{aw = }")
+            print(f"{ti = }")
+            print(f"{ts = }")
+            closest = np.argmin(np.abs(sesh.btWellEntryTimes_ts[aw] - ts))
+            t1 = sesh.btWellEntryTimes_ts[aw][closest]
+            t2 = sesh.btWellExitTimes_ts[aw][closest]
+            print(f"{t1 = }")
+            print(f"{t2 = }")
+            if min(np.abs(ts - t1), np.abs(ts - t2)) < TRODES_SAMPLING_RATE:
+                print("Found a close enough one with a second, using that")
+                encompassingVisitIdx = closest
+            else:
+                raise Exception("COuldn't match up with hand-marked visit with the detected visits")
+        else:
+            assert len(nz) == 1
+            encompassingVisitIdx = nz[0]
+        if sesh.awayRewardEnter_ts[ti] < sesh.btWellEntryTimes_ts[aw][encompassingVisitIdx]:
+            print(f"Note: Fixing away well entry time {ti} for session {sesh.name}")
+            sesh.awayRewardEnter_ts[ti] = sesh.btWellEntryTimes_ts[aw][encompassingVisitIdx]
+        if sesh.awayRewardExit_ts[ti] > sesh.btWellExitTimes_ts[aw][encompassingVisitIdx]:
+            print(f"Note: Fixing away well Exit time {ti} for session {sesh.name}")
+            sesh.awayRewardExit_ts[ti] = sesh.btWellExitTimes_ts[aw][encompassingVisitIdx]
+
+    sesh.homeRewardEnter_posIdx = np.searchsorted(
+        sesh.btPos_ts, sesh.homeRewardEnter_ts)
+    sesh.homeRewardExit_posIdx = np.searchsorted(
+        sesh.btPos_ts, sesh.homeRewardExit_ts)
+    sesh.awayRewardEnter_posIdx = np.searchsorted(
+        sesh.btPos_ts, sesh.awayRewardEnter_ts)
+    sesh.awayRewardExit_posIdx = np.searchsorted(
+        sesh.btPos_ts, sesh.awayRewardExit_ts)
 
 
 def getCurvature(x, y, H):
@@ -1555,7 +1608,7 @@ def getExplorationCategories(ts, vel, nearestWells, consts, forcePauseIntervals=
     MIN_PAUSE_TIME_FRAMES = int(consts["MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS"] / POS_FRAME_RATE)
     MIN_EXPLORE_TIME_FRAMES = int(consts["MIN_EXPLORE_TIME_SECS"] / POS_FRAME_RATE)
 
-    smoothVel = scipy.ndimage.gaussian_filter1d(vel, BOUT_VEL_SM_SIGMA)
+    smoothVel = gaussian_filter1d(vel, BOUT_VEL_SM_SIGMA)
 
     isExploreLocal = smoothVel > consts["PAUSE_MAX_SPEED_CM_S"]
     dilationFilter = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
@@ -1624,14 +1677,14 @@ def getExplorationCategories(ts, vel, nearestWells, consts, forcePauseIntervals=
 def posCalcExplorationBouts(sesh):
     sesh.btSmoothVel, sesh.btExploreBoutStart_posIdx, sesh.btExploreBoutEnd_posIdx, \
         sesh.btExploreBoutLensSecs, sesh.btBoutCategory, sesh.btBoutLabel = \
-        getExplorationCategories(sesh.btPos_ts, sesh.btVelCmPerS, sesh.btNearestWells, sesh.importOptions["consts"],
+        getExplorationCategories(sesh.btPos_ts, sesh.btVelCmPerSRaw, sesh.btNearestWells, sesh.importOptions["consts"],
                                  forcePauseIntervals=(list(zip(sesh.homeRewardEnter_ts, sesh.homeRewardExit_ts)) +
                                                       list(zip(sesh.awayRewardEnter_ts, sesh.awayRewardExit_ts))))
 
     if sesh.probePerformed:
         sesh.probeSmoothVel, sesh.probeExploreBoutStart_posIdx, sesh.probeExploreBoutEnd_posIdx, \
             sesh.probeExploreBoutLensSecs, sesh.probeBoutCategory, sesh.probeBoutLabel = \
-            getExplorationCategories(sesh.probePos_ts, sesh.probeVelCmPerS,
+            getExplorationCategories(sesh.probePos_ts, sesh.probeVelCmPerSRaw,
                                      sesh.probeNearestWells, sesh.importOptions["consts"])
 
 
@@ -1829,13 +1882,17 @@ def extractAndSave(animalName: str, importOptions: dict):
             sesh.conditionGroup = sesh.animalName + "-" + str(si)
 
     # save all sessions to disk
-    if importOptions["debug"]["debugMode"] and importOptions["debug"]["dontsave"]:
+    if importOptions["debug"]["debugMode"] and importOptions["debug"]["dontSave"]:
         print("Not saving because in debug mode")
         print("Would've saved the following sessions:")
         for sesh in dataObj.allSessions:
             print(sesh.name)
     else:
-        outputFname = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
+        if importOptions["debug"]["debugMode"]:
+            outputFname = os.path.join(animalInfo.output_dir,
+                                       animalInfo.out_filename + ".debug.dat")
+        else:
+            outputFname = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
         print("Saving to file: {}".format(outputFname))
         dataObj.saveToFile(outputFname)
         print("Saved sessions:")
@@ -1855,7 +1912,7 @@ def extractAndSave(animalName: str, importOptions: dict):
 
 
 if __name__ == "__main__":
-    animalNames = parseCmdLineAnimalNames(default=["B18"])
+    animalNames = parseCmdLineAnimalNames(default=["B17"])
     importOptions = {
         "skipLFP": False,
         "skipUSB": False,
@@ -1871,6 +1928,7 @@ if __name__ == "__main__":
         "confirmAfterEachSession": False,
         "consts": {
             "VEL_THRESH": 10,  # cm/s
+            "MOVE_THRESH_SM_SIGMA_SECS": 0.8,
 
             # Typical observed amplitude of LFP deflection on stimulation
             "DEFLECTION_THRESHOLD_HI": 6000.0,
@@ -1890,8 +1948,8 @@ if __name__ == "__main__":
         },
         "debug": {
             "debugMode": False,
-            "maxNumSessions": None,
-            "dontSave": True
+            "maxNumSessions": 1,
+            "dontSave": False
         }
     }
 

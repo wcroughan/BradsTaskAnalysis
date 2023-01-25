@@ -4,6 +4,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from typing import Callable, List
+import pandas as pd
 
 from UtilFunctions import offWall
 from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot
@@ -21,8 +22,9 @@ class TrialMeasure():
     optional trial filter
     trialFilter(session, trial type ("home" | "away"), trial index, trialStart_posIdx, trialEnd_posIdx, well number)
         -> True if trial should be included, False if if should be skipped
-    trial index is independently tracked for home and away. So the first home and first away trials will both have index 0
-    These functions are not called in the order in which they occur during the task
+    trial index is independently tracked for home and away. So the first home and first away trials
+        will both have index 0
+    These functions are not necessarily called in the order in which they occur during the task
     """
 
     def __init__(self, name: str = "",
@@ -30,13 +32,23 @@ class TrialMeasure():
                  sessionList: List[BTSession] = [],
                  trialFilter: None | Callable[[BTSession, str, int, int, int, int], bool] = None,
                  runStats=True):
-        self.measure = []
-        self.trialCategory = []
-        self.conditionCategoryByTrial = []
-        self.dotColors = []
         self.name = name
         self.runStats = runStats
-        self.sessionList: List[BTSession] = sessionList
+
+        measure = []
+        trialType = []
+        conditionColumn = []
+        dotColors = []
+        sessionColumn = []
+
+        # coffee
+        # pomodoro:
+        # calc within sesh diff
+        # and across sesh??
+        # plot so can see output for every single trial along with at least path
+        # plot each session so can see all trials, within sesh diff
+        # across session diff somehow
+        # individual and average plot across sessions by trial number
 
         for si, sesh in enumerate(sessionList):
             t1 = np.array(sesh.homeRewardEnter_posIdx)
@@ -50,11 +62,12 @@ class TrialMeasure():
                     continue
 
                 val = measureFunc(sesh, i0, i1, "home")
-                self.measure.append(val)
-                self.trialCategory.append("home")
-                self.conditionCategoryByTrial.append(
+                measure.append(val)
+                trialType.append("home")
+                conditionColumn.append(
                     "SWR" if sesh.isRippleInterruption else "Ctrl")
-                self.dotColors.append(si)
+                dotColors.append(si)
+                sessionColumn.append(sesh)
 
             # away trials
             t1 = np.array(sesh.awayRewardEnter_posIdx)
@@ -68,31 +81,34 @@ class TrialMeasure():
                     continue
 
                 val = measureFunc(sesh, i0, i1, "away")
-                self.measure.append(val)
-                self.trialCategory.append("away")
-                self.conditionCategoryByTrial.append(
+                measure.append(val)
+                trialType.append("away")
+                conditionColumn.append(
                     "SWR" if sesh.isRippleInterruption else "Ctrl")
-                self.dotColors.append(si)
+                dotColors.append(si)
+                sessionColumn.append(sesh)
 
-        self.measure = np.array(self.measure)
-        self.dotColors = np.array(self.dotColors)
-        self.trialCategory = np.array(self.trialCategory)
-        self.conditionCategoryByTrial = np.array(self.conditionCategoryByTrial)
+        self.trialDf = pd.DataFrame({"session": sessionColumn,
+                                     "val": measure,
+                                     "trialType": trialType,
+                                     "condition": conditionColumn,
+                                     "dotColor": dotColors})
 
     def makeFigures(self, plotManager: PlotManager):
         # TODO:
         # flags for what to make
-        # every_trial plot
+        # every_trial plot. Maybe whole background is coolwarm, and trace in black?
         # maybe individual and average for i.e. trial duration plot
         figName = self.name.replace(" ", "_")
         with plotManager.newFig(figName) as pc:
-            violinPlot(pc.ax, self.measure, categories2=self.trialCategory, categories=self.conditionCategoryByTrial,
+            violinPlot(pc.ax, self.trialDf["val"], categories2=self.trialDf["trialType"],
+                       categories=self.trialDf["condition"], dotColors=self.trialDf["dotColor"],
                        axesNames=["Condition", self.name, "Trial type"])
 
             if self.runStats:
-                pc.yvals[figName] = self.measure
-                pc.categories["trial"] = self.trialCategory
-                pc.categories["condition"] = self.conditionCategoryByTrial
+                pc.yvals[figName] = self.trialDf["val"].to_numpy()
+                pc.categories["trial"] = self.trialDf["trialType"].to_numpy()
+                pc.categories["condition"] = self.trialDf["condition"].to_numpy()
 
 
 class WellMeasure():

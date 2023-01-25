@@ -8,7 +8,6 @@ import matplotlib as mpl
 import pandas as pd
 import seaborn as sns
 import warnings
-import random
 from enum import IntEnum, auto
 import matplotlib.image as mpimg
 from matplotlib.offsetbox import AnchoredText
@@ -331,7 +330,8 @@ class PlotManager:
                 if savedImmediateShuffles is not None:
                     print(savedImmediateShuffles)
                     print(self.plotContext.immediateShuffles)
-                    if len(self.plotContext.immediateShuffles) == 0 or savedImmediateShuffles != self.plotContext.immediateShuffles[0][0]:
+                    if len(self.plotContext.immediateShuffles) == 0 or \
+                            savedImmediateShuffles != self.plotContext.immediateShuffles[0][0]:
                         raise Exception("Repeated figure must have identical immediate shuffle")
                 elif len(self.plotContext.immediateShuffles) != 0:
                     raise Exception("Repeated figure must have identical immediate shuffle")
@@ -951,6 +951,14 @@ def pctilePvalSig(val):
 
 
 def violinPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=None):
+    if isinstance(yvals, pd.Series):
+        yvals = yvals.to_numpy()
+        categories = categories.to_numpy()
+        if dotColors is not None:
+            dotColors = dotColors.to_numpy()
+        if categories2 is not None:
+            categories2 = categories2.to_numpy()
+
     if categories2 is None:
         categories2 = ["a" for _ in categories]
         sortingCategories2 = categories2

@@ -266,8 +266,10 @@ class BTSession:
         # ==================================
         # Analyzed data: Probe
         # ==================================
+        self.btVelCmPerSRaw = []
         self.btVelCmPerS = []
         self.btIsMv = []
+        self.probeVelCmPerSRaw = []
         self.probeVelCmPerS = []
         self.probeIsMv = []
 
@@ -357,6 +359,14 @@ class BTSession:
     def isNoInterruption(self):
         return self.condition == BTSession.CONDITION_NO_STIM
 
+    @property
+    def btPos_secs(self):
+        return (self.btPos_ts - self.btPos_ts[0]) / TRODES_SAMPLING_RATE
+
+    @property
+    def probePos_secs(self):
+        return (self.probePos_ts - self.probePos_ts[0]) / TRODES_SAMPLING_RATE
+
     def avgDistToWell(self, inProbe: bool, wellName: int,
                       timeInterval=None, moveFlag=None, avgFunc=np.nanmean) -> float:
         """
@@ -402,6 +412,29 @@ class BTSession:
                              np.power(wy - ys[keepFlag], 2))
         return avgFunc(distToWell * CM_PER_FT)
 
+    def getAllTrialPosIdxs(self):
+        ht1 = self.homeRewardEnter_posIdx
+        ht0 = np.hstack(([0], self.awayRewardExit_posIdx))
+        if not self.endedOnHome:
+            ht0 = ht0[0:-1]
+        assert len(ht1) == len(ht0)
+
+        # away trials
+        at1 = self.awayRewardEnter_posIdx
+        at0 = self.homeRewardExit_posIdx
+        if self.endedOnHome:
+            at0 = at0[0:-1]
+        assert len(at1) == len(at0)
+
+        # print(f"{ ht0.shape = }")
+        ret = np.empty((len(ht1)+len(at1), 2)).astype(int)
+        if len(ht1) > 0:
+            ret[::2, :] = np.vstack((ht0, ht1)).T
+            if len(at1) > 1:
+                ret[1::2, :] = np.vstack((at0, at1)).T
+
+        return ret
+
     def entryExitTimes(self, inProbe: bool, wellName: int | str,
                        timeInterval: Optional[Tuple | list] = None,
                        includeNeighbors: bool = False, excludeReward: bool = False,
@@ -411,12 +444,15 @@ class BTSession:
         return units: trodes timestamps, unless returnIdxs==True
         includeEdgeOverlap: if one str given, applies to start and end of timeInterval.
             If pair given, first element applies to start of time interval, second applied to end
-            If only visit overlaps start and end of timeInterval and pair given and either is omit, whole visit will be omitted,
-                otherwise each end is treated separately
+            If only visit overlaps start and end of timeInterval and pair given and either is omit, whole visit
+                will be omitted, otherwise each end is treated separately
             Values can be:
-                "clip" (default) - If edge of a visit goes beyond timeInterval, truncate start and/or end to be exactly the time interval edge
-                "omit" - don't include any visits that overlap edge. Edges that lie exactly on time interval are still included
-                "full" - Include visits where the edge overlaps with timeInterval and don't clip to be within timeInterval
+                "clip" (default) - If edge of a visit goes beyond timeInterval,
+                    truncate start and/or end to be exactly the time interval edge
+                "omit" - don't include any visits that overlap edge. Edges that
+                    lie exactly on time interval are still included
+                "full" - Include visits where the edge overlaps with timeInterval
+                    and don't clip to be within timeInterval
         """
         # wellName == "QX" ==> look at quadrant X instead of a well
         if isinstance(wellName, str) and wellName[0] == 'Q':
@@ -615,7 +651,8 @@ class BTSession:
         res = res - set([0])
         return len(res)
 
-    def pctBoutsWhereWellWasVisited(self, inProbe, wellName, timeInterval=None, boutsInterval=None, emptyVal=np.nan, **kwargs):
+    def pctBoutsWhereWellWasVisited(self, inProbe, wellName, timeInterval=None, boutsInterval=None,
+                                    emptyVal=np.nan, **kwargs):
         # bouts interval is inclusive first, exclusive last
         if boutsInterval is not None:
             assert timeInterval is None
@@ -692,7 +729,10 @@ class BTSession:
         keepFlag = keepMv & inTime
         return np.nanmean(vel[keepFlag])
 
-    def pathOptimality(self, inProbe, timeInterval=None, wellName=None, emptyVal=np.nan):
+    def pathOptimality(self, inProbe: bool,
+                       timeInterval: Optional[Tuple[float, float]
+                                              | Tuple[float, float, str]] = None,
+                       wellName=None, emptyVal=np.nan):
         if (timeInterval is None) == (wellName is None):
             raise Exception("Gimme a time interval or a well name plz (but not both)")
 
@@ -716,7 +756,15 @@ class BTSession:
             dy = np.diff(ys[0:ei])
 
         if timeInterval is not None:
-            idxs = np.searchsorted(ts, np.array(timeInterval) * TRODES_SAMPLING_RATE + ts[0])
+            if len(timeInterval) == 2 or timeInterval[2] == "secs":
+                idxs = np.searchsorted(ts, np.array(
+                    [timeInterval[0], timeInterval[1]]) * TRODES_SAMPLING_RATE + ts[0])
+            elif timeInterval[2] == "ts":
+                idxs = np.searchsorted(ts, np.array(timeInterval[0], timeInterval[1]) + ts[0])
+            elif timeInterval[2] == "posIdx":
+                idxs = np.array([timeInterval[0], timeInterval[1]])
+            else:
+                raise ValueError("Couldn't parse time interval")
             displacementX = xs[idxs[1]] - xs[idxs[0]]
             displacementY = ys[idxs[1]] - ys[idxs[0]]
             dx = np.diff(xs[idxs[0]:idxs[1]])
@@ -793,8 +841,11 @@ class BTSession:
         returnUnits in ["ts", "secs", "posIdx"]
         startTime should be in the same units expected for return
         """
-        if not returnUnits in ["ts", "secs", "posIdx"]:
+        if returnUnits not in ["ts", "secs", "posIdx"]:
             raise ValueError("returnUnits incorrect")
+
+        if startTime is not None:
+            raise Exception("UNIMPLEMENTED")
 
         ents = self.entryExitTimes(inProbe, wellName, returnIdxs=(returnUnits == "posIdx"))[0]
 
@@ -881,20 +932,13 @@ class BTSession:
         exts = np.nonzero(borders == -1)[0]
         return ents, exts
 
-    def getDotProductScore(self, inProbe: bool, wellName: int, timeInterval=None, test=False, moveFlag=None,
+    def getDotProductScore(self, inProbe: bool, wellName: int, timeInterval=None, moveFlag=None,
                            boutFlag=None, excludeTimesAtWell=True, binarySpotlight=False, spotlightAngle=70,
                            excursionFlag=None) -> float:
         if moveFlag is None:
             moveFlag = BTSession.MOVE_FLAG_ALL
 
-        if test:
-            w11x, w11y = 1.5, 1.5
-            w28x, w28y = 3.5, 3.5
-            x = np.linspace(w11x, w28x, 100)
-            y = np.linspace(w11y, w28y, 100)
-            mv = np.ones((99,)).astype(bool)
-            boutCats = np.ones((99,)) * self.BOUT_STATE_EXPLORE
-        elif inProbe:
+        if inProbe:
             x = self.probePosXs
             y = self.probePosYs
             mv = self.probeIsMv[:-1]
@@ -965,6 +1009,7 @@ class BTSession:
             angle = np.arccos(udots)
             allVals = (angle < np.deg2rad(spotlightAngle)).astype(float)
         else:
+            # allVals = udots / magw
             allVals = udots
 
         return np.sum(allVals)
