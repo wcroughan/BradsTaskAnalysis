@@ -23,11 +23,6 @@ from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, pro
 
 importParentApp = QApplication(sys.argv)
 
-# TODO
-# Set a maximum gap for previous sessions, so large gaps aren't counted and prev dir goes back to None
-# Some "well visits" are just one time point. Need to smooth more and/or just generally change logic away from this
-# visit stuff
-
 
 # Returns a list of directories that correspond to runs for analysis. Unless runJustSpecified is True,
 # only ever filters by day. Thus index within day of returned list can be used to find corresponding behavior notes file
@@ -658,9 +653,6 @@ def integrateCorrectionFiles(ts, xs, ys, correctionDirectory, wellCoordsMap: Dic
     print("\tsaving optimized list to file")
     with open(correctionsFileName, 'w') as f:
         f.writelines([f"{oe[0]} - {oe[1]}\n" for oe in optimizedTimes])
-
-    # TODO it'd be helpful to return all the uncorrected entries (not optimized), filter based on clips
-    # so can exclude ones during ITI or before or after behavior, then make optimized times and save them
 
 
 def processPosData(x, y, t, wellCoordsMap: Dict[str, Tuple[int, int]], maxJumpDistance=0.25,

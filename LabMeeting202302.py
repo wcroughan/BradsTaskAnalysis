@@ -2,7 +2,7 @@ from BTSession import BTSession
 from MeasureTypes import WellMeasure, TrialMeasure
 from BTData import BTData
 from PlotUtil import PlotManager, setupBehaviorTracePlot
-from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal, offWall
+from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal
 import os
 import time
 from datetime import datetime
@@ -52,13 +52,29 @@ import math
 # Inspect fisheye correction more. Look at output closely, and if it seems legit (espcially at edges
 # of environment), should use that for velocity, curvature, etc. Otherwise center wells will think
 # they have slower speed, and curvature radius will change
+#
+# Trial measure output graphs
+# Do I need spline line in wellmeasure?
+#
+# Modify latency function in BTSession so can easily plot latency and optimality over trials
+#
+# Set a maximum gap for previous sessions, so large gaps aren't counted and prev dir goes back to None
+# Some "well visits" are just one time point. Need to smooth more and/or just generally change logic away from this
+# visit stuff
+#
+# Better optimized clip correction region output. Save til the end so can:
+#   compare to task and probe times, weed out ones that aren't during behavior
+#   print separately at the end all at once
+#
+# Shuffles can go crazy with different measures when in datamine mode.
+# Also have this output a helpful ranking of shuffles that showed up significant
 
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
                 RUN_OPTIMALITY=None, PLOT_DETAILED_TRACES=None,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
-                RUN_TESTS=False, MAKE_COMBINED=True):
+                RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
     if RUN_DOT_PROD is None:
@@ -79,6 +95,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
 
     if RUN_JUST_THIS_SESSION is None:
         animalNames = parseCmdLineAnimalNames(default=["B17"])
+        if len(animalNames) > 1 and DATAMINE:
+            raise Exception("Can't datamine with more than one animal. I refuse!")
         sessionToRun = None
     else:
         animalNames = [RUN_JUST_THIS_SESSION[0]]
@@ -140,9 +158,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            with pp.newFig("test", priority=0) as pc:
-                print("I'm in the block!")
-                pc.ax.plot(np.arange(5))
+            TrialMeasure("test", lambda s, i1, i2, t: i2 - i1, sessions).makeFigures(pp)
 
         if RUN_SMOOTHING_TEST:
             smoothVals = np.power(2.0, np.arange(-1, 5))
@@ -218,25 +234,23 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                     setupBehaviorTracePlot(pc.ax, sesh)
                     pc.ax.plot(sesh.btPosXs, sesh.btPosYs)
 
-                # traceLen = 60
-                # traceStep = 30
-                # tStarts = np.arange(0, sesh.btPos_secs[-1], traceStep)
-                # tEnds = tStarts + traceLen
-                # tStarts_posIdx = np.searchsorted(sesh.btPos_secs, tStarts)
-                # tEnds_posIdx = np.searchsorted(sesh.btPos_secs, tEnds)
-                # ncols = math.ceil(np.sqrt(len(tStarts_posIdx)))
-                # with pp.newFig("task_fullTraceBroken", subPlots=(ncols, ncols)) as pc:
-                #     for ti in range(len(tStarts_posIdx)):
-                #         t0 = tStarts_posIdx[ti]
-                #         t1 = tEnds_posIdx[ti]
-                #         ax = pc.axs.flat[ti]
-                #         ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1])
-                #         setupBehaviorTracePlot(ax, sesh)
+                traceLen = 60
+                traceStep = 30
+                tStarts = np.arange(0, sesh.btPos_secs[-1], traceStep)
+                tEnds = tStarts + traceLen
+                tStarts_posIdx = np.searchsorted(sesh.btPos_secs, tStarts)
+                tEnds_posIdx = np.searchsorted(sesh.btPos_secs, tEnds)
+                ncols = math.ceil(np.sqrt(len(tStarts_posIdx)))
+                with pp.newFig("task_fullTraceBroken", subPlots=(ncols, ncols)) as pc:
+                    for ti in range(len(tStarts_posIdx)):
+                        t0 = tStarts_posIdx[ti]
+                        t1 = tEnds_posIdx[ti]
+                        ax = pc.axs.flat[ti]
+                        ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1])
+                        setupBehaviorTracePlot(ax, sesh)
 
                 ncols = 13
-                wellFinds_posIdx = np.append(sesh.getAllTrialPosIdxs().flat[1:],
-                                             sesh.homeRewardExit_posIdx[-1] if sesh.endedOnHome else
-                                             sesh.awayRewardExit_posIdx[-1]).reshape((-1, 2))
+                wellFinds_posIdx = sesh.getAllRewardPosIdxs()
                 with pp.newFig("task_wellFinds", subPlots=(2, ncols)) as pc:
                     for ti in range(wellFinds_posIdx.shape[0]):
                         ai0 = ti % 2
@@ -284,20 +298,21 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 pp.popOutputSubDir()
 
         if RUN_OPTIMALITY:
-            def optFromWall(sesh: BTSession, start_posIdx: int, end_posIdx: int, trialType: str) -> float:
-                nz = np.nonzero(sesh.btExcursionStart_posIdx <= end_posIdx)
-                excursionIdx = nz[0][-1]
-                assert sesh.btExcursionEnd_posIdx[excursionIdx] >= end_posIdx
-                if start_posIdx > sesh.btExcursionStart_posIdx[excursionIdx]:
-                    t1 = start_posIdx
-                else:
-                    t1 = sesh.btExcursionStart_posIdx[excursionIdx]
-                # TODO: this is returning a lot of values < 1
-                raise Exception("FIX above err")
-                return sesh.pathOptimality(False, timeInterval=[t1, end_posIdx, "posIdx"])
+            # def optFromWall(sesh: BTSession, start_posIdx: int, end_posIdx: int, trialType: str) -> float:
+            #     nz = np.nonzero(sesh.btExcursionStart_posIdx <= end_posIdx)
+            #     excursionIdx = nz[0][-1]
+            #     assert sesh.btExcursionEnd_posIdx[excursionIdx] >= end_posIdx
+            #     if start_posIdx > sesh.btExcursionStart_posIdx[excursionIdx]:
+            #         t1 = start_posIdx
+            #     else:
+            #         t1 = sesh.btExcursionStart_posIdx[excursionIdx]
+            #     return sesh.pathOptimality(False, timeInterval=[t1, end_posIdx, "posIdx"])
 
-            TrialMeasure("optimality from wall to reward", optFromWall,
-                         sessions, lambda _, _1, _2, _3, _4, wn: offWall(wn)).makeFigures(pp)
+            # TrialMeasure("optimality from wall to reward", optFromWall,
+            #              sessions, lambda _, _1, _2, _3, _4, wn: offWall(wn)).makeFigures(pp)
+            # The above measure doesn't work out well because of super short intervals between
+            #   leaving the wall or well and finding the immediately adjacent well
+            pass
 
     if len(animalNames) > 1 and MAKE_COMBINED:
         comboStr = "combo {}".format(" ".join(animalNames))
@@ -310,10 +325,13 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
     if RUN_SHUFFLES:
         pp.runImmidateShufflesAcrossPersistentCategories()
 
+    if DATAMINE:
+        pp.runShuffles()
+
 
 if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_MANY_DOTPROD=True, RUN_DOT_PROD=True, RUN_SPOTLIGHT=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SMOOTHING_TEST=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
-    makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
     # makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_TRACES=True)

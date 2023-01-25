@@ -39,16 +39,10 @@ class TrialMeasure():
         trialType = []
         conditionColumn = []
         dotColors = []
-        sessionColumn = []
-
-        # coffee
-        # pomodoro:
-        # calc within sesh diff
-        # and across sesh??
-        # plot so can see output for every single trial along with at least path
-        # plot each session so can see all trials, within sesh diff
-        # across session diff somehow
-        # individual and average plot across sessions by trial number
+        sessionIdxColumn = []
+        wasExcluded = []
+        trial_posIdx = []
+        self.sessionList = sessionList
 
         for si, sesh in enumerate(sessionList):
             t1 = np.array(sesh.homeRewardEnter_posIdx)
@@ -58,16 +52,20 @@ class TrialMeasure():
             assert len(t1) == len(t0)
 
             for ii, (i0, i1) in enumerate(zip(t0, t1)):
-                if trialFilter is not None and not trialFilter(sesh, "home", ii, i0, i1, sesh.homeWell):
-                    continue
-
-                val = measureFunc(sesh, i0, i1, "home")
-                measure.append(val)
                 trialType.append("home")
                 conditionColumn.append(
                     "SWR" if sesh.isRippleInterruption else "Ctrl")
                 dotColors.append(si)
-                sessionColumn.append(sesh)
+                sessionIdxColumn.append(si)
+                trial_posIdx.append((i0, i1))
+
+                if trialFilter is not None and not trialFilter(sesh, "home", ii, i0, i1, sesh.homeWell):
+                    wasExcluded.append(1)
+                    measure.append(np.nan)
+                else:
+                    val = measureFunc(sesh, i0, i1, "home")
+                    measure.append(val)
+                    wasExcluded.append(0)
 
             # away trials
             t1 = np.array(sesh.awayRewardEnter_posIdx)
@@ -77,38 +75,104 @@ class TrialMeasure():
             assert len(t1) == len(t0)
 
             for ii, (i0, i1) in enumerate(zip(t0, t1)):
-                if trialFilter is not None and not trialFilter(sesh, "away", ii, i0, i1, sesh.visitedAwayWells[ii]):
-                    continue
-
-                val = measureFunc(sesh, i0, i1, "away")
-                measure.append(val)
                 trialType.append("away")
                 conditionColumn.append(
                     "SWR" if sesh.isRippleInterruption else "Ctrl")
                 dotColors.append(si)
-                sessionColumn.append(sesh)
+                sessionIdxColumn.append(si)
+                trial_posIdx.append((i0, i1))
 
-        self.trialDf = pd.DataFrame({"session": sessionColumn,
+                if trialFilter is not None and not trialFilter(sesh, "away", ii, i0, i1, sesh.visitedAwayWells[ii]):
+                    wasExcluded.append(1)
+                    measure.append(np.nan)
+                else:
+                    val = measureFunc(sesh, i0, i1, "away")
+                    measure.append(val)
+                    wasExcluded.append(0)
+
+        self.valMin = np.nanmin(measure)
+        self.valMax = np.nanmax(measure)
+        self.trialDf = pd.DataFrame({"sessionIdx": sessionIdxColumn,
                                      "val": measure,
                                      "trialType": trialType,
                                      "condition": conditionColumn,
+                                     "wasExcluded": wasExcluded,
+                                     "trial_posIdx": trial_posIdx,
                                      "dotColor": dotColors})
+        self.sessionDf = self.trialDf.groupby("sessionIdx")[["condition", "dotColor"]].nth(0)
+        print(self.trialDf)
+        print(self.sessionDf)
 
-    def makeFigures(self, plotManager: PlotManager):
+    def makeFigures(self,
+                    plotManager: PlotManager,
+                    plotFlags: str | List[str] = "all"):
         # TODO:
-        # flags for what to make
-        # every_trial plot. Maybe whole background is coolwarm, and trace in black?
-        # maybe individual and average for i.e. trial duration plot
-        figName = self.name.replace(" ", "_")
-        with plotManager.newFig(figName) as pc:
-            violinPlot(pc.ax, self.trialDf["val"], categories2=self.trialDf["trialType"],
-                       categories=self.trialDf["condition"], dotColors=self.trialDf["dotColor"],
-                       axesNames=["Condition", self.name, "Trial type"])
+        # finish every_trial plot.
+        #   Make bottom right display within-sesh differences.
+        #       Probably worth pre-computing that as it is currently in diff plot section
+        #   Colorbar for units
+        #   Outline bottom right with orange or cyan
+        # individual and average for i.e. trial duration plot
 
-            if self.runStats:
-                pc.yvals[figName] = self.trialDf["val"].to_numpy()
-                pc.categories["trial"] = self.trialDf["trialType"].to_numpy()
-                pc.categories["condition"] = self.trialDf["condition"].to_numpy()
+        if isinstance(plotFlags, str):
+            if plotFlags == "all":
+                plotFlags = ["measure", "diff", "everytrial", "averages"]
+            else:
+                plotFlags = [plotFlags]
+
+        figName = self.name.replace(" ", "_")
+        if "measure" in plotFlags:
+            with plotManager.newFig(figName) as pc:
+                violinPlot(pc.ax, self.trialDf["val"], categories2=self.trialDf["trialType"],
+                           categories=self.trialDf["condition"], dotColors=self.trialDf["dotColor"],
+                           axesNames=["Condition", self.name, "Trial type"])
+
+                if self.runStats:
+                    pc.yvals[figName] = self.trialDf["val"].to_numpy()
+                    pc.categories["trial"] = self.trialDf["trialType"].to_numpy()
+                    pc.categories["condition"] = self.trialDf["condition"].to_numpy()
+
+        if "diff" in plotFlags:
+            # Groups home and away trials within a session, takes nanmean of each
+            # Then takes difference of home and away values within each sesion
+            # Finally, lines them up with sessionDf info
+            g = self.trialDf.groupby(["sessionIdx", "trialType"])[
+                "val"].agg(["mean"]).diff()
+            h = g.xs("home", level="trialType")
+            m = h.join(self.sessionDf)
+            with plotManager.newFig(figName + "_diff") as pc:
+                violinPlot(pc.ax, m["mean"], categories=m["condition"], dotColors=m["dotColor"],
+                           axesNames=["Contidion", self.name + " within-session difference"])
+
+        if "everytrial" in plotFlags:
+            cmap = mpl.colormaps["coolwarm"]
+            for si, sesh in enumerate(self.sessionList):
+                thisSession = self.trialDf[self.trialDf["sessionIdx"]
+                                           == si].sort_values("trial_posIdx")
+                tpis = np.array([list(v) for v in thisSession["trial_posIdx"]])
+                vals = thisSession["val"].to_numpy()
+                normvals = (vals - self.valMin) / (self.valMax - self.valMin)
+                if si > 0:
+                    exit()
+                plotManager.pushOutputSubDir(sesh.name)
+                print(thisSession)
+                print(tpis)
+
+                ncols = len(sesh.visitedAwayWells) + 1
+                with plotManager.newFig(figName + "_allTrials", subPlots=(2, ncols)) as pc:
+                    for ti in range(tpis.shape[0]):
+                        ai0 = ti % 2
+                        ai1 = ti // 2
+                        ax = pc.axs[ai0, ai1]
+                        assert isinstance(ax, Axes)
+                        setupBehaviorTracePlot(ax, sesh)
+                        t0 = tpis[ti, 0]
+                        t1 = tpis[ti, 1]
+                        ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1], c="black")
+                        ax.set_facecolor(cmap(normvals[ti]))
+                        ax.set_title(str(vals[ti]))
+
+                plotManager.popOutputSubDir()
 
 
 class WellMeasure():
@@ -216,15 +280,20 @@ class WellMeasure():
 
     def makeFigures(self,
                     plotManager: PlotManager,
-                    makeMeasureBoxPlot=True, makeDiffBoxPlot=True, makeOtherSeshBoxPlot=True,
-                    makeOtherSeshDiffBoxPlot=True, makeEverySessionPlot=True,
+                    plotFlags: str | List[str] = "all",
                     everySessionTraceType: None | str = None,
                     everySessionTraceTimeInterval: None | Callable[[
                         BTSession], tuple | list] = None,
                     priority=None):
         figName = self.name.replace(" ", "_")
 
-        if makeMeasureBoxPlot:
+        if isinstance(plotFlags, str):
+            if plotFlags == "all":
+                plotFlags = ["measure", "diff", "othersesh", "otherseshdiff", "everysession"]
+            else:
+                plotFlags = [plotFlags]
+
+        if "measure" in plotFlags:
             # print("Making " + figName)
             with plotManager.newFig(figName) as pc:
                 midx = [v in ["home", "away"] for v in self.wellCategory]
@@ -242,7 +311,7 @@ class WellMeasure():
                     pc.categories["well"] = fwellCat
                     pc.categories["condition"] = fcondCat
 
-        if makeDiffBoxPlot:
+        if "diff" in plotFlags:
             # print("Making diff, " + figName)
             with plotManager.newFig(figName + "_diff") as pc:
                 violinPlot(pc.ax, self.withinSessionMeasureDifference, self.conditionCategoryBySession,
@@ -255,7 +324,7 @@ class WellMeasure():
                     pc.immediateShuffles.append((
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
 
-        if makeOtherSeshBoxPlot:
+        if "othersesh" in plotFlags:
             with plotManager.newFig(figName + "_othersesh") as pc:
                 midx = [v in ["home", "othersesh"] for v in self.wellCategory]
                 fmeasure = self.measure[midx]
@@ -274,7 +343,7 @@ class WellMeasure():
                     pc.categories["session"] = fwellCat
                     pc.categories["condition"] = fcondCat
 
-        if makeOtherSeshDiffBoxPlot:
+        if "otherseshdiff" in plotFlags:
             with plotManager.newFig(figName + "_othersesh_diff") as pc:
                 violinPlot(pc.ax, self.acrossSessionMeasureDifference, self.conditionCategoryBySession,
                            axesNames=["Contidion", self.name + " across-session difference"],
@@ -286,7 +355,7 @@ class WellMeasure():
                     pc.immediateShuffles.append((
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
 
-        if makeEverySessionPlot:
+        if "everysession" in plotFlags:
             assert everySessionTraceType is None or everySessionTraceType in [
                 "task", "probe", "task_bouts", "probe_bouts"
             ]

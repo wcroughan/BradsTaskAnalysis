@@ -3,12 +3,11 @@ from __future__ import annotations
 import numpy as np
 from typing import Optional, List, Dict, Tuple
 from datetime import datetime
+from numpy.typing import ArrayLike
 
 from consts import TRODES_SAMPLING_RATE, allWellNames, CM_PER_FT
 from UtilFunctions import AnimalInfo, getWellPosCoordinates
 
-# TODO
-# Modify latency function or write another one so can easily plot latency and optimality over trials
 
 # A few design decisions I'm implementing now:
 #
@@ -347,6 +346,17 @@ class BTSession:
 
         self.positionFromDeepLabCut: Optional[bool] = None
 
+    # def __eq__(self, __o: object) -> bool:
+    #     if not isinstance(__o, BTSession):
+    #         return False
+    #     return __o.name == self.name
+
+    # def __ne__(self, __o: object) -> bool:
+    #     return not self.__eq__(__o)
+
+    # def __lt__(self, other: BTSession) -> bool:
+    #     return self.name < other.name
+
     @property
     def isRippleInterruption(self):
         return self.condition == BTSession.CONDITION_INTERRUPTION
@@ -366,6 +376,30 @@ class BTSession:
     @property
     def probePos_secs(self):
         return (self.probePos_ts - self.probePos_ts[0]) / TRODES_SAMPLING_RATE
+
+    def timeIntervalToPosIdx(self, ts: ArrayLike[int],
+                             timeInterval: Optional[Tuple[int, int] | Tuple[int, int, str]],
+                             noneVal=None) -> ArrayLike[int]:
+        """
+        Returns posIdx indices in ts (which has units timestamps) corresponding
+        to given timeInterval. Units given as optional third element can be
+        "secs", "ts", "posIdx", or None. If None or omitted, defaults to "secs"
+        """
+        if timeInterval is None:
+            return noneVal
+
+        if len(timeInterval) == 2 or (len(timeInterval) == 3 and timeInterval[2] is None):
+            timeInterval = [*timeInterval, "secs"]
+
+        if timeInterval[2] == "posIdx":
+            return np.array([timeInterval[0], timeInterval[1]])
+        elif timeInterval[2] == "ts":
+            return np.searchsorted(ts, np.array([timeInterval[0], timeInterval[1]]))
+        elif timeInterval[2] == "secs":
+            return np.searchsorted((ts - ts[0]) / TRODES_SAMPLING_RATE,
+                                   np.array([timeInterval[0], timeInterval[1]]))
+        else:
+            raise ValueError("Couldn't parse time interval")
 
     def avgDistToWell(self, inProbe: bool, wellName: int,
                       timeInterval=None, moveFlag=None, avgFunc=np.nanmean) -> float:
@@ -397,14 +431,17 @@ class BTSession:
         else:
             keepMv = np.ones_like(mv).astype(bool)
 
-        if timeInterval is None:
-            keepTimeInt = np.ones_like(keepMv)
-        else:
-            assert xs.shape == ts.shape
-            keepTimeInt = np.zeros_like(keepMv).astype(bool)
-            durIdx = np.searchsorted(ts, np.array(
-                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
-            keepTimeInt[durIdx[0]:durIdx[1]] = True
+        durIdx = self.timeIntervalToPosIdx(ts, timeInterval, noneVal=(0, len(keepMv)))
+        keepTimeInt = np.zeros_like(keepMv).astype(bool)
+        keepTimeInt[durIdx[0]:durIdx[1]] = True
+        # if timeInterval is None:
+        #     keepTimeInt = np.ones_like(keepMv)
+        # else:
+        #     assert xs.shape == ts.shape
+        #     keepTimeInt = np.zeros_like(keepMv).astype(bool)
+        #     durIdx = np.searchsorted(ts, np.array(
+        #         [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
+        #     keepTimeInt[durIdx[0]:durIdx[1]] = True
 
         keepFlag = keepTimeInt & keepMv
 
@@ -434,6 +471,11 @@ class BTSession:
                 ret[1::2, :] = np.vstack((at0, at1)).T
 
         return ret
+
+    def getAllRewardPosIdxs(self):
+        return np.append(self.getAllTrialPosIdxs().flat[1:],
+                         self.homeRewardExit_posIdx[-1] if self.endedOnHome else
+                         self.awayRewardExit_posIdx[-1]).reshape((-1, 2))
 
     def entryExitTimes(self, inProbe: bool, wellName: int | str,
                        timeInterval: Optional[Tuple | list] = None,
@@ -525,11 +567,19 @@ class BTSession:
             if isinstance(includeEdgeOverlap, str):
                 includeEdgeOverlap = (includeEdgeOverlap, includeEdgeOverlap)
 
-            mint = ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE
-            maxt = ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE
+            timeInterval_posIdx = self.timeIntervalToPosIdx(ts, timeInterval)
+
             if returnIdxs:
-                mint = np.searchsorted(ts, mint)
-                maxt = np.searchsorted(ts, maxt)
+                mint = timeInterval_posIdx[0]
+                maxt = timeInterval_posIdx[1]
+            else:
+                mint = ts[timeInterval_posIdx[0]]
+                maxt = ts[timeInterval_posIdx[1]]
+            # mint = ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE
+            # maxt = ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE
+            # if returnIdxs:
+                # mint = np.searchsorted(ts, mint)
+                # maxt = np.searchsorted(ts, maxt)
 
             keepflag = np.logical_and(np.array(ents) < maxt, np.array(exts) > mint)
             ents = ents[keepflag]
@@ -629,10 +679,12 @@ class BTSession:
             lbls = self.btBoutLabel
             ts = self.btPos_ts
 
-        if timeInterval is not None:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
-            lbls = lbls[imin:imax]
+        durIdx = self.timeIntervalToPosIdx(ts, timeInterval, noneVal=(0, len(lbls)))
+        lbls = lbls[durIdx[0]:durIdx[1]]
+        # if timeInterval is not None:
+        #     imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
+        #     imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+        #     lbls = lbls[imin:imax]
 
         return len(set(lbls) - set([0]))
 
@@ -664,9 +716,10 @@ class BTSession:
                 boutEnds = self.btExploreBoutEnd_posIdx
 
             if len(boutEnds) >= boutsInterval[1]:
-                timeInterval = [boutStarts[boutsInterval[0]], boutEnds[boutsInterval[1] - 1]]
+                timeInterval = [boutStarts[boutsInterval[0]],
+                                boutEnds[boutsInterval[1] - 1], "posIdx"]
             else:
-                timeInterval = [boutStarts[boutsInterval[0]], boutEnds[len(boutEnds) - 1]]
+                timeInterval = [boutStarts[boutsInterval[0]], boutEnds[len(boutEnds) - 1], "posIdx"]
 
         denom = self.numBouts(inProbe, timeInterval=timeInterval)
         if denom == 0:
@@ -682,17 +735,19 @@ class BTSession:
             cats = self.btBoutCategory
             ts = self.btPos_ts
 
-        if timeInterval is None:
-            imin = 0
-            imax = len(ts)
-        else:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+        durIdx = self.timeIntervalToPosIdx(ts, timeInterval, noneVal=(0, len(ts)))
+        # if timeInterval is None:
+        #     imin = 0
+        #     imax = len(ts)
+        # else:
+        #     imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
+        #     imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+        # cats = cats[imin:imax]
 
-        cats = cats[imin:imax]
+        cats = cats[durIdx[0]:durIdx[1]]
         if float(cats.size) == 0:
             print(len(self.btBoutCategory))
-            print(inProbe, imin, imax, timeInterval)
+            print(inProbe, durIdx, timeInterval)
         return float(np.count_nonzero(cats == boutState)) / float(cats.size)
 
     def meanVel(self, inProbe, moveFlag=None, timeInterval=None):
@@ -711,13 +766,16 @@ class BTSession:
             ts = self.btPos_ts
             mv = self.btIsMv
 
-        if timeInterval is None:
-            inTime = np.ones_like(mv).astype(bool)
-        else:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
-            inTime = np.zeros_like(mv).astype(bool)
-            inTime[imin:imax] = True
+        durIdx = self.timeIntervalToPosIdx(ts, timeInterval, noneVal=(0, len(mv)))
+        inTime = np.zeros_like(mv).astype(bool)
+        inTime[durIdx[0]:durIdx[1]] = True
+        # if timeInterval is None:
+        #     inTime = np.ones_like(mv).astype(bool)
+        # else:
+        #     imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
+        #     imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+        #     inTime = np.zeros_like(mv).astype(bool)
+        #     inTime[imin:imax] = True
 
         if moveFlag == self.MOVE_FLAG_MOVING:
             keepMv = mv
@@ -754,24 +812,22 @@ class BTSession:
             displacementY = ys[ei] - ys[0]
             dx = np.diff(xs[0:ei])
             dy = np.diff(ys[0:ei])
-
-        if timeInterval is not None:
-            if len(timeInterval) == 2 or timeInterval[2] == "secs":
-                idxs = np.searchsorted(ts, np.array(
-                    [timeInterval[0], timeInterval[1]]) * TRODES_SAMPLING_RATE + ts[0])
-            elif timeInterval[2] == "ts":
-                idxs = np.searchsorted(ts, np.array(timeInterval[0], timeInterval[1]) + ts[0])
-            elif timeInterval[2] == "posIdx":
-                idxs = np.array([timeInterval[0], timeInterval[1]])
-            else:
-                raise ValueError("Couldn't parse time interval")
-            displacementX = xs[idxs[1]] - xs[idxs[0]]
-            displacementY = ys[idxs[1]] - ys[idxs[0]]
-            dx = np.diff(xs[idxs[0]:idxs[1]])
-            dy = np.diff(ys[idxs[0]:idxs[1]])
+        else:
+            durIdx = self.timeIntervalToPosIdx(ts, timeInterval)
+            assert durIdx is not None
+            displacementX = xs[durIdx[1]] - xs[durIdx[0]]
+            displacementY = ys[durIdx[1]] - ys[durIdx[0]]
+            dx = np.diff(xs[durIdx[0]:durIdx[1]])
+            dy = np.diff(ys[durIdx[0]:durIdx[1]])
 
         displacement = np.sqrt(displacementX * displacementX + displacementY * displacementY)
         distance = np.sum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
+
+        if distance / displacement < 1:
+            print(f"{distance =}")
+            print(f"{displacement =}")
+            if timeInterval is not None:
+                print(f"{durIdx = }")
 
         return distance / displacement
 
@@ -784,6 +840,8 @@ class BTSession:
 
         if radius is None:
             # TODO just count total time in well by entry exit times
+            # Note totalDwellTime as below doesn't work as is because moveFlag isn't accounted for
+            # return self.totalDwellTime(inProbe, wellName, timeInterval=timeInterval):
             raise Exception("Unimplemented")
 
         if moveFlag is None:
@@ -809,13 +867,16 @@ class BTSession:
         else:
             keepMv = np.ones_like(mv).astype(bool)
 
-        if timeInterval is None:
-            inTime = np.ones_like(mv).astype(bool)
-        else:
-            imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
-            imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
-            inTime = np.zeros_like(mv).astype(bool)
-            inTime[imin:imax] = True
+        durIdx = self.timeIntervalToPosIdx(ts, timeInterval, noneVal=(0, len(mv)))
+        inTime = np.zeros_like(mv).astype(bool)
+        inTime[durIdx[0]:durIdx[1]] = True
+        # if timeInterval is None:
+        #     inTime = np.ones_like(mv).astype(bool)
+        # else:
+        #     imin = np.searchsorted(ts, ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE)
+        #     imax = np.searchsorted(ts, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE)
+        #     inTime = np.zeros_like(mv).astype(bool)
+        #     inTime[imin:imax] = True
 
         distToWell = np.sqrt(np.power(wx - xs, 2) + np.power(wy - ys, 2)) * CM_PER_FT
 
@@ -961,14 +1022,17 @@ class BTSession:
         else:
             keepMv = np.ones_like(mv).astype(bool)
 
-        if timeInterval is None:
-            keepTimeInt = np.ones_like(keepMv)
-        else:
-            assert x.shape == ts.shape
-            keepTimeInt = np.zeros_like(keepMv).astype(bool)
-            durIdx = np.searchsorted(ts, np.array(
-                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
-            keepTimeInt[durIdx[0]:durIdx[1]] = True
+        durIdx = self.timeIntervalToPosIdx(ts, timeInterval, noneVal=(0, len(keepMv)))
+        keepTimeInt = np.zeros_like(keepMv).astype(bool)
+        keepTimeInt[durIdx[0]:durIdx[1]] = True
+        # if timeInterval is None:
+        #     keepTimeInt = np.ones_like(keepMv)
+        # else:
+        #     assert x.shape == ts.shape
+        #     keepTimeInt = np.zeros_like(keepMv).astype(bool)
+        #     durIdx = np.searchsorted(ts, np.array(
+        #         [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
+        #     keepTimeInt[durIdx[0]:durIdx[1]] = True
 
         if boutFlag is None:
             keepBout = np.ones_like(boutCats).astype(bool)
