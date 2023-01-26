@@ -12,13 +12,7 @@ from typing import List
 from matplotlib.axes import Axes
 import math
 
-# Jump back in: TrialMeasure plotting
-
 # TODOs
-# Debug dotprod
-# Anything else look fishy?
-# Def glitch where B16 12_11 is giving nans
-# - Actually no that one was fine, just all exploration was done after fill time
 #
 # Double check position tracking fill times for other rats. Especially B16 07_10 looks a bit wonky
 # And B16 15_09
@@ -38,7 +32,6 @@ import math
 # Datamine B17
 # Especially debugged dot product not divided by total time
 # Histogram balance might be a good visual?
-# To all every-session plots, add path on top
 # Add control that is rotated-similar wells instead of aways
 # Task gravity, exclude reward?
 # Tune up spotlight/dotprod measure by just looking at behavior during home trials, should see clear trend toward home
@@ -47,6 +40,9 @@ import math
 # Plus velocity weighting perhaps??
 # Maybe exclude times when at well? At least need to way to deal with looking right pas a well
 # Maybe for everysession plots try centering on home to combine, see if clear gradient situation appears
+# A measure that tries to capture the consistent paths that develop during a session, and compares that
+#   to probe behavior. Something like frequency of entering a well from each angle maybe, so if
+#   always approaching 35 from top and leaving from left, how consistent is that with probe?
 #
 # Work on DLC
 #
@@ -54,7 +50,6 @@ import math
 # of environment), should use that for velocity, curvature, etc. Otherwise center wells will think
 # they have slower speed, and curvature radius will change
 #
-# Trial measure output graphs
 # Do I need spline line in wellmeasure?
 #
 # Modify latency function in BTSession so can easily plot latency and optimality over trials
@@ -69,6 +64,17 @@ import math
 #
 # Shuffles can go crazy with different measures when in datamine mode.
 # Also have this output a helpful ranking of shuffles that showed up significant
+
+
+# COmpleted:
+# Debug dotprod
+# Anything else look fishy?
+# Def glitch where B16 12_11 is giving nans
+# - Actually no that one was fine, just all exploration was done after fill time
+#
+# Trial measure output graphs
+#
+# To all every-session plots, add path on top
 
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,

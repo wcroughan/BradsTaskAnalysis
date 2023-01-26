@@ -123,8 +123,6 @@ class TrialMeasure():
     def makeFigures(self,
                     plotManager: PlotManager,
                     plotFlags: str | List[str] = "all"):
-        # TODO:
-        # individual and average for i.e. trial duration plot
 
         if isinstance(plotFlags, str):
             if plotFlags == "all":
