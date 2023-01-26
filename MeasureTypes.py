@@ -9,7 +9,8 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
 from UtilFunctions import offWall
-from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot, blankPlot
+from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot, blankPlot, \
+    plotIndividualAndAverage
 from consts import allWellNames, TRODES_SAMPLING_RATE
 from BTSession import BTSession
 
@@ -38,6 +39,8 @@ class TrialMeasure():
         self.runStats = runStats
 
         measure = []
+        self.measure2d = np.empty((len(sessionList), 25))
+        self.measure2d[:, :] = np.nan
         trialType = []
         conditionColumn = []
         dotColors = []
@@ -67,6 +70,7 @@ class TrialMeasure():
                 else:
                     val = measureFunc(sesh, i0, i1, "home")
                     measure.append(val)
+                    self.measure2d[si, ii*2] = val
                     wasExcluded.append(0)
 
             # away trials
@@ -90,6 +94,7 @@ class TrialMeasure():
                 else:
                     val = measureFunc(sesh, i0, i1, "away")
                     measure.append(val)
+                    self.measure2d[si, ii*2+1] = val
                     wasExcluded.append(0)
 
         self.valMin = np.nanmin(measure)
@@ -103,6 +108,9 @@ class TrialMeasure():
                                      "dotColor": dotColors})
         self.sessionDf = self.trialDf.groupby("sessionIdx")[["condition", "dotColor"]].nth(0)
 
+        # Groups home and away trials within a session, takes nanmean of each
+        # Then takes difference of home and away values within each sesion
+        # Finally, lines them up with sessionDf info
         self.withinSessionDiffs = self.trialDf.groupby(["sessionIdx", "trialType"]).agg(
             withinSessionDiff=("val", "mean")).diff().xs("home", level="trialType").join(self.sessionDf)
         diffs = self.withinSessionDiffs["withinSessionDiff"].to_numpy()
@@ -116,11 +124,6 @@ class TrialMeasure():
                     plotManager: PlotManager,
                     plotFlags: str | List[str] = "all"):
         # TODO:
-        # finish every_trial plot.
-        #   Make bottom right display within-sesh differences.
-        #       Probably worth pre-computing that as it is currently in diff plot section
-        #   Colorbar for units
-        #   Outline bottom right with orange or cyan
         # individual and average for i.e. trial duration plot
 
         if isinstance(plotFlags, str):
@@ -128,9 +131,13 @@ class TrialMeasure():
                 plotFlags = ["measure", "diff", "everytrial", "everysession", "averages"]
             else:
                 plotFlags = [plotFlags]
+        else:
+            # So passed in list isn't modified by remove
+            plotFlags = [v for v in plotFlags]
 
         figName = self.name.replace(" ", "_")
         if "measure" in plotFlags:
+            plotFlags.remove("measure")
             with plotManager.newFig(figName) as pc:
                 violinPlot(pc.ax, self.trialDf["val"], categories2=self.trialDf["trialType"],
                            categories=self.trialDf["condition"], dotColors=self.trialDf["dotColor"],
@@ -142,16 +149,78 @@ class TrialMeasure():
                     pc.categories["condition"] = self.trialDf["condition"].to_numpy()
 
         if "diff" in plotFlags:
-            # Groups home and away trials within a session, takes nanmean of each
-            # Then takes difference of home and away values within each sesion
-            # Finally, lines them up with sessionDf info
+            plotFlags.remove("diff")
             with plotManager.newFig(figName + "_diff") as pc:
                 violinPlot(pc.ax, self.withinSessionDiffs["withinSessionDiff"],
                            categories=self.withinSessionDiffs["condition"],
                            dotColors=self.withinSessionDiffs["dotColor"],
                            axesNames=["Contidion", self.name + " within-session difference"])
 
+        if "averages" in plotFlags:
+            plotFlags.remove("averages")
+            xvalsAll = np.arange(self.measure2d.shape[1]) + 1
+            xvalsHalf = np.arange(math.ceil(self.measure2d.shape[1] / 2)) + 1
+            swrIdx = np.array([sesh.isRippleInterruption for sesh in self.sessionList])
+            ctrlIdx = np.array([not v for v in swrIdx])
+
+            with plotManager.newFig(figName + "_byTrialAvgs_all") as pc:
+                plotIndividualAndAverage(pc.ax, self.measure2d, xvalsAll, avgColor="grey")
+                pc.ax.set_xlim(1, len(xvalsAll))
+                pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_all_byCond") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, :], xvalsAll, avgColor="orange")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, :], xvalsAll, avgColor="cyan")
+                pc.ax.set_xlim(1, len(xvalsAll))
+                pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_home") as pc:
+                plotIndividualAndAverage(pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="grey")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_away") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="grey")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_home_byCond") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="orange")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="cyan")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_away_byCond") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="orange")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="cyan")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_ctrl_byTrialType") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="red")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="blue")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_SWR_byTrialType") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="red")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="blue")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
         if "everytrial" in plotFlags:
+            plotFlags.remove("everytrial")
             cmap = mpl.colormaps["coolwarm"]
             for si, sesh in enumerate(self.sessionList):
                 thisSession = self.trialDf[self.trialDf["sessionIdx"]
@@ -199,6 +268,7 @@ class TrialMeasure():
                 plotManager.popOutputSubDir()
 
         if "everysession" in plotFlags:
+            plotFlags.remove("everysession")
             cmap = mpl.colormaps["coolwarm"]
             ncols = 14
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
@@ -248,6 +318,9 @@ class TrialMeasure():
                         norm=Normalize(self.diffMin, self.diffMax), cmap=cmap), ax=ax)
 
                     pc.axs[2*si, 0].set_title(sesh.name)
+
+        if len(plotFlags) > 0:
+            print(f"Warning: unused plot flags: {plotFlags}")
 
 
 class WellMeasure():
@@ -367,8 +440,12 @@ class WellMeasure():
                 plotFlags = ["measure", "diff", "othersesh", "otherseshdiff", "everysession"]
             else:
                 plotFlags = [plotFlags]
+        else:
+            # so list passed in isn't modified
+            plotFlags = [v for v in plotFlags]
 
         if "measure" in plotFlags:
+            plotFlags.remove("measure")
             # print("Making " + figName)
             with plotManager.newFig(figName) as pc:
                 midx = [v in ["home", "away"] for v in self.wellCategory]
@@ -387,6 +464,7 @@ class WellMeasure():
                     pc.categories["condition"] = fcondCat
 
         if "diff" in plotFlags:
+            plotFlags.remove("diff")
             # print("Making diff, " + figName)
             with plotManager.newFig(figName + "_diff") as pc:
                 violinPlot(pc.ax, self.withinSessionMeasureDifference, self.conditionCategoryBySession,
@@ -400,6 +478,7 @@ class WellMeasure():
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
 
         if "othersesh" in plotFlags:
+            plotFlags.remove("othersesh")
             with plotManager.newFig(figName + "_othersesh") as pc:
                 midx = [v in ["home", "othersesh"] for v in self.wellCategory]
                 fmeasure = self.measure[midx]
@@ -419,6 +498,7 @@ class WellMeasure():
                     pc.categories["condition"] = fcondCat
 
         if "otherseshdiff" in plotFlags:
+            plotFlags.remove("otherseshdiff")
             with plotManager.newFig(figName + "_othersesh_diff") as pc:
                 violinPlot(pc.ax, self.acrossSessionMeasureDifference, self.conditionCategoryBySession,
                            axesNames=["Contidion", self.name + " across-session difference"],
@@ -431,6 +511,7 @@ class WellMeasure():
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
 
         if "everysession" in plotFlags:
+            plotFlags.remove("everysession")
             assert everySessionTraceType is None or everySessionTraceType in [
                 "task", "probe", "task_bouts", "probe_bouts"
             ]
@@ -519,3 +600,6 @@ class WellMeasure():
                     blankPlot(ax)
 
                 plt.colorbar(im, ax=ax)
+
+        if len(plotFlags) > 0:
+            print(f"Warning: unused plot flags: {plotFlags}")

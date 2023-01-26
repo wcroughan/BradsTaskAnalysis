@@ -160,7 +160,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
 
         if RUN_TESTS:
             TrialMeasure("test", lambda s, i1, i2, t: i2 - i1,
-                         sessions[13:17]).makeFigures(pp, plotFlags="everysession")
+                         sessions).makeFigures(pp, plotFlags="averages")
 
         if RUN_SMOOTHING_TEST:
             smoothVals = np.power(2.0, np.arange(-1, 5))
