@@ -1016,3 +1016,9 @@ def violinPlot(ax, yvals, categories, categories2=None, dotColors=None, axesName
         if not cat2IsFake:
             ax.set_xlabel(axesNames[2])
         ax.set_ylabel(axesNames[1])
+
+
+def blankPlot(ax):
+    ax.cla()
+    ax.tick_params(axis="both", which="both", label1On=False,
+                   label2On=False, tick1On=False, tick2On=False)

@@ -9,7 +9,7 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
 from UtilFunctions import offWall
-from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot
+from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot, blankPlot
 from consts import allWellNames, TRODES_SAMPLING_RATE
 from BTSession import BTSession
 
@@ -163,10 +163,15 @@ class TrialMeasure():
 
                 ncols = len(sesh.visitedAwayWells) + 1
                 with plotManager.newFig(figName + "_allTrials", subPlots=(2, ncols)) as pc:
-                    for ti in range(tpis.shape[0]):
+                    for ti in range(2*ncols):
                         ai0 = ti % 2
                         ai1 = ti // 2
                         ax = pc.axs[ai0, ai1]
+
+                        if ti >= tpis.shape[0]:
+                            blankPlot(ax)
+                            continue
+
                         assert isinstance(ax, Axes)
                         c = "orange" if self.withinSessionDiffs.loc[si,
                                                                     "condition"] == "SWR" else "cyan"
@@ -196,23 +201,32 @@ class TrialMeasure():
         if "everysession" in plotFlags:
             cmap = mpl.colormaps["coolwarm"]
             ncols = 14
-            with plotManager.newFig(figName + "_allTrials", subPlots=(2, ncols)) as pc:
+            wellSize = mpl.rcParams['lines.markersize']**2 / 4
+            with plotManager.newFig(figName + "_allTrials_allSessions",
+                                    subPlots=(2*len(self.sessionList), ncols), figScale=0.3) as pc:
                 for si, sesh in enumerate(self.sessionList):
+                    print(si)
                     thisSession = self.trialDf[self.trialDf["sessionIdx"]
                                                == si].sort_values("trial_posIdx")
                     tpis = np.array([list(v) for v in thisSession["trial_posIdx"]])
                     vals = thisSession["val"].to_numpy()
                     normvals = (vals - self.valMin) / (self.valMax - self.valMin)
 
-                    ncols = len(sesh.visitedAwayWells) + 1
-                    for ti in range(tpis.shape[0]):
+                    blankPlot(pc.axs[2*si, 0])
+                    blankPlot(pc.axs[2*si+1, 0])
+
+                    for ti in range(2 * ncols - 2):
                         ai0 = (ti % 2) + 2 * si
                         ai1 = (ti // 2) + 1
                         ax = pc.axs[ai0, ai1]
+                        if ti >= tpis.shape[0]:
+                            blankPlot(ax)
+                            continue
+
                         assert isinstance(ax, Axes)
                         c = "orange" if self.withinSessionDiffs.loc[si,
                                                                     "condition"] == "SWR" else "cyan"
-                        setupBehaviorTracePlot(ax, sesh, outlineColors=c)
+                        setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=wellSize)
                         t0 = tpis[ti, 0]
                         t1 = tpis[ti, 1]
                         ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1], c="black")
@@ -502,8 +516,6 @@ class WellMeasure():
 
                 for si in range(self.numSessions, numCols * numCols):
                     ax = pc.axs[si // numCols, si % numCols]
-                    ax.cla()
-                    ax.tick_params(axis="both", which="both", label1On=False,
-                                   label2On=False, tick1On=False, tick2On=False)
+                    blankPlot(ax)
 
                 plt.colorbar(im, ax=ax)
