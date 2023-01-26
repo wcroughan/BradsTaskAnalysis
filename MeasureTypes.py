@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from typing import Callable, List
 import pandas as pd
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 
 from UtilFunctions import offWall
 from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot
@@ -100,6 +102,13 @@ class TrialMeasure():
                                      "trial_posIdx": trial_posIdx,
                                      "dotColor": dotColors})
         self.sessionDf = self.trialDf.groupby("sessionIdx")[["condition", "dotColor"]].nth(0)
+
+        self.withinSessionDiffs = self.trialDf.groupby(["sessionIdx", "trialType"]).agg(
+            withinSessionDiff=("val", "mean")).diff().xs("home", level="trialType").join(self.sessionDf)
+        diffs = self.withinSessionDiffs["withinSessionDiff"].to_numpy()
+        self.diffMin = np.nanmin(diffs)
+        self.diffMax = np.nanmax(diffs)
+
         print(self.trialDf)
         print(self.sessionDf)
 
@@ -116,7 +125,7 @@ class TrialMeasure():
 
         if isinstance(plotFlags, str):
             if plotFlags == "all":
-                plotFlags = ["measure", "diff", "everytrial", "averages"]
+                plotFlags = ["measure", "diff", "everytrial", "everysession", "averages"]
             else:
                 plotFlags = [plotFlags]
 
@@ -136,12 +145,10 @@ class TrialMeasure():
             # Groups home and away trials within a session, takes nanmean of each
             # Then takes difference of home and away values within each sesion
             # Finally, lines them up with sessionDf info
-            g = self.trialDf.groupby(["sessionIdx", "trialType"])[
-                "val"].agg(["mean"]).diff()
-            h = g.xs("home", level="trialType")
-            m = h.join(self.sessionDf)
             with plotManager.newFig(figName + "_diff") as pc:
-                violinPlot(pc.ax, m["mean"], categories=m["condition"], dotColors=m["dotColor"],
+                violinPlot(pc.ax, self.withinSessionDiffs["withinSessionDiff"],
+                           categories=self.withinSessionDiffs["condition"],
+                           dotColors=self.withinSessionDiffs["dotColor"],
                            axesNames=["Contidion", self.name + " within-session difference"])
 
         if "everytrial" in plotFlags:
@@ -152,11 +159,7 @@ class TrialMeasure():
                 tpis = np.array([list(v) for v in thisSession["trial_posIdx"]])
                 vals = thisSession["val"].to_numpy()
                 normvals = (vals - self.valMin) / (self.valMax - self.valMin)
-                if si > 0:
-                    exit()
                 plotManager.pushOutputSubDir(sesh.name)
-                print(thisSession)
-                print(tpis)
 
                 ncols = len(sesh.visitedAwayWells) + 1
                 with plotManager.newFig(figName + "_allTrials", subPlots=(2, ncols)) as pc:
@@ -165,14 +168,72 @@ class TrialMeasure():
                         ai1 = ti // 2
                         ax = pc.axs[ai0, ai1]
                         assert isinstance(ax, Axes)
-                        setupBehaviorTracePlot(ax, sesh)
+                        c = "orange" if self.withinSessionDiffs.loc[si,
+                                                                    "condition"] == "SWR" else "cyan"
+                        setupBehaviorTracePlot(ax, sesh, outlineColors=c)
                         t0 = tpis[ti, 0]
                         t1 = tpis[ti, 1]
                         ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1], c="black")
                         ax.set_facecolor(cmap(normvals[ti]))
                         ax.set_title(str(vals[ti]))
 
+                    pc.figure.colorbar(mappable=ScalarMappable(
+                        norm=Normalize(self.valMin, self.valMax), cmap=cmap), ax=ax)
+
+                    ax = pc.axs[1, -1]
+                    assert isinstance(ax, Axes)
+                    v = self.withinSessionDiffs.loc[si, "withinSessionDiff"]
+                    ax.set_facecolor(cmap((v - self.diffMin) / (self.diffMax - self.diffMin)))
+                    c = "orange" if self.withinSessionDiffs.loc[si,
+                                                                "condition"] == "SWR" else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, showWells="")
+                    ax.set_title(f"avg diff = {v}")
+                    pc.figure.colorbar(mappable=ScalarMappable(
+                        norm=Normalize(self.diffMin, self.diffMax), cmap=cmap), ax=ax)
+
                 plotManager.popOutputSubDir()
+
+        if "everysession" in plotFlags:
+            cmap = mpl.colormaps["coolwarm"]
+            ncols = 14
+            with plotManager.newFig(figName + "_allTrials", subPlots=(2, ncols)) as pc:
+                for si, sesh in enumerate(self.sessionList):
+                    thisSession = self.trialDf[self.trialDf["sessionIdx"]
+                                               == si].sort_values("trial_posIdx")
+                    tpis = np.array([list(v) for v in thisSession["trial_posIdx"]])
+                    vals = thisSession["val"].to_numpy()
+                    normvals = (vals - self.valMin) / (self.valMax - self.valMin)
+
+                    ncols = len(sesh.visitedAwayWells) + 1
+                    for ti in range(tpis.shape[0]):
+                        ai0 = (ti % 2) + 2 * si
+                        ai1 = (ti // 2) + 1
+                        ax = pc.axs[ai0, ai1]
+                        assert isinstance(ax, Axes)
+                        c = "orange" if self.withinSessionDiffs.loc[si,
+                                                                    "condition"] == "SWR" else "cyan"
+                        setupBehaviorTracePlot(ax, sesh, outlineColors=c)
+                        t0 = tpis[ti, 0]
+                        t1 = tpis[ti, 1]
+                        ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1], c="black")
+                        ax.set_facecolor(cmap(normvals[ti]))
+                        ax.set_title(str(vals[ti]))
+
+                    pc.figure.colorbar(mappable=ScalarMappable(
+                        norm=Normalize(self.valMin, self.valMax), cmap=cmap), ax=pc.axs[2*si+1, -1])
+
+                    ax = pc.axs[2*si+1, 0]
+                    assert isinstance(ax, Axes)
+                    v = self.withinSessionDiffs.loc[si, "withinSessionDiff"]
+                    ax.set_facecolor(cmap((v - self.diffMin) / (self.diffMax - self.diffMin)))
+                    c = "orange" if self.withinSessionDiffs.loc[si,
+                                                                "condition"] == "SWR" else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, showWells="")
+                    ax.set_title(f"avg diff = {v}")
+                    pc.figure.colorbar(mappable=ScalarMappable(
+                        norm=Normalize(self.diffMin, self.diffMax), cmap=cmap), ax=ax)
+
+                    pc.axs[2*si, 0].set_title(sesh.name)
 
 
 class WellMeasure():

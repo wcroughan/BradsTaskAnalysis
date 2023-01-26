@@ -12,12 +12,15 @@ import os
 from typing import List, Dict, Tuple, Optional
 import functools
 import time
+import subprocess
 
 
-def findDataDir(possibleDataDirs=["/media/WDC8/",
-                                  "/media/WDC6/",
-                                  "/media/fosterlab/WDC6/",
-                                  "/home/wcroughan/data/"]) -> str:
+def findDataDir(possibleDataDirs=None) -> str:
+    if possibleDataDirs is None:
+        possibleDataDirs = [getDrivePathByLabel("WDC8"),
+                            getDrivePathByLabel("WDC6"),
+                            "/media/fosterlab/WDC6/",
+                            "/home/wcroughan/data/"]
     for dd in possibleDataDirs:
         if os.path.exists(dd):
             return dd
@@ -303,6 +306,23 @@ def offWall(well):
     return not onWall(well)
 
 
+def getDrivePathByLabel(driveLabel: str):
+    if os.name == "posix":
+        return f"/media/{driveLabel}"
+    else:
+        possibleLabels = [f"{chr(i)}:" for i in range(ord("c"), ord("m"))]
+        for pl in possibleLabels:
+            try:
+                s = subprocess.check_output(["cmd", f"/c vol {pl}"])
+            except subprocess.CalledProcessError:
+                continue
+
+            if s.decode().split("\r\n")[0].split(" ")[-1] == driveLabel:
+                return pl + "\\"
+
+        return None
+
+
 class AnimalInfo:
     def __init__(self):
         self.X_START = None
@@ -332,8 +352,10 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.X_FINISH = 1175
         ret.Y_START = 20
         ret.Y_FINISH = 1275
-        ret.data_dir = '/media/WDC1/martindata/bradtask/'
-        ret.output_dir = '/media/WDC6/Martin/processed_data/'
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC1"), "martindata", "bradtask")
+        # ret.data_dir = '/media/WDC1/martindata/bradtask/'
+        # ret.output_dir = '/media/WDC6/Martin/processed_data/'
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC6"), "Martin", "processed_data")
         ret.fig_output_dir = ret.output_dir
         ret.out_filename = "martin_bradtask.dat"
 
@@ -360,9 +382,12 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.X_FINISH = 1175
         ret.Y_START = 20
         ret.Y_FINISH = 1275
-        ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
-        ret.output_dir = "/media/WDC7/B12/processed_data/"
-        ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        # ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "bradtasksessions")
+        # ret.output_dir = "/media/WDC7/B12/processed_data/"
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "processed_data")
+        # ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        ret.fig_output_dir = ret.output_dir
         ret.out_filename = "B12_bradtask.dat"
 
         ret.excluded_dates = []
@@ -370,16 +395,20 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.excluded_sessions = []
         ret.DEFAULT_RIP_DET_TET = 7
 
-        ret.DLC_dir = "/media/WDC6/DLC/trainingVideos/"
+        # ret.DLC_dir = "/media/WDC6/DLC/trainingVideos/"
+        ret.DLC_dir = os.path.join(getDrivePathByLabel("WDC6"), "DLC", "trainingVideos")
 
     elif animalName == "B12_goodpos":
         ret.X_START = 200
         ret.X_FINISH = 1175
         ret.Y_START = 20
         ret.Y_FINISH = 1275
-        ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
-        ret.output_dir = "/media/WDC7/B12/processed_data/"
-        ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        # ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "bradtasksessions")
+        # ret.output_dir = "/media/WDC7/B12/processed_data/"
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "processed_data")
+        # ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        ret.fig_output_dir = ret.output_dir
         ret.out_filename = "B12_goodpos_bradtask.dat"
 
         ret.excluded_dates = ["20210816", "20210817", "20210818", "20210819"]
@@ -392,9 +421,12 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.X_FINISH = 1175
         ret.Y_START = 20
         ret.Y_FINISH = 1275
-        ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
-        ret.output_dir = "/media/WDC7/B12/processed_data/"
-        ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        # ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "bradtasksessions")
+        # ret.output_dir = "/media/WDC7/B12/processed_data/"
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "processed_data")
+        # ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        ret.fig_output_dir = ret.output_dir
         ret.out_filename = "B12_no19_bradtask.dat"
 
         ret.excluded_dates = ["20210819"]
@@ -407,9 +439,12 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.X_FINISH = 1175
         ret.Y_START = 20
         ret.Y_FINISH = 1275
-        ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
-        ret.output_dir = "/media/WDC7/B12/processed_data/"
-        ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        # ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "bradtasksessions")
+        # ret.output_dir = "/media/WDC7/B12/processed_data/"
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "processed_data")
+        # ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
+        ret.fig_output_dir = ret.output_dir
         ret.out_filename = "B12_highthresh_bradtask.dat"
 
         ret.excluded_dates = []
@@ -423,9 +458,12 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.X_FINISH = 1050
         ret.Y_START = 20
         ret.Y_FINISH = 900
-        ret.data_dir = "/media/WDC6/B13/bradtasksessions/"
-        ret.output_dir = "/media/WDC6/B13/processed_data/"
-        ret.fig_output_dir = "/media/WDC6/B13/processed_data/"
+        # ret.data_dir = "/media/WDC6/B13/bradtasksessions/"
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC6"), "B13", "bradtasksessions")
+        # ret.output_dir = "/media/WDC6/B13/processed_data/"
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC6"), "B13", "processed_data")
+        # ret.fig_output_dir = "/media/WDC6/B13/processed_data/"
+        ret.fig_output_dir = ret.output_dir
         ret.out_filename = "B13_bradtask.dat"
 
         ret.excluded_dates = ["20220209"]
@@ -458,9 +496,12 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.X_FINISH = 1050
         ret.Y_START = 20
         ret.Y_FINISH = 900
-        ret.data_dir = "/media/WDC6/B14/bradtasksessions/"
-        ret.output_dir = "/media/WDC6/B14/processed_data/"
-        ret.fig_output_dir = "/media/WDC6/B14/processed_data/"
+        # ret.data_dir = "/media/WDC6/B14/bradtasksessions/"
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC6"), "B14", "bradtasksessions")
+        # ret.output_dir = "/media/WDC6/B14/processed_data/"
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC6"), "B14", "processed_data")
+        # ret.fig_output_dir = "/media/WDC6/B14/processed_data/"
+        ret.fig_output_dir = ret.output_dir
         ret.out_filename = "B14_bradtask.dat"
 
         ret.excluded_dates = []
@@ -486,9 +527,12 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         # ret.data_dir = "/home/wcroughan/data/B18/bradtasksessions/"
         # ret.output_dir = "/home/wcroughan/data/B18/processed_data/"
         # ret.fig_output_dir = "/home/wcroughan/data/B18/processed_data/"
-        ret.data_dir = "/media/WDC8/B18/bradtasksessions/"
-        ret.output_dir = "/media/WDC8/B18/processed_data/"
-        ret.fig_output_dir = "/media/WDC8/B18/processed_data/"
+        # ret.data_dir = "/media/WDC8/B18/bradtasksessions/"
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC8"), "B18", "bradtasksessions")
+        # ret.output_dir = "/media/WDC8/B18/processed_data/"
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC8"), "B18", "processed_data")
+        # ret.fig_output_dir = "/media/WDC8/B18/processed_data/"
+        ret.fig_output_dir = ret.output_dir
         ret.out_filename = "B18_bradtask.dat"
 
         ret.excluded_dates = []
@@ -559,9 +603,12 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.X_FINISH = 1050
         ret.Y_START = 20
         ret.Y_FINISH = 900
-        ret.data_dir = "/media/WDC8/B16/bradtasksessions/"
-        ret.output_dir = "/media/WDC8/B16/processed_data/"
-        ret.fig_output_dir = "/media/WDC8/B16/processed_data/"
+        # ret.data_dir = "/media/WDC8/B16/bradtasksessions/"
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC8"), "B16", "bradtasksessions")
+        # ret.output_dir = "/media/WDC8/B16/processed_data/"
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC8"), "B16", "processed_data")
+        # ret.fig_output_dir = "/media/WDC8/B16/processed_data/"
+        ret.fig_output_dir = ret.output_dir
         # TODO make this dynamic like findDataDir
         # ret.data_dir = "/home/wcroughan/data/B16/bradtasksessions/"
         # ret.output_dir = "/home/wcroughan/data/B16/processed_data/"
@@ -609,9 +656,12 @@ def getInfoForAnimal(animalName: str) -> AnimalInfo:
         ret.X_FINISH = 1050
         ret.Y_START = 20
         ret.Y_FINISH = 900
-        ret.data_dir = "/media/WDC8/B17/bradtasksessions/"
-        ret.output_dir = "/media/WDC8/B17/processed_data/"
-        ret.fig_output_dir = "/media/WDC8/B17/processed_data/"
+        # ret.data_dir = "/media/WDC8/B17/bradtasksessions/"
+        ret.data_dir = os.path.join(getDrivePathByLabel("WDC8"), "B17", "bradtasksessions")
+        # ret.output_dir = "/media/WDC8/B17/processed_data/"
+        ret.output_dir = os.path.join(getDrivePathByLabel("WDC8"), "B17", "processed_data")
+        # ret.fig_output_dir = "/media/WDC8/B17/processed_data/"
+        ret.fig_output_dir = ret.output_dir
         ret.out_filename = "B17_bradtask.dat"
 
         ret.excluded_dates = []
@@ -655,7 +705,7 @@ def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirec
                 return directName
 
             if not useSeshIdxDirectly:
-                gl = pd + "/" + usbDateStr + "*.mkv"
+                gl = os.path.join(pd, usbDateStr + "*.mkv")
                 possibleUSBVids += glob.glob(gl)
 
         if len(possibleUSBVids) == 0:
@@ -671,7 +721,7 @@ def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirec
         usbDateStr = "-".join([seshDate[0:4], seshDate[4:6], seshDate[6:8]])
         possibleUSBVids = []
         for pd in possibleDirectories:
-            gl = pd + "/" + usbDateStr + "*.mkv"
+            gl = os.path.join(pd, usbDateStr + "*.mkv")
             possibleUSBVids += glob.glob(gl)
 
         if len(possibleUSBVids) == 0:
@@ -680,7 +730,8 @@ def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirec
         minDiff = 24 * 3600
         usbVidFile = None
         for uvi, uv in enumerate(sorted(possibleUSBVids)):
-            fname = uv.split("/")[-1]
+            fname = os.path.basename(uv)
+            # fname = uv.split("/")[-1]
             print(fname)
             if " " in fname:
                 timeStr = fname.split(" ")[1].split(".")[0]
@@ -702,7 +753,7 @@ def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirec
 def getTrodesVideoFile(seshInfoFileName, data_dir):
     seshDate, seshIdx = seshInfoFileName.split("_")
 
-    gl = data_dir + "/" + seshDate + "_*/" + seshDate + "_*.1.h264"
+    gl = os.path.join(data_dir, seshDate + "_*", seshDate + "_*.1.h264")
     possibleTrodesVids = glob.glob(gl)
 
     if len(possibleTrodesVids) == 0:

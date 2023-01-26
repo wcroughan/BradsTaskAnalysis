@@ -164,7 +164,7 @@ class PlotContext:
 
 
 class PlotManager:
-    def __init__(self, outputDir="./", priorityLevel=None, randomSeed=None, verbosity=3, infoFileName=None):
+    def __init__(self, outputDir=None, priorityLevel=None, randomSeed=None, verbosity=3, infoFileName=None):
         self.figSizeX, self.figSizeY = 5, 5
         self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
         self.fig.clf()
@@ -184,6 +184,8 @@ class PlotManager:
             self.infoFileName = infoFileName
         self.outputSubDir = ""
         self.outputSubDirStack = []
+        if outputDir is None:
+            outputDir = os.curdir
         self.setOutputDir(outputDir)
         self.createdPlots = set()
         self.savedFigsByName = {}
@@ -211,10 +213,7 @@ class PlotManager:
     def newFig(self, figName, subPlots=None, figScale=1.0, priority=None,
                showPlot=None, savePlot=None, enableOverwriteSameName=False) -> PlotManager:
         # print(self.savedPersistentCategories)
-        if figName[0] != "/":
-            fname = os.path.join(self.outputDir, self.outputSubDir, figName)
-        else:
-            fname = self.plotContext.figName
+        fname = os.path.join(self.outputDir, self.outputSubDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
 
@@ -246,10 +245,7 @@ class PlotManager:
 
         self.plotContext.showPlot = showPlot
         self.plotContext.savePlot = savePlot
-        if figName[0] != "/":
-            fname = os.path.join(self.outputDir, self.outputSubDir, figName)
-        else:
-            fname = self.plotContext.figName
+        fname = os.path.join(self.outputDir, self.outputSubDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
         self.plotContext.figName = fname
@@ -278,7 +274,8 @@ class PlotManager:
 
         if len(self.plotContext.yvals) > 0:
             # print(self.savedPersistentCategories)
-            statsName = self.plotContext.figName.split("/")[-1]
+            # statsName = self.plotContext.figName.split("/")[-1]
+            statsName = os.path.basename(self.plotContext.figName)
             assert len(self.plotContext.yvals) > 0
             assert len(self.persistentCategories) + len(self.plotContext.categories) > 0
 
@@ -389,10 +386,7 @@ class PlotManager:
         # print(self.savedPersistentCategories)
 
     def saveFig(self):
-        if self.plotContext.figName[0] != "/":
-            fname = os.path.join(self.outputDir, self.outputSubDir, self.plotContext.figName)
-        else:
-            fname = self.plotContext.figName
+        fname = os.path.join(self.outputDir, self.outputSubDir, self.plotContext.figName)
 
         if fname[-4:] != ".png":
             fname += ".png"
@@ -412,7 +406,8 @@ class PlotManager:
             print("wrote file {}".format(fname))
         self.createdPlots.add(fname)
 
-        figFileName = fname.split('/')[-1]
+        # figFileName = fname.split('/')[-1]
+        figFileName = os.path.basename(fname)
         if figFileName in self.savedFigsByName:
             self.savedFigsByName[figFileName].append(self.outputSubDir)
         else:

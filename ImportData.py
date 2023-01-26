@@ -17,7 +17,7 @@ from scipy.interpolate import griddata
 from consts import allWellNames, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, CM_PER_FT
 from UtilFunctions import readWellCoordsFile, readRawPositionData, getListOfVisitedWells, onWall, getRipplePower, \
     detectRipples, getInfoForAnimal, getUSBVideoFile, quickPosPlot, parseCmdLineAnimalNames, AnimalInfo, \
-    timeStrForTrodesTimestamp, quadrantOfWell, TimeThisFunction
+    timeStrForTrodesTimestamp, quadrantOfWell, TimeThisFunction, getDrivePathByLabel
 from ClipsMaker import AnnotatorWindow
 from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, processUSBVideoData
 
@@ -550,7 +550,7 @@ def integrateCorrectionFiles(ts, xs, ys, correctionDirectory, wellCoordsMap: Dic
     if not os.path.exists(correctionDirectory):
         os.makedirs(correctionDirectory)
 
-    gl = correctionDirectory + '/*.videoPositionTracking'
+    gl = os.path.join(correctionDirectory, '*.videoPositionTracking')
     cfiles = glob.glob(gl)
     # print(gl, cfiles)
     numCorrectionsIntegrated = 0
@@ -926,19 +926,27 @@ def loadPositionData(sesh: BTSession):
                 print("\ttrodesLightFunc says trodes light Time {}, {} (/{})".format(
                     sesh.trodesLightOffTime, sesh.trodesLightOnTime, len(ts)))
 
-        possibleDirectories = [
-            f"/media/WDC8/videos/labvideos/trimmed/{sesh.animalName}/",
-            "/media/WDC6/videos/B16-20/trimmed/{}/".format(sesh.animalName),
-            "/media/WDC7/videos/B16-20/trimmed/{}/".format(sesh.animalName),
-            "/media/WDC8/videos/B16-20/trimmed/{}/".format(sesh.animalName),
-            "/media/WDC6/{}/".format(sesh.animalName),
-            "/media/WDC7/{}/".format(sesh.animalName),
-            "/media/WDC8/{}/".format(sesh.animalName),
-            "/media/WDC8/videos/",
-            "/media/WDC7/videos/B16-20/",
-            "/media/WDC4/lab_videos",
-            f"/home/wcroughan/data/videos/{sesh.animalName}/"
+        possibleRoots = ["/home/wcroughan/data/"]
+        possibleRoots = [s for s in [
+            getDrivePathByLabel(ss) for ss in [f"WDC{i}" for i in range(4, 9)]
+        ] if s is not None]
+        possibleSubDirs = [
+            "videos",
+            "lab_videos",
+            sesh.animalName,
+            os.path.join("videos", "B16-20"),
+            os.path.join("videos", sesh.animalName),
+            os.path.join("videos", "B16-20", "trimmed", sesh.animalName),
+            os.path.join("videos", "labvideos", "trimmed", sesh.animalName)
         ]
+        possibleDirectories = []
+        for pr in possibleRoots:
+            for psd in possibleSubDirs:
+                p = os.path.join(pr, psd)
+                if os.path.exists(p):
+                    possibleDirectories.append(p)
+        print(f"{possibleDirectories = }")
+
         useSeshIdxDirectly = sesh.animalName == "B18" or sesh.dateStr > "20221100"
         sesh.usbVidFile = getUSBVideoFile(
             sesh.name, possibleDirectories, seshIdx=sesh.seshIdx, useSeshIdxDirectly=useSeshIdxDirectly)
@@ -1065,8 +1073,8 @@ def loadLFPData(sesh):
             print("\t" + syscmd)
             os.system(syscmd)
 
-        gl = lfpdir + "/" + sesh.name + ".LFP_nt" + \
-            str(sesh.rippleDetectionTetrodes[i]) + "ch*.dat"
+        gl = os.path.join(lfpdir, sesh.name + ".LFP_nt" +
+                          str(sesh.rippleDetectionTetrodes[i]) + "ch*.dat")
         lfpfilelist = glob.glob(gl)
         lfpfilename = lfpfilelist[0]
         sesh.btLfpFnames.append(lfpfilename)
@@ -1097,8 +1105,8 @@ def loadLFPData(sesh):
             print("\t" + syscmd)
             os.system(syscmd)
 
-        gl = lfpdir + "/" + sesh.name + ".LFP_nt" + \
-            str(sesh.rippleBaselineTetrode) + "ch*.dat"
+        gl = os.path.join(lfpdir, sesh.name + ".LFP_nt" +
+                          str(sesh.rippleBaselineTetrode) + "ch*.dat")
         lfpfilelist = glob.glob(gl)
         lfpfilename = lfpfilelist[0]
         sesh.btLfpBaselineFname = lfpfilename
