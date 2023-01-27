@@ -13,6 +13,7 @@ from matplotlib.axes import Axes
 import math
 import MountainViewIO
 from consts import TRODES_SAMPLING_RATE
+import pandas as pd
 
 # TODOs
 #
@@ -79,7 +80,7 @@ from consts import TRODES_SAMPLING_RATE
 # To all every-session plots, add path on top
 
 
-def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
+def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
                 RUN_OPTIMALITY=None, PLOT_DETAILED_TRACES=None,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
@@ -159,6 +160,17 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
 
         print(f"{len(sessions)} sessions ({len(sessionsWithProbe)} "
               f"with probe: {nCtrlWithProbe} Ctrl, {nSWRWithProbe} SWR)")
+
+        data = [[
+            sesh.name, sesh.conditionString(), sesh.homeWell, len(sesh.visitedAwayWells)
+        ] for si, sesh in enumerate(sessions)]
+        df = pd.DataFrame(data, columns=[
+            "name", "condition", "home well", "num aways found"
+        ])
+        s = df.to_string()
+        pp.writeToInfoFile(s)
+        if PRINT_INFO:
+            print(s)
 
         # if hasattr(sessions[0], "probeFillTime"):
         #     sessionsWithProbeFillPast90 = [s for s in sessionsWithProbe if s.probeFillTime > 90]
@@ -334,11 +346,11 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 btLFPData = lfpV[sesh.btLfpStart_lfpIdx:sesh.btLfpEnd_lfpIdx]
 
                 btRipPower, btRipZPower, _, _ = getRipplePower(
-                    btLFPData, lfpDeflections=sesh.btLfpArtifacts_lfpIdx, meanPower=sesh.probeMeanRipplePower,
-                    stdPower=sesh.probeStdRipplePower, skipTimePointsBackward=5, skipTimePointsFoward=5)
+                    btLFPData, meanPower=sesh.probeMeanRipplePower,
+                    stdPower=sesh.probeStdRipplePower, causalSmoothing=True)
                 probeLFPData = lfpV[sesh.probeLfpStart_lfpIdx:sesh.probeLfpEnd_lfpIdx]
                 probeRipPower, _, _, _ = getRipplePower(
-                    probeLFPData, omitArtifacts=False, skipTimePointsBackward=5, skipTimePointsFoward=5)
+                    probeLFPData, omitArtifacts=False, causalSmoothing=True)
 
                 if sesh.btLfpBaselineFname is None:
                     zmean = np.nanmean(probeRipPower)
@@ -350,12 +362,11 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
 
                     baselineProbeLFPData = baselfpV[sesh.probeLfpStart_lfpIdx:sesh.probeLfpEnd_lfpIdx]
                     probeBaselinePower, _, baselineProbeMeanRipplePower, baselineProbeStdRipplePower = getRipplePower(
-                        baselineProbeLFPData, omitArtifacts=False, skipTimePointsBackward=5, skipTimePointsFoward=5)
+                        baselineProbeLFPData, omitArtifacts=False, causalSmoothing=True)
                     btBaselineLFPData = baselfpV[sesh.btLfpStart_lfpIdx:sesh.btLfpEnd_lfpIdx]
                     btBaselineRipplePower, _, _, _ = getRipplePower(
-                        btBaselineLFPData, lfpDeflections=sesh.btLfpArtifacts_lfpIdx,
-                        meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower,
-                        skipTimePointsBackward=5, skipTimePointsFoward=5)
+                        btBaselineLFPData, meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower,
+                        causalSmoothing=True)
 
                     probeRawPowerDiff = probeRipPower - probeBaselinePower
                     zmean = np.nanmean(probeRawPowerDiff)
@@ -382,7 +393,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                               i2 - i1, len(lfpT), len(btLFPData))
                         raise e
 
-                    if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS and ai < 10:
+                    if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS and \
+                            len(sesh.btLfpArtifacts_lfpIdx) // 2 < ai < len(sesh.btLfpArtifacts_lfpIdx) // 2 + 10:
                         with pp.newFig(f"interruption_{sesh.name}_{ai}") as pc:
                             pc.ax.plot(lfpT[i1:i2] - lfpT[sesh.btLfpStart_lfpIdx],
                                        btLFPData[i1:i2] / 1000, c="blue", label="lfp")

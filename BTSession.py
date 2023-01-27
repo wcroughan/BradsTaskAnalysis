@@ -377,6 +377,16 @@ class BTSession:
     def probePos_secs(self):
         return (self.probePos_ts - self.probePos_ts[0]) / TRODES_SAMPLING_RATE
 
+    def conditionString(self, splitCtrls=False):
+        if self.condition == BTSession.CONDITION_INTERRUPTION:
+            return "SWR"
+        elif not splitCtrls:
+            return "Ctrl"
+        elif self.condition == BTSession.CONDITION_DELAY:
+            return "Delay"
+        else:
+            return "NoStim"
+
     def timeIntervalToPosIdx(self, ts: ArrayLike[int],
                              timeInterval: Optional[Tuple[int, int] | Tuple[int, int, str]],
                              noneVal=None) -> ArrayLike[int]:

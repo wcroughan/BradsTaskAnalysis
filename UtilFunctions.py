@@ -131,7 +131,7 @@ def getWellPosCoordinates(wellName: int) -> Tuple[float, float]:
 #     return deflection_metrics[0]
 
 
-def getRipplePower(lfpData, omitArtifacts=True, causalSmoothing=False,
+def getRipplePower(lfpData, omitArtifacts=False, causalSmoothing=False,
                    lfpDeflections=None, meanPower=None, stdPower=None,
                    showPlot=False, rippleFilterBand=(150, 250), rippleFilterOrder=4,
                    skipTimePointsFoward=int(0.075 * LFP_SAMPLING_RATE),
