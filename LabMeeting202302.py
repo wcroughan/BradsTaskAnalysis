@@ -2,7 +2,7 @@ from BTSession import BTSession
 from MeasureTypes import WellMeasure, TrialMeasure
 from BTData import BTData
 from PlotUtil import PlotManager, setupBehaviorTracePlot
-from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal
+from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal, getRipplePower
 import os
 import time
 from datetime import datetime
@@ -11,6 +11,8 @@ from scipy.ndimage import gaussian_filter1d
 from typing import List
 from matplotlib.axes import Axes
 import math
+import MountainViewIO
+from consts import TRODES_SAMPLING_RATE
 
 # TODOs
 #
@@ -81,6 +83,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
                 RUN_OPTIMALITY=None, PLOT_DETAILED_TRACES=None,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
+                RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
@@ -94,6 +97,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
         RUN_OPTIMALITY = RUN_UNSPECIFIED
     if PLOT_DETAILED_TRACES is None:
         PLOT_DETAILED_TRACES = RUN_UNSPECIFIED
+    if RUN_LFP_LATENCY is None:
+        RUN_LFP_LATENCY = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -190,9 +195,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
 
                 pp.popOutputSubDir()
 
-        if not RUN_SPOTLIGHT:
-            print("Warning: skipping spotlight plots")
-        else:
+        if RUN_SPOTLIGHT:
             WellMeasure("probe spotlight score before fill", lambda s, h: s.getDotProductScore(
                 True, h, timeInterval=[0, s.fillTimeCutoff()], binarySpotlight=True,
                 boutFlag=BTSession.BOUT_STATE_EXPLORE),
@@ -201,9 +204,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                                                    0, s.fillTimeCutoff()],
                                                everySessionTraceType="probe")
 
-        if not RUN_DOT_PROD:
-            print("Warning: skipping dotprod plots")
-        else:
+        if RUN_DOT_PROD:
             WellMeasure("probe dotprod score before fill", lambda s, h: s.getDotProductScore(
                 True, h, timeInterval=[0, s.fillTimeCutoff()], boutFlag=BTSession.BOUT_STATE_EXPLORE),
                 sessionsWithProbe).makeFigures(pp, everySessionTraceTimeInterval=lambda s: [0, s.fillTimeCutoff()],
@@ -212,9 +213,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 False, h, boutFlag=BTSession.BOUT_STATE_EXPLORE),
                 sessionsWithProbe).makeFigures(pp, everySessionTraceType="task_bouts")
 
-        if not RUN_MANY_DOTPROD:
-            pass
-        else:
+        if RUN_MANY_DOTPROD:
             SECTION_LEN = 5
             WellMeasure("short dotprod 1", lambda s, h: s.getDotProductScore(
                 True, h, timeInterval=[0, SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
@@ -322,6 +321,114 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
             #   leaving the wall or well and finding the immediately adjacent well
             pass
 
+        if RUN_LFP_LATENCY:
+            latencyToDetectionFrom0_all = np.array([])
+            latencyToDetectionFrom25_all = np.array([])
+            for si, sesh in enumerate(swrSessionsWithProbe):
+                pp.pushOutputSubDir(sesh.name)
+                lfpFName = sesh.btLfpFnames[-1]
+                print("LFP data from file {}".format(lfpFName))
+                lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
+                lfpV = lfpData[1]['voltage']
+                lfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
+                btLFPData = lfpV[sesh.btLfpStart_lfpIdx:sesh.btLfpEnd_lfpIdx]
+
+                btRipPower, btRipZPower, _, _ = getRipplePower(
+                    btLFPData, lfpDeflections=sesh.btLfpArtifacts_lfpIdx, meanPower=sesh.probeMeanRipplePower,
+                    stdPower=sesh.probeStdRipplePower, skipTimePointsBackward=5, skipTimePointsFoward=5)
+                probeLFPData = lfpV[sesh.probeLfpStart_lfpIdx:sesh.probeLfpEnd_lfpIdx]
+                probeRipPower, _, _, _ = getRipplePower(
+                    probeLFPData, omitArtifacts=False, skipTimePointsBackward=5, skipTimePointsFoward=5)
+
+                if sesh.btLfpBaselineFname is None:
+                    zmean = np.nanmean(probeRipPower)
+                    zstd = np.nanstd(probeRipPower)
+                    zPowerDiff = (btRipPower - zmean) / zstd
+                else:
+                    lfpData = MountainViewIO.loadLFP(data_file=sesh.btLfpBaselineFname)
+                    baselfpV = lfpData[1]['voltage']
+
+                    baselineProbeLFPData = baselfpV[sesh.probeLfpStart_lfpIdx:sesh.probeLfpEnd_lfpIdx]
+                    probeBaselinePower, _, baselineProbeMeanRipplePower, baselineProbeStdRipplePower = getRipplePower(
+                        baselineProbeLFPData, omitArtifacts=False, skipTimePointsBackward=5, skipTimePointsFoward=5)
+                    btBaselineLFPData = baselfpV[sesh.btLfpStart_lfpIdx:sesh.btLfpEnd_lfpIdx]
+                    btBaselineRipplePower, _, _, _ = getRipplePower(
+                        btBaselineLFPData, lfpDeflections=sesh.btLfpArtifacts_lfpIdx,
+                        meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower,
+                        skipTimePointsBackward=5, skipTimePointsFoward=5)
+
+                    probeRawPowerDiff = probeRipPower - probeBaselinePower
+                    zmean = np.nanmean(probeRawPowerDiff)
+                    zstd = np.nanstd(probeRawPowerDiff)
+                    rawPowerDiff = btRipPower - btBaselineRipplePower
+                    zPowerDiff = (rawPowerDiff - zmean) / zstd
+
+                MARGIN_SECS = 0.25
+                MARGIN_PTS = int(MARGIN_SECS * 1500)
+                allRipPows = np.empty((len(sesh.btLfpArtifacts_lfpIdx), 2*MARGIN_PTS))
+                pp.pushOutputSubDir("LFP_Interruptions")
+                for ai, aidx in enumerate(sesh.btLfpArtifacts_lfpIdx):
+                    # This is just annoying to deal with and shouldn't affect much, can add back in later
+                    if aidx < MARGIN_PTS or aidx > len(btLFPData) - MARGIN_PTS:
+                        continue
+
+                    i1 = aidx - MARGIN_PTS
+                    i2 = aidx + MARGIN_PTS
+
+                    try:
+                        allRipPows[ai, :] = zPowerDiff[i1:i2]
+                    except Exception as e:
+                        print(i1, i2, allRipPows.shape, zPowerDiff.shape,
+                              i2 - i1, len(lfpT), len(btLFPData))
+                        raise e
+
+                    if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS and ai < 10:
+                        with pp.newFig(f"interruption_{sesh.name}_{ai}") as pc:
+                            pc.ax.plot(lfpT[i1:i2] - lfpT[sesh.btLfpStart_lfpIdx],
+                                       btLFPData[i1:i2] / 1000, c="blue", label="lfp")
+                            pc.ax.plot(lfpT[i1:i2] - lfpT[sesh.btLfpStart_lfpIdx], zPowerDiff[i1:i2],
+                                       c="orange", label="ripple power")
+                            pc.ax.set_ylim(-3, 10)
+                pp.popOutputSubDir()
+
+                detTimeRev = allRipPows[:, MARGIN_PTS:0:-1] > 2.5
+                latencyToDetectionFrom25 = np.argmax(detTimeRev, axis=1).astype(float) / 1500.0
+                with pp.newFig(f"lfp_detection_latency_z2-5_{sesh.name}") as pc:
+                    pc.ax.hist(latencyToDetectionFrom25)
+
+                detTimeRev = allRipPows[:, MARGIN_PTS:0:-1] > 0
+                latencyToDetectionFrom0 = np.argmax(detTimeRev, axis=1).astype(float) / 1500.0
+                with pp.newFig(f"lfp_detection_latency_z0_{sesh.name}") as pc:
+                    pc.ax.hist(latencyToDetectionFrom0)
+
+                latencyToDetectionFrom0_all = np.append(
+                    latencyToDetectionFrom0_all, latencyToDetectionFrom0)
+                latencyToDetectionFrom25_all = np.append(
+                    latencyToDetectionFrom25_all, latencyToDetectionFrom25)
+
+                if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS:
+                    allRipPows[np.isinf(allRipPows)] = np.nan
+                    m = np.nanmean(allRipPows, axis=0)
+                    s = np.nanstd(allRipPows, axis=0)
+                    try:
+                        with pp.newFig(f"lfp_psth_{sesh.name}") as pc:
+                            xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                            pc.ax.plot(xvals, m)
+                            pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                            y1, y2 = pc.ax.get_ylim()
+                            pc.ax.plot([0, 0], [y1, y2])
+                    except Exception as e:
+                        print("Ran into an issue with LFP PSTH, session", sesh.name)
+                        print(e)
+                        print(m, s)
+
+                pp.popOutputSubDir()
+
+            with pp.newFig("lfp_detection_latency_z0_all") as pc:
+                pc.ax.hist(latencyToDetectionFrom0_all, bins=np.linspace(0, .1, 20), density=True)
+            with pp.newFig("lfp_detection_latency_z25_all") as pc:
+                pc.ax.hist(latencyToDetectionFrom25_all, bins=np.linspace(0, .1, 20), density=True)
+
     if len(animalNames) > 1 and MAKE_COMBINED:
         comboStr = "combo {}".format(" ".join(animalNames))
         print("======================\n", comboStr)
@@ -340,6 +447,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
 if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_MANY_DOTPROD=True, RUN_DOT_PROD=True, RUN_SPOTLIGHT=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SMOOTHING_TEST=True)
-    makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
     # makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_TRACES=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
+                MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)

@@ -174,15 +174,15 @@ class BTSession:
         self.itiLfpFnames = []
         self.itiLfpStart_ts = 0
         self.itiLfpEnd_ts = 0
-        self.itiLfpStartIdx = 0
-        self.itiLfpEndIdx = 0
+        self.itiLfpStart_lfpIdx = 0
+        self.itiLfpEnd_lfpIdx = 0
 
         # probe
         self.probeLfpFnames = []
         self.probeLfpStart_ts = 0
         self.probeLfpEnd_ts = 0
-        self.probeLfpStartIdx = 0
-        self.probeLfpEndIdx = 0
+        self.probeLfpStart_lfpIdx = 0
+        self.probeLfpEnd_lfpIdx = 0
 
         self.interruption_ts = np.array([])
         self.interruptions_lfpIdx = np.array([])
