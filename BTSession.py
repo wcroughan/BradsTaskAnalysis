@@ -103,6 +103,12 @@ class BTSession:
         self.prevSessionItiStimOn = False
         self.prevSessionIdx = -1
 
+        self.activelinkLogFileName = ""
+        self.loggedDetections_ts = np.array([])
+        self.loggedStats = []  # contains all the stats listed in log file
+        self.loggedRipMean = 0.0  # The entry from above log list that was active during the session
+        self.loggedRipStd = 0.0  # The entry from above log list that was active during the session
+
         # Some flags indicated whether ITI was recorded and whether ITI and probe are in the same rec file or not
         self.separateItiFile = False
         self.recordedIti = False
@@ -162,31 +168,44 @@ class BTSession:
         self.probeRecall_posIdx = -1
 
         # LFP data is huge, so only load on demand
-        # brad's task
+        # noise has a lower threshold, and is more for cleaning up the signal
+        # File names
         self.btLfpFnames = []
+        self.itiLfpFnames = []
+        self.probeLfpFnames = []
         self.btLfpBaselineFname: Optional[str] = None
-        self.btLfpStart_ts = 0
-        self.btLfpEnd_ts = 0
+
+        # Borders between sections of session
         self.btLfpStart_lfpIdx = 0
         self.btLfpEnd_lfpIdx = 0
-
-        # ITI
-        self.itiLfpFnames = []
         self.itiLfpStart_ts = 0
         self.itiLfpEnd_ts = 0
         self.itiLfpStart_lfpIdx = 0
         self.itiLfpEnd_lfpIdx = 0
-
-        # probe
-        self.probeLfpFnames = []
-        self.probeLfpStart_ts = 0
-        self.probeLfpEnd_ts = 0
         self.probeLfpStart_lfpIdx = 0
         self.probeLfpEnd_lfpIdx = 0
 
-        self.interruption_ts = np.array([])
-        self.interruptions_lfpIdx = np.array([])
-        self.btInterruption_posIdx = np.array([])
+        # IMPORTANT NOTE: The above variables are used in the full
+        # LFP data from the file. However all the other lfpIdx variables below
+        # are used to index to the specific region's lfp data, so
+        # i.e. probeLFPBumps_lfpIdx value of 0 indicates a bump at the start of the probe
+
+        # Bumps are detected large deflections, likely interruptions
+        self.lfpBumps_lfpIdx = np.array([])
+        self.lfpBumps_ts = np.array([])
+        self.btLFPBumps_posIdx = np.array([])
+        self.itiLFPBumps_posIdx = np.array([])
+        self.probeLFPBumps_posIdx = np.array([])
+        self.btLFPBumps_lfpIdx = np.array([])
+        self.itiLFPBumps_lfpIdx = np.array([])
+        self.probeLFPBumps_lfpIdx = np.array([])
+
+        self.lfpNoise_lfpIdx = np.array([])
+        self.lfpNoise_ts = np.array([])
+        self.btLFPNoise_posIdx = np.array([])
+        self.itiLFPNoise_posIdx = np.array([])
+        self.probeLFPNoise_posIdx = np.array([])
+
         self.artifact_ts = np.array([])
         self.artifacts_lfpIdx = np.array([])
         self.btLfpArtifacts_lfpIdx = np.array([])
@@ -198,7 +217,6 @@ class BTSession:
         self.btRipPeakAmpsPreStats = np.array([])
         self.btRipCrossThreshPreStats_lfpIdx = np.array([])
         self.btRipStartsPreStats_ts = np.array([])
-        self.itiLfpStart_lfpIdx = 0
         self.itiMeanRipplePower = 0.0
         self.itiStdRipplePower = 0.0
         self.itiRipStarts_lfpIdx = np.array([])
@@ -209,8 +227,6 @@ class BTSession:
         self.itiRipStarts_ts = np.array([])
         self.itiDuration = 0.0
         self.probeRippleIdxOffset = 0
-        self.probeLfpStart_lfpIdx = 0
-        self.probeLfpEnd_lfpIdx = 0
         self.probeMeanRipplePower = 0.0
         self.probeStdRipplePower = 0.0
         self.probeRipStarts_lfpIdx = np.array([])
