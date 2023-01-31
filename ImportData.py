@@ -141,6 +141,7 @@ def makeSessionObj(seshDir: str, prevSeshDir: str, sessionNumber: int, prevSessi
         # print(possibleDirectories)
         sesh.activelinkLogFileName = getActivelinkLogFile(
             sesh.name, possibleDirectories=possibleDirectories)
+        sesh.hasActivelinkLog = sesh.activelinkLogFileName is not None
 
     sesh.fileStartString = os.path.join(animalInfo.data_dir, seshDir, seshDir)
     sesh.animalInfo = animalInfo
@@ -165,6 +166,9 @@ def generateFoundWells(home_well, away_wells, lastAwayWell, endedOnHome, foundFi
 
 
 def parseActivelinkLog(sesh: BTSession):
+    if not sesh.hasActivelinkLog:
+        return
+
     with open(sesh.activelinkLogFileName, 'r') as f:
         detections = []
         lines = f.readlines()
@@ -184,8 +188,8 @@ def parseActivelinkLog(sesh: BTSession):
                     detections.append(ts)
 
         sesh.loggedDetections_ts = np.array(detections)
-        sesh.loggedRipMean = sesh.loggedStats[-1][1]
-        sesh.loggedRipStd = sesh.loggedStats[-1][2]
+        sesh.rpowmLog = sesh.loggedStats[-1][1]
+        sesh.rpowsLog = sesh.loggedStats[-1][2]
 
 
 def parseInfoFiles(sesh: BTSession):
@@ -1211,8 +1215,24 @@ def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
     sesh.btLFPNoise_posIdx = np.searchsorted(sesh.btPos_ts, sesh.lfpNoise_ts)
     sesh.btLFPNoise_posIdx = sesh.btLFPNoise_posIdx[(sesh.btLFPNoise_posIdx > 0) &
                                                     (sesh.btLFPNoise_posIdx < len(sesh.btPos_ts))]
-    _, _, sesh.prebtMeanRipplePower, sesh.prebtStdRipplePower = getRipplePower(
-        lfpV[0:btLfpStart_lfpIdx], lfpDeflections=lfpNoise_lfpIdx)
+
+    if sesh.probePerformed:
+        itiLFPNoise_lfpIdx = lfpNoise_lfpIdx[(lfpNoise_lfpIdx > itiLfpStart_lfpIdx) & (
+            lfpNoise_lfpIdx < itiLfpEnd_lfpIdx)]
+        itiLFPNoise_lfpIdx -= itiLfpStart_lfpIdx
+        sesh.itiLFPNoise_lfpIdx = itiLFPNoise_lfpIdx
+
+        probeLFPNoise_lfpIdx = lfpNoise_lfpIdx[(lfpNoise_lfpIdx > probeLfpStart_lfpIdx) & (
+            lfpNoise_lfpIdx < probeLfpEnd_lfpIdx)]
+        probeLFPNoise_lfpIdx -= probeLfpStart_lfpIdx
+        sesh.probeLFPNoise_lfpIdx = probeLFPNoise_lfpIdx
+
+    _, _, sesh.rpowmPreBt, sesh.rpowsPreBt = getRipplePower(
+        lfpV[0:(btLfpStart_lfpIdx//2)], lfpDeflections=lfpNoise_lfpIdx)
+    _
+    if sesh.probePerformed:
+        _, _, sesh.rpowmProbe, sesh.rpomsProbe = getRipplePower(
+            lfpV[probeLfpStart_lfpIdx:probeLfpEnd_lfpIdx], lfpDeflections=probeLFPNoise_lfpIdx)
 
     #  ========================================
     # TODO
@@ -1221,6 +1241,11 @@ def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
     # 2. Decide what is minimal result here. What actual variables do I intend to use? Scrap the rest
     # 3. Think carefully about the ripple power section. Probably want to run activelink and standard
     #       at least. And maybe just probe stats for standard, written stats for activelink, and that's it?
+    # 4. incorporate ITI margin, and add to importoptions
+    #
+    # OK so here's what I need:
+    #   Ripple stats: pre-bt (first half no artifacts), logged stats, probe stats
+    #   Ripple times: all sections for all three stat types
 
     _, ripplePower, _, _ = getRipplePower(
         btLFPData, lfpDeflections=btLfpArtifacts_lfpIdx, meanPower=sesh.prebtMeanRipplePower,

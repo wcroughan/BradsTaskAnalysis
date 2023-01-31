@@ -103,11 +103,12 @@ class BTSession:
         self.prevSessionItiStimOn = False
         self.prevSessionIdx = -1
 
+        self.hasActivelinkLog = False
         self.activelinkLogFileName = ""
         self.loggedDetections_ts = np.array([])
         self.loggedStats = []  # contains all the stats listed in log file
-        self.loggedRipMean = 0.0  # The entry from above log list that was active during the session
-        self.loggedRipStd = 0.0  # The entry from above log list that was active during the session
+        self.rpowmLog = 0.0  # The entry from above log list that was active during the session
+        self.rpowsLog = 0.0  # The entry from above log list that was active during the session
 
         # Some flags indicated whether ITI was recorded and whether ITI and probe are in the same rec file or not
         self.separateItiFile = False
