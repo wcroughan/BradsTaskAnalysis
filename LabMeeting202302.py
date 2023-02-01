@@ -19,6 +19,9 @@ import pandas as pd
 # make a dataclass that is a single ripple. Can contain start, stop, len, peak, mean, std, other stuff probs
 # Then return from detectRipples can be a list of those
 #
+# Look at notes in LoadInfo section, deal with all of them
+# i.e. minimum date for B13
+#
 # Double check position tracking fill times for other rats. Especially B16 07_10 looks a bit wonky
 # And B16 15_09
 #

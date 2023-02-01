@@ -14,6 +14,7 @@ import functools
 import time
 import subprocess
 from numpy.typing import ArrayLike
+from dataclasses import dataclass
 
 
 def findDataDir(possibleDataDirs=None) -> str:
@@ -355,8 +356,68 @@ def getRipplePower_old(lfpData, causalSmoothing=False,
     return ripplePower, zpower, meanPower, stdPower
 
 
+@dataclass
+class Ripple:
+    start_lfpIdx: int
+    len_lfpIdx: int
+    peakIdx_lfpIdx: int
+    peakAmp: float
+    crossThreshIdx_lfpIdx: int
+
+    param_detectionThresh: float
+    param_edgeThresh: float
+    param_minLen: float
+    param_maxLen: float
+
+
+def detectRipples_new(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0):
+    pks, _ = signal.find_peaks(ripplePower, height=minHeight)
+
+    ret = []
+
+    i = 0
+    while i < len(pks):
+        pkidx = pks[i]
+        ii = pkidx
+        while ii >= 0 and ripplePower[ii] > edgeThresh:
+            ii -= 1
+        ii += 1
+        ripStart = ii
+
+        length = 0
+        pkAmp = 0
+        pkAmpI = 0
+        crossI = 0
+        crossed = False
+        while ii < len(ripplePower) and ripplePower[ii] > edgeThresh:
+            if ripplePower[ii] > pkAmp:
+                pkAmp = ripplePower[ii]
+                pkAmpI = ii
+
+            if not crossed and ripplePower[ii] > minHeight:
+                crossed = True
+                crossI = ii
+
+            ii += 1
+            length += 1
+
+        assert crossed
+
+        lensec = float(length) / LFP_SAMPLING_RATE
+        if lensec >= minLen and lensec <= maxLen:
+            ret.append(Ripple(start_lfpIdx=ripStart, len_lfpIdx=length, peakIdx_lfpIdx=pkAmpI,
+                              peakAmp=pkAmp, crossThreshIdx_lfpIdx=crossI,
+                              param_detectionThresh=minHeight, param_edgeThresh=edgeThresh, param_maxLen=maxLen,
+                              param_minLen=minLen))
+
+        while i < len(pks) and pks[i] < ii:
+            i += 1
+
+    return ret
+
+
 def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0):
-    pks, peakInfo = signal.find_peaks(ripplePower, height=minHeight)
+    pks, _ = signal.find_peaks(ripplePower, height=minHeight)
 
     ripStartIdxs = []
     ripLens = []
@@ -450,6 +511,166 @@ def getDrivePathByLabel(driveLabel: str):
                 return pl + "\\"
 
         return None
+
+
+@dataclass
+class LoadInfo:
+    # configName is the argument that determines all other values
+    # It is what is specified on the command line
+    configName: str
+    ratName: str
+
+    # position info:
+    X_START: int
+    X_FINISH: int
+    Y_START: int
+    Y_FINISH: int
+    excludeBoxes: Optional[List[Tuple[int, int, int, int]]]
+
+    # File names
+    # First element is drive name, other elements are dir names. Actual file path str is build dynamically
+    # path to bradtasksessions (or similar) directory with raw run folders
+    dataDirPath: List[str]
+    # path to where output file from ImportData.py is saved
+    outputDirPath: List[str]
+    # filename of output file from ImportData.py
+    out_filename: str
+
+    # some options about what data to include
+    excluded_dates: List[str]
+    excluded_sessions: List[str]
+    minimum_date: Optional[str]
+
+    DEFAULT_RIP_DET_TET: Optional[int]
+    DEFAULT_RIP_BAS_TET: Optional[int]
+
+    # if DeepLabCut was used, this will be not None
+    DLC_dir: Optional[str]
+
+    @property
+    def data_dir(self):
+        return os.path.join(getDrivePathByLabel(self.dataDirPath[0]), *self.dataDirPath[1:])
+
+    def output_dir(self):
+        return os.path.join(getDrivePathByLabel(self.outputDirPath[0]), *self.outputDirPath[1:])
+
+
+def getLoadInfo(config: str) -> LoadInfo:
+    if config == "Martin":
+        # 2020-6-7: Too few interruptions to really call this an interruption session probably
+        excluded_dates = ["20200528", "20200630", "20200702", "20200703", "20200531", "20200603", "20200602",
+                          "20200606", "20200605", "20200601", "20200526", "20200527", "20200604", "20200608", "20200609", "20200607"]
+        excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
+
+        return LoadInfo(configName=config, ratName="Martin",
+                        X_START=200, X_FINISH=1175, Y_START=20, Y_FINISH=1275, excludeBoxes=None,
+                        dataDirPath=["WDC1", "martindata", "bradtask"], outputDirPath=["WDC6", "Martin", "processed_data"],
+                        out_filename="martin_bradtask.dat",
+                        excluded_dates=excluded_dates, excluded_sessions=excluded_sessions, minimum_date=None,
+                        DEFAULT_RIP_DET_TET=37, DEFAULT_RIP_BAS_TET=None)
+
+    if config == "B13":
+        excluded_dates = ["20220209"]
+        # minimum_date = "20211209"  # had one run on the 8th with probe but used high ripple threshold and a
+        # different reference tetrode
+        # high ripple thresh on 12/08-1, forgot to turn stim on til after first home on 12/16-2
+        excluded_sessions = ["20211208_1", "20211216_2"]
+        # Messed up away well order, marked down 20 when he got 12. Ended up giving him reward at 12 twice
+        excluded_sessions += ["20220131_2"]
+        # Made a custom foundwells field in the behaviornotes for this guy, but would need to update the rest of the
+        # import code
+        # (i.e. clips loading assumes alternation with home)
+        excluded_sessions += ["20220222_2"]
+        # video skips
+        excluded_sessions += ["20220304_2"]
+        excluded_sessions += ["20220307_1"]
+        # Cable got messed up during the task, pulley wasn't rolling horizontally
+        excluded_sessions += ["20211217_1"]
+
+        return LoadInfo(configName=config, ratName="B13",
+                        X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
+                        dataDirPath=["WDC6", "B13", "bradtasksessions"], outputDirPath=["WDC6", "B13", "processed_data"],
+                        out_filename="B13_bradtask.dat",
+                        excluded_dates=excluded_dates, excluded_sessions=excluded_sessions, minimum_date=None,
+                        DEFAULT_RIP_DET_TET=7, DEFAULT_RIP_BAS_TET=2)
+
+    if config == "B14":
+        # Minimum date only after adjusting stim to correct place
+        # video skips
+        excluded_sessions = ["20220307_2", "20220310_2"]
+        # forgot to turn stim on until after first home well
+        excluded_sessions += ["20220311_1"]
+
+        return LoadInfo(configName=config, ratName="B14",
+                        X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
+                        dataDirPath=["WDC6", "B14", "bradtasksessions"], outputDirPath=["WDC6", "B14", "processed_data"],
+                        out_filename="B14_bradtask.dat",
+                        excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date="20220220",
+                        DEFAULT_RIP_DET_TET=3, DEFAULT_RIP_BAS_TET=2)
+
+    if config == "B16":
+        # minimum date: Seems like the older usb videos are all skipping for some reason
+        excluded_sessions = []
+        # Trodes video skips
+        excluded_sessions += ["20221107_2", "20221116_1"]
+        # USB video skips, can add back in later
+        excluded_sessions += ["20220919_1", "20220919_2"]
+        # Just stayed in the corner for ten minutes then I took him out
+        excluded_sessions += ["20221118_1"]
+        # Used the wrong detection tetrode
+        excluded_sessions += ["20221103_1"]
+
+        return LoadInfo(configName=config, ratName="B16",
+                        X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
+                        dataDirPath=["WDC8", "B16", "bradtasksessions"], outputDirPath=["WDC8", "B16", "processed_data"],
+                        out_filename="B16_bradtask.dat",
+                        excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date="20221101",
+                        DEFAULT_RIP_DET_TET=4, DEFAULT_RIP_BAS_TET=7)
+
+    if config == "B17":
+        # Trodes video skips
+        excluded_sessions = ["20221104_1"]
+
+        return LoadInfo(configName=config, ratName="B17",
+                        X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
+                        dataDirPath=["WDC8", "B17", "bradtasksessions"], outputDirPath=["WDC8", "B17", "processed_data"],
+                        out_filename="B17_bradtask.dat",
+                        excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
+                        DEFAULT_RIP_DET_TET=6, DEFAULT_RIP_BAS_TET=5)
+
+    if config == "B18":
+        excluded_sessions = []
+        # Found wells doesn't seem like it lines up perfectly with usb video, check it out and fix
+        excluded_sessions += ["20221113_2"]
+        # Need to improve trodes tracking
+        excluded_sessions += ["20221108_1"]
+        # usb video skips (add back later, just annoying for now)
+        excluded_sessions += ["20220617_1"]
+        # Trodes video skips
+        excluded_sessions += ["20220620_1", "20220622_2"]
+        # Trodes camera partially blocked during probe by pulley system. It's just wells 7-4 ish, might be able to
+        # deal with it in analysis
+        # At least it shouldn't effect measures at off wall wells
+        # ret.excluded_sessions += ["20220621_2"]
+        # Amplitude at 100uA, probably don't need to exclude but should note
+        # ret.excluded_sessions += ["20220620_2"]
+        # stim wire was broken, shoulda been iterruption but was no-stim control
+        # (both leads were disconnected, so no stim at all made it to brain)
+        excluded_sessions += ["20220624_2"]
+        # Messed up the well order, so current pipeline can't handle clips. SHould still be able to analyze probe
+        # behavior though if I wanted to
+        excluded_sessions += ["20220621_2"]
+        # Wasn't actually detecting ripples during these
+        excluded_sessions += ["20221102_1", "20221102_2", "20221103_1", "20221103_2", "20221105_1"]
+
+        return LoadInfo(configName=config, ratName="B18",
+                        X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=[(0, 0, 130, 60)],
+                        dataDirPath=["WDC8", "B18", "bradtasksessions"], outputDirPath=["WDC8", "B18", "processed_data"],
+                        out_filename="B18_bradtask.dat",
+                        excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
+                        DEFAULT_RIP_DET_TET=5, DEFAULT_RIP_BAS_TET=3)
+
+    raise ValueError(f"Unknown config val {config}")
 
 
 class AnimalInfo:
