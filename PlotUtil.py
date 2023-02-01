@@ -141,6 +141,7 @@ class PlotContext:
     infoVals: dict = field(default_factory=dict)
     showPlot: Optional[bool] = None
     savePlot: Optional[bool] = None
+    excludeFromCombo: bool = False
 
     @property
     def ax(self) -> Axes:
@@ -210,7 +211,7 @@ class PlotManager:
     def __enter__(self) -> PlotContext:
         return self.plotContext
 
-    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None,
+    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None, excludeFromCombo=False,
                showPlot=None, savePlot=None, enableOverwriteSameName=False) -> PlotManager:
         # print(self.savedPersistentCategories)
         fname = os.path.join(self.outputDir, self.outputSubDir, figName)
@@ -234,17 +235,19 @@ class PlotManager:
             self.fig.set_figheight(self.figSizeY * figScale)
             self.fig.set_figwidth(self.figSizeX * figScale)
 
-        self.plotContext = PlotContext(fname, self.axs, showPlot=showPlot, savePlot=savePlot)
+        self.plotContext = PlotContext(fname, self.axs, showPlot=showPlot,
+                                       savePlot=savePlot, excludeFromCombo=excludeFromCombo)
 
         # print(self.savedPersistentCategories)
         return self
 
-    def continueFig(self, figName, priority=None, showPlot=None, savePlot=None, enableOverwriteSameName=False):
+    def continueFig(self, figName, priority=None, showPlot=None, savePlot=None, excludeFromCombo=False, enableOverwriteSameName=False):
         if self.showedLastFig:
             raise Exception("currently unable to show a figure and then continue it")
 
         self.plotContext.showPlot = showPlot
         self.plotContext.savePlot = savePlot
+        self.plotContext.excludeFromCombo = excludeFromCombo
         fname = os.path.join(self.outputDir, self.outputSubDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
@@ -391,7 +394,7 @@ class PlotManager:
         if fname[-4:] != ".png":
             fname += ".png"
 
-        if self.plotContext.isSinglePlot:
+        if self.plotContext.isSinglePlot and not self.plotContext.excludeFromCombo:
             for _ in range(3):
                 try:
                     with open(fname + ".pkl", "wb") as fid:

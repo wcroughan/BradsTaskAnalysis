@@ -184,6 +184,7 @@ def getRipplePower(lfpData: ArrayLike, method="standard", meanPower=None,
                             btype='band', fs=LFP_SAMPLING_RATE, output="sos")
         filteredSignal = signal.sosfiltfilt(sos, lfpData)
         smoothedRipplePower = gaussian_filter(np.abs(filteredSignal), smoothStd_frames)
+        smoothedRipplePower[lfpMask] = np.nan
     elif method == "causal":
         rippleFilterOrder = 4
         sos = signal.butter(rippleFilterOrder, rippleFilterBand,
@@ -198,6 +199,7 @@ def getRipplePower(lfpData: ArrayLike, method="standard", meanPower=None,
             (np.zeros_like(halfSmoothingEnvelope), halfSmoothingEnvelope), axis=0)
         smoothedRipplePower = signal.convolve(
             np.abs(filteredSignal), smoothingEnvelope, mode='same')
+        smoothedRipplePower[lfpMask] = np.nan
 
         if showPlot:
             plt.plot(smoothingEnvelope)
@@ -227,13 +229,14 @@ def getRipplePower(lfpData: ArrayLike, method="standard", meanPower=None,
         assert len(filteredSignal) == len(lfpData) == len(filteredBaselineSignal)
 
         # activelink processes data once the number of datapoints is the filter order
+        originalLength = len(filteredSignal)
         if len(filteredSignal) % rippleFilterOrder != 0:
-            print(f"{ len(filteredSignal) =  }")
             filteredSignal = filteredSignal[:int(
                 len(filteredSignal) // rippleFilterOrder)*rippleFilterOrder]
             filteredBaselineSignal = filteredBaselineSignal[:int(
                 len(filteredBaselineSignal) // rippleFilterOrder)*rippleFilterOrder]
-            print(f"{ len(lfpData) =  }")
+            lfpMask = lfpMask[:int(
+                len(lfpMask) // rippleFilterOrder)*rippleFilterOrder]
 
         rmsWindows = np.sqrt(
             np.mean(np.power(filteredSignal.reshape((rippleFilterOrder, -1)), 2.0), axis=0))
@@ -249,10 +252,16 @@ def getRipplePower(lfpData: ArrayLike, method="standard", meanPower=None,
             prevVal = powerMinusBaseline[i]
 
         smoothedRipplePower = powerMinusBaseline
+
+        lfpWindowMask = np.any(lfpMask.reshape((rippleFilterOrder, -1)), axis=0)
+        smoothedRipplePower[lfpWindowMask] = np.nan
+        smoothedRipplePower = np.repeat(smoothedRipplePower, rippleFilterOrder)
+        if len(smoothedRipplePower) < originalLength:
+            z = np.zeros((1, originalLength - len(smoothedRipplePower)))
+            smoothedRipplePower = np.append(smoothedRipplePower, z)
     else:
         assert False
 
-    smoothedRipplePower[lfpMask] = np.nan
     if meanPower is None:
         meanPower = np.nanmean(smoothedRipplePower)
         stdPower = np.nanstd(smoothedRipplePower)

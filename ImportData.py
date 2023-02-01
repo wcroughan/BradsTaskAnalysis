@@ -1090,11 +1090,13 @@ def loadPositionData(sesh: BTSession):
         raise Exception("Looks like we might have the wrong activelink log file.")
 
 
-def loadLFPData(sesh):
+def loadLFPData(sesh: BTSession):
     lfpData = []
 
     if len(sesh.rippleDetectionTetrodes) == 0:
         sesh.rippleDetectionTetrodes = [sesh.animalInfo.DEFAULT_RIP_DET_TET]
+
+    print(f"\tUsing detection tetrodes: {sesh.rippleDetectionTetrodes}")
 
     for i in range(len(sesh.rippleDetectionTetrodes)):
         lfpdir = sesh.fileStartString + ".LFP"
@@ -1126,6 +1128,8 @@ def loadLFPData(sesh):
 
     if sesh.rippleBaselineTetrode is None:
         sesh.rippleBaselineTetrode = sesh.animalInfo.DEFAULT_RIP_BAS_TET
+
+    print(f"\tUsing baseline tetrode: {sesh.rippleBaselineTetrode}")
 
     # I think Martin didn't have this baseline tetrode? Need to check
     if sesh.rippleBaselineTetrode is not None:
@@ -1187,8 +1191,11 @@ def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
     sesh.btLFPBumps_lfpIdx = btLFPBumps_lfpIdx
 
     if sesh.probePerformed:
-        itiLfpStart_lfpIdx = np.searchsorted(lfp_ts, sesh.btPos_ts[-1])
-        itiLfpEnd_lfpIdx = np.searchsorted(lfp_ts, sesh.probePos_ts[0])
+        itiMargin = sesh.importOptions["consts"]["ITI_MARGIN"]
+        sesh.itiLfpStart_ts = sesh.btPos_ts[-1] + itiMargin * TRODES_SAMPLING_RATE
+        sesh.itiLfpEnd_ts = sesh.probePos_ts[0] - itiMargin * TRODES_SAMPLING_RATE
+        itiLfpStart_lfpIdx = np.searchsorted(lfp_ts, sesh.itiLfpStart_ts)
+        itiLfpEnd_lfpIdx = np.searchsorted(lfp_ts, sesh.itiLfpEnd_ts)
         sesh.itiLfpStart_lfpIdx = itiLfpStart_lfpIdx
         sesh.itiLfpEnd_lfpIdx = itiLfpEnd_lfpIdx
         itiLFPData = lfpV[itiLfpStart_lfpIdx:itiLfpEnd_lfpIdx]
@@ -1215,6 +1222,10 @@ def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
     sesh.btLFPNoise_posIdx = np.searchsorted(sesh.btPos_ts, sesh.lfpNoise_ts)
     sesh.btLFPNoise_posIdx = sesh.btLFPNoise_posIdx[(sesh.btLFPNoise_posIdx > 0) &
                                                     (sesh.btLFPNoise_posIdx < len(sesh.btPos_ts))]
+    btLFPNoise_lfpIdx = lfpNoise_lfpIdx[(lfpNoise_lfpIdx > btLfpStart_lfpIdx) & (
+        lfpNoise_lfpIdx < btLfpEnd_lfpIdx)]
+    btLFPNoise_lfpIdx -= btLfpStart_lfpIdx
+    sesh.btLFPNoise_lfpIdx = btLFPNoise_lfpIdx
 
     if sesh.probePerformed:
         itiLFPNoise_lfpIdx = lfpNoise_lfpIdx[(lfpNoise_lfpIdx > itiLfpStart_lfpIdx) & (
@@ -1227,162 +1238,104 @@ def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
         probeLFPNoise_lfpIdx -= probeLfpStart_lfpIdx
         sesh.probeLFPNoise_lfpIdx = probeLFPNoise_lfpIdx
 
+    # Pre-bt stats:
     _, _, sesh.rpowmPreBt, sesh.rpowsPreBt = getRipplePower(
         lfpV[0:(btLfpStart_lfpIdx//2)], lfpDeflections=lfpNoise_lfpIdx)
-    _
-    if sesh.probePerformed:
-        _, _, sesh.rpowmProbe, sesh.rpomsProbe = getRipplePower(
-            lfpV[probeLfpStart_lfpIdx:probeLfpEnd_lfpIdx], lfpDeflections=probeLFPNoise_lfpIdx)
-
-    #  ========================================
-    # TODO
-    # Left off here. Below is scrap to be redone.
-    # 1. use noise and bumps nomenclature
-    # 2. Decide what is minimal result here. What actual variables do I intend to use? Scrap the rest
-    # 3. Think carefully about the ripple power section. Probably want to run activelink and standard
-    #       at least. And maybe just probe stats for standard, written stats for activelink, and that's it?
-    # 4. incorporate ITI margin, and add to importoptions
-    #
-    # OK so here's what I need:
-    #   Ripple stats: pre-bt (first half no artifacts), logged stats, probe stats
-    #   Ripple times: all sections for all three stat types
-
-    _, ripplePower, _, _ = getRipplePower(
-        btLFPData, lfpDeflections=btLfpArtifacts_lfpIdx, meanPower=sesh.prebtMeanRipplePower,
-        stdPower=sesh.prebtStdRipplePower, showPlot=showPlot)
+    _, zpow, _, _ = getRipplePower(btLFPData, method="standard", meanPower=sesh.rpowmPreBt,
+                                   stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.btLFPNoise_lfpIdx)
     sesh.btRipStartsPreStats_lfpIdx, sesh.btRipLensPreStats_lfpIdx, sesh.btRipPeaksPreStats_lfpIdx, \
         sesh.btRipPeakAmpsPreStats, sesh.btRipCrossThreshPreStats_lfpIdx = \
-        detectRipples(ripplePower)
-    if len(sesh.btRipStartsPreStats_lfpIdx) == 0:
-        sesh.btRipStartsPreStats_ts = np.array([])
+        detectRipples(zpow)
+    if len(sesh.btRipStartsPreStats_lfpIdx) > 0:
+        sesh.btRipStartsPreStats_ts = lfp_ts[sesh.btRipStartsPreStats_lfpIdx]
     else:
-        sesh.btRipStartsPreStats_ts = lfp_ts[sesh.btRipStartsPreStats_lfpIdx + btLfpStart_lfpIdx]
+        sesh.btRipStartsPreStats_ts = np.array([])
 
-    # preBtInterruptions_lfpIdx = interruptions_lfpIdx[interruptions_lfpIdx <
-    #                                                  btLfpStart_lfpIdx]
-    # _, _, sesh.prebtMeanRipplePowerArtifactsRemoved, sesh.prebtStdRipplePowerArtifactsRemoved = getRipplePower(
-    #     lfpV[0:btLfpStart_lfpIdx], lfpDeflections=preBtInterruptions_lfpIdx)
-    # _, _, sesh.prebtMeanRipplePowerArtifactsRemovedFirstHalf, sesh.prebtStdRipplePowerArtifactsRemovedFirstHalf = \
-    #     getRipplePower(lfpV[0:int(btLfpStart_lfpIdx / 2)],
-    #                    lfpDeflections=preBtInterruptions_lfpIdx)
-
-    if sesh.probePerformed and not sesh.separateItiFile and not sesh.separateProbeFile:
-        ITI_MARGIN = 10  # units: seconds
-        ITI_INCLUDE_SECS = 60
-        itiLfpEnd_ts = sesh.probePos_ts[0] - TRODES_SAMPLING_RATE * ITI_MARGIN
-        itiLfpStart_ts = itiLfpEnd_ts - TRODES_SAMPLING_RATE * ITI_INCLUDE_SECS
-        itiLfpStart_lfpIdx = np.searchsorted(lfp_ts, itiLfpStart_ts)
-        itiLfpEnd_lfpIdx = np.searchsorted(lfp_ts, itiLfpEnd_ts)
-        itiLFPData = lfpV[itiLfpStart_lfpIdx:itiLfpEnd_lfpIdx]
-        sesh.itiLfpStart_lfpIdx = itiLfpStart_lfpIdx
-        sesh.itiLfpStart_ts = itiLfpStart_ts
-        sesh.itiLfpEnd_ts = itiLfpEnd_ts
-
-        # in general none, but there's a few right at the start of where this is defined
-        itiStims_lfpIdx = interruptions_lfpIdx - itiLfpStart_lfpIdx
-        zeroIdx = np.searchsorted(itiStims_lfpIdx, 0)
-        itiStims_lfpIdx = itiStims_lfpIdx[zeroIdx:]
-
-        _, ripplePower, sesh.itiMeanRipplePower, sesh.itiStdRipplePower = getRipplePower(
-            itiLFPData, lfpDeflections=itiStims_lfpIdx)
-        sesh.itiRipStarts_lfpIdx, sesh.itiRipLens_lfpIdx, sesh.itiRipPeaks_lfpIdx, sesh.itiRipPeakAmps, \
-            sesh.itiRipCrossThresh_lfpIdxs = detectRipples(ripplePower)
-        if len(sesh.itiRipStarts_lfpIdx) > 0:
-            sesh.itiRipStarts_ts = lfp_ts[sesh.itiRipStarts_lfpIdx + itiLfpStart_lfpIdx]
+    if sesh.probePerformed:
+        _, zpow, _, _ = getRipplePower(itiLFPData, method="standard", meanPower=sesh.rpowmPreBt,
+                                       stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.itiLFPNoise_lfpIdx)
+        sesh.itiRipStartsPreStats_lfpIdx, sesh.itiRipLensPreStats_lfpIdx, sesh.itiRipPeaksPreStats_lfpIdx, \
+            sesh.itiRipPeakAmpsPreStats, sesh.itiRipCrossThreshPreStats_lfpIdx = \
+            detectRipples(zpow)
+        if len(sesh.itiRipStartsPreStats_lfpIdx) > 0:
+            sesh.itiRipStartsPreStats_ts = lfp_ts[sesh.itiRipStartsPreStats_lfpIdx]
         else:
-            sesh.itiRipStarts_ts = np.array([])
-
-        sesh.itiDuration = (itiLfpEnd_ts - itiLfpStart_ts) / \
-            TRODES_SAMPLING_RATE
-
-        probeLfpStart_ts = sesh.probePos_ts[0]
-        probeLfpEnd_ts = sesh.probePos_ts[-1]
-        probeLfpStart_lfpIdx = np.searchsorted(lfp_ts, probeLfpStart_ts)
-        probeLfpEnd_lfpIdx = np.searchsorted(lfp_ts, probeLfpEnd_ts)
-        probeLFPData = lfpV[probeLfpStart_lfpIdx:probeLfpEnd_lfpIdx]
-        sesh.probeRippleIdxOffset = probeLfpStart_lfpIdx
-        sesh.probeLfpEnd_ts = probeLfpEnd_ts
-        sesh.probeLfpStart_lfpIdx = probeLfpStart_lfpIdx
-        sesh.probeLfpEnd_lfpIdx = probeLfpEnd_lfpIdx
-
-        _, ripplePower, sesh.probeMeanRipplePower, sesh.probeStdRipplePower = getRipplePower(
-            probeLFPData)
-        sesh.probeRipStarts_lfpIdx, sesh.probeRipLens_lfpIdx, sesh.probeRipPeakIdxs_lfpIdx, sesh.probeRipPeakAmps, \
-            sesh.probeRipCrossThreshIdxs_lfpIdx = detectRipples(ripplePower)
-        if len(sesh.probeRipStarts_lfpIdx) > 0:
-            sesh.probeRipStarts_ts = lfp_ts[sesh.probeRipStarts_lfpIdx + probeLfpStart_lfpIdx]
+            sesh.itiRipStartsPreStats_ts = np.array([])
+        _, zpow, _, _ = getRipplePower(probeLFPData, method="standard", meanPower=sesh.rpowmPreBt,
+                                       stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.probeLFPNoise_lfpIdx)
+        sesh.probeRipStartsPreStats_lfpIdx, sesh.probeRipLensPreStats_lfpIdx, sesh.probeRipPeaksPreStats_lfpIdx, \
+            sesh.probeRipPeakAmpsPreStats, sesh.probeRipCrossThreshPreStats_lfpIdx = \
+            detectRipples(zpow)
+        if len(sesh.probeRipStartsPreStats_lfpIdx) > 0:
+            sesh.probeRipStartsPreStats_ts = lfp_ts[sesh.probeRipStartsPreStats_lfpIdx]
         else:
-            sesh.probeRipStarts_ts = np.array([])
+            sesh.probeRipStartsPreStats_ts = np.array([])
 
-        sesh.probeDuration = (probeLfpEnd_ts - probeLfpStart_ts) / \
-            TRODES_SAMPLING_RATE
-
-        _, itiRipplePowerProbeStats, _, _ = \
-            getRipplePower(itiLFPData, lfpDeflections=itiStims_lfpIdx,
-                           meanPower=sesh.probeMeanRipplePower, stdPower=sesh.probeStdRipplePower)
-        sesh.itiRipStartIdxsProbeStats_lfpIdx, sesh.itiRipLensProbeStats_lfpIdx, sesh.itiRipPeakIdxsProbeStats_lfpIdx, \
-            sesh.itiRipPeakAmpsProbeStats, sesh.itiRipCrossThreshIdxsProbeStats_lfpIdx = \
-            detectRipples(itiRipplePowerProbeStats)
-        if len(sesh.itiRipStartIdxsProbeStats_lfpIdx) > 0:
-            sesh.itiRipStartsProbeStats_ts = lfp_ts[
-                sesh.itiRipStartIdxsProbeStats_lfpIdx + itiLfpStart_lfpIdx]
-        else:
-            sesh.itiRipStartsProbeStats_ts = np.array([])
-
-        _, btRipplePowerProbeStats, _, _ = getRipplePower(
-            btLFPData, lfpDeflections=btLfpArtifacts_lfpIdx, meanPower=sesh.probeMeanRipplePower,
-            stdPower=sesh.probeStdRipplePower, showPlot=showPlot)
-        sesh.btRipStartIdxsProbeStats_lfpIdx, sesh.btRipLensProbeStats_lfpIdx, sesh.btRipPeakIdxsProbeStats_lfpIdx, \
-            sesh.btRipPeakAmpsProbeStats, sesh.btRipCrossThreshIdxsProbeStats_lfpIdx = \
-            detectRipples(btRipplePowerProbeStats)
-        if len(sesh.btRipStartIdxsProbeStats_lfpIdx) > 0:
-            sesh.btRipStartsProbeStats_ts = lfp_ts[
-                sesh.btRipStartIdxsProbeStats_lfpIdx + btLfpStart_lfpIdx]
+        # probe stats
+        _, _, sesh.rpowmProbe, sesh.rpowsProbe = getRipplePower(
+            probeLFPData, lfpDeflections=probeLFPNoise_lfpIdx)
+        _, zpow, _, _ = getRipplePower(btLFPData, method="standard", meanPower=sesh.rpowmProbe,
+                                       stdPower=sesh.rpowsProbe, lfpDeflections=sesh.btLFPNoise_lfpIdx)
+        sesh.btRipStartsProbeStats_lfpIdx, sesh.btRipLensProbeStats_lfpIdx, sesh.btRipPeaksProbeStats_lfpIdx, \
+            sesh.btRipPeakAmpsProbeStats, sesh.btRipCrossThreshProbeStats_lfpIdx = \
+            detectRipples(zpow)
+        if len(sesh.btRipStartsProbeStats_lfpIdx) > 0:
+            sesh.btRipStartsProbeStats_ts = lfp_ts[sesh.btRipStartsProbeStats_lfpIdx]
         else:
             sesh.btRipStartsProbeStats_ts = np.array([])
+        _, zpow, _, _ = getRipplePower(itiLFPData, method="standard", meanPower=sesh.rpowmProbe,
+                                       stdPower=sesh.rpowsProbe, lfpDeflections=sesh.itiLFPNoise_lfpIdx)
+        sesh.itiRipStartsProbeStats_lfpIdx, sesh.itiRipLensProbeStats_lfpIdx, sesh.itiRipPeaksProbeStats_lfpIdx, \
+            sesh.itiRipPeakAmpsProbeStats, sesh.itiRipCrossThreshProbeStats_lfpIdx = \
+            detectRipples(zpow)
+        if len(sesh.itiRipStartsProbeStats_lfpIdx) > 0:
+            sesh.itiRipStartsProbeStats_ts = lfp_ts[sesh.itiRipStartsProbeStats_lfpIdx]
+        else:
+            sesh.itiRipStartsProbeStats_ts = np.array([])
+        _, zpow, _, _ = getRipplePower(probeLFPData, method="standard", meanPower=sesh.rpowmProbe,
+                                       stdPower=sesh.rpowsProbe, lfpDeflections=sesh.probeLFPNoise_lfpIdx)
+        sesh.probeRipStartsProbeStats_lfpIdx, sesh.probeRipLensProbeStats_lfpIdx, sesh.probeRipPeaksProbeStats_lfpIdx, \
+            sesh.probeRipPeakAmpsProbeStats, sesh.probeRipCrossThreshProbeStats_lfpIdx = \
+            detectRipples(zpow)
+        if len(sesh.probeRipStartsProbeStats_lfpIdx) > 0:
+            sesh.probeRipStartsProbeStats_ts = lfp_ts[sesh.probeRipStartsProbeStats_lfpIdx]
+        else:
+            sesh.probeRipStartsProbeStats_ts = np.array([])
 
-        if sesh.btLfpBaselineFname is not None:
-            # With baseline tetrode, calculated the way activelink does it
-            lfpData = MountainViewIO.loadLFP(
-                data_file=sesh.btLfpBaselineFname)
-            baselfpV = lfpData[1]['voltage']
-            # baselfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
-
-            btRipPower, _, _, _ = getRipplePower(
-                btLFPData, lfpDeflections=btLfpArtifacts_lfpIdx, meanPower=sesh.probeMeanRipplePower,
-                stdPower=sesh.probeStdRipplePower, showPlot=showPlot)
-            probeRipPower, _, _, _ = getRipplePower(probeLFPData)
-
-            baselineProbeLFPData = baselfpV[probeLfpStart_lfpIdx:probeLfpEnd_lfpIdx]
-            probeBaselinePower, _, baselineProbeMeanRipplePower, baselineProbeStdRipplePower = getRipplePower(
-                baselineProbeLFPData)
-            btBaselineLFPData = baselfpV[btLfpStart_lfpIdx:btLfpEnd_lfpIdx]
-            btBaselineRipplePower, _, _, _ = getRipplePower(
-                btBaselineLFPData, lfpDeflections=btLfpArtifacts_lfpIdx, meanPower=baselineProbeMeanRipplePower,
-                stdPower=baselineProbeStdRipplePower,
-                showPlot=showPlot)
-
-            probeRawPowerDiff = probeRipPower - probeBaselinePower
-            zmean = np.nanmean(probeRawPowerDiff)
-            zstd = np.nanstd(probeRawPowerDiff)
-
-            rawPowerDiff = btRipPower - btBaselineRipplePower
-            zPowerDiff = (rawPowerDiff - zmean) / zstd
-
-            sesh.btWithBaseRipStartIdx_lfpIdx, sesh.btWithBaseRipLens_lfpIdx, sesh.btWithBaseRipPeakIdx_lfpIdx, \
-                sesh.btWithBaseRipPeakAmps, sesh.btWithBaseRipCrossThreshIdxs_lfpIdx = \
-                detectRipples(zPowerDiff)
-            if len(sesh.btWithBaseRipStartIdx_lfpIdx) > 0:
-                sesh.btWithBaseRipStarts_ts = lfp_ts[
-                    sesh.btWithBaseRipStartIdx_lfpIdx + btLfpStart_lfpIdx]
-            else:
-                sesh.btWithBaseRipStarts_ts = np.array([])
-
-        print("\t{} ripples found during task".format(
-            len(sesh.btRipStartsProbeStats_ts)))
-
-    elif sesh.probePerformed:
-        print("\tProbe performed but LFP in a separate file for session", sesh.name)
+    if sesh.hasActivelinkLog:
+        if sesh.btLfpBaselineFname is None:
+            raise Exception("Session has activelink log but not a basline lfp")
+        baselineLfpV = baselineLfpData[1]['voltage']
+        _, zpow, _, _ = getRipplePower(btLFPData, method="activelink", meanPower=sesh.rpowmLog,
+                                       stdPower=sesh.rpowsLog, lfpDeflections=sesh.btLFPNoise_lfpIdx,
+                                       baselineLfpData=baselineLfpV[btLfpStart_lfpIdx:btLfpEnd_lfpIdx])
+        sesh.btRipStartsLogStats_lfpIdx, sesh.btRipLensLogStats_lfpIdx, sesh.btRipPeaksLogStats_lfpIdx, \
+            sesh.btRipPeakAmpsLogStats, sesh.btRipCrossThreshLogStats_lfpIdx = \
+            detectRipples(zpow)
+        if len(sesh.btRipStartsLogStats_lfpIdx) > 0:
+            sesh.btRipStartsLogStats_ts = lfp_ts[sesh.btRipStartsLogStats_lfpIdx]
+        else:
+            sesh.btRipStartsLogStats_ts = np.array([])
+        _, zpow, _, _ = getRipplePower(itiLFPData, method="activelink", meanPower=sesh.rpowmLog,
+                                       stdPower=sesh.rpowsLog, lfpDeflections=sesh.itiLFPNoise_lfpIdx,
+                                       baselineLfpData=baselineLfpV[itiLfpStart_lfpIdx:itiLfpEnd_lfpIdx])
+        sesh.itiRipStartsLogStats_lfpIdx, sesh.itiRipLensLogStats_lfpIdx, sesh.itiRipPeaksLogStats_lfpIdx, \
+            sesh.itiRipPeakAmpsLogStats, sesh.itiRipCrossThreshLogStats_lfpIdx = \
+            detectRipples(zpow)
+        if len(sesh.itiRipStartsLogStats_lfpIdx) > 0:
+            sesh.itiRipStartsLogStats_ts = lfp_ts[sesh.itiRipStartsLogStats_lfpIdx]
+        else:
+            sesh.itiRipStartsLogStats_ts = np.array([])
+        _, zpow, _, _ = getRipplePower(probeLFPData, method="activelink", meanPower=sesh.rpowmLog,
+                                       stdPower=sesh.rpowsLog, lfpDeflections=sesh.probeLFPNoise_lfpIdx,
+                                       baselineLfpData=baselineLfpV[probeLfpStart_lfpIdx:probeLfpEnd_lfpIdx])
+        sesh.probeRipStartsLogStats_lfpIdx, sesh.probeRipLensLogStats_lfpIdx, sesh.probeRipPeaksLogStats_lfpIdx, \
+            sesh.probeRipPeakAmpsLogStats, sesh.probeRipCrossThreshLogStats_lfpIdx = \
+            detectRipples(zpow)
+        if len(sesh.probeRipStartsLogStats_lfpIdx) > 0:
+            sesh.probeRipStartsLogStats_ts = lfp_ts[sesh.probeRipStartsLogStats_lfpIdx]
+        else:
+            sesh.probeRipStartsLogStats_ts = np.array([])
 
 
 def runSanityChecks(sesh: BTSession, lfpData, baselineLfpData, showPlots=False, overrideNotes=True):
@@ -1402,7 +1355,7 @@ def runSanityChecks(sesh: BTSession, lfpData, baselineLfpData, showPlots=False, 
         # btInterruption_posIdx = sesh.btInterruption_posIdx[btInterruption_posIdx < len(
         #     sesh.btPos_ts)]
 
-        numInterruptions = len(sesh.btInterruption_posIdx)
+        numInterruptions = len(sesh.btRipStartsPreStats_ts)
         print("\t{} interruptions detected".format(numInterruptions))
         if numInterruptions < 50:
             if sesh.isRippleInterruption and numInterruptions > 0:
@@ -2060,6 +2013,9 @@ if __name__ == "__main__":
             "DEFLECTION_THRESHOLD_HI": 6000.0,
             "DEFLECTION_THRESHOLD_LO": 2000.0,
             "MIN_ARTIFACT_DISTANCE": int(0.05 * LFP_SAMPLING_RATE),
+
+            # How much buffer time to give the ITI around behavior times
+            "ITI_MARGIN": 10,
 
             # constants for exploration bout analysis
             "BOUT_VEL_SM_SIGMA_SECS": 1.5,

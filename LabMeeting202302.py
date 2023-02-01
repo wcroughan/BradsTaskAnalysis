@@ -15,17 +15,9 @@ import MountainViewIO
 from consts import TRODES_SAMPLING_RATE
 import pandas as pd
 
-# Today:
-# LFP figuring out.
-# Get log files from rec computer, load those in during importData. In particular, ripple stats during run
-#   Also I think it'll have actual interruption times and detection and such
-# Use that info to plot ripple power the activelink way and mark where detection happened. Measure latency that
-#       way to artifact
-# Also implement normal causal ripple filter and bi-directional ripple filter. Plot that around detections and see if
-#   still seeing lack of ripple power
-# If so: ____
-
-# TODOs
+# TODO
+# make a dataclass that is a single ripple. Can contain start, stop, len, peak, mean, std, other stuff probs
+# Then return from detectRipples can be a list of those
 #
 # Double check position tracking fill times for other rats. Especially B16 07_10 looks a bit wonky
 # And B16 15_09
@@ -155,6 +147,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         # nSessions = len(sessions)
         sessionsWithProbe = [sesh for sesh in sessions if sesh.probePerformed]
         # numSessionsWithProbe = len(sessionsWithProbe)
+        sessionsWithLog = [sesh for sesh in sessions if sesh.hasActivelinkLog]
 
         ctrlSessionsWithProbe = [sesh for sesh in sessions if (
             not sesh.isRippleInterruption) and sesh.probePerformed]
@@ -348,185 +341,283 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             latencyToDetectionArtifactFrom25_all = np.array([])
             latencyToDetectionLoggedFrom0_all = np.array([])
             latencyToDetectionLoggedFrom25_all = np.array([])
-            for si, sesh in enumerate(sessionsWithProbe):
+
+            for si, sesh in enumerate(sessionsWithLog):
+                if not sesh.probePerformed:
+                    continue
                 pp.pushOutputSubDir(sesh.name)
+
                 lfpFName = sesh.btLfpFnames[-1]
                 print("LFP data from file {}".format(lfpFName))
                 lfpData = MountainViewIO.loadLFP(data_file=lfpFName)
                 lfpV = lfpData[1]['voltage']
                 lfpT = np.array(lfpData[0]['time']) / TRODES_SAMPLING_RATE
-                btLFPData = lfpV[sesh.btLfpStart_lfpIdx:sesh.btLfpEnd_lfpIdx]
 
-                btRipPower, btRipZPower, _, _ = getRipplePower(
-                    btLFPData, meanPower=sesh.probeMeanRipplePower,
-                    stdPower=sesh.probeStdRipplePower, causalSmoothing=True)
-                probeLFPData = lfpV[sesh.probeLfpStart_lfpIdx:sesh.probeLfpEnd_lfpIdx]
-                probeRipPower, _, _, _ = getRipplePower(
-                    probeLFPData, omitArtifacts=False, causalSmoothing=True)
+                lfpData = MountainViewIO.loadLFP(data_file=sesh.btLfpBaselineFname)
+                baselfpV = lfpData[1]['voltage']
 
-                if sesh.btLfpBaselineFname is None:
-                    zmean = np.nanmean(probeRipPower)
-                    zstd = np.nanstd(probeRipPower)
-                    zPowerDiff = (btRipPower - zmean) / zstd
-                else:
-                    lfpData = MountainViewIO.loadLFP(data_file=sesh.btLfpBaselineFname)
-                    baselfpV = lfpData[1]['voltage']
+                ripPower_standard, ripZPower_standard, _, _ = getRipplePower(
+                    lfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog)
+                baseRipPower_standard, _, _, _ = getRipplePower(
+                    baselfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog)
+                rp = ripPower_standard - baseRipPower_standard
+                m = np.nanmean(rp)
+                s = np.nanstd(rp)
+                ripZPower_standardOffset = (rp - m) / s
 
-                    baselineProbeLFPData = baselfpV[sesh.probeLfpStart_lfpIdx:sesh.probeLfpEnd_lfpIdx]
-                    probeBaselinePower, _, baselineProbeMeanRipplePower, baselineProbeStdRipplePower = getRipplePower(
-                        baselineProbeLFPData, omitArtifacts=False, causalSmoothing=True)
-                    btBaselineLFPData = baselfpV[sesh.btLfpStart_lfpIdx:sesh.btLfpEnd_lfpIdx]
-                    btBaselineRipplePower, _, _, _ = getRipplePower(
-                        btBaselineLFPData, meanPower=baselineProbeMeanRipplePower, stdPower=baselineProbeStdRipplePower,
-                        causalSmoothing=True)
+                ripPower_causal, ripZPower_causal, _, _ = getRipplePower(
+                    lfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog,
+                    method="causal")
+                baseRipPower_causal, _, _, _ = getRipplePower(
+                    baselfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog,
+                    method="causal")
+                rp = ripPower_causal - baseRipPower_causal
+                m = np.nanmean(rp)
+                s = np.nanstd(rp)
+                ripZPower_causalOffset = (rp - m) / s
 
-                    probeRawPowerDiff = probeRipPower - probeBaselinePower
-                    zmean = np.nanmean(probeRawPowerDiff)
-                    zstd = np.nanstd(probeRawPowerDiff)
-                    rawPowerDiff = btRipPower - btBaselineRipplePower
-                    zPowerDiff = (rawPowerDiff - zmean) / zstd
+                _, ripZPower_activelink, _, _ = getRipplePower(
+                    lfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog,
+                    method="activelink", baselineLfpData=baselfpV)
 
                 MARGIN_SECS = 0.25
                 MARGIN_PTS = int(MARGIN_SECS * 1500)
-                allRipPowsArtifact = np.empty((len(sesh.btLfpArtifacts_lfpIdx), 2*MARGIN_PTS))
-                allRipPowsLogged = np.empty((len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
+                allRipPowsArtifact_activelink = np.empty((len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
+                allRipPowsArtifact_standard = np.empty((len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
+                allRipPowsArtifact_standardOffset = np.empty(
+                    (len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
+                allRipPowsArtifact_causal = np.empty((len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
+                allRipPowsArtifact_causalOffset = np.empty(
+                    (len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
                 pp.pushOutputSubDir("LFP_Interruptions")
                 pp.pushOutputSubDir("artifact")
-                for ai, aidx in enumerate(sesh.btLfpArtifacts_lfpIdx):
+                for ai, aidx in enumerate(sesh.lfpBumps_lfpIdx):
                     # This is just annoying to deal with and shouldn't affect much, can add back in later
-                    if aidx < MARGIN_PTS or aidx > len(btLFPData) - MARGIN_PTS:
+                    if aidx < MARGIN_PTS or aidx > len(lfpV) - MARGIN_PTS:
                         continue
 
                     i1 = aidx - MARGIN_PTS
                     i2 = aidx + MARGIN_PTS
 
-                    try:
-                        allRipPowsArtifact[ai, :] = zPowerDiff[i1:i2]
-                    except Exception as e:
-                        print(i1, i2, allRipPowsArtifact.shape, zPowerDiff.shape,
-                              i2 - i1, len(lfpT), len(btLFPData))
-                        raise e
+                    allRipPowsArtifact_activelink[ai, :] = ripZPower_activelink[i1:i2]
+                    allRipPowsArtifact_standard[ai, :] = ripZPower_standard[i1:i2]
+                    allRipPowsArtifact_standardOffset[ai, :] = ripZPower_standardOffset[i1:i2]
+                    allRipPowsArtifact_causal[ai, :] = ripZPower_causal[i1:i2]
+                    allRipPowsArtifact_causalOffset[ai, :] = ripZPower_causalOffset[i1:i2]
 
                     if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS and \
-                            len(sesh.btLfpArtifacts_lfpIdx) // 2 < ai < len(sesh.btLfpArtifacts_lfpIdx) // 2 + 10:
-                        with pp.newFig(f"interruption_{sesh.name}_{ai}") as pc:
-                            pc.ax.plot(lfpT[i1:i2] - lfpT[sesh.btLfpStart_lfpIdx],
-                                       btLFPData[i1:i2] / 1000, c="blue", label="lfp")
-                            pc.ax.plot(lfpT[i1:i2] - lfpT[sesh.btLfpStart_lfpIdx], zPowerDiff[i1:i2],
-                                       c="orange", label="ripple power")
+                            len(sesh.lfpBumps_lfpIdx) // 2 < ai < len(sesh.lfpBumps_lfpIdx) // 2 + 20:
+                        with pp.newFig(f"interruption_{sesh.name}_{ai}", excludeFromCombo=True) as pc:
+                            pc.ax.plot(lfpT[i1:i2], lfpV[i1:i2] / 1000, label="lfp")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_activelink[i1:i2],
+                                       label="activelink power")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_standard[i1:i2],
+                                       label="standard power")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_standardOffset[i1:i2],
+                                       label="standard offset power")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_causal[i1:i2],
+                                       label="causal power")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_causalOffset[i1:i2],
+                                       label="causal offset power")
+                            pc.ax.legend()
                             pc.ax.set_ylim(-3, 10)
                 pp.popOutputSubDir()
 
+                allRipPowsLogged_activelink = np.empty(
+                    (len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
+                allRipPowsLogged_standard = np.empty((len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
+                allRipPowsLogged_standardOffset = np.empty(
+                    (len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
+                allRipPowsLogged_causal = np.empty((len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
+                allRipPowsLogged_causalOffset = np.empty(
+                    (len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
                 pp.pushOutputSubDir("logged")
                 detections_lfpIdx = np.searchsorted(
                     lfpT, sesh.loggedDetections_ts / TRODES_SAMPLING_RATE)
                 for di, didx in enumerate(detections_lfpIdx):
                     # This is just annoying to deal with and shouldn't affect much, can add back in later
-                    if didx < MARGIN_PTS or didx > len(btLFPData) - MARGIN_PTS:
+                    if didx < MARGIN_PTS or didx > len(lfpV) - MARGIN_PTS:
                         continue
 
                     i1 = didx - MARGIN_PTS
                     i2 = didx + MARGIN_PTS
 
-                    try:
-                        allRipPowsLogged[di, :] = zPowerDiff[i1:i2]
-                    except Exception as e:
-                        print(i1, i2, allRipPowsLogged.shape, zPowerDiff.shape,
-                              i2 - i1, len(lfpT), len(btLFPData))
-                        raise e
+                    allRipPowsLogged_activelink[di, :] = ripZPower_activelink[i1:i2]
+                    allRipPowsLogged_standard[di, :] = ripZPower_standard[i1:i2]
+                    allRipPowsLogged_standardOffset[di, :] = ripZPower_standardOffset[i1:i2]
+                    allRipPowsLogged_causal[di, :] = ripZPower_causal[i1:i2]
+                    allRipPowsLogged_causalOffset[di, :] = ripZPower_causalOffset[i1:i2]
 
                     if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS and \
-                            len(detections_lfpIdx) // 2 < di < len(detections_lfpIdx) // 2 + 10:
-                        with pp.newFig(f"interruption_{sesh.name}_{di}") as pc:
-                            pc.ax.plot(lfpT[i1:i2] - lfpT[sesh.btLfpStart_lfpIdx],
-                                       btLFPData[i1:i2] / 1000, c="blue", label="lfp")
-                            pc.ax.plot(lfpT[i1:i2] - lfpT[sesh.btLfpStart_lfpIdx], zPowerDiff[i1:i2],
-                                       c="orange", label="ripple power")
+                            len(detections_lfpIdx) // 2 < di < len(detections_lfpIdx) // 2 + 20:
+                        with pp.newFig(f"interruption_{sesh.name}_{di}", excludeFromCombo=True) as pc:
+                            pc.ax.plot(lfpT[i1:i2], lfpV[i1:i2] / 1000, label="lfp")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_activelink[i1:i2],
+                                       label="activelink power")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_standard[i1:i2],
+                                       label="standard power")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_standardOffset[i1:i2],
+                                       label="standard offset power")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_causal[i1:i2],
+                                       label="causal power")
+                            pc.ax.plot(lfpT[i1:i2], ripZPower_causalOffset[i1:i2],
+                                       label="causal offset power")
+                            pc.ax.legend()
                             pc.ax.set_ylim(-3, 10)
                 pp.popOutputSubDir()
                 pp.popOutputSubDir()
 
-                detTimeRev = allRipPowsArtifact[:, MARGIN_PTS:0:-1] > 2.5
-                latencyToDetectionArtifactFrom25 = np.argmax(
-                    detTimeRev, axis=1).astype(float) / 1500.0
-                with pp.newFig(f"lfp_detection_latency_to_artifact_z2-5_{sesh.name}") as pc:
-                    pc.ax.hist(latencyToDetectionArtifactFrom25)
+                # detTimeRev = allRipPowsArtifact[:, MARGIN_PTS:0:-1] > 2.5
+                # latencyToDetectionArtifactFrom25 = np.argmax(
+                #     detTimeRev, axis=1).astype(float) / 1500.0
+                # with pp.newFig(f"lfp_detection_latency_to_artifact_z2-5_{sesh.name}") as pc:
+                #     pc.ax.hist(latencyToDetectionArtifactFrom25)
 
-                detTimeRev = allRipPowsArtifact[:, MARGIN_PTS:0:-1] > 0
-                latencyToDetectionArtifactFrom0 = np.argmax(
-                    detTimeRev, axis=1).astype(float) / 1500.0
-                with pp.newFig(f"lfp_detection_latency_to_artifact_z0_{sesh.name}") as pc:
-                    pc.ax.hist(latencyToDetectionArtifactFrom0)
+                # detTimeRev = allRipPowsArtifact[:, MARGIN_PTS:0:-1] > 0
+                # latencyToDetectionArtifactFrom0 = np.argmax(
+                #     detTimeRev, axis=1).astype(float) / 1500.0
+                # with pp.newFig(f"lfp_detection_latency_to_artifact_z0_{sesh.name}") as pc:
+                #     pc.ax.hist(latencyToDetectionArtifactFrom0)
 
-                detTimeRev = allRipPowsLogged[:, MARGIN_PTS:0:-1] > 2.5
-                latencyToDetectionLoggedFrom25 = np.argmax(
-                    detTimeRev, axis=1).astype(float) / 1500.0
-                with pp.newFig(f"lfp_detection_latency_to_logged_z2-5_{sesh.name}") as pc:
-                    pc.ax.hist(latencyToDetectionLoggedFrom25)
+                # detTimeRev = allRipPowsLogged[:, MARGIN_PTS:0:-1] > 2.5
+                # latencyToDetectionLoggedFrom25 = np.argmax(
+                #     detTimeRev, axis=1).astype(float) / 1500.0
+                # with pp.newFig(f"lfp_detection_latency_to_logged_z2-5_{sesh.name}") as pc:
+                #     pc.ax.hist(latencyToDetectionLoggedFrom25)
 
-                detTimeRev = allRipPowsLogged[:, MARGIN_PTS:0:-1] > 0
-                latencyToDetectionLoggedFrom0 = np.argmax(detTimeRev, axis=1).astype(float) / 1500.0
-                with pp.newFig(f"lfp_detection_latency_to_logged_z0_{sesh.name}") as pc:
-                    pc.ax.hist(latencyToDetectionLoggedFrom0)
+                # detTimeRev = allRipPowsLogged[:, MARGIN_PTS:0:-1] > 0
+                # latencyToDetectionLoggedFrom0 = np.argmax(detTimeRev, axis=1).astype(float) / 1500.0
+                # with pp.newFig(f"lfp_detection_latency_to_logged_z0_{sesh.name}") as pc:
+                #     pc.ax.hist(latencyToDetectionLoggedFrom0)
 
-                latencyToDetectionArtifactFrom0_all = np.append(
-                    latencyToDetectionArtifactFrom0_all, latencyToDetectionArtifactFrom0)
-                latencyToDetectionArtifactFrom25_all = np.append(
-                    latencyToDetectionArtifactFrom25_all, latencyToDetectionArtifactFrom25)
-                latencyToDetectionLoggedFrom0_all = np.append(
-                    latencyToDetectionLoggedFrom0_all, latencyToDetectionLoggedFrom0)
-                latencyToDetectionLoggedFrom25_all = np.append(
-                    latencyToDetectionLoggedFrom25_all, latencyToDetectionLoggedFrom25)
+                # latencyToDetectionArtifactFrom0_all = np.append(
+                #     latencyToDetectionArtifactFrom0_all, latencyToDetectionArtifactFrom0)
+                # latencyToDetectionArtifactFrom25_all = np.append(
+                #     latencyToDetectionArtifactFrom25_all, latencyToDetectionArtifactFrom25)
+                # latencyToDetectionLoggedFrom0_all = np.append(
+                #     latencyToDetectionLoggedFrom0_all, latencyToDetectionLoggedFrom0)
+                # latencyToDetectionLoggedFrom25_all = np.append(
+                #     latencyToDetectionLoggedFrom25_all, latencyToDetectionLoggedFrom25)
 
                 if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS:
-                    allRipPowsArtifact[np.isinf(allRipPowsArtifact)] = np.nan
-                    m = np.nanmean(allRipPowsArtifact, axis=0)
-                    s = np.nanstd(allRipPowsArtifact, axis=0)
-                    try:
-                        with pp.newFig(f"lfp_psth_artifact_{sesh.name}") as pc:
-                            xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
-                            pc.ax.plot(xvals, m)
-                            pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
-                            # y1, y2 = pc.ax.get_ylim()
-                            # pc.ax.plot([0, 0], [y1, y2])
-                            pc.ax.plot([0, 0], [-10, 10])
-                            pc.ax.set_ylim(-2, 6)
-                    except Exception as e:
-                        print("Ran into an issue with LFP PSTH, session", sesh.name)
-                        print(e)
-                        print(m, s)
+                    allRipPowsArtifact_activelink[np.isinf(allRipPowsArtifact_activelink)] = np.nan
+                    m = np.nanmean(allRipPowsArtifact_activelink, axis=0)
+                    s = np.nanstd(allRipPowsArtifact_activelink, axis=0)
+                    with pp.newFig(f"lfp_psth_artifact_activelink", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
 
-                    allRipPowsLogged[np.isinf(allRipPowsLogged)] = np.nan
-                    m = np.nanmean(allRipPowsLogged, axis=0)
-                    s = np.nanstd(allRipPowsLogged, axis=0)
-                    try:
-                        with pp.newFig(f"lfp_psth_logged_{sesh.name}") as pc:
-                            xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
-                            pc.ax.plot(xvals, m)
-                            pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
-                            # y1, y2 = pc.ax.get_ylim()
-                            # pc.ax.plot([0, 0], [y1, y2])
-                            pc.ax.plot([0, 0], [-10, 10])
-                            pc.ax.set_ylim(-2, 6)
-                    except Exception as e:
-                        print("Ran into an issue with LFP PSTH, session", sesh.name)
-                        print(e)
-                        print(m, s)
+                    allRipPowsArtifact_standard[np.isinf(allRipPowsArtifact_standard)] = np.nan
+                    m = np.nanmean(allRipPowsArtifact_standard, axis=0)
+                    s = np.nanstd(allRipPowsArtifact_standard, axis=0)
+                    with pp.newFig(f"lfp_psth_artifact_standard", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    allRipPowsArtifact_standardOffset[np.isinf(
+                        allRipPowsArtifact_standardOffset)] = np.nan
+                    m = np.nanmean(allRipPowsArtifact_standardOffset, axis=0)
+                    s = np.nanstd(allRipPowsArtifact_standardOffset, axis=0)
+                    with pp.newFig(f"lfp_psth_artifact_standardOffset", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    allRipPowsArtifact_causal[np.isinf(allRipPowsArtifact_causal)] = np.nan
+                    m = np.nanmean(allRipPowsArtifact_causal, axis=0)
+                    s = np.nanstd(allRipPowsArtifact_causal, axis=0)
+                    with pp.newFig(f"lfp_psth_artifact_causal", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    allRipPowsArtifact_causalOffset[np.isinf(
+                        allRipPowsArtifact_causalOffset)] = np.nan
+                    m = np.nanmean(allRipPowsArtifact_causalOffset, axis=0)
+                    s = np.nanstd(allRipPowsArtifact_causalOffset, axis=0)
+                    with pp.newFig(f"lfp_psth_artifact_causalOffset", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    allRipPowsLogged_activelink[np.isinf(allRipPowsLogged_activelink)] = np.nan
+                    m = np.nanmean(allRipPowsLogged_activelink, axis=0)
+                    s = np.nanstd(allRipPowsLogged_activelink, axis=0)
+                    with pp.newFig(f"lfp_psth_logged_activelink", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    allRipPowsLogged_standard[np.isinf(allRipPowsLogged_standard)] = np.nan
+                    m = np.nanmean(allRipPowsLogged_standard, axis=0)
+                    s = np.nanstd(allRipPowsLogged_standard, axis=0)
+                    with pp.newFig(f"lfp_psth_logged_standard", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    allRipPowsLogged_standardOffset[np.isinf(
+                        allRipPowsLogged_standardOffset)] = np.nan
+                    m = np.nanmean(allRipPowsLogged_standardOffset, axis=0)
+                    s = np.nanstd(allRipPowsLogged_standardOffset, axis=0)
+                    with pp.newFig(f"lfp_psth_logged_standardOffset", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    allRipPowsLogged_causal[np.isinf(allRipPowsLogged_causal)] = np.nan
+                    m = np.nanmean(allRipPowsLogged_causal, axis=0)
+                    s = np.nanstd(allRipPowsLogged_causal, axis=0)
+                    with pp.newFig(f"lfp_psth_logged_causal", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    allRipPowsLogged_causalOffset[np.isinf(
+                        allRipPowsLogged_causalOffset)] = np.nan
+                    m = np.nanmean(allRipPowsLogged_causalOffset, axis=0)
+                    s = np.nanstd(allRipPowsLogged_causalOffset, axis=0)
+                    with pp.newFig(f"lfp_psth_logged_causalOffset", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        pc.ax.plot(xvals, m)
+                        pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
 
                 pp.popOutputSubDir()
 
-            with pp.newFig("lfp_detection_latency_to_artifact_z0_all") as pc:
-                pc.ax.hist(latencyToDetectionArtifactFrom0_all,
-                           bins=np.linspace(0, .1, 20), density=True)
-            with pp.newFig("lfp_detection_latency_to_artifact_z25_all") as pc:
-                pc.ax.hist(latencyToDetectionArtifactFrom25_all,
-                           bins=np.linspace(0, .1, 20), density=True)
-            with pp.newFig("lfp_detection_latency_to_logged_z0_all") as pc:
-                pc.ax.hist(latencyToDetectionLoggedFrom0_all,
-                           bins=np.linspace(0, .1, 20), density=True)
-            with pp.newFig("lfp_detection_latency_to_logged_z25_all") as pc:
-                pc.ax.hist(latencyToDetectionLoggedFrom25_all,
-                           bins=np.linspace(0, .1, 20), density=True)
+            # with pp.newFig("lfp_detection_latency_to_artifact_z0_all") as pc:
+            #     pc.ax.hist(latencyToDetectionArtifactFrom0_all,
+            #                bins=np.linspace(0, .1, 20), density=True)
+            # with pp.newFig("lfp_detection_latency_to_artifact_z25_all") as pc:
+            #     pc.ax.hist(latencyToDetectionArtifactFrom25_all,
+            #                bins=np.linspace(0, .1, 20), density=True)
+            # with pp.newFig("lfp_detection_latency_to_logged_z0_all") as pc:
+            #     pc.ax.hist(latencyToDetectionLoggedFrom0_all,
+            #                bins=np.linspace(0, .1, 20), density=True)
+            # with pp.newFig("lfp_detection_latency_to_logged_z25_all") as pc:
+            #     pc.ax.hist(latencyToDetectionLoggedFrom25_all,
+            #                bins=np.linspace(0, .1, 20), density=True)
 
     if len(animalNames) > 1 and MAKE_COMBINED:
         comboStr = "combo {}".format(" ".join(animalNames))
