@@ -235,20 +235,17 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             SECTION_LEN = 5
             WellMeasure("short dotprod 1", lambda s, h: s.getDotProductScore(
                 True, h, timeInterval=[0, SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
-            ), sessionsWithProbe).makeFigures(pp, makeDiffBoxPlot=False, makeMeasureBoxPlot=False,
-                                              makeOtherSeshBoxPlot=False, makeOtherSeshDiffBoxPlot=False,
+            ), sessionsWithProbe).makeFigures(pp, plotFlags="everysession",
                                               everySessionTraceTimeInterval=lambda _: [
                                                   0, SECTION_LEN], everySessionTraceType="probe")
             WellMeasure("short dotprod 2", lambda s, h: s.getDotProductScore(
                 True, h, timeInterval=[SECTION_LEN, 2*SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
-            ), sessionsWithProbe).makeFigures(pp, makeDiffBoxPlot=False, makeMeasureBoxPlot=False,
-                                              makeOtherSeshBoxPlot=False, makeOtherSeshDiffBoxPlot=False,
+            ), sessionsWithProbe).makeFigures(pp, plotFlags="everysession",
                                               everySessionTraceTimeInterval=lambda _: [
                                                   SECTION_LEN, 2*SECTION_LEN], everySessionTraceType="probe")
             WellMeasure("short dotprod 1 and 2", lambda s, h: s.getDotProductScore(
                 True, h, timeInterval=[0, 2*SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
-            ), sessionsWithProbe).makeFigures(pp, makeDiffBoxPlot=False, makeMeasureBoxPlot=False,
-                                              makeOtherSeshBoxPlot=False, makeOtherSeshDiffBoxPlot=False,
+            ), sessionsWithProbe).makeFigures(pp, plotFlags="everysession",
                                               everySessionTraceTimeInterval=lambda _: [
                                                   0, 2*SECTION_LEN], everySessionTraceType="probe")
 
@@ -643,5 +640,6 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
     # makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_TRACES=True)
-    makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
-                MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
+    #             MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
+    makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)

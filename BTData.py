@@ -1,11 +1,12 @@
 import json
 import numpy as np
 import os
-from BTSession import BTSession
+from BTSession import BTSession, ImportOptions
 from BTRestSession import BTRestSession
+from UtilFunctions import Ripple
 from datetime import datetime
 from typing import List, Callable, Any
-from dataclasses import is_dataclass
+from dataclasses import asdict
 
 NP_KEY_PFX = '__numpy_ref__'
 NP_LIST_KEY_PFX = '__numpy_list_ref__'
@@ -85,11 +86,36 @@ class BTData:
             return "__!None__!", False
         if isinstance(v, dict):
             return "__!dict__!" + json.dumps(v), False
-        if is_dataclass(v):
-            return f"__!{type(v)}__!" + str(v), False
+        if isinstance(v, ImportOptions):
+            return "__!ImportOptions__!" + json.dumps(asdict(v)), False
+        if isinstance(v, Ripple):
+            return "__!Ripple__!" + json.dumps(asdict(v)), False
         if isinstance(v, list):
-            return "__!list__!" + str(v), False
+            # This recursion is necessary for list of ripples
+            saveableList = [self.makeValueSaveable(sv)[0] for sv in v]
+            return "__!list__!" + str(saveableList), False
         return v, isinstance(v, np.ndarray)
+
+    def buildLoadedObject(self, val):
+        if isinstance(val, str):
+            if val.startswith("__!"):
+                vs = list(filter(lambda x: len(x) > 0, val.split("__!")))
+                if vs[0] == "None":
+                    return None
+                if vs[0] == "dict":
+                    return json.loads(vs[1])
+                if vs[0] == "ImportOptions":
+                    d = json.loads(vs[1])
+                    return ImportOptions(**d)
+                if vs[0] == "list":
+                    l = json.loads(vs[1])
+                    return [self.buildLoadedObject(v) for v in l]
+                if vs[0] == "Ripple":
+                    d = json.loads(vs[1])
+                    return Ripple(**d)
+                raise ValueError(f"Couldn't parse special value {val}")
+                # TODO dataclasses!
+        return val
 
     def saveToFile_new(self, filename: str) -> int:
         saveDict = {}
@@ -113,18 +139,6 @@ class BTData:
         print(f"{ saveDict = }")
         np.savez_compressed(filename, **saveDict)
         return 0
-
-    def buildLoadedObject(self, val):
-        if isinstance(val, str):
-            if val.startswith("__!"):
-                vs = list(filter(lambda x: len(x) > 0, val.split("__!")))
-                if vs[0] == "None":
-                    return None
-                if vs[0] == "dict" or vs[0] == "list":
-                    return json.loads(vs[1])
-                print(vs)
-                # TODO dataclasses!
-        return val
 
     def loadFromFile_new(self, filename: str) -> int:
         self.filename = filename

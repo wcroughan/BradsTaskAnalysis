@@ -4,8 +4,9 @@ import numpy as np
 from typing import Optional, List, Dict, Tuple
 from datetime import datetime
 from numpy.typing import ArrayLike
+from dataclasses import dataclass, field
 
-from consts import TRODES_SAMPLING_RATE, allWellNames, CM_PER_FT
+from consts import TRODES_SAMPLING_RATE, allWellNames, CM_PER_FT, LFP_SAMPLING_RATE
 from UtilFunctions import AnimalInfo, getWellPosCoordinates
 
 
@@ -29,6 +30,49 @@ from UtilFunctions import AnimalInfo, getWellPosCoordinates
 # *_ts - trodes timestamps
 # *_posIdx - index in probe_pos* or bt_pos*
 # *_lfpIdx - index in lfp data
+
+
+@dataclass
+class ImportOptions:
+    skipLFP: bool = False,
+    skipUSB: bool = False,
+    skipActivelinkLog: bool = False,
+    skipPrevSession: bool = True,
+    forceAllTrackingAuto: bool = False,
+    skipConfirmTrackingFileExtension: bool = True,
+    skipCurvature: bool = False,
+    runJustSpecified: bool = False,
+    specifiedDays: list = field(default_factory=list)
+    specifiedRuns: list = field(default_factory=list)
+    justExtractData: bool = False,
+    runInteractiveExtraction: bool = True,
+    confirmAfterEachSession: bool = False,
+
+    # ===========
+    # consts:
+    VEL_THRESH: float = 10.0  # cm/s
+    MOVE_THRESH_SM_SIGMA_SECS: float = 0.8
+    #  Typical observed amplitude of LFP deflection on stimulation
+    DEFLECTION_THRESHOLD_HI: float = 6000.0
+    DEFLECTION_THRESHOLD_LO: float = 2000.0
+    MIN_ARTIFACT_DISTANCE: int = int(0.05 * LFP_SAMPLING_RATE)
+    #  How much buffer time to give the ITI around behavior times
+    ITI_MARGIN: float = 10.0
+    #  constants for exploration bout analysis
+    BOUT_VEL_SM_SIGMA_SECS: float = 1.5
+    PAUSE_MAX_SPEED_CM_S: float = 8.0
+    MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS: float = 1.0
+    MIN_EXPLORE_TIME_SECS: float = 3.0
+    MIN_EXPLORE_NUM_WELLS: int = 4
+    #  constants for ballisticity
+    BALL_TIME_INTERVALS: list = field(default_factory=lambda: list(range(1, 24)))
+    KNOT_H_CM: float = 8.0
+
+    # ============
+    # debug :
+    debugMode: bool = False
+    debug_maxNumSessions: int = 1
+    debug_dontSave: bool = False
 
 
 class BTSession:
