@@ -4,7 +4,8 @@ import os
 from BTSession import BTSession
 from BTRestSession import BTRestSession
 from datetime import datetime
-from typing import List, Callable
+from typing import List, Callable, Any
+from dataclasses import is_dataclass
 
 NP_KEY_PFX = '__numpy_ref__'
 NP_LIST_KEY_PFX = '__numpy_list_ref__'
@@ -21,15 +22,15 @@ def is_jsonable(x):
 class BTData:
     def __init__(self) -> None:
         self.filename = ""
-        self.allSessions = []
-        self.allRestSessions = []
+        self.allSessions: List[BTSession] = []
+        self.allRestSessions: List[BTRestSession] = []
         self.importOptions = None
 
     def loadFromFile(self, filename: str) -> int:
         with open(filename, 'r') as f:
             np_dir = filename + ".numpy_objs"
-            self.allSessions = []
-            self.allRestSessions = []
+            self.allSessions: List[BTSession] = []
+            self.allRestSessions: List[BTRestSession] = []
             self.importOptions = None
             line = f.readline()
             while line:
@@ -79,26 +80,77 @@ class BTData:
 
             return 0
 
+    def makeValueSaveable(self, v: Any):
+        if v is None:
+            return "__!None__!", False
+        if isinstance(v, dict):
+            return "__!dict__!" + json.dumps(v), False
+        if is_dataclass(v):
+            return f"__!{type(v)}__!" + str(v), False
+        if isinstance(v, list):
+            return "__!list__!" + str(v), False
+        return v, isinstance(v, np.ndarray)
+
     def saveToFile_new(self, filename: str) -> int:
-        # TODO not working, probably can make a new dictionary based on __dict__
-        # but make it something that can be saved tofile all at once
-        with open(filename, "w") as f:
-            f.write("test\n")
-            np.savetxt(f, self.allSessions[0].loggedDetections_ts)
-            np.savetxt(f, self.allSessions[0].awayRewardEnter_posIdx)
-            f.write("lasttest")
+        saveDict = {}
+        savedTypes = set()
+        notArrays = []
+        for si, sesh in enumerate(self.allSessions):
+            seshPfx = f"{si}__!__"
+            dd = sesh.__dict__
+            for dk in dd:
+                key = seshPfx + dk
+                if isinstance(dd[dk], dict):
+                    print(f"Warning: Might want to make this not a dict: {key}")
+                v, isArray = self.makeValueSaveable(dd[dk])
+                if not isArray:
+                    notArrays.append(key)
+                saveDict[key] = v
+                savedTypes.add(type(v))
+
+        saveDict["notarrays"] = notArrays
+        # print(f"{ savedTypes = }")
+        print(f"{ saveDict = }")
+        np.savez_compressed(filename, **saveDict)
         return 0
 
+    def buildLoadedObject(self, val):
+        if isinstance(val, str):
+            if val.startswith("__!"):
+                vs = list(filter(lambda x: len(x) > 0, val.split("__!")))
+                if vs[0] == "None":
+                    return None
+                if vs[0] == "dict" or vs[0] == "list":
+                    return json.loads(vs[1])
+                print(vs)
+                # TODO dataclasses!
+        return val
+
     def loadFromFile_new(self, filename: str) -> int:
-        with open(filename, "r") as f:
-            v = f.readline()
-            print(f"{ v = }")
-            npv = np.loadtxt(f)
-            print(f"{ npv = }")
-            npv = np.loadtxt(f)
-            print(f"{ npv = }")
-            v = f.readline()
-            print(f"{ v = }")
+        self.filename = filename
+        self.allSessions: List[BTSession] = []
+        self.allRestSessions: List[BTRestSession] = []
+        self.importOptions = None
+
+        loadDict = np.load(filename)
+        notArrays = loadDict["notarrays"]
+        for key in loadDict.files:
+            if key == "notarrays":
+                continue
+
+            si, k = key.split("__!__")
+            si = int(si)
+            while si >= len(self.allSessions):
+                self.allSessions.append(BTSession())
+
+            v = loadDict[key]
+            if key in notArrays:
+                v = v.item()
+            mt = type(v)
+            v = self.buildLoadedObject(v)
+            self.allSessions[si].__dict__[k] = v
+            print(key, v, type(v), mt, type(loadDict[key]))
+
         return 0
 
     def saveToFile(self, filename: str) -> int:

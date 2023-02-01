@@ -1,17 +1,63 @@
-import os
+# import os
 from BTData import BTData
 from BTSession import BTSession
 import numpy as np
 # import matplotlib.pyplot as plt
 # from UtilFunctions import getRipplePower
+import json
 
 d = BTData()
-s = BTSession()
-s.loggedDetections_ts = np.arange(0, 12)
-s.awayRewardEnter_posIdx = np.arange(9).reshape((3, 3))
-d.allSessions = [s]
+s1 = BTSession()
+s1.name = "Hello i am s1"
+s1.loggedDetections_ts = np.arange(0, 12)
+s1.awayRewardEnter_posIdx = np.arange(9).reshape((3, 3))
+s2 = BTSession()
+s2.name = "I'm s2!"
+s2.loggedDetections_ts = np.arange(0, 12, 2)
+s2.awayRewardEnter_posIdx = np.arange(9).reshape((3, 3))
+d.allSessions = [s1, s2]
 d.saveToFile_new("./testSave.rat")
-d.loadFromFile_new("./testSave.rat")
+d.loadFromFile_new("./testSave.rat.npz")
+print(d.allSessions)
+
+# dd = {}
+# dd["a"] = np.array([1, 2, 5, 5])
+# dd["b"] = np.arange(9).reshape((3, 3))
+# dd["c"] = "hello"
+# dd["d"] = 2
+# dd["e"] = {"subtest": "oiwejfoiewjf"}
+# dd["e"] = json.dumps(dd["e"])
+# dd["notarrays"] = ["c", "d", "e"]
+# np.savez_compressed("./test.npz", **dd)
+
+# od = {}
+# l = np.load("./test.npz")
+# print(l)
+# print(l.files)
+# for f in l.files:
+#     if f == "notarrays":
+#         continue
+#     k = f
+#     v = l[f]
+#     print(f"{ f = }")
+#     print(f"{ k = }")
+#     print(f"{ v = }")
+#     print(f"{ v.shape = }")
+#     if k in l["notarrays"]:
+#         v = v.item()
+#     print(f"{ v = }")
+#     print(f"{ type(v) = }")
+#     if isinstance(v, str):
+#         try:
+#             v = json.loads(v)
+#         except:
+#             pass
+#     print(f"{ v = }")
+#     print(f"{ type(v) = }")
+
+#     od[k] = v
+
+# print(od)
 
 
 # tlen = 1
