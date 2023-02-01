@@ -1164,6 +1164,35 @@ def getActivelinkLogFile(seshName, possibleDirectories):
     return logFile
 
 
+def getRotatedWells(wellName: int) -> List[int]:
+    """
+    Gets symetric wells up to rotating and mirroring the environment
+    examples (order of resulting list possibly different):
+    2 -> [7, 42, 47]
+    12 -> [13, 19, 27, 36, 37, 30, 22]
+    """
+    def c2n(x, y):
+        return 8 * y + x + 2
+
+    def flip(c):
+        return 5 - c
+    wy = wellName // 8
+    wx = (wellName % 8) - 2
+
+    ret = set()
+    ret.add(c2n(wx, wy))
+    ret.add(c2n(flip(wx), wy))
+    ret.add(c2n(wx, flip(wy)))
+    ret.add(c2n(flip(wx), flip(wy)))
+    ret.add(c2n(wy, wx))
+    ret.add(c2n(wy, flip(wx)))
+    ret.add(c2n(flip(wy), wx))
+    ret.add(c2n(flip(wy), flip(wx)))
+    ret.remove(wellName)
+
+    return list(ret)
+
+
 class TimeThisFunction:
     def __init__(self, func):
         functools.update_wrapper(self, func)

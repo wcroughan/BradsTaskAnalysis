@@ -168,9 +168,17 @@ class TrialMeasure():
 
             with plotManager.newFig(figName + "_byTrialAvgs_all_byCond") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, :], xvalsAll, avgColor="orange")
+                    pc.ax, self.measure2d[swrIdx, :], xvalsAll, avgColor="orange", label="SWR")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, :], xvalsAll, avgColor="cyan")
+                    pc.ax, self.measure2d[ctrlIdx, :], xvalsAll, avgColor="cyan", label="Ctrl")
+                pc.ax.set_xlim(1, len(xvalsAll))
+                pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[:, ::2], xvalsAll, avgColor="red", label="home")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[:, 1::2], xvalsAll, avgColor="blue", label="away")
                 pc.ax.set_xlim(1, len(xvalsAll))
                 pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
 
@@ -187,33 +195,33 @@ class TrialMeasure():
 
             with plotManager.newFig(figName + "_byTrialAvgs_home_byCond") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="orange")
+                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="orange", label="SWR")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="cyan")
+                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="cyan", label="Ctrl")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_away_byCond") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="orange")
+                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="orange", label="SWR")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="cyan")
+                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="cyan", label="Ctrl")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_ctrl_byTrialType") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="red")
+                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="red", label="home")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="blue")
+                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_SWR_byTrialType") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="red")
+                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="red", label="home")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="blue")
+                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
@@ -423,6 +431,7 @@ class WellMeasure():
         self.conditionCategoryByWell = np.array(self.conditionCategoryByWell)
         self.conditionCategoryBySession = np.array(self.conditionCategoryBySession)
         self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
+        self.acrossSessionMeasureDifference = np.array(self.acrossSessionMeasureDifference)
 
     def makeFigures(self,
                     plotManager: PlotManager,

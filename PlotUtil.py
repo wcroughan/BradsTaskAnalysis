@@ -919,8 +919,8 @@ def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outl
                 v.set_linewidth(3)
 
 
-def plotIndividualAndAverage(ax, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std",
-                             individualZOrder=1, averageZOrder=2):
+def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std",
+                             individualZOrder=1, averageZOrder=2, label=None):
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", r"Degrees of freedom <= 0 for slice")
         warnings.filterwarnings("ignore", r"Mean of empty slice")
@@ -932,7 +932,10 @@ def plotIndividualAndAverage(ax, dataPoints, xvals, individualColor="grey", avgC
     h1 = hm - hs
     h2 = hm + hs
     ax.plot(xvals, dataPoints.T, c=individualColor, lw=0.5, zorder=individualZOrder)
-    ax.plot(xvals, hm, color=avgColor, zorder=averageZOrder)
+    if label is None:
+        ax.plot(xvals, hm, color=avgColor, zorder=averageZOrder)
+    else:
+        ax.plot(xvals, hm, color=avgColor, zorder=averageZOrder, label=label)
     ax.fill_between(xvals, h1, h2, facecolor=avgColor, alpha=0.3, zorder=averageZOrder)
 
 

@@ -2,11 +2,17 @@
 from BTData import BTData
 from BTSession import BTSession, ImportOptions
 import numpy as np
-from UtilFunctions import Ripple
+from UtilFunctions import Ripple, getRotatedWells
 # import matplotlib.pyplot as plt
 # from UtilFunctions import getRipplePower
 import json
 from dataclasses import is_dataclass, asdict
+
+print(f"{ getRotatedWells(2) = }")
+print(f"{ getRotatedWells(3) = }")
+print(f"{ getRotatedWells(27) = }")
+print(f"{ getRotatedWells(12) = }")
+print(f"{ getRotatedWells(29) = }")
 
 # r = Ripple(0, 1, 2, 3, 4, 5, 6, 7, 8)
 # print(type(r))
@@ -20,27 +26,28 @@ from dataclasses import is_dataclass, asdict
 # exit()
 
 
-i = ImportOptions()
-i2 = ImportOptions(skipLFP=True)
-r = Ripple(0, 1, 2, 3, 4, 5, 6, 7, 4)
-r2 = Ripple(10, 11, 21, 31, 41, 51, 61, 71, 4)
-d = BTData()
-s1 = BTSession()
-s1.name = "Hello i am s1"
-s1.loggedDetections_ts = [1, 2, 3, 4]
-s1.awayRewardEnter_posIdx = np.arange(9).reshape((3, 3))
-s1.importOptions = i
-s1.animalName = r
-s2 = BTSession()
-s2.name = "I'm s2!"
-s2.loggedDetections_ts = np.arange(0, 12, 2)
-s2.awayRewardEnter_posIdx = np.arange(9).reshape((3, 3))
-s2.importOptions = i2
-s2.animalName = r2
-d.allSessions = [s1, s2]
-d.saveToFile_new("./testSave.rat")
-d.loadFromFile_new("./testSave.rat.npz")
-print(d.allSessions)
+# i = ImportOptions()
+# i2 = ImportOptions(skipLFP=True)
+# r = Ripple(0, 1, 2, 3, 4, 5, 6, 7, 4)
+# r2 = Ripple(10, 11, 21, 31, 41, 51, 61, 71, 4)
+# d = BTData()
+# s1 = BTSession()
+# s1.name = "Hello i am s1"
+# s1.loggedDetections_ts = [1, 2, 3, 4]
+# s1.awayRewardEnter_posIdx = np.arange(9).reshape((3, 3))
+# s1.importOptions = i
+# s1.animalName = r
+# s2 = BTSession()
+# s2.name = "I'm s2!"
+# s2.loggedDetections_ts = np.arange(0, 12, 2)
+# s2.awayRewardEnter_posIdx = np.arange(9).reshape((3, 3))
+# s2.importOptions = i2
+# s2.animalName = r2
+# d.allSessions = [s1, s2]
+# d.saveToFile_new("./testSave.rat")
+# d.loadFromFile_new("./testSave.rat.npz")
+# print(d.allSessions)
+
 
 # dd = {}
 # dd["a"] = np.array([1, 2, 5, 5])

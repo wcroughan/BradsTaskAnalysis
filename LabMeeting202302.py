@@ -19,6 +19,18 @@ import pandas as pd
 # make a dataclass that is a single ripple. Can contain start, stop, len, peak, mean, std, other stuff probs
 # Then return from detectRipples can be a list of those
 #
+# Quantify behavioral similarity, the typical routes taken to a well
+# First idea: make circular histogram (say 8 directions, with smoothing) of direction entering and exiting each well
+#   Compare dot prod or correlation between task and probe between conditions at home and maybe other wells
+#   For plotting, allow measureFunc to be either a normal function as is or a tuple
+#   If it's a tuple, first part is measure func, which can return either float or any other kind of value
+#   If it's an array, treat like rotational histogram
+#   If array of arrays, overlay rotational histograms (i.e. one for task one for probe)
+#   If it's something else, don't display on the everysession plot (maybe just skip that plot then)
+#   Then second element of tuple is a combining function which takes the output of measure func for a session one well
+#           and other wells to compare with (i.e. aways or other seshs) and gives you a difference measure
+#   should have option instead of overlaying hists to have plots show up in pairs, so can have different traces on each
+#
 # Look at notes in LoadInfo section, deal with all of them
 # i.e. minimum date for B13
 #
@@ -83,11 +95,16 @@ import pandas as pd
 # Trial measure output graphs
 #
 # To all every-session plots, add path on top
+#
+# fisheye correction
+#
+# refactor everything to unify units, get rid of unecessary stuff, make code more readable
 
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
-                RUN_OPTIMALITY=None, PLOT_DETAILED_TRACES=None,
+                RUN_OPTIMALITY=None, PLOT_DETAILED_TASK_TRACES=None,
+                PLOT_DETAILED_PROBE_TRACES=None,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
@@ -101,8 +118,10 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         RUN_MANY_DOTPROD = RUN_UNSPECIFIED
     if RUN_OPTIMALITY is None:
         RUN_OPTIMALITY = RUN_UNSPECIFIED
-    if PLOT_DETAILED_TRACES is None:
-        PLOT_DETAILED_TRACES = RUN_UNSPECIFIED
+    if PLOT_DETAILED_TASK_TRACES is None:
+        PLOT_DETAILED_TASK_TRACES = RUN_UNSPECIFIED
+    if PLOT_DETAILED_PROBE_TRACES is None:
+        PLOT_DETAILED_PROBE_TRACES = RUN_UNSPECIFIED
     if RUN_LFP_LATENCY is None:
         RUN_LFP_LATENCY = RUN_UNSPECIFIED
 
@@ -146,7 +165,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             ratName = ratName[:-1]
         sessions: List[BTSession] = allSessionsByRat[ratName]
         if sessionToRun is not None:
-            sessions = [s for s in sessions if sessionToRun in s.name or sessionToRun in s.infoFileName]
+            sessions: List[BTSession] = [
+                s for s in sessions if sessionToRun in s.name or sessionToRun in s.infoFileName]
         # nSessions = len(sessions)
         sessionsWithProbe = [sesh for sesh in sessions if sesh.probePerformed]
         # numSessionsWithProbe = len(sessionsWithProbe)
@@ -249,7 +269,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                                               everySessionTraceTimeInterval=lambda _: [
                                                   0, 2*SECTION_LEN], everySessionTraceType="probe")
 
-        if PLOT_DETAILED_TRACES:
+        if PLOT_DETAILED_TASK_TRACES:
             for si, sesh in enumerate(sessions):
                 pp.pushOutputSubDir(sesh.name)
                 with pp.newFig("task_fullTrace") as pc:
@@ -258,7 +278,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
                 traceLen = 60
                 traceStep = 30
-                tStarts = np.arange(0, sesh.btPos_secs[-1], traceStep)
+                tStarts = np.arange(0, sesh.btPos_secs[-1] - traceLen + traceStep, traceStep)
                 tEnds = tStarts + traceLen
                 tStarts_posIdx = np.searchsorted(sesh.btPos_secs, tStarts)
                 tEnds_posIdx = np.searchsorted(sesh.btPos_secs, tEnds)
@@ -316,6 +336,57 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                         t0 = sesh.btExploreBoutStart_posIdx[ei]
                         t1 = sesh.btExploreBoutEnd_posIdx[ei]
                         ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1])
+                pp.popOutputSubDir()
+
+        if PLOT_DETAILED_PROBE_TRACES:
+            for si, sesh in enumerate(sessionsWithProbe):
+                pp.pushOutputSubDir(sesh.name)
+                with pp.newFig("probe_fullTrace") as pc:
+                    setupBehaviorTracePlot(pc.ax, sesh)
+                    pc.ax.plot(sesh.probePosXs, sesh.probePosYs)
+
+                with pp.newFig("probe_beforeFill") as pc:
+                    setupBehaviorTracePlot(pc.ax, sesh)
+                    ti = sesh.timeIntervalToPosIdx(
+                        sesh.probePos_ts, (0, sesh.fillTimeCutoff(), "secs"))
+                    pc.ax.plot(sesh.probePosXs[ti[0]:ti[1]], sesh.probePosYs[ti[0]:ti[1]])
+
+                traceLen = 60
+                traceStep = 30
+                tStarts = np.arange(0, sesh.probePos_secs[-1] - traceLen + traceStep, traceStep)
+                tEnds = tStarts + traceLen
+                tStarts_posIdx = np.searchsorted(sesh.probePos_secs, tStarts)
+                tEnds_posIdx = np.searchsorted(sesh.probePos_secs, tEnds)
+                ncols = math.ceil(np.sqrt(len(tStarts_posIdx)))
+                with pp.newFig("probe_fullTraceBroken", subPlots=(ncols, ncols)) as pc:
+                    for ti in range(len(tStarts_posIdx)):
+                        t0 = tStarts_posIdx[ti]
+                        t1 = tEnds_posIdx[ti]
+                        ax = pc.axs.flat[ti]
+                        ax.plot(sesh.probePosXs[t0:t1], sesh.probePosYs[t0:t1])
+                        setupBehaviorTracePlot(ax, sesh)
+
+                if len(sesh.probeExcursionStart_posIdx) > 0:
+                    ncols = math.ceil(np.sqrt(len(sesh.probeExcursionStart_posIdx)))
+                    with pp.newFig("probe_excursions", subPlots=(ncols, ncols)) as pc:
+                        for ei in range(len(sesh.probeExcursionStart_posIdx)):
+                            ax = pc.axs.flat[ei]
+                            assert isinstance(ax, Axes)
+                            setupBehaviorTracePlot(ax, sesh)
+                            t0 = sesh.probeExcursionStart_posIdx[ei]
+                            t1 = sesh.probeExcursionEnd_posIdx[ei]
+                            ax.plot(sesh.probePosXs[t0:t1], sesh.probePosYs[t0:t1])
+
+                if len(sesh.probeExploreBoutStart_posIdx) > 0:
+                    ncols = math.ceil(np.sqrt(len(sesh.probeExploreBoutStart_posIdx)))
+                    with pp.newFig("probe_bouts", subPlots=(ncols, ncols)) as pc:
+                        for ei in range(len(sesh.probeExploreBoutStart_posIdx)):
+                            ax = pc.axs.flat[ei]
+                            assert isinstance(ax, Axes)
+                            setupBehaviorTracePlot(ax, sesh)
+                            t0 = sesh.probeExploreBoutStart_posIdx[ei]
+                            t1 = sesh.probeExploreBoutEnd_posIdx[ei]
+                            ax.plot(sesh.probePosXs[t0:t1], sesh.probePosYs[t0:t1])
 
                 pp.popOutputSubDir()
 
@@ -639,7 +710,7 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SMOOTHING_TEST=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
-    # makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_TRACES=True)
+    makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_PROBE_TRACES=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
     #             MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
-    makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
+    # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
