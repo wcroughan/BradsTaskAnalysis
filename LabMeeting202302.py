@@ -16,6 +16,9 @@ from consts import TRODES_SAMPLING_RATE
 import pandas as pd
 
 # TODO
+# focus first on getting something on which to base discussion, like very basic demonstration of memory of home during probe
+#   once have measures showing home/away difference, can talk about condition difference
+#
 # make a dataclass that is a single ripple. Can contain start, stop, len, peak, mean, std, other stuff probs
 # Then return from detectRipples can be a list of those
 #
@@ -104,7 +107,7 @@ import pandas as pd
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
                 RUN_OPTIMALITY=None, PLOT_DETAILED_TASK_TRACES=None,
-                PLOT_DETAILED_PROBE_TRACES=None,
+                PLOT_DETAILED_PROBE_TRACES=None, RUN_NEW=True,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
@@ -188,10 +191,10 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
               f"with probe: {nCtrlWithProbe} Ctrl, {nSWRWithProbe} SWR)")
 
         data = [[
-            sesh.name, sesh.conditionString(), sesh.homeWell, len(sesh.visitedAwayWells)
+            sesh.name, sesh.conditionString(), sesh.homeWell, len(sesh.visitedAwayWells), sesh.fillTimeCutoff()
         ] for si, sesh in enumerate(sessions)]
         df = pd.DataFrame(data, columns=[
-            "name", "condition", "home well", "num aways found"
+            "name", "condition", "home well", "num aways found", "fill time"
         ])
         s = df.to_string()
         pp.writeToInfoFile(s)
@@ -208,8 +211,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            TrialMeasure("test", lambda s, i1, i2, t: i2 - i1,
-                         sessions).makeFigures(pp, plotFlags="averages")
+            WellMeasure("test", lambda s, w: s.getLatencyToWell(False, w), sessions[0:2])
 
         if RUN_SMOOTHING_TEST:
             smoothVals = np.power(2.0, np.arange(-1, 5))
@@ -250,6 +252,13 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             WellMeasure("task dotprod score", lambda s, h: s.getDotProductScore(
                 False, h, boutFlag=BTSession.BOUT_STATE_EXPLORE),
                 sessionsWithProbe).makeFigures(pp, everySessionTraceType="task_bouts")
+
+        if RUN_NEW:
+            # Quick fig from mid meeting
+            WellMeasure("probe dotprod score first entry", lambda s, h: s.getDotProductScore(
+                True, h, timeInterval=[0, s.getLatencyToWell(True, s.homeWell, returnUnits="secs")], boutFlag=BTSession.BOUT_STATE_EXPLORE),
+                sessionsWithProbe).makeFigures(pp, everySessionTraceTimeInterval=lambda s: [0, s.getLatencyToWell(True, s.homeWell, returnUnits="secs")],
+                                               everySessionTraceType="probe_bouts", plotFlags="everysession")
 
         if RUN_MANY_DOTPROD:
             SECTION_LEN = 5
@@ -709,8 +718,9 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_MANY_DOTPROD=True, RUN_DOT_PROD=True, RUN_SPOTLIGHT=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SMOOTHING_TEST=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    makeFigures(RUN_UNSPECIFIED=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
-    makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_PROBE_TRACES=True)
+    # makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_PROBE_TRACES=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
     #             MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)

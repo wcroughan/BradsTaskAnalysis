@@ -338,7 +338,8 @@ class WellMeasure():
 
     optional well filter for away wells
     wellFilter(away trial index, away well name)
-        -> True if away well should be included, False if if should be skipped
+        -> True if away well should be included in within-session diff, False if if should be skipped
+        Note: measureFunc will be called on all wells regardless of this return value
     """
 
     def __init__(self, name: str = "",
@@ -432,6 +433,60 @@ class WellMeasure():
         self.conditionCategoryBySession = np.array(self.conditionCategoryBySession)
         self.withinSessionMeasureDifference = np.array(self.withinSessionMeasureDifference)
         self.acrossSessionMeasureDifference = np.array(self.acrossSessionMeasureDifference)
+
+        measure = []
+        sessionIdxColumn = []
+        condition = []
+        conditionStr = []
+        excludeFromDiff = []
+        dotColors = []
+        wellName = []
+        wellType = []
+        for si, sesh in enumerate(sessionList):
+            for well in allWellNames:
+                measure.append(measureFunc(sesh, well))
+                sessionIdxColumn.append(si)
+                condition.append(sesh.condition)
+                conditionStr.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                dotColors.append("orange" if sesh.isRippleInterruption else "cyan")
+                wellName.append(well)
+                if well == sesh.homeWell:
+                    wellType.append("home")
+                    excludeFromDiff.append(False)
+                elif well in sesh.visitedAwayWells:
+                    ai = sesh.visitedAwayWells.index(well)
+                    wellType.append("away")
+                    excludeFromDiff.append(not wellFilter(ai, well))
+                else:
+                    wellType.append("other")
+                    excludeFromDiff.append(False)
+
+        # self.measureDf = pd.DataFrame({
+        #     "sessionIdx": sessionIdxColumn,
+        #     "wellName": wellName,
+        #     "val": measure,
+        #     "wellType": wellType,
+        #     "condition": condition,
+        #     "conditionStr": conditionStr,
+        #     "excludeFromDiff": excludeFromDiff,
+        #     "dotColor": dotColors,
+        # })
+        # print(self.measureDf.to_string())
+
+        # # Groups home and away trials within a session, takes nanmean of each
+        # # Then takes difference of home and away values within each sesion
+        # # Finally, lines them up with sessionDf info
+        # # TODO this was copied from trialmeasure, but here we'll also have other as a type so
+        # #   to adjust how we get the diff
+        # g = self.measureDf.groupby(["sessionIdx", "wellType"]).agg(
+        #     withinSessionDiff=("val", "mean"))
+        # print(g.to_string())
+        # print(g)
+        # # g.diff().xs("home", level="trialType").join(self.sessionDf)
+        # # self.withinSessionDiffs = None
+        # # diffs = self.withinSessionDiffs["withinSessionDiff"].to_numpy()
+        # # self.diffMin = np.nanmin(diffs)
+        # # self.diffMax = np.nanmax(diffs)
 
     def makeFigures(self,
                     plotManager: PlotManager,
