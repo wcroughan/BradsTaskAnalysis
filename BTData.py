@@ -78,8 +78,28 @@ class BTData:
             self.filename = filename
 
             return 0
-        print("Couldn't open file %s" % filename)
-        return -1
+
+    def saveToFile_new(self, filename: str) -> int:
+        # TODO not working, probably can make a new dictionary based on __dict__
+        # but make it something that can be saved tofile all at once
+        with open(filename, "w") as f:
+            f.write("test\n")
+            np.savetxt(f, self.allSessions[0].loggedDetections_ts)
+            np.savetxt(f, self.allSessions[0].awayRewardEnter_posIdx)
+            f.write("lasttest")
+        return 0
+
+    def loadFromFile_new(self, filename: str) -> int:
+        with open(filename, "r") as f:
+            v = f.readline()
+            print(f"{ v = }")
+            npv = np.loadtxt(f)
+            print(f"{ npv = }")
+            npv = np.loadtxt(f)
+            print(f"{ npv = }")
+            v = f.readline()
+            print(f"{ v = }")
+        return 0
 
     def saveToFile(self, filename: str) -> int:
         with open(filename, 'w') as f:
@@ -122,8 +142,6 @@ class BTData:
 
             self.filename = filename
             return 0
-        print("Couldn't open file %s" % filename)
-        return -1
 
     def filterAndSaveDict(self, di: dict, file_pfx: str, np_dir: str) -> dict:
         clean_di = dict()

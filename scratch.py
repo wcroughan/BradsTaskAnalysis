@@ -1,34 +1,43 @@
-# import os
-# from BTData import BTData
-# from BTSession import BTSession
+import os
+from BTData import BTData
+from BTSession import BTSession
 import numpy as np
-import matplotlib.pyplot as plt
-from UtilFunctions import getRipplePower
+# import matplotlib.pyplot as plt
+# from UtilFunctions import getRipplePower
 
-tlen = 1
-fs = 1500
-x = np.linspace(0, tlen, fs*tlen)
-ramp = np.linspace(0, 1, len(x))
-s1 = np.sin(x * 200 * 2 * np.pi)
-s2 = np.sin(x * 75 * 2 * np.pi)
-s3 = s1 * ramp + s2 * (1 - ramp)
-s4 = s1.copy()
-s4[(len(x) // 2):] = s2[(len(x) // 2):]
-
-sig = s4
-
-ps, _, _, _ = getRipplePower(sig, method="standard")
-pc, _, _, _ = getRipplePower(sig, method="causal")
-# pa, _, _, _ = getRipplePower(sig, method="activelink")
-
-assert len(sig) == len(ps) == len(pc)
+d = BTData()
+s = BTSession()
+s.loggedDetections_ts = np.arange(0, 12)
+s.awayRewardEnter_posIdx = np.arange(9).reshape((3, 3))
+d.allSessions = [s]
+d.saveToFile_new("./testSave.rat")
+d.loadFromFile_new("./testSave.rat")
 
 
-plt.plot(x, sig, label="signal")
-plt.plot(x, ps, label="standard")
-plt.plot(x, pc, label="causal")
-plt.legend()
-plt.show()
+# tlen = 1
+# fs = 1500
+# x = np.linspace(0, tlen, fs*tlen)
+# ramp = np.linspace(0, 1, len(x))
+# s1 = np.sin(x * 200 * 2 * np.pi)
+# s2 = np.sin(x * 75 * 2 * np.pi)
+# s3 = s1 * ramp + s2 * (1 - ramp)
+# s4 = s1.copy()
+# s4[(len(x) // 2):] = s2[(len(x) // 2):]
+
+# sig = s4
+
+# ps, _, _, _ = getRipplePower(sig, method="standard")
+# pc, _, _, _ = getRipplePower(sig, method="causal")
+# # pa, _, _, _ = getRipplePower(sig, method="activelink")
+
+# assert len(sig) == len(ps) == len(pc)
+
+
+# plt.plot(x, sig, label="signal")
+# plt.plot(x, ps, label="standard")
+# plt.plot(x, pc, label="causal")
+# plt.legend()
+# plt.show()
 
 
 # locations = np.array([
