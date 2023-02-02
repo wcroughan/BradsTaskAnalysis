@@ -7,7 +7,7 @@ from numpy.typing import ArrayLike
 from dataclasses import dataclass, field
 
 from consts import TRODES_SAMPLING_RATE, allWellNames, CM_PER_FT, LFP_SAMPLING_RATE
-from UtilFunctions import AnimalInfo, getWellPosCoordinates
+from UtilFunctions import LoadInfo, getWellPosCoordinates, Ripple, ImportOptions
 
 
 # A few design decisions I'm implementing now:
@@ -30,49 +30,6 @@ from UtilFunctions import AnimalInfo, getWellPosCoordinates
 # *_ts - trodes timestamps
 # *_posIdx - index in probe_pos* or bt_pos*
 # *_lfpIdx - index in lfp data
-
-
-@dataclass
-class ImportOptions:
-    skipLFP: bool = False,
-    skipUSB: bool = False,
-    skipActivelinkLog: bool = False,
-    skipPrevSession: bool = True,
-    forceAllTrackingAuto: bool = False,
-    skipConfirmTrackingFileExtension: bool = True,
-    skipCurvature: bool = False,
-    runJustSpecified: bool = False,
-    specifiedDays: list = field(default_factory=list)
-    specifiedRuns: list = field(default_factory=list)
-    justExtractData: bool = False,
-    runInteractiveExtraction: bool = True,
-    confirmAfterEachSession: bool = False,
-
-    # ===========
-    # consts:
-    VEL_THRESH: float = 10.0  # cm/s
-    MOVE_THRESH_SM_SIGMA_SECS: float = 0.8
-    #  Typical observed amplitude of LFP deflection on stimulation
-    DEFLECTION_THRESHOLD_HI: float = 6000.0
-    DEFLECTION_THRESHOLD_LO: float = 2000.0
-    MIN_ARTIFACT_DISTANCE: int = int(0.05 * LFP_SAMPLING_RATE)
-    #  How much buffer time to give the ITI around behavior times
-    ITI_MARGIN: float = 10.0
-    #  constants for exploration bout analysis
-    BOUT_VEL_SM_SIGMA_SECS: float = 1.5
-    PAUSE_MAX_SPEED_CM_S: float = 8.0
-    MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS: float = 1.0
-    MIN_EXPLORE_TIME_SECS: float = 3.0
-    MIN_EXPLORE_NUM_WELLS: int = 4
-    #  constants for ballisticity
-    BALL_TIME_INTERVALS: list = field(default_factory=lambda: list(range(1, 24)))
-    KNOT_H_CM: float = 8.0
-
-    # ============
-    # debug :
-    debugMode: bool = False
-    debug_maxNumSessions: int = 1
-    debug_dontSave: bool = False
 
 
 class BTSession:
@@ -100,8 +57,8 @@ class BTSession:
     CONDITION_NO_STIM = 2
 
     def __init__(self) -> None:
-        self.animalInfo: Optional[AnimalInfo] = None
-        self.importOptions: Optional[Dict] = None
+        self.loadInfo: LoadInfo = None
+        self.importOptions: ImportOptions = None
         self.animalName = ""
 
         # ==================================
@@ -259,61 +216,15 @@ class BTSession:
         self.rpowmProbe = 0.0
         self.rpowsProbe = 0.0
 
-        # So many vars but soon this will be dataclasses don't worry
-        self.btRipStartsPreStats_lfpIdx = np.array([])
-        self.btRipLensPreStats_lfpIdx = np.array([])
-        self.btRipPeaksPreStats_lfpIdx = np.array([])
-        self.btRipPeakAmpsPreStats = np.array([])
-        self.btRipCrossThreshPreStats_lfpIdx = np.array([])
-        self.btRipStartsPreStats_ts = np.array([])
-        self.itiRipStartsPreStats_lfpIdx = np.array([])
-        self.itiRipLensPreStats_lfpIdx = np.array([])
-        self.itiRipPeaksPreStats_lfpIdx = np.array([])
-        self.itiRipPeakAmpsPreStats = np.array([])
-        self.itiRipCrossThreshPreStats_lfpIdx = np.array([])
-        self.itiRipStartsPreStats_ts = np.array([])
-        self.probeRipStartsPreStats_lfpIdx = np.array([])
-        self.probeRipLensPreStats_lfpIdx = np.array([])
-        self.probeRipPeaksPreStats_lfpIdx = np.array([])
-        self.probeRipPeakAmpsPreStats = np.array([])
-        self.probeRipCrossThreshPreStats_lfpIdx = np.array([])
-        self.probeRipStartsPreStats_ts = np.array([])
-        self.btRipStartsProbeStats_lfpIdx = np.array([])
-        self.btRipLensProbeStats_lfpIdx = np.array([])
-        self.btRipPeaksProbeStats_lfpIdx = np.array([])
-        self.btRipPeakAmpsProbeStats = np.array([])
-        self.btRipCrossThreshProbeStats_lfpIdx = np.array([])
-        self.btRipStartsProbeStats_ts = np.array([])
-        self.itiRipStartsProbeStats_lfpIdx = np.array([])
-        self.itiRipLensProbeStats_lfpIdx = np.array([])
-        self.itiRipPeaksProbeStats_lfpIdx = np.array([])
-        self.itiRipPeakAmpsProbeStats = np.array([])
-        self.itiRipCrossThreshProbeStats_lfpIdx = np.array([])
-        self.itiRipStartsProbeStats_ts = np.array([])
-        self.probeRipStartsProbeStats_lfpIdx = np.array([])
-        self.probeRipLensProbeStats_lfpIdx = np.array([])
-        self.probeRipPeaksProbeStats_lfpIdx = np.array([])
-        self.probeRipPeakAmpsProbeStats = np.array([])
-        self.probeRipCrossThreshProbeStats_lfpIdx = np.array([])
-        self.probeRipStartsProbeStats_ts = np.array([])
-        self.btRipStartsLogStats_lfpIdx = np.array([])
-        self.btRipLensLogStats_lfpIdx = np.array([])
-        self.btRipPeaksLogStats_lfpIdx = np.array([])
-        self.btRipPeakAmpsLogStats = np.array([])
-        self.btRipCrossThreshLogStats_lfpIdx = np.array([])
-        self.btRipStartsLogStats_ts = np.array([])
-        self.itiRipStartsLogStats_lfpIdx = np.array([])
-        self.itiRipLensLogStats_lfpIdx = np.array([])
-        self.itiRipPeaksLogStats_lfpIdx = np.array([])
-        self.itiRipPeakAmpsLogStats = np.array([])
-        self.itiRipCrossThreshLogStats_lfpIdx = np.array([])
-        self.itiRipStartsLogStats_ts = np.array([])
-        self.probeRipStartsLogStats_lfpIdx = np.array([])
-        self.probeRipLensLogStats_lfpIdx = np.array([])
-        self.probeRipPeaksLogStats_lfpIdx = np.array([])
-        self.probeRipPeakAmpsLogStats = np.array([])
-        self.probeRipCrossThreshLogStats_lfpIdx = np.array([])
-        self.probeRipStartsLogStats_ts = np.array([])
+        self.btRipsPreStats: List[Ripple] = []
+        self.itiRipsPreStats: List[Ripple] = []
+        self.probeRipsPreStats: List[Ripple] = []
+        self.btRipsProbeStats: List[Ripple] = []
+        self.itiRipsProbeStats: List[Ripple] = []
+        self.probeRipsProbeStats: List[Ripple] = []
+        self.btRipsLogStats: List[Ripple] = []
+        self.itiRipsLogStats: List[Ripple] = []
+        self.probeRipsLogStats: List[Ripple] = []
 
         # Lighting stuff
         self.frameTimes = np.array([])
@@ -397,18 +308,18 @@ class BTSession:
         self.probeCurvatureDyb = np.array([])
 
         self.btSmoothVel = []
+        self.btBoutCategory = np.array([])
+        self.btBoutLabel = np.array([])
         self.btExploreBoutStart_posIdx = []
         self.btExploreBoutEnd_posIdx = []
         self.btExploreBoutLensSecs = []
-        self.btBoutCategory = np.array([])
-        self.btBoutLabel = np.array([])
 
         self.probeSmoothVel = []
+        self.probeBoutCategory = np.array([])
+        self.probeBoutLabel = np.array([])
         self.probeExploreBoutStart_posIdx = []
         self.probeExploreBoutEnd_posIdx = []
         self.probeExploreBoutLensSecs = []
-        self.probeBoutCategory = np.array([])
-        self.probeBoutLabel = np.array([])
 
         self.btExcursionCategory = []
         self.btExcursionStart_posIdx = []
@@ -1025,13 +936,15 @@ class BTSession:
         how many times did ripple happen while rat was at the well?
         """
         if inProbe:
-            ripPosIdxs = np.searchsorted(self.probePos_ts, self.probeRipStarts_ts)
+            ripPosIdxs = np.searchsorted(self.probePos_ts, np.array(
+                [r.start_ts for r in self.probeRipsProbeStats]))
             nw = np.array(self.probeNearestWells)
-            return np.count_nonzero(wellName == nw[ripPosIdxs])
         else:
-            ripPosIdxs = np.searchsorted(self.btPos_ts, self.btRipStartsPreStats_ts)
+            ripPosIdxs = np.searchsorted(self.btPos_ts, np.array(
+                [r.start_ts for r in self.btRipsPreStats]))
             nw = np.array(self.btNearestWells)
-            return np.count_nonzero(wellName == nw[ripPosIdxs])
+
+        return np.count_nonzero(wellName == nw[ripPosIdxs])
 
     def gravityOfWell(self, inProbe, wellName, fromWells=allWellNames, emptyVal=np.nan, **kwargs):
         neighborWells = np.array([-9, -8, -7, -1, 0, 1, 7, 8, 9]) + wellName

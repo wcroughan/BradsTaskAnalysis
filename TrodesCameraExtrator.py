@@ -9,7 +9,7 @@ import glob
 if __name__ == "__main__":
     import cv2
 
-from UtilFunctions import getInfoForAnimal, getTrodesVideoFile, getUSBVideoFile
+from UtilFunctions import getLoadInfo, getTrodesVideoFile, getUSBVideoFile
 from consts import TRODES_SAMPLING_RATE
 
 
@@ -443,7 +443,7 @@ def rerunTrodesVideos(showVideo=False):
     # animalNames = ["B13"]
     allVids = []
     for animalName in animalNames:
-        info = getInfoForAnimal(animalName)
+        info = getLoadInfo(animalName)
         for s in info.rerun_trodes_videos:
             vidFile = getTrodesVideoFile(s, info.data_dir)
             allVids.append(vidFile)
@@ -463,7 +463,7 @@ def rerunUSBVideos(showVideo=False):
     # animalNames = ["B13"]
     allVids = []
     for animalName in animalNames:
-        info = getInfoForAnimal(animalName)
+        info = getLoadInfo(animalName)
         possibleDirectories = [
             "/media/WDC6/{}/".format(animalName), "/media/WDC7/{}/".format(animalName)]
         for s in info.rerun_usb_videos:

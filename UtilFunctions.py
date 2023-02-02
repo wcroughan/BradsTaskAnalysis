@@ -14,7 +14,115 @@ import functools
 import time
 import subprocess
 from numpy.typing import ArrayLike
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum, auto
+
+
+@dataclass
+class Ripple:
+    start_lfpIdx: int
+    len_lfpIdx: int
+    peakIdx_lfpIdx: int
+    peakAmp: float
+    crossThreshIdx_lfpIdx: int
+    start_ts: int
+
+    param_detectionThresh: float
+    param_edgeThresh: float
+    param_minLen: float
+    param_maxLen: float
+
+
+@dataclass
+class ImportOptions:
+    """
+    This is global options specified possibly on command line that control how all animal data is processed
+    """
+    skipLFP: bool = False
+    skipUSB: bool = False
+    skipActivelinkLog: bool = False
+    skipPrevSession: bool = True
+    forceAllTrackingAuto: bool = False
+    skipConfirmTrackingFileExtension: bool = True
+    skipCurvature: bool = False
+    runJustSpecified: bool = False
+    specifiedDays: list = field(default_factory=list)
+    specifiedRuns: list = field(default_factory=list)
+    justExtractData: bool = False
+    runInteractiveExtraction: bool = True
+    confirmAfterEachSession: bool = False
+
+    # ===========
+    # consts:
+    VEL_THRESH: float = 10.0  # cm/s
+    MOVE_THRESH_SM_SIGMA_SECS: float = 0.8
+    #  Typical observed amplitude of LFP deflection on stimulation
+    DEFLECTION_THRESHOLD_HI: float = 6000.0
+    DEFLECTION_THRESHOLD_LO: float = 2000.0
+    MIN_ARTIFACT_DISTANCE: int = int(0.05 * LFP_SAMPLING_RATE)
+    #  How much buffer time to give the ITI around behavior times
+    ITI_MARGIN: float = 10.0
+    #  constants for exploration bout analysis
+    BOUT_VEL_SM_SIGMA_SECS: float = 1.5
+    PAUSE_MAX_SPEED_CM_S: float = 8.0
+    MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS: float = 1.0
+    MIN_EXPLORE_TIME_SECS: float = 3.0
+    MIN_EXPLORE_NUM_WELLS: int = 4
+    #  constants for ballisticity
+    BALL_TIME_INTERVALS: list = field(default_factory=lambda: list(range(1, 24)))
+    KNOT_H_CM: float = 8.0
+
+    # ============
+    # debug :
+    debugMode: bool = False
+    debug_maxNumSessions: Optional[int] = None
+    debug_dontSave: bool = False
+
+
+@dataclass
+class LoadInfo:
+    """
+    this is animal-specific info such as paths to raw data
+    """
+    # configName is the argument that determines all other values
+    # It is what is specified on the command line
+    configName: str
+    animalName: str
+
+    # position info:
+    X_START: int
+    X_FINISH: int
+    Y_START: int
+    Y_FINISH: int
+    excludeBoxes: Optional[List[Tuple[int, int, int, int]]]
+
+    # File names
+    # First element is drive name, other elements are dir names. Actual file path str is build dynamically
+    # path to bradtasksessions (or similar) directory with raw run folders
+    dataDirPath: List[str]
+    # path to where output file from ImportData.py is saved
+    outputDirPath: List[str]
+    # filename of output file from ImportData.py
+    out_filename: str
+
+    # some options about what data to include
+    excluded_dates: List[str]
+    excluded_sessions: List[str]
+    minimum_date: Optional[str]
+
+    DEFAULT_RIP_DET_TET: Optional[int]
+    DEFAULT_RIP_BAS_TET: Optional[int]
+
+    # if DeepLabCut was used, this will be not None
+    DLC_dir: Optional[str] = None
+
+    @property
+    def data_dir(self):
+        return os.path.join(getDrivePathByLabel(self.dataDirPath[0]), *self.dataDirPath[1:])
+
+    @property
+    def output_dir(self):
+        return os.path.join(getDrivePathByLabel(self.outputDirPath[0]), *self.outputDirPath[1:])
 
 
 def findDataDir(possibleDataDirs=None) -> str:
@@ -31,17 +139,62 @@ def findDataDir(possibleDataDirs=None) -> str:
 
 
 def parseCmdLineAnimalNames(default: Optional[List[str]] = None) -> List[str]:
-    if len(sys.argv) >= 2:
-        if len(sys.argv) == 2 and sys.argv[1] == "new":
-            return ["B16", "B17", "B18"]
-        elif len(sys.argv) == 2 and sys.argv[1] == "old":
-            return ["Martin", "B13", "B14"]
-        elif len(sys.argv) == 2 and sys.argv[1] == "all":
-            return ["Martin", "B13", "B14", "B16", "B17", "B18"]
+    a = sys.argv[1:]
+    names = []
+    i = 0
+    while i < len(a):
+        s = a[i]
+        if s.startswith("--"):
+            i += 2
+            continue
 
-        return sys.argv[1:]
-    else:
+        if s.startswith("-"):
+            i += 1
+            continue
+
+        if s == "new":
+            names += ["B16", "B17", "B18"]
+        elif s == "old":
+            names += ["Martin", "B13", "B14"]
+        elif s == "all":
+            names += ["Martin", "B13", "B14", "B16", "B17", "B18"]
+        else:
+            names.append(s)
+        i += 1
+
+    if len(names) == 0:
         return default
+
+    return names
+
+
+def parseCmdLineImportOptions() -> ImportOptions:
+    importOptions = ImportOptions()
+    a = sys.argv[1:]
+    i = 0
+    while i < len(a):
+        s = a[i]
+        if not s.startswith("-"):
+            i += 1
+            continue
+
+        if s.startswith("--"):
+            flag = s[2:]
+            val = a[i+1]
+            if flag == "dsessions":
+                importOptions.debug_maxNumSessions = int(val)
+            i += 2
+            continue
+
+        flag = s[1:]
+        if flag == "D":
+            importOptions.debugMode = True
+        if flag == "ns":
+            importOptions.debug_dontSave = True
+
+        i += 1
+
+    return importOptions
 
 
 def readWellCoordsFile(wellCoordsFile: str) -> Dict[str, Tuple[int, int]]:
@@ -356,21 +509,7 @@ def getRipplePower_old(lfpData, causalSmoothing=False,
     return ripplePower, zpower, meanPower, stdPower
 
 
-@dataclass
-class Ripple:
-    start_lfpIdx: int
-    len_lfpIdx: int
-    peakIdx_lfpIdx: int
-    peakAmp: float
-    crossThreshIdx_lfpIdx: int
-
-    param_detectionThresh: float
-    param_edgeThresh: float
-    param_minLen: float
-    param_maxLen: float
-
-
-def detectRipples_new(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0):
+def detectRipples(ripplePower, tsFunc=lambda lfpIdx: None, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0) -> List[Ripple]:
     pks, _ = signal.find_peaks(ripplePower, height=minHeight)
 
     ret = []
@@ -405,7 +544,7 @@ def detectRipples_new(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeT
 
         lensec = float(length) / LFP_SAMPLING_RATE
         if lensec >= minLen and lensec <= maxLen:
-            ret.append(Ripple(start_lfpIdx=ripStart, len_lfpIdx=length, peakIdx_lfpIdx=pkAmpI,
+            ret.append(Ripple(start_lfpIdx=ripStart, start_ts=tsFunc(ripStart), len_lfpIdx=length, peakIdx_lfpIdx=pkAmpI,
                               peakAmp=pkAmp, crossThreshIdx_lfpIdx=crossI,
                               param_detectionThresh=minHeight, param_edgeThresh=edgeThresh, param_maxLen=maxLen,
                               param_minLen=minLen))
@@ -416,7 +555,7 @@ def detectRipples_new(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeT
     return ret
 
 
-def detectRipples(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0):
+def detectRipples_old(ripplePower, minHeight=3.0, minLen=0.05, maxLen=0.3, edgeThresh=0.0):
     pks, _ = signal.find_peaks(ripplePower, height=minHeight)
 
     ripStartIdxs = []
@@ -513,48 +652,6 @@ def getDrivePathByLabel(driveLabel: str):
         return None
 
 
-@dataclass
-class LoadInfo:
-    # configName is the argument that determines all other values
-    # It is what is specified on the command line
-    configName: str
-    ratName: str
-
-    # position info:
-    X_START: int
-    X_FINISH: int
-    Y_START: int
-    Y_FINISH: int
-    excludeBoxes: Optional[List[Tuple[int, int, int, int]]]
-
-    # File names
-    # First element is drive name, other elements are dir names. Actual file path str is build dynamically
-    # path to bradtasksessions (or similar) directory with raw run folders
-    dataDirPath: List[str]
-    # path to where output file from ImportData.py is saved
-    outputDirPath: List[str]
-    # filename of output file from ImportData.py
-    out_filename: str
-
-    # some options about what data to include
-    excluded_dates: List[str]
-    excluded_sessions: List[str]
-    minimum_date: Optional[str]
-
-    DEFAULT_RIP_DET_TET: Optional[int]
-    DEFAULT_RIP_BAS_TET: Optional[int]
-
-    # if DeepLabCut was used, this will be not None
-    DLC_dir: Optional[str]
-
-    @property
-    def data_dir(self):
-        return os.path.join(getDrivePathByLabel(self.dataDirPath[0]), *self.dataDirPath[1:])
-
-    def output_dir(self):
-        return os.path.join(getDrivePathByLabel(self.outputDirPath[0]), *self.outputDirPath[1:])
-
-
 def getLoadInfo(config: str) -> LoadInfo:
     if config == "Martin":
         # 2020-6-7: Too few interruptions to really call this an interruption session probably
@@ -562,7 +659,7 @@ def getLoadInfo(config: str) -> LoadInfo:
                           "20200606", "20200605", "20200601", "20200526", "20200527", "20200604", "20200608", "20200609", "20200607"]
         excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
 
-        return LoadInfo(configName=config, ratName="Martin",
+        return LoadInfo(configName=config, animalName="Martin",
                         X_START=200, X_FINISH=1175, Y_START=20, Y_FINISH=1275, excludeBoxes=None,
                         dataDirPath=["WDC1", "martindata", "bradtask"], outputDirPath=["WDC6", "Martin", "processed_data"],
                         out_filename="martin_bradtask.dat",
@@ -587,7 +684,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         # Cable got messed up during the task, pulley wasn't rolling horizontally
         excluded_sessions += ["20211217_1"]
 
-        return LoadInfo(configName=config, ratName="B13",
+        return LoadInfo(configName=config, animalName="B13",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
                         dataDirPath=["WDC6", "B13", "bradtasksessions"], outputDirPath=["WDC6", "B13", "processed_data"],
                         out_filename="B13_bradtask.dat",
@@ -601,7 +698,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         # forgot to turn stim on until after first home well
         excluded_sessions += ["20220311_1"]
 
-        return LoadInfo(configName=config, ratName="B14",
+        return LoadInfo(configName=config, animalName="B14",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
                         dataDirPath=["WDC6", "B14", "bradtasksessions"], outputDirPath=["WDC6", "B14", "processed_data"],
                         out_filename="B14_bradtask.dat",
@@ -620,7 +717,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         # Used the wrong detection tetrode
         excluded_sessions += ["20221103_1"]
 
-        return LoadInfo(configName=config, ratName="B16",
+        return LoadInfo(configName=config, animalName="B16",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
                         dataDirPath=["WDC8", "B16", "bradtasksessions"], outputDirPath=["WDC8", "B16", "processed_data"],
                         out_filename="B16_bradtask.dat",
@@ -631,7 +728,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         # Trodes video skips
         excluded_sessions = ["20221104_1"]
 
-        return LoadInfo(configName=config, ratName="B17",
+        return LoadInfo(configName=config, animalName="B17",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
                         dataDirPath=["WDC8", "B17", "bradtasksessions"], outputDirPath=["WDC8", "B17", "processed_data"],
                         out_filename="B17_bradtask.dat",
@@ -663,7 +760,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         # Wasn't actually detecting ripples during these
         excluded_sessions += ["20221102_1", "20221102_2", "20221103_1", "20221103_2", "20221105_1"]
 
-        return LoadInfo(configName=config, ratName="B18",
+        return LoadInfo(configName=config, animalName="B18",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=[(0, 0, 130, 60)],
                         dataDirPath=["WDC8", "B18", "bradtasksessions"], outputDirPath=["WDC8", "B18", "processed_data"],
                         out_filename="B18_bradtask.dat",
@@ -671,368 +768,6 @@ def getLoadInfo(config: str) -> LoadInfo:
                         DEFAULT_RIP_DET_TET=5, DEFAULT_RIP_BAS_TET=3)
 
     raise ValueError(f"Unknown config val {config}")
-
-
-class AnimalInfo:
-    def __init__(self):
-        self.animalName = ""
-
-        self.X_START = None
-        self.X_FINISH = None
-        self.Y_START = None
-        self.Y_FINISH = None
-        self.excludeBoxes = None
-        self.data_dir = ""
-        self.output_dir = ""
-        self.fig_output_dir = ""
-        self.out_filename = ""
-
-        self.excluded_dates = []
-        self.excluded_sessions = []
-        self.minimum_date = None
-
-        self.DEFAULT_RIP_DET_TET = None
-        self.DEFAULT_RIP_BAS_TET = None
-
-        self.DLC_dir = None
-
-
-def getInfoForAnimal(animalName: str) -> AnimalInfo:
-    ret = AnimalInfo()
-    ret.animalName = animalName
-    if animalName == "Martin":
-        ret.X_START = 200
-        ret.X_FINISH = 1175
-        ret.Y_START = 20
-        ret.Y_FINISH = 1275
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC1"), "martindata", "bradtask")
-        # ret.data_dir = '/media/WDC1/martindata/bradtask/'
-        # ret.output_dir = '/media/WDC6/Martin/processed_data/'
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC6"), "Martin", "processed_data")
-        ret.fig_output_dir = ret.output_dir
-        ret.out_filename = "martin_bradtask.dat"
-
-        ret.excluded_dates = ["20200528", "20200630", "20200702", "20200703"]
-        ret.excluded_dates += ["20200531", "20200603", "20200602",
-                               "20200606", "20200605", "20200601"]
-        ret.excluded_dates += ["20200526"]
-        ret.excluded_sessions = ["20200624_1", "20200624_2", "20200628_2"]
-        ret.minimum_date = None
-
-        ret.excluded_dates += ["20200527"]
-        ret.excluded_dates += ["20200604"]
-        ret.excluded_dates += ["20200608"]
-        ret.excluded_dates += ["20200609"]
-
-        # Too few interruptions to really call this an interruption session probably:
-        ret.excluded_dates += ["20200607"]
-
-        ret.DEFAULT_RIP_DET_TET = 37
-        ret.DEFAULT_RIP_BAS_TET = None
-
-    elif animalName == "B12":
-        ret.X_START = 200
-        ret.X_FINISH = 1175
-        ret.Y_START = 20
-        ret.Y_FINISH = 1275
-        # ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "bradtasksessions")
-        # ret.output_dir = "/media/WDC7/B12/processed_data/"
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "processed_data")
-        # ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
-        ret.fig_output_dir = ret.output_dir
-        ret.out_filename = "B12_bradtask.dat"
-
-        ret.excluded_dates = []
-        ret.minimum_date = None
-        ret.excluded_sessions = []
-        ret.DEFAULT_RIP_DET_TET = 7
-
-        # ret.DLC_dir = "/media/WDC6/DLC/trainingVideos/"
-        ret.DLC_dir = os.path.join(getDrivePathByLabel("WDC6"), "DLC", "trainingVideos")
-
-    elif animalName == "B12_goodpos":
-        ret.X_START = 200
-        ret.X_FINISH = 1175
-        ret.Y_START = 20
-        ret.Y_FINISH = 1275
-        # ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "bradtasksessions")
-        # ret.output_dir = "/media/WDC7/B12/processed_data/"
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "processed_data")
-        # ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
-        ret.fig_output_dir = ret.output_dir
-        ret.out_filename = "B12_goodpos_bradtask.dat"
-
-        ret.excluded_dates = ["20210816", "20210817", "20210818", "20210819"]
-        ret.minimum_date = None
-        ret.excluded_sessions = []
-        ret.DEFAULT_RIP_DET_TET = 7
-
-    elif animalName == "B12_no19":
-        ret.X_START = 200
-        ret.X_FINISH = 1175
-        ret.Y_START = 20
-        ret.Y_FINISH = 1275
-        # ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "bradtasksessions")
-        # ret.output_dir = "/media/WDC7/B12/processed_data/"
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "processed_data")
-        # ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
-        ret.fig_output_dir = ret.output_dir
-        ret.out_filename = "B12_no19_bradtask.dat"
-
-        ret.excluded_dates = ["20210819"]
-        ret.minimum_date = None
-        ret.excluded_sessions = []
-        ret.DEFAULT_RIP_DET_TET = 7
-
-    elif animalName == "B12_highthresh":
-        ret.X_START = 200
-        ret.X_FINISH = 1175
-        ret.Y_START = 20
-        ret.Y_FINISH = 1275
-        # ret.data_dir = "/media/WDC7/B12/bradtasksessions/"
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "bradtasksessions")
-        # ret.output_dir = "/media/WDC7/B12/processed_data/"
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC7"), "B12", "processed_data")
-        # ret.fig_output_dir = "/media/WDC7/B12/processed_data/"
-        ret.fig_output_dir = ret.output_dir
-        ret.out_filename = "B12_highthresh_bradtask.dat"
-
-        ret.excluded_dates = []
-        ret.minimum_date = "20210916"
-        ret.excluded_sessions = ["20210917_1", "20210923_1",
-                                 "20211004_1", "20211005_2", "20211006_1"]
-        ret.DEFAULT_RIP_DET_TET = 8
-
-    elif animalName == "B13":
-        ret.X_START = 100
-        ret.X_FINISH = 1050
-        ret.Y_START = 20
-        ret.Y_FINISH = 900
-        # ret.data_dir = "/media/WDC6/B13/bradtasksessions/"
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC6"), "B13", "bradtasksessions")
-        # ret.output_dir = "/media/WDC6/B13/processed_data/"
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC6"), "B13", "processed_data")
-        # ret.fig_output_dir = "/media/WDC6/B13/processed_data/"
-        ret.fig_output_dir = ret.output_dir
-        ret.out_filename = "B13_bradtask.dat"
-
-        ret.excluded_dates = ["20220209"]
-        # minimum_date = "20211209"  # had one run on the 8th with probe but used high ripple threshold and a
-        # different reference tetrode
-        ret.minimum_date = None
-        # high ripple thresh on 12/08-1, forgot to turn stim on til after first home on 12/16-2
-        ret.excluded_sessions = ["20211208_1", "20211216_2"]
-        ret.DEFAULT_RIP_DET_TET = 7
-        ret.DEFAULT_RIP_BAS_TET = 2
-
-        # Messed up away well order, marked down 20 when he got 12. Ended up giving him reward at 12 twice
-        ret.excluded_sessions += ["20220131_2"]
-        # Made a custom foundwells field in the behaviornotes for this guy, but would need to update the rest of the
-        # import code
-        # (i.e. clips loading assumes alternation with home)
-        ret.excluded_sessions += ["20220222_2"]
-        # video skips
-        ret.excluded_sessions += ["20220304_2"]
-        ret.excluded_sessions += ["20220307_1"]
-
-        # Cable got messed up during the task, pulley wasn't rolling horizontally
-        ret.excluded_sessions += ["20211217_1"]
-
-        ret.rerun_trodes_videos = []
-        ret.rerun_usb_videos = []
-
-    elif animalName == "B14":
-        ret.X_START = 100
-        ret.X_FINISH = 1050
-        ret.Y_START = 20
-        ret.Y_FINISH = 900
-        # ret.data_dir = "/media/WDC6/B14/bradtasksessions/"
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC6"), "B14", "bradtasksessions")
-        # ret.output_dir = "/media/WDC6/B14/processed_data/"
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC6"), "B14", "processed_data")
-        # ret.fig_output_dir = "/media/WDC6/B14/processed_data/"
-        ret.fig_output_dir = ret.output_dir
-        ret.out_filename = "B14_bradtask.dat"
-
-        ret.excluded_dates = []
-        # minimum_date = "20211209"  # one run with high thresh and one 15 min run on the 8th
-        ret.minimum_date = "20220220"  # Only after adjusting stim electrode to correct place!
-        ret.excluded_sessions = []
-        ret.DEFAULT_RIP_DET_TET = 3
-        ret.DEFAULT_RIP_BAS_TET = 2
-        # video skips
-        ret.excluded_sessions += ["20220307_2"]
-        ret.excluded_sessions += ["20220310_2"]
-        # forgot to turn stim on until after first home well
-        ret.excluded_sessions += ["20220311_1"]
-
-        ret.rerun_usb_videos = []
-        ret.rerun_trodes_videos = []
-    elif animalName == "B18":
-        ret.X_START = 100
-        ret.X_FINISH = 1050
-        ret.Y_START = 20
-        ret.Y_FINISH = 900
-        ret.excludeBoxes = [(0, 0, 130, 60)]
-        # ret.data_dir = "/home/wcroughan/data/B18/bradtasksessions/"
-        # ret.output_dir = "/home/wcroughan/data/B18/processed_data/"
-        # ret.fig_output_dir = "/home/wcroughan/data/B18/processed_data/"
-        # ret.data_dir = "/media/WDC8/B18/bradtasksessions/"
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC8"), "B18", "bradtasksessions")
-        # ret.output_dir = "/media/WDC8/B18/processed_data/"
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC8"), "B18", "processed_data")
-        # ret.fig_output_dir = "/media/WDC8/B18/processed_data/"
-        ret.fig_output_dir = ret.output_dir
-        ret.out_filename = "B18_bradtask.dat"
-
-        ret.excluded_dates = []
-        ret.minimum_date = None
-        # ret.minimum_date = "20221109"
-        ret.excluded_sessions = []
-
-        # Add back in later, just issue with info file
-        # ret.excluded_sessions += ["20221114_1"]
-        # ret.excluded_sessions += ["20221115_1"]
-        # ret.excluded_sessions += ["20221116_1"]
-        # ret.excluded_sessions += ["20221118_1"]
-
-        # Found wells doesn't seem like it lines up perfectly with usb video, check it out and fix
-        ret.excluded_sessions += ["20221113_2"]
-
-        # Need to improve trodes tracking
-        ret.excluded_sessions += ["20221108_1"]
-
-        # usb video skips (add back later, just annoying for now)
-        ret.excluded_sessions += ["20220617_1"]
-
-        # Trodes video skips
-        ret.excluded_sessions += ["20220620_1"]
-        ret.excluded_sessions += ["20220622_2"]
-
-        # Trodes camera partially blocked during probe by pulley system. It's just wells 7-4 ish, might be able to
-        # deal with it in analysis
-        # At least it shouldn't effect measures at off wall wells
-        # ret.excluded_sessions += ["20220621_2"]
-
-        # Amplitude at 100uA, probably don't need to exclude but should note
-        # ret.excluded_sessions += ["20220620_2"]
-
-        # stim wire was broken, shoulda been iterruption but was no-stim control
-        # (both leads were disconnected, so no stim at all made it to brain)
-        ret.excluded_sessions += ["20220624_2"]
-
-        # Messed up the well order, so current pipeline can't handle clips. SHould still be able to analyze probe
-        # behavior though if I wanted to
-        ret.excluded_sessions += ["20220621_2"]
-
-        # Wasn't actually detecting ripples during these
-        ret.excluded_sessions += ["20221102_1"]
-        ret.excluded_sessions += ["20221102_2"]
-        ret.excluded_sessions += ["20221103_1"]
-        ret.excluded_sessions += ["20221103_2"]
-        ret.excluded_sessions += ["20221105_1"]
-
-        ret.DEFAULT_RIP_DET_TET = 5
-        ret.DEFAULT_RIP_BAS_TET = 3
-        ret.rerun_usb_videos = []
-        ret.rerun_trodes_videos = []
-
-        # ======================
-        # Temporary
-        # Just annoying behavior notes thing, fix and add back in
-        # ret.excluded_sessions += ["20220618_2"]
-        # ret.excluded_sessions += ["20220625_2"]
-        # ret.excluded_sessions += ["20220626_2"]
-        # ret.minimum_date = "20220621"
-        # ret.excluded_sessions = ["20220621_2", "20220622_2", "20220623_2"]
-        # ret.excluded_sessions += ["2022062{}_1".format(v) for v in range(24, 29)]
-        # ret.excluded_sessions += ["2022062{}_2".format(v) for v in range(24, 29)]
-
-    elif animalName == "B16":
-        ret.X_START = 100
-        ret.X_FINISH = 1050
-        ret.Y_START = 20
-        ret.Y_FINISH = 900
-        # ret.data_dir = "/media/WDC8/B16/bradtasksessions/"
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC8"), "B16", "bradtasksessions")
-        # ret.output_dir = "/media/WDC8/B16/processed_data/"
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC8"), "B16", "processed_data")
-        # ret.fig_output_dir = "/media/WDC8/B16/processed_data/"
-        ret.fig_output_dir = ret.output_dir
-        # TODO make this dynamic like findDataDir
-        # ret.data_dir = "/home/wcroughan/data/B16/bradtasksessions/"
-        # ret.output_dir = "/home/wcroughan/data/B16/processed_data/"
-        # ret.fig_output_dir = "/home/wcroughan/data/B16/processed_data/"
-        ret.out_filename = "B16_bradtask.dat"
-
-        ret.excluded_dates = []
-        # Seems like the older usb videos are all skipping for some reason
-        ret.minimum_date = "20221101"
-        # ret.minimum_date = None
-        ret.excluded_sessions = []
-
-        # Trodes video skips
-        ret.excluded_sessions += ["20221107_2"]
-        ret.excluded_sessions += ["20221116_1"]
-
-        # USB video skips, can add back in later
-        ret.excluded_sessions += ["20220919_1"]
-        ret.excluded_sessions += ["20220919_2"]
-
-        # USB and trodes misaligned
-        # ret.excluded_sessions += ["20221113_1"]
-
-        # Just stayed in the corner for ten minutes then I took him out
-        ret.excluded_sessions += ["20221118_1"]
-
-        # Just annoying info file stuff, fix and add back in
-        # ret.excluded_sessions += ["20221111_2"]
-
-        # ret.excluded_sessions += ["20220919_122046"]
-
-        # Used the wrong detection tetrode
-        ret.excluded_sessions += ["20221103_1"]
-
-        # USB video starts right after I put him in
-        # ret.excluded_sessions += ["20221109_1"]
-
-        ret.DEFAULT_RIP_DET_TET = 4
-        ret.DEFAULT_RIP_BAS_TET = 7
-        ret.rerun_usb_videos = []
-        ret.rerun_trodes_videos = []
-
-    elif animalName == "B17":
-        ret.X_START = 100
-        ret.X_FINISH = 1050
-        ret.Y_START = 20
-        ret.Y_FINISH = 900
-        # ret.data_dir = "/media/WDC8/B17/bradtasksessions/"
-        ret.data_dir = os.path.join(getDrivePathByLabel("WDC8"), "B17", "bradtasksessions")
-        # ret.output_dir = "/media/WDC8/B17/processed_data/"
-        ret.output_dir = os.path.join(getDrivePathByLabel("WDC8"), "B17", "processed_data")
-        # ret.fig_output_dir = "/media/WDC8/B17/processed_data/"
-        ret.fig_output_dir = ret.output_dir
-        ret.out_filename = "B17_bradtask.dat"
-
-        ret.excluded_dates = []
-        ret.minimum_date = None
-        ret.excluded_sessions = []
-
-        # Trodes video skips
-        ret.excluded_sessions += ["20221104_1"]
-
-        ret.DEFAULT_RIP_DET_TET = 6
-        ret.DEFAULT_RIP_BAS_TET = 5
-        ret.rerun_usb_videos = []
-        ret.rerun_trodes_videos = []
-
-    else:
-        raise Exception("Unknown animal name")
-
-    return ret
 
 
 def getUSBVideoFile(seshName, possibleDirectories, seshIdx=None, useSeshIdxDirectly=False):
@@ -1191,6 +926,22 @@ def getRotatedWells(wellName: int) -> List[int]:
     ret.remove(wellName)
 
     return list(ret)
+
+
+def generateFoundWells(home_well: int, away_wells: List[int], lastAwayWell: Optional[int], endedOnHome: bool, foundFirstHome: bool) -> List[int]:
+    if not foundFirstHome:
+        return []
+    elif lastAwayWell is None:
+        return [home_well]
+
+    foundWells = []
+    for aw in away_wells:
+        foundWells += [home_well, aw]
+        if aw == lastAwayWell:
+            break
+    if endedOnHome:
+        foundWells.append(home_well)
+    return foundWells
 
 
 class TimeThisFunction:

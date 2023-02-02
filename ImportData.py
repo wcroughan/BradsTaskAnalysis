@@ -10,14 +10,17 @@ from datetime import datetime, date
 import sys
 from PyQt5.QtWidgets import QApplication
 # import matplotlib.pyplot as plt
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import griddata
+import dataclasses
+from numpy.typing import ArrayLike
 
 from consts import allWellNames, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, CM_PER_FT
 from UtilFunctions import readWellCoordsFile, readRawPositionData, getListOfVisitedWells, onWall, getRipplePower, \
-    detectRipples, getInfoForAnimal, getUSBVideoFile, quickPosPlot, parseCmdLineAnimalNames, AnimalInfo, \
-    timeStrForTrodesTimestamp, quadrantOfWell, TimeThisFunction, getDrivePathByLabel, getActivelinkLogFile
+    detectRipples, getUSBVideoFile, quickPosPlot, parseCmdLineAnimalNames, \
+    timeStrForTrodesTimestamp, quadrantOfWell, TimeThisFunction, getDrivePathByLabel, getActivelinkLogFile, \
+    getLoadInfo, LoadInfo, generateFoundWells, ImportOptions, parseCmdLineImportOptions
 from ClipsMaker import AnnotatorWindow
 from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, processUSBVideoData
 
@@ -26,18 +29,18 @@ importParentApp = QApplication(sys.argv)
 
 # Returns a list of directories that correspond to runs for analysis. Unless runJustSpecified is True,
 # only ever filters by day. Thus index within day of returned list can be used to find corresponding behavior notes file
-def getSessionDirs(animalInfo, importOptions) -> Tuple[List[str], List[str]]:
+def getSessionDirs(loadInfo: LoadInfo, importOptions: ImportOptions) -> Tuple[List[str], List[str]]:
     filtered_data_dirs = []
     prevSessionDirs = []
     prevSession = None
-    all_data_dirs = sorted([d for d in os.listdir(animalInfo.data_dir) if d.count("_") > 0],
+    all_data_dirs = sorted([d for d in os.listdir(loadInfo.data_dir) if d.count("_") > 0],
                            key=lambda s: (s.split('_')[0], s.split('_')[1]))
 
     for session_idx, session_dir in enumerate(all_data_dirs):
         if session_dir == "behavior_notes" or "numpy_objs" in session_dir:
             continue
 
-        if not os.path.isdir(os.path.join(animalInfo.data_dir, session_dir)):
+        if not os.path.isdir(os.path.join(loadInfo.data_dir, session_dir)):
             continue
 
         dir_split = session_dir.split('_')
@@ -48,19 +51,19 @@ def getSessionDirs(animalInfo, importOptions) -> Tuple[List[str], List[str]]:
 
         dateStr = dir_split[0][-8:]
 
-        if importOptions["runJustSpecified"] and dateStr not in importOptions["specifiedDays"] and \
-                session_dir not in importOptions["specifiedRuns"]:
+        if importOptions.runJustSpecified and dateStr not in importOptions.specifiedDays and \
+                session_dir not in importOptions.specifiedRuns:
             prevSession = session_dir
             continue
 
-        if dateStr in animalInfo.excluded_dates:
+        if dateStr in loadInfo.excluded_dates:
             print(f"skipping, excluded date {dateStr}")
             prevSession = session_dir
             continue
 
-        if animalInfo.minimum_date is not None and dateStr < animalInfo.minimum_date:
+        if loadInfo.minimum_date is not None and dateStr < loadInfo.minimum_date:
             print("skipping date {}, is before minimum date {}".format(
-                dateStr, animalInfo.minimum_date))
+                dateStr, loadInfo.minimum_date))
             prevSession = session_dir
             continue
 
@@ -80,7 +83,7 @@ def getSessionDirs(animalInfo, importOptions) -> Tuple[List[str], List[str]]:
 
 
 def makeSessionObj(seshDir: str, prevSeshDir: str, sessionNumber: int, prevSessionNumber: int,
-                   animalInfo: AnimalInfo, skipActivelinkLog=False) -> BTSession:
+                   loadInfo: LoadInfo, skipActivelinkLog=False) -> BTSession:
     sesh = BTSession()
     sesh.prevSessionDir = prevSeshDir
 
@@ -96,7 +99,7 @@ def makeSessionObj(seshDir: str, prevSeshDir: str, sessionNumber: int, prevSessi
 
     # check for files that belong to this date
     sesh.btDir = seshDir
-    gl = animalInfo.data_dir + session_name_pfx + dateStr + "*"
+    gl = loadInfo.data_dir + session_name_pfx + dateStr + "*"
     dir_list = glob.glob(gl)
     for d in dir_list:
         if d.split('_')[-1] == "ITI":
@@ -108,12 +111,12 @@ def makeSessionObj(seshDir: str, prevSeshDir: str, sessionNumber: int, prevSessi
             sesh.separateProbeFile = True
     if not sesh.separateProbeFile:
         sesh.recordedIti = True
-        sesh.probeDir = os.path.join(animalInfo.data_dir, seshDir)
+        sesh.probeDir = os.path.join(loadInfo.data_dir, seshDir)
     if not sesh.separateItiFile and sesh.recordedIti:
         sesh.itiDir = seshDir
 
     # Get behavior_notes info file name
-    behaviorNotesDir = os.path.join(animalInfo.data_dir, 'behavior_notes')
+    behaviorNotesDir = os.path.join(loadInfo.data_dir, 'behavior_notes')
     sesh.infoFileName = os.path.join(behaviorNotesDir, dateStr + ".txt")
     if not os.path.exists(sesh.infoFileName):
         # Switched numbering scheme once started doing multiple sessions a day
@@ -137,35 +140,19 @@ def makeSessionObj(seshDir: str, prevSeshDir: str, sessionNumber: int, prevSessi
 
     if not skipActivelinkLog:
         possibleDirectories = [os.path.join(getDrivePathByLabel(
-            "WDC8"), "DesktopFiles", animalInfo.animalName)]
+            "WDC8"), "DesktopFiles", loadInfo.animalName)]
         # print(possibleDirectories)
         sesh.activelinkLogFileName = getActivelinkLogFile(
             sesh.name, possibleDirectories=possibleDirectories)
         sesh.hasActivelinkLog = sesh.activelinkLogFileName is not None
 
-    sesh.fileStartString = os.path.join(animalInfo.data_dir, seshDir, seshDir)
-    sesh.animalInfo = animalInfo
+    sesh.fileStartString = os.path.join(loadInfo.data_dir, seshDir, seshDir)
+    sesh.loadInfo = loadInfo
 
     return sesh
 
 
-def generateFoundWells(home_well, away_wells, lastAwayWell, endedOnHome, foundFirstHome) -> List[int]:
-    if not foundFirstHome:
-        return []
-    elif lastAwayWell is None:
-        return [home_well]
-
-    foundWells = []
-    for aw in away_wells:
-        foundWells += [home_well, aw]
-        if aw == lastAwayWell:
-            break
-    if endedOnHome:
-        foundWells.append(home_well)
-    return foundWells
-
-
-def parseActivelinkLog(sesh: BTSession):
+def parseActivelinkLog(sesh: BTSession) -> None:
     if not sesh.hasActivelinkLog:
         return
 
@@ -192,7 +179,7 @@ def parseActivelinkLog(sesh: BTSession):
         sesh.rpowsLog = sesh.loggedStats[-1][2]
 
 
-def parseInfoFiles(sesh: BTSession):
+def parseInfoFiles(sesh: BTSession) -> None:
     with open(sesh.infoFileName, 'r') as f:
         lines = f.readlines()
         for line in lines:
@@ -409,7 +396,7 @@ def parseInfoFiles(sesh: BTSession):
     else:
         sesh.prevSessionInfoParsed = False
 
-    if not sesh.importOptions["justExtractData"]:
+    if not sesh.importOptions.justExtractData:
         assert sesh.homeWell != 0
 
     if sesh.foundWells is None:
@@ -417,9 +404,9 @@ def parseInfoFiles(sesh: BTSession):
             sesh.homeWell, sesh.awayWells, sesh.lastAwayWell, sesh.endedOnHome, sesh.foundFirstHome)
 
 
-def parseDLCData(sesh):
-    btPosFileName = sesh.animalInfo.DLC_dir + sesh.name + "_task.npz"
-    probePosFileName = sesh.animalInfo.DLC_dir + sesh.name + "_probe.npz"
+def parseDLCData(sesh: BTSession) -> Optional[Tuple[ArrayLike, ArrayLike, ArrayLike, Dict[str, Tuple[int, int]]]]:
+    btPosFileName = sesh.loadInfo.DLC_dir + sesh.name + "_task.npz"
+    probePosFileName = sesh.loadInfo.DLC_dir + sesh.name + "_probe.npz"
     if not os.path.exists(btPosFileName) or not os.path.exists(probePosFileName):
         print(f"\t{sesh.name} has no DLC file!")
         return None
@@ -427,7 +414,7 @@ def parseDLCData(sesh):
     wellCoordsFileName = sesh.fileStartString + '.1.wellLocations_dlc.csv'
     if not os.path.exists(wellCoordsFileName):
         wellCoordsFileName = os.path.join(
-            sesh.animalInfo.data_dir, 'well_locations_dlc.csv')
+            sesh.loadInfo.data_dir, 'well_locations_dlc.csv')
         print("\tSpecific well locations not found, falling back to file {}".format(
             wellCoordsFileName))
     wellCoordsMap = readWellCoordsFile(wellCoordsFileName)
@@ -444,15 +431,16 @@ def parseDLCData(sesh):
 
     sesh.hasPositionData = True
 
-    xs = list(np.hstack((sesh.btPosXs, sesh.probePosXs)))
-    ys = list(np.hstack((sesh.btPosYs, sesh.probePosYs)))
-    ts = list(np.hstack((sesh.btPos_ts, sesh.probePos_ts)))
+    xs = np.hstack((sesh.btPosXs, sesh.probePosXs))
+    ys = np.hstack((sesh.btPosYs, sesh.probePosYs))
+    ts = np.hstack((sesh.btPos_ts, sesh.probePos_ts))
 
     return xs, ys, ts, wellCoordsMap
 
 
-def cleanupPos(tpts, xPos, yPos, xLim=None, yLim=None, excludeBoxes=None,
-               maxJumpDistance=None, makePlots=False, minCleanTimeFrames=None):
+def cleanupPos(tpts: ArrayLike, xPos: ArrayLike, yPos: ArrayLike, xLim: Tuple[int, int] = None,
+               yLim: Tuple[int, int] = None, excludeBoxes: Optional[List[Tuple[int, int, int, int]]] = None,
+               maxJumpDistance: Optional[float] = None, makePlots: bool = False, minCleanTimeFrames: Optional[int] = None) -> None:
     # only in bounds points pls
     pointsInRange = np.ones_like(xPos).astype(bool)
     if xLim is not None:
@@ -495,7 +483,7 @@ def cleanupPos(tpts, xPos, yPos, xLim=None, yLim=None, excludeBoxes=None,
             quickPosPlot(tpts, xPos, yPos, "no jumps (dilated)")
 
 
-def interpNanPositions(tpts, xPos, yPos):
+def interpNanPositions(tpts: ArrayLike, xPos: ArrayLike, yPos: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
     nanpos = np.isnan(xPos)
     ynanpos = np.isnan(yPos)
     assert all(ynanpos == nanpos)
@@ -509,7 +497,7 @@ def getWellCameraCoordinates(well_num: int, well_coords_map: Dict[str, Tuple[int
     return well_coords_map[str(well_num)]
 
 
-def correctFishEye(wellCoordsMap: Dict[str, Tuple[int, int]], xs, ys):
+def correctFishEye(wellCoordsMap: Dict[str, Tuple[int, int]], xs: ArrayLike, ys: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
     # returns position given by xs, ys in the context of sesh but corrected so
     # well locations would lay on a grid at x and y values 0.5, 1.5, ... 5.5
 
@@ -548,8 +536,8 @@ def correctFishEye(wellCoordsMap: Dict[str, Tuple[int, int]], xs, ys):
     return xres, yres
 
 
-def integrateCorrectionFiles(ts, xs, ys, correctionDirectory, wellCoordsMap: Dict[str, Tuple[int, int]],
-                             minCorrectionSecs=1.0):
+def integrateCorrectionFiles(ts: ArrayLike, xs: ArrayLike, ys: ArrayLike, correctionDirectory: Optional[str],
+                             wellCoordsMap: Dict[str, Tuple[int, int]], minCorrectionSecs=1.0) -> None:
     validTpts = ts[~np.isnan(xs)]
     notnandiff = np.diff(validTpts)
     MIN_CORRECTION_TS = minCorrectionSecs * TRODES_SAMPLING_RATE
@@ -690,9 +678,11 @@ def integrateCorrectionFiles(ts, xs, ys, correctionDirectory, wellCoordsMap: Dic
         f.writelines([f"{oe[0]} - {oe[1]}\n" for oe in optimizedTimes])
 
 
-def processPosData(x, y, t, wellCoordsMap: Dict[str, Tuple[int, int]], maxJumpDistance=0.25,
-                   xLim=(100, 1050), yLim=(20, 900), smooth=None,
-                   excludeBoxes=None, correctionDirectory=None, minCleanTimeFrames=15):
+def processPosData(x: ArrayLike, y: ArrayLike, t: ArrayLike, wellCoordsMap: Dict[str, Tuple[int, int]],
+                   maxJumpDistance: Optional[float] = 0.25,
+                   xLim: Tuple[int, int] = (100, 1050), yLim: Tuple[int, int] = (20, 900), smooth: Optional[float] = None,
+                   excludeBoxes: Optional[List[Tuple[int, int, int, int]]] = None, correctionDirectory: Optional[str] = None,
+                   minCleanTimeFrames: Optional[int] = 15) -> Tuple[ArrayLike, ArrayLike, ArrayLike]:
     xPos = np.array(x, dtype=float)
     yPos = np.array(y, dtype=float)
 
@@ -729,7 +719,8 @@ def processPosData(x, y, t, wellCoordsMap: Dict[str, Tuple[int, int]], maxJumpDi
     return xPos, yPos, tpts
 
 
-def getWellEntryAndExitTimes(nearestWells, ts, quads=False, includeNeighbors=False):
+def getWellEntryAndExitTimes(nearestWells: ArrayLike, ts: ArrayLike,
+                             quads: bool = False, includeNeighbors: bool = False) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike]:
     entryTimes = []
     exitTimes = []
     entryIdxs = []
@@ -762,7 +753,7 @@ def getWellEntryAndExitTimes(nearestWells, ts, quads=False, includeNeighbors=Fal
     return entryIdxs, exitIdxs, entryTimes, exitTimes
 
 
-def getNearestWell(xs, ys, well_idxs=allWellNames, switchWellFactor=0.8):
+def getNearestWell(xs: ArrayLike, ys: ArrayLike, well_idxs: ArrayLike = allWellNames, switchWellFactor: float = 0.8) -> ArrayLike:
     # switchWellFactor of 0.8 means transition from well a -> b requires rat dist to b to be 0.8 * dist to a
     xv, yv = np.meshgrid(np.linspace(0.5, 5.5, 6), np.linspace(0.5, 5.5, 6))
     xpts = xv.reshape((-1, 1))
@@ -802,7 +793,7 @@ def getNearestWell(xs, ys, well_idxs=allWellNames, switchWellFactor=0.8):
     return well_idxs[nearest_well]
 
 
-def readClipData(data_filename):
+def readClipData(data_filename: str) -> ArrayLike:
     time_clips = None
     try:
         with open(data_filename, 'r') as data_file:
@@ -823,13 +814,13 @@ def readClipData(data_filename):
     return time_clips
 
 
-def loadPositionData(sesh: BTSession):
+def loadPositionData(sesh: BTSession) -> None:
     sesh.hasPositionData = False
     positionData = None
 
     # First try DeepLabCut
-    if sesh.animalInfo.DLC_dir is not None:
-        print(f"\tLoading from DLC, DLC_dir = {sesh.animalInfo.DLC_dir}")
+    if sesh.loadInfo.DLC_dir is not None:
+        print(f"\tLoading from DLC, DLC_dir = {sesh.loadInfo.DLC_dir}")
         positionData = parseDLCData(sesh)
         if positionData is None:
             assert sesh.positionFromDeepLabCut is None or not sesh.positionFromDeepLabCut
@@ -852,7 +843,7 @@ def loadPositionData(sesh: BTSession):
         if not os.path.exists(trackingFile) and os.path.exists(possibleOtherTrackingFile):
             print(
                 f"\tFound a possible tracking file {possibleOtherTrackingFile}\n\tand no file {trackingFile}")
-            if sesh.importOptions["skipConfirmTrackingFileExtension"]:
+            if sesh.importOptions.skipConfirmTrackingFileExtension:
                 print("\tAdding file extension automatically")
                 renameFile = True
             else:
@@ -867,7 +858,7 @@ def loadPositionData(sesh: BTSession):
             positionDataMetadata, positionData = readRawPositionData(
                 trackingFile)
 
-            if sesh.importOptions["forceAllTrackingAuto"] and \
+            if sesh.importOptions.forceAllTrackingAuto and \
                 ("source" not in positionDataMetadata or
                  "trodescameraextractor" not in positionDataMetadata["source"]):
                 print("\tForcing all tracking to be auto")
@@ -888,18 +879,18 @@ def loadPositionData(sesh: BTSession):
                 wellCoordsFileName = sesh.fileStartString + '.1.wellLocations.csv'
                 if not os.path.exists(wellCoordsFileName):
                     wellCoordsFileName = os.path.join(
-                        sesh.animalInfo.data_dir, 'well_locations.csv')
+                        sesh.loadInfo.data_dir, 'well_locations.csv')
                     # print("\tSpecific well locations not found, falling back to file {}".format(
                     #     wellCoordsFileName))
                 wellCoordsMap = readWellCoordsFile(wellCoordsFileName)
 
                 xs, ys, ts = processPosData(positionData["x1"], positionData["y1"], positionData["timestamp"],
                                             wellCoordsMap,
-                                            xLim=(sesh.animalInfo.X_START,
-                                                  sesh.animalInfo.X_FINISH),
-                                            yLim=(sesh.animalInfo.Y_START,
-                                                  sesh.animalInfo.Y_FINISH),
-                                            excludeBoxes=sesh.animalInfo.excludeBoxes,
+                                            xLim=(sesh.loadInfo.X_START,
+                                                  sesh.loadInfo.X_FINISH),
+                                            yLim=(sesh.loadInfo.Y_START,
+                                                  sesh.loadInfo.Y_FINISH),
+                                            excludeBoxes=sesh.loadInfo.excludeBoxes,
                                             correctionDirectory=correctionDirectory)
                 sesh.hasPositionData = True
         else:
@@ -914,18 +905,18 @@ def loadPositionData(sesh: BTSession):
             sesh.frameTimes = positionData['timestamp']
             xs, ys, ts = processPosData(positionData["x1"], positionData["y1"], positionData["timestamp"],
                                         wellCoordsMap,
-                                        xLim=(sesh.animalInfo.X_START,
-                                              sesh.animalInfo.X_FINISH),
-                                        yLim=(sesh.animalInfo.Y_START,
-                                              sesh.animalInfo.Y_FINISH),
-                                        excludeBoxes=sesh.animalInfo.excludeBoxes)
+                                        xLim=(sesh.loadInfo.X_START,
+                                              sesh.loadInfo.X_FINISH),
+                                        yLim=(sesh.loadInfo.Y_START,
+                                              sesh.loadInfo.Y_FINISH),
+                                        excludeBoxes=sesh.loadInfo.excludeBoxes)
             sesh.hasPositionData = True
 
     if not sesh.hasPositionData:
         print(f"!!!!!!!\tWARNING: {sesh.name} has no position data\t!!!!!!")
         return
 
-    if sesh.importOptions["skipUSB"]:
+    if sesh.importOptions.skipUSB:
         print("!!!!!!\tWARNING: Skipping USB\t!!!!!!")
     else:
         if "lightonframe" in positionDataMetadata:
@@ -996,7 +987,7 @@ def loadPositionData(sesh: BTSession):
             # if sesh.usbLightOffFrame is None or sesh.usbLightOnFrame is None:
             #     raise Exception("exclude me pls")
 
-        if not sesh.importOptions["justExtractData"] or sesh.importOptions["runInteractiveExtraction"]:
+        if not sesh.importOptions.justExtractData or sesh.importOptions.runInteractiveExtraction:
             clipsFileName = sesh.fileStartString + '.1.clips'
             if not os.path.exists(clipsFileName) and len(sesh.foundWells) > 0:
                 print("\tclips file not found, gonna launch clips generator")
@@ -1033,7 +1024,7 @@ def loadPositionData(sesh: BTSession):
 
     if btTimeClips is None:
         print("\t!!WARNING: Clips couldn't be loaded")
-        if sesh.importOptions["justExtractData"]:
+        if sesh.importOptions.justExtractData:
             return
         else:
             raise FileNotFoundError()
@@ -1052,11 +1043,11 @@ def loadPositionData(sesh: BTSession):
                 probeFileStr + '.1.videoPositionTracking')
             xs, ys, ts = processPosData(positionData["x1"], positionData["y1"], positionData["timestamp"],
                                         wellCoordsMap,
-                                        xLim=(sesh.animalInfo.X_START,
-                                              sesh.animalInfo.X_FINISH),
-                                        yLim=(sesh.animalInfo.Y_START,
-                                              sesh.animalInfo.Y_FINISH),
-                                        excludeBoxes=sesh.animalInfo.excludeBoxes)
+                                        xLim=(sesh.loadInfo.X_START,
+                                              sesh.loadInfo.X_FINISH),
+                                        yLim=(sesh.loadInfo.Y_START,
+                                              sesh.loadInfo.Y_FINISH),
+                                        excludeBoxes=sesh.loadInfo.excludeBoxes)
 
         probeStart_posIdx = np.searchsorted(ts, probeTimeClips[0])
         probeEnd_posIdx = np.searchsorted(ts, probeTimeClips[1])
@@ -1090,11 +1081,11 @@ def loadPositionData(sesh: BTSession):
         raise Exception("Looks like we might have the wrong activelink log file.")
 
 
-def loadLFPData(sesh: BTSession):
+def loadLFPData(sesh: BTSession) -> Tuple[ArrayLike, Optional[ArrayLike]]:
     lfpData = []
 
     if len(sesh.rippleDetectionTetrodes) == 0:
-        sesh.rippleDetectionTetrodes = [sesh.animalInfo.DEFAULT_RIP_DET_TET]
+        sesh.rippleDetectionTetrodes = [sesh.loadInfo.DEFAULT_RIP_DET_TET]
 
     print(f"\tUsing detection tetrodes: {sesh.rippleDetectionTetrodes}")
 
@@ -1127,7 +1118,7 @@ def loadLFPData(sesh: BTSession):
             data_file=sesh.btLfpFnames[-1]))
 
     if sesh.rippleBaselineTetrode is None:
-        sesh.rippleBaselineTetrode = sesh.animalInfo.DEFAULT_RIP_BAS_TET
+        sesh.rippleBaselineTetrode = sesh.loadInfo.DEFAULT_RIP_BAS_TET
 
     print(f"\tUsing baseline tetrode: {sesh.rippleBaselineTetrode}")
 
@@ -1165,14 +1156,13 @@ def loadLFPData(sesh: BTSession):
     return lfpData, baselineLfpData
 
 
-def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
+def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optional[ArrayLike], showPlot: bool = False) -> None:
     lfpV = lfpData[0][1]['voltage']
     lfp_ts = lfpData[0][0]['time']
-    C = sesh.importOptions["consts"]
     print("\tCondition - {}".format("SWR" if sesh.isRippleInterruption else "Ctrl"))
 
     peaks = signal.find_peaks(np.abs(np.diff(lfpV, prepend=lfpV[0])),
-                              height=C["DEFLECTION_THRESHOLD_HI"], distance=C["MIN_ARTIFACT_DISTANCE"])
+                              height=sesh.importOptions.DEFLECTION_THRESHOLD_HI, distance=sesh.importOptions.MIN_ARTIFACT_DISTANCE)
     lfpBumps_lfpIdx = peaks[0]
     sesh.lfpBumps_lfpIdx = lfpBumps_lfpIdx
     sesh.lfpBumps_ts = lfp_ts[lfpBumps_lfpIdx]
@@ -1191,7 +1181,7 @@ def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
     sesh.btLFPBumps_lfpIdx = btLFPBumps_lfpIdx
 
     if sesh.probePerformed:
-        itiMargin = sesh.importOptions["consts"]["ITI_MARGIN"]
+        itiMargin = sesh.importOptions.ITI_MARGIN
         sesh.itiLfpStart_ts = sesh.btPos_ts[-1] + itiMargin * TRODES_SAMPLING_RATE
         sesh.itiLfpEnd_ts = sesh.probePos_ts[0] - itiMargin * TRODES_SAMPLING_RATE
         itiLfpStart_lfpIdx = np.searchsorted(lfp_ts, sesh.itiLfpStart_ts)
@@ -1215,7 +1205,7 @@ def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
         sesh.probeLFPBumps_lfpIdx = probeLFPBumps_lfpIdx
 
     peaks = signal.find_peaks(np.abs(
-        np.diff(lfpV, prepend=lfpV[0])), height=C["DEFLECTION_THRESHOLD_LO"], distance=C["MIN_ARTIFACT_DISTANCE"])
+        np.diff(lfpV, prepend=lfpV[0])), height=sesh.importOptions.DEFLECTION_THRESHOLD_LO, distance=sesh.importOptions.MIN_ARTIFACT_DISTANCE)
     lfpNoise_lfpIdx = peaks[0]
     sesh.lfpNoise_ts = lfp_ts[lfpNoise_lfpIdx]
     sesh.lfpNoise_lfpIdx = lfpNoise_lfpIdx
@@ -1243,64 +1233,35 @@ def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
         lfpV[0:(btLfpStart_lfpIdx//2)], lfpDeflections=lfpNoise_lfpIdx)
     _, zpow, _, _ = getRipplePower(btLFPData, method="standard", meanPower=sesh.rpowmPreBt,
                                    stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.btLFPNoise_lfpIdx)
-    sesh.btRipStartsPreStats_lfpIdx, sesh.btRipLensPreStats_lfpIdx, sesh.btRipPeaksPreStats_lfpIdx, \
-        sesh.btRipPeakAmpsPreStats, sesh.btRipCrossThreshPreStats_lfpIdx = \
-        detectRipples(zpow)
-    if len(sesh.btRipStartsPreStats_lfpIdx) > 0:
-        sesh.btRipStartsPreStats_ts = lfp_ts[sesh.btRipStartsPreStats_lfpIdx]
-    else:
-        sesh.btRipStartsPreStats_ts = np.array([])
+
+    sesh.btRipsPreStats = detectRipples(
+        zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.btLfpStart_lfpIdx])
 
     if sesh.probePerformed:
         _, zpow, _, _ = getRipplePower(itiLFPData, method="standard", meanPower=sesh.rpowmPreBt,
                                        stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.itiLFPNoise_lfpIdx)
-        sesh.itiRipStartsPreStats_lfpIdx, sesh.itiRipLensPreStats_lfpIdx, sesh.itiRipPeaksPreStats_lfpIdx, \
-            sesh.itiRipPeakAmpsPreStats, sesh.itiRipCrossThreshPreStats_lfpIdx = \
-            detectRipples(zpow)
-        if len(sesh.itiRipStartsPreStats_lfpIdx) > 0:
-            sesh.itiRipStartsPreStats_ts = lfp_ts[sesh.itiRipStartsPreStats_lfpIdx]
-        else:
-            sesh.itiRipStartsPreStats_ts = np.array([])
+        sesh.itiRipsPreStats = detectRipples(
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.itiLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(probeLFPData, method="standard", meanPower=sesh.rpowmPreBt,
                                        stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.probeLFPNoise_lfpIdx)
-        sesh.probeRipStartsPreStats_lfpIdx, sesh.probeRipLensPreStats_lfpIdx, sesh.probeRipPeaksPreStats_lfpIdx, \
-            sesh.probeRipPeakAmpsPreStats, sesh.probeRipCrossThreshPreStats_lfpIdx = \
-            detectRipples(zpow)
-        if len(sesh.probeRipStartsPreStats_lfpIdx) > 0:
-            sesh.probeRipStartsPreStats_ts = lfp_ts[sesh.probeRipStartsPreStats_lfpIdx]
-        else:
-            sesh.probeRipStartsPreStats_ts = np.array([])
+        sesh.probeRipsPreStats = detectRipples(
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.probeLfpStart_lfpIdx])
 
         # probe stats
         _, _, sesh.rpowmProbe, sesh.rpowsProbe = getRipplePower(
             probeLFPData, lfpDeflections=probeLFPNoise_lfpIdx)
         _, zpow, _, _ = getRipplePower(btLFPData, method="standard", meanPower=sesh.rpowmProbe,
                                        stdPower=sesh.rpowsProbe, lfpDeflections=sesh.btLFPNoise_lfpIdx)
-        sesh.btRipStartsProbeStats_lfpIdx, sesh.btRipLensProbeStats_lfpIdx, sesh.btRipPeaksProbeStats_lfpIdx, \
-            sesh.btRipPeakAmpsProbeStats, sesh.btRipCrossThreshProbeStats_lfpIdx = \
-            detectRipples(zpow)
-        if len(sesh.btRipStartsProbeStats_lfpIdx) > 0:
-            sesh.btRipStartsProbeStats_ts = lfp_ts[sesh.btRipStartsProbeStats_lfpIdx]
-        else:
-            sesh.btRipStartsProbeStats_ts = np.array([])
+        sesh.btRipsProbeStats = detectRipples(
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.btLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(itiLFPData, method="standard", meanPower=sesh.rpowmProbe,
                                        stdPower=sesh.rpowsProbe, lfpDeflections=sesh.itiLFPNoise_lfpIdx)
-        sesh.itiRipStartsProbeStats_lfpIdx, sesh.itiRipLensProbeStats_lfpIdx, sesh.itiRipPeaksProbeStats_lfpIdx, \
-            sesh.itiRipPeakAmpsProbeStats, sesh.itiRipCrossThreshProbeStats_lfpIdx = \
-            detectRipples(zpow)
-        if len(sesh.itiRipStartsProbeStats_lfpIdx) > 0:
-            sesh.itiRipStartsProbeStats_ts = lfp_ts[sesh.itiRipStartsProbeStats_lfpIdx]
-        else:
-            sesh.itiRipStartsProbeStats_ts = np.array([])
+        sesh.itiRipsProbeStats = detectRipples(
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.itiLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(probeLFPData, method="standard", meanPower=sesh.rpowmProbe,
                                        stdPower=sesh.rpowsProbe, lfpDeflections=sesh.probeLFPNoise_lfpIdx)
-        sesh.probeRipStartsProbeStats_lfpIdx, sesh.probeRipLensProbeStats_lfpIdx, sesh.probeRipPeaksProbeStats_lfpIdx, \
-            sesh.probeRipPeakAmpsProbeStats, sesh.probeRipCrossThreshProbeStats_lfpIdx = \
-            detectRipples(zpow)
-        if len(sesh.probeRipStartsProbeStats_lfpIdx) > 0:
-            sesh.probeRipStartsProbeStats_ts = lfp_ts[sesh.probeRipStartsProbeStats_lfpIdx]
-        else:
-            sesh.probeRipStartsProbeStats_ts = np.array([])
+        sesh.probeRipsProbeStats = detectRipples(
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.probeLfpStart_lfpIdx])
 
     if sesh.hasActivelinkLog:
         if sesh.btLfpBaselineFname is None:
@@ -1309,43 +1270,27 @@ def runLFPAnalyses(sesh: BTSession, lfpData, baselineLfpData, showPlot=False):
         _, zpow, _, _ = getRipplePower(btLFPData, method="activelink", meanPower=sesh.rpowmLog,
                                        stdPower=sesh.rpowsLog, lfpDeflections=sesh.btLFPNoise_lfpIdx,
                                        baselineLfpData=baselineLfpV[btLfpStart_lfpIdx:btLfpEnd_lfpIdx])
-        sesh.btRipStartsLogStats_lfpIdx, sesh.btRipLensLogStats_lfpIdx, sesh.btRipPeaksLogStats_lfpIdx, \
-            sesh.btRipPeakAmpsLogStats, sesh.btRipCrossThreshLogStats_lfpIdx = \
-            detectRipples(zpow)
-        if len(sesh.btRipStartsLogStats_lfpIdx) > 0:
-            sesh.btRipStartsLogStats_ts = lfp_ts[sesh.btRipStartsLogStats_lfpIdx]
-        else:
-            sesh.btRipStartsLogStats_ts = np.array([])
+        sesh.btRipsLogStats = detectRipples(
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.btLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(itiLFPData, method="activelink", meanPower=sesh.rpowmLog,
                                        stdPower=sesh.rpowsLog, lfpDeflections=sesh.itiLFPNoise_lfpIdx,
                                        baselineLfpData=baselineLfpV[itiLfpStart_lfpIdx:itiLfpEnd_lfpIdx])
-        sesh.itiRipStartsLogStats_lfpIdx, sesh.itiRipLensLogStats_lfpIdx, sesh.itiRipPeaksLogStats_lfpIdx, \
-            sesh.itiRipPeakAmpsLogStats, sesh.itiRipCrossThreshLogStats_lfpIdx = \
-            detectRipples(zpow)
-        if len(sesh.itiRipStartsLogStats_lfpIdx) > 0:
-            sesh.itiRipStartsLogStats_ts = lfp_ts[sesh.itiRipStartsLogStats_lfpIdx]
-        else:
-            sesh.itiRipStartsLogStats_ts = np.array([])
+        sesh.itiRipsLogStats = detectRipples(
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.itiLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(probeLFPData, method="activelink", meanPower=sesh.rpowmLog,
                                        stdPower=sesh.rpowsLog, lfpDeflections=sesh.probeLFPNoise_lfpIdx,
                                        baselineLfpData=baselineLfpV[probeLfpStart_lfpIdx:probeLfpEnd_lfpIdx])
-        sesh.probeRipStartsLogStats_lfpIdx, sesh.probeRipLensLogStats_lfpIdx, sesh.probeRipPeaksLogStats_lfpIdx, \
-            sesh.probeRipPeakAmpsLogStats, sesh.probeRipCrossThreshLogStats_lfpIdx = \
-            detectRipples(zpow)
-        if len(sesh.probeRipStartsLogStats_lfpIdx) > 0:
-            sesh.probeRipStartsLogStats_ts = lfp_ts[sesh.probeRipStartsLogStats_lfpIdx]
-        else:
-            sesh.probeRipStartsLogStats_ts = np.array([])
+        sesh.probeRipsLogStats = detectRipples(
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.probeLfpStart_lfpIdx])
 
 
-def runSanityChecks(sesh: BTSession, lfpData, baselineLfpData, showPlots=False, overrideNotes=True):
+def runSanityChecks(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optional[ArrayLike], showPlots: bool = False, overrideNotes: bool = True) -> None:
     # print(f"Running sanity checks for {sesh.name}")
     if lfpData is None:
         print("\tNo LFP data to look at")
     else:
         # lfpV = lfpData[0][1]['voltage']
         lfp_ts = lfpData[0][0]['time']
-        # C = sesh.importOptions["consts"]
 
         # lfpDeflections = signal.find_peaks(np.abs(np.diff(
         #     lfpV, prepend=lfpV[0])), height=C["DEFLECTION_THRESHOLD_HI"], distance=C["MIN_ARTIFACT_DISTANCE"])
@@ -1355,7 +1300,7 @@ def runSanityChecks(sesh: BTSession, lfpData, baselineLfpData, showPlots=False, 
         # btInterruption_posIdx = sesh.btInterruption_posIdx[btInterruption_posIdx < len(
         #     sesh.btPos_ts)]
 
-        numInterruptions = len(sesh.btRipStartsPreStats_ts)
+        numInterruptions = len(sesh.btRipsPreStats)
         print("\t{} interruptions detected".format(numInterruptions))
         if numInterruptions < 50:
             if sesh.isRippleInterruption and numInterruptions > 0:
@@ -1406,7 +1351,7 @@ def runSanityChecks(sesh: BTSession, lfpData, baselineLfpData, showPlots=False, 
 
 
 @TimeThisFunction
-def posCalcVelocity(sesh: BTSession):
+def posCalcVelocity(sesh: BTSession) -> None:
     btVel = np.sqrt(np.power(np.diff(sesh.btPosXs), 2) +
                     np.power(np.diff(sesh.btPosYs), 2))
 
@@ -1416,10 +1361,10 @@ def posCalcVelocity(sesh: BTSession):
     np.seterr(**oldSettings)
     POS_FRAME_RATE = stats.mode(np.diff(sesh.btPos_ts), keepdims=True)[
         0] / float(TRODES_SAMPLING_RATE)
-    BOUT_VEL_SM_SIGMA = sesh.importOptions["consts"]["MOVE_THRESH_SM_SIGMA_SECS"] / POS_FRAME_RATE
+    BOUT_VEL_SM_SIGMA = sesh.importOptions.MOVE_THRESH_SM_SIGMA_SECS / POS_FRAME_RATE
     # print(f"{BOUT_VEL_SM_SIGMA =}")
     sesh.btVelCmPerS = gaussian_filter1d(sesh.btVelCmPerSRaw, BOUT_VEL_SM_SIGMA)
-    btIsMv = sesh.btVelCmPerS > sesh.importOptions["consts"]["VEL_THRESH"]
+    btIsMv = sesh.btVelCmPerS > sesh.importOptions.VEL_THRESH
     if len(btIsMv) > 0:
         btIsMv = np.append(btIsMv, np.array(btIsMv[-1]))
     sesh.btIsMv = btIsMv
@@ -1432,14 +1377,14 @@ def posCalcVelocity(sesh: BTSession):
                                            TRODES_SAMPLING_RATE) * CM_PER_FT
         np.seterr(**oldSettings)
         sesh.probeVelCmPerS = gaussian_filter1d(sesh.probeVelCmPerSRaw, BOUT_VEL_SM_SIGMA)
-        probeIsMv = sesh.probeVelCmPerS > sesh.importOptions["consts"]["VEL_THRESH"]
+        probeIsMv = sesh.probeVelCmPerS > sesh.importOptions.VEL_THRESH
         if len(probeIsMv) > 0:
             probeIsMv = np.append(probeIsMv, np.array(probeIsMv[-1]))
         sesh.probeIsMv = probeIsMv
 
 
 @TimeThisFunction
-def posCalcEntryExitTimes(sesh: BTSession):
+def posCalcEntryExitTimes(sesh: BTSession) -> None:
     # ===================================
     # Well and quadrant entry and exit times
     # ===================================
@@ -1570,7 +1515,7 @@ def posCalcEntryExitTimes(sesh: BTSession):
         sesh.btPos_ts, sesh.awayRewardExit_ts)
 
 
-def getCurvature(x, y, H):
+def getCurvature(x: ArrayLike, y: ArrayLike, H: float) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike]:
     # Knot-path-curvature as in https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1000638
     H2 = H * H
     i1 = np.empty_like(x)
@@ -1657,8 +1602,8 @@ def getCurvature(x, y, H):
 
 
 @TimeThisFunction
-def posCalcCurvature(sesh):
-    KNOT_H_POS = sesh.importOptions["consts"]["KNOT_H_CM"] / CM_PER_FT
+def posCalcCurvature(sesh: BTSession) -> None:
+    KNOT_H_POS = sesh.importOptions.KNOT_H_CM / CM_PER_FT
 
     sesh.btCurvature, sesh.btCurvatureI1, sesh.btCurvatureI2, sesh.btCurvatureDxf, sesh.btCurvatureDyf, \
         sesh.btCurvatureDxb, sesh.btCurvatureDyb = getCurvature(
@@ -1670,15 +1615,16 @@ def posCalcCurvature(sesh):
                 sesh.probePosXs, sesh.probePosYs, KNOT_H_POS)
 
 
-def getExplorationCategories(ts, vel, nearestWells, consts, forcePauseIntervals=None):
+def getExplorationCategories(ts, vel, nearestWells, importOptions, forcePauseIntervals=None) -> \
+        Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike, ArrayLike]:
     POS_FRAME_RATE = stats.mode(np.diff(ts), keepdims=True)[0] / float(TRODES_SAMPLING_RATE)
-    BOUT_VEL_SM_SIGMA = consts["BOUT_VEL_SM_SIGMA_SECS"] / POS_FRAME_RATE
-    MIN_PAUSE_TIME_FRAMES = int(consts["MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS"] / POS_FRAME_RATE)
-    MIN_EXPLORE_TIME_FRAMES = int(consts["MIN_EXPLORE_TIME_SECS"] / POS_FRAME_RATE)
+    BOUT_VEL_SM_SIGMA = importOptions.BOUT_VEL_SM_SIGMA_SECS / POS_FRAME_RATE
+    MIN_PAUSE_TIME_FRAMES = int(importOptions.MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS / POS_FRAME_RATE)
+    MIN_EXPLORE_TIME_FRAMES = int(importOptions.MIN_EXPLORE_TIME_SECS / POS_FRAME_RATE)
 
     smoothVel = gaussian_filter1d(vel, BOUT_VEL_SM_SIGMA)
 
-    isExploreLocal = smoothVel > consts["PAUSE_MAX_SPEED_CM_S"]
+    isExploreLocal = smoothVel > importOptions.PAUSE_MAX_SPEED_CM_S
     dilationFilter = np.ones((MIN_PAUSE_TIME_FRAMES), dtype=int)
     inPauseBout = ~ (signal.convolve(isExploreLocal.astype(int),
                      dilationFilter, mode='same').astype(bool))
@@ -1712,7 +1658,7 @@ def getExplorationCategories(ts, vel, nearestWells, consts, forcePauseIntervals=
     for i, (bst, ben) in enumerate(zip(startExplores, stopExplores)):
         boutNumWellsVisited[i] = len(
             getListOfVisitedWells(nearestWells[bst:ben], True))
-    enoughWells = boutNumWellsVisited >= consts["MIN_EXPLORE_NUM_WELLS"]
+    enoughWells = boutNumWellsVisited >= importOptions.MIN_EXPLORE_NUM_WELLS
 
     keepBout = np.logical_and(longEnough, enoughWells)
     exploreBoutStarts = startExplores[keepBout]
@@ -1742,10 +1688,10 @@ def getExplorationCategories(ts, vel, nearestWells, consts, forcePauseIntervals=
 
 
 @TimeThisFunction
-def posCalcExplorationBouts(sesh):
+def posCalcExplorationBouts(sesh: BTSession) -> None:
     sesh.btSmoothVel, sesh.btExploreBoutStart_posIdx, sesh.btExploreBoutEnd_posIdx, \
         sesh.btExploreBoutLensSecs, sesh.btBoutCategory, sesh.btBoutLabel = \
-        getExplorationCategories(sesh.btPos_ts, sesh.btVelCmPerSRaw, sesh.btNearestWells, sesh.importOptions["consts"],
+        getExplorationCategories(sesh.btPos_ts, sesh.btVelCmPerSRaw, sesh.btNearestWells, sesh.importOptions,
                                  forcePauseIntervals=(list(zip(sesh.homeRewardEnter_ts, sesh.homeRewardExit_ts)) +
                                                       list(zip(sesh.awayRewardEnter_ts, sesh.awayRewardExit_ts))))
 
@@ -1753,10 +1699,10 @@ def posCalcExplorationBouts(sesh):
         sesh.probeSmoothVel, sesh.probeExploreBoutStart_posIdx, sesh.probeExploreBoutEnd_posIdx, \
             sesh.probeExploreBoutLensSecs, sesh.probeBoutCategory, sesh.probeBoutLabel = \
             getExplorationCategories(sesh.probePos_ts, sesh.probeVelCmPerSRaw,
-                                     sesh.probeNearestWells, sesh.importOptions["consts"])
+                                     sesh.probeNearestWells, sesh.importOptions)
 
 
-def getExcursions(nearestWells, ts):
+def getExcursions(nearestWells: ArrayLike, ts: ArrayLike) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike]:
     excursionCategory = np.array([BTSession.EXCURSION_STATE_ON_WALL if onWall(
         w) else BTSession.EXCURSION_STATE_OFF_WALL for w in nearestWells])
     excursionStarts = np.where(
@@ -1774,7 +1720,7 @@ def getExcursions(nearestWells, ts):
 
 
 @TimeThisFunction
-def posCalcExcursions(sesh):
+def posCalcExcursions(sesh: BTSession) -> None:
     sesh.btExcursionCategory, sesh.btExcursionStart_posIdx, sesh.btExcursionEnd_posIdx, \
         sesh.btExcursionLensSecs = getExcursions(sesh.btNearestWells, sesh.btPos_ts)
 
@@ -1784,7 +1730,7 @@ def posCalcExcursions(sesh):
                 sesh.probeNearestWells, sesh.probePos_ts)
 
 
-def runPositionAnalyses(sesh):
+def runPositionAnalyses(sesh: BTSession) -> None:
     if sesh.lastAwayWell is None:
         sesh.numAwayFound = 0
     else:
@@ -1828,20 +1774,21 @@ def runPositionAnalyses(sesh):
     # posCalcRewardCategories(sesh)
 
 
-def extractAndSave(animalName: str, importOptions: dict):
+def extractAndSave(configName: str, importOptions: ImportOptions) -> None:
     numExcluded = 0
     numExtracted = 0
 
     print("=========================================================")
-    print(f"Extracting data for animal {animalName}")
+    print(f"Extracting data for animal {configName}")
     print("=========================================================")
-    animalInfo = getInfoForAnimal(animalName)
+    # animalInfo = getInfoForAnimal(animalName)
+    loadInfo = getLoadInfo(configName)
     print(
-        f"\tdataDir = {animalInfo.data_dir}\n\toutputDir = {animalInfo.output_dir}")
-    if not os.path.exists(animalInfo.output_dir):
-        os.mkdir(animalInfo.output_dir)
+        f"\tdataDir = {loadInfo.data_dir}\n\toutputDir = {loadInfo.output_dir}")
+    if not os.path.exists(loadInfo.output_dir):
+        os.mkdir(loadInfo.output_dir)
 
-    sessionDirs, prevSessionDirs = getSessionDirs(animalInfo, importOptions)
+    sessionDirs, prevSessionDirs = getSessionDirs(loadInfo, importOptions)
     dirListStr = "".join(
         [f"\t{s}\t{ss}\n" for s, ss in zip(sessionDirs, prevSessionDirs)])
     print("Session dirs:")
@@ -1856,9 +1803,9 @@ def extractAndSave(animalName: str, importOptions: dict):
     prevSessionNumber = None
     infoProblemSessions = []
     for seshi, (seshDir, prevSeshDir) in enumerate(zip(sessionDirs, prevSessionDirs)):
-        if importOptions["debug"]["debugMode"] and \
-            importOptions["debug"]["maxNumSessions"] is not None and \
-                seshi > importOptions["debug"]["maxNumSessions"]:
+        if importOptions.debugMode and \
+            importOptions.debug_maxNumSessions is not None and \
+                seshi >= importOptions.debug_maxNumSessions:
             break
         dateStr = seshDir.split('_')[0][-8:]
         if dateStr == lastDateStr:
@@ -1875,26 +1822,26 @@ def extractAndSave(animalName: str, importOptions: dict):
                 lastPrevDateStr = prevDateStr
                 prevSessionNumber = 1
 
-        sesh = makeSessionObj(seshDir, prevSeshDir, sessionNumber, prevSessionNumber, animalInfo,
-                              skipActivelinkLog=importOptions["skipActivelinkLog"])
+        sesh = makeSessionObj(seshDir, prevSeshDir, sessionNumber, prevSessionNumber, loadInfo,
+                              skipActivelinkLog=importOptions.skipActivelinkLog)
         sesh.animalName = animalName
-        sesh.importOptions = importOptions.copy()
+        sesh.importOptions = dataclasses.replace(importOptions)
         print("\n=======================================")
         print(f"Starting session {sesh.name}:")
         print(f"\tfolder: {seshDir}:")
         print(f"\tinfo file name: {sesh.infoFileName}:")
         print(f"\tprev sesh info file name: {sesh.prevInfoFileName }:")
         print(f"\tactivelink log file name: {sesh.activelinkLogFileName }:")
-        if seshDir in animalInfo.excluded_sessions:
+        if seshDir in loadInfo.excluded_sessions:
             print(seshDir, " excluded session, skipping")
             numExcluded += 1
             continue
-        if "".join(os.path.basename(sesh.infoFileName).split(".")[0:-1]) in animalInfo.excluded_sessions:
+        if "".join(os.path.basename(sesh.infoFileName).split(".")[0:-1]) in loadInfo.excluded_sessions:
             print(seshDir, " excluded session, skipping")
             numExcluded += 1
             continue
 
-        if sesh.importOptions["confirmAfterEachSession"]:
+        if sesh.importOptions.confirmAfterEachSession:
             res = input("Press enter to continue, type s to skip, q to quit")
             if res == "q":
                 return
@@ -1920,8 +1867,8 @@ def extractAndSave(animalName: str, importOptions: dict):
         print("Loading position data")
         loadPositionData(sesh)
         if sesh.isNoInterruption:
-            sesh.importOptions["skipLFP"] = True
-        if sesh.importOptions["skipLFP"]:
+            sesh.importOptions.skipLFP = True
+        if sesh.importOptions.skipLFP:
             print("!!!!!\tSKIPPING LFP\t!!!!!")
             lfpData = None
             baselineLfpData = None
@@ -1929,12 +1876,12 @@ def extractAndSave(animalName: str, importOptions: dict):
             print("Loading LFP")
             lfpData, baselineLfpData = loadLFPData(sesh)
 
-        if sesh.importOptions["justExtractData"]:
+        if sesh.importOptions.justExtractData:
             print("Just extracting the data, continuing to next session...\n")
             numExtracted += 1
             continue
 
-        if not sesh.importOptions["skipLFP"]:
+        if not sesh.importOptions.skipLFP:
             print("Analyzing LFP")
             runLFPAnalyses(sesh, lfpData, baselineLfpData)
         print("Analyzing position")
@@ -1946,7 +1893,7 @@ def extractAndSave(animalName: str, importOptions: dict):
         print(f"Done with session {sesh.name}")
         dataObj.allSessions.append(sesh)
 
-    if importOptions["justExtractData"]:
+    if importOptions.justExtractData:
         print(
             f"Extracted data from {numExtracted} sessions, excluded {numExcluded}. Not analyzing or saving")
         if len(infoProblemSessions) > 0:
@@ -1960,17 +1907,17 @@ def extractAndSave(animalName: str, importOptions: dict):
             sesh.conditionGroup = sesh.animalName + "-" + str(si)
 
     # save all sessions to disk
-    if importOptions["debug"]["debugMode"] and importOptions["debug"]["dontSave"]:
+    if importOptions.debugMode and importOptions.debug_dontSave:
         print("Not saving because in debug mode")
         print("Would've saved the following sessions:")
         for sesh in dataObj.allSessions:
             print(sesh.name)
     else:
-        if importOptions["debug"]["debugMode"]:
-            outputFname = os.path.join(animalInfo.output_dir,
-                                       animalInfo.out_filename + ".debug.dat")
+        if importOptions.debugMode:
+            outputFname = os.path.join(loadInfo.output_dir,
+                                       loadInfo.out_filename + ".debug.dat")
         else:
-            outputFname = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
+            outputFname = os.path.join(loadInfo.output_dir, loadInfo.out_filename)
         print("Saving to file: {}".format(outputFname))
         dataObj.saveToFile(outputFname)
         print("Saved sessions:")
@@ -1989,53 +1936,16 @@ def extractAndSave(animalName: str, importOptions: dict):
     print(f"\tposCalcExcursions: {posCalcExcursions.totalTime}")
 
 
-if __name__ == "__main__":
+def parseCommandLineArgs():
     animalNames = parseCmdLineAnimalNames(default=["B17"])
-    importOptions = {
-        "skipLFP": False,
-        "skipUSB": False,
-        "skipActivelinkLog": False,
-        "skipPrevSession": True,
-        "forceAllTrackingAuto": False,
-        "skipConfirmTrackingFileExtension": True,
-        "skipCurvature": False,
-        "runJustSpecified": False,
-        "specifiedDays": [],
-        "specifiedRuns": [],
-        "justExtractData": False,
-        "runInteractiveExtraction": True,
-        "confirmAfterEachSession": False,
-        "consts": {
-            "VEL_THRESH": 10,  # cm/s
-            "MOVE_THRESH_SM_SIGMA_SECS": 0.8,
+    importOptions = parseCmdLineImportOptions()
+    return animalNames, importOptions
 
-            # Typical observed amplitude of LFP deflection on stimulation
-            "DEFLECTION_THRESHOLD_HI": 6000.0,
-            "DEFLECTION_THRESHOLD_LO": 2000.0,
-            "MIN_ARTIFACT_DISTANCE": int(0.05 * LFP_SAMPLING_RATE),
 
-            # How much buffer time to give the ITI around behavior times
-            "ITI_MARGIN": 10,
-
-            # constants for exploration bout analysis
-            "BOUT_VEL_SM_SIGMA_SECS": 1.5,
-            "PAUSE_MAX_SPEED_CM_S": 8.0,
-            "MIN_PAUSE_TIME_BETWEEN_BOUTS_SECS": 1.0,
-            "MIN_EXPLORE_TIME_SECS": 3.0,
-            "MIN_EXPLORE_NUM_WELLS": 4,
-
-            # constants for ballisticity
-            "BALL_TIME_INTERVALS": list(range(1, 24)),
-            "KNOT_H_CM": 8.0
-        },
-        "debug": {
-            "debugMode": False,
-            "maxNumSessions": 1,
-            "dontSave": False
-        }
-    }
+if __name__ == "__main__":
+    animalNames, importOptions = parseCommandLineArgs()
 
     for animalName in animalNames:
-        importOptions["skipUSB"] = animalName == "Martin"
-        importOptions["skipActivelinkLog"] = animalName == "Martin"
+        importOptions.skipUSB = animalName == "Martin"
+        importOptions.skipActivelinkLog = animalName == "Martin"
         extractAndSave(animalName, importOptions)

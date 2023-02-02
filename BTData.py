@@ -20,6 +20,13 @@ def is_jsonable(x):
         return False
 
 
+class MyJsonEncoder(json.JSONEncoder):
+    def default(self, o: Any) -> Any:
+        if "numpy." in str(type(o)):
+            return super().default(o.item())
+        return super().default(o)
+
+
 class BTData:
     def __init__(self) -> None:
         self.filename = ""
@@ -27,7 +34,7 @@ class BTData:
         self.allRestSessions: List[BTRestSession] = []
         self.importOptions = None
 
-    def loadFromFile(self, filename: str) -> int:
+    def loadFromFile_old(self, filename: str) -> int:
         with open(filename, 'r') as f:
             np_dir = filename + ".numpy_objs"
             self.allSessions: List[BTSession] = []
@@ -85,11 +92,50 @@ class BTData:
         if v is None:
             return "__!None__!", False
         if isinstance(v, dict):
-            return "__!dict__!" + json.dumps(v), False
+            return "__!dict__!" + json.dumps(v, cls=MyJsonEncoder), False
         if isinstance(v, ImportOptions):
-            return "__!ImportOptions__!" + json.dumps(asdict(v)), False
+            return "__!ImportOptions__!" + json.dumps(asdict(v), cls=MyJsonEncoder), False
         if isinstance(v, Ripple):
-            return "__!Ripple__!" + json.dumps(asdict(v)), False
+            print(v)
+            print(f"{ type(v.crossThreshIdx_lfpIdx) = }")
+            print(f"{ type(v.start_lfpIdx) = }")
+            print(f"{ type(v.len_lfpIdx) = }")
+            print(f"{ type(v.peakIdx_lfpIdx) = }")
+            print(f"{ type(v.peakAmp) = }")
+            print(f"{ type(v.crossThreshIdx_lfpIdx) = }")
+            print(f"{ type(v.start_ts) = }")
+
+            print(f"{ type(v.param_detectionThresh) = }")
+            print(f"{ type(v.param_edgeThresh) = }")
+            print(f"{ type(v.param_minLen) = }")
+            print(f"{ type(v.param_maxLen) = }")
+
+            # v.start_lfpIdx = int(v.start_lfpIdx)
+            # v.len_lfpIdx = int(v.len_lfpIdx)
+            # v.peakIdx_lfpIdx = int(v.peakIdx_lfpIdx)
+            # v.peakAmp = float(v.peakAmp)
+            # v.crossThreshIdx_lfpIdx = int(v.crossThreshIdx_lfpIdx)
+            # v.start_ts = int(v.start_ts)
+
+            # v.param_detectionThresh = float(v.param_detectionThresh)
+            # v.param_edgeThresh = float(v.param_edgeThresh)
+            # v.param_minLen = float(v.param_minLen)
+            # v.param_maxLen = float(v.param_maxLen)
+
+            print(f"{ type(v.crossThreshIdx_lfpIdx) = }")
+            print(f"{ type(v.start_lfpIdx) = }")
+            print(f"{ type(v.len_lfpIdx) = }")
+            print(f"{ type(v.peakIdx_lfpIdx) = }")
+            print(f"{ type(v.peakAmp) = }")
+            print(f"{ type(v.crossThreshIdx_lfpIdx) = }")
+            print(f"{ type(v.start_ts) = }")
+
+            print(f"{ type(v.param_detectionThresh) = }")
+            print(f"{ type(v.param_edgeThresh) = }")
+            print(f"{ type(v.param_minLen) = }")
+            print(f"{ type(v.param_maxLen) = }")
+
+            return "__!Ripple__!" + json.dumps(asdict(v), cls=MyJsonEncoder), False
         if isinstance(v, list):
             # This recursion is necessary for list of ripples
             saveableList = [self.makeValueSaveable(sv)[0] for sv in v]
@@ -117,7 +163,7 @@ class BTData:
                 # TODO dataclasses!
         return val
 
-    def saveToFile_new(self, filename: str) -> int:
+    def saveToFile(self, filename: str) -> int:
         saveDict = {}
         savedTypes = set()
         notArrays = []
@@ -136,11 +182,11 @@ class BTData:
 
         saveDict["notarrays"] = notArrays
         # print(f"{ savedTypes = }")
-        print(f"{ saveDict = }")
+        # print(f"{ saveDict = }")
         np.savez_compressed(filename, **saveDict)
         return 0
 
-    def loadFromFile_new(self, filename: str) -> int:
+    def loadFromFile(self, filename: str) -> int:
         self.filename = filename
         self.allSessions: List[BTSession] = []
         self.allRestSessions: List[BTRestSession] = []
@@ -167,7 +213,7 @@ class BTData:
 
         return 0
 
-    def saveToFile(self, filename: str) -> int:
+    def saveToFile_old(self, filename: str) -> int:
         with open(filename, 'w') as f:
             np_dir = filename + ".numpy_objs"
             try:
