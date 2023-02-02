@@ -23,7 +23,10 @@ def is_jsonable(x):
 class MyJsonEncoder(json.JSONEncoder):
     def default(self, o: Any) -> Any:
         if "numpy." in str(type(o)):
-            return super().default(o.item())
+            print(type(o))
+            oo = o.item()
+            print(type(oo))
+            return super().default(oo)
         return super().default(o)
 
 
