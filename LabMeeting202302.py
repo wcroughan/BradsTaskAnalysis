@@ -2,7 +2,7 @@ from BTSession import BTSession
 from MeasureTypes import WellMeasure, TrialMeasure
 from BTData import BTData
 from PlotUtil import PlotManager, setupBehaviorTracePlot
-from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getInfoForAnimal, getRipplePower
+from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo, getRipplePower
 import os
 import time
 from datetime import datetime
@@ -152,7 +152,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         if animalName[-1] == "d":
             loadDebug = True
             animalName = animalName[:-1]
-        animalInfo = getInfoForAnimal(animalName)
+        animalInfo = getLoadInfo(animalName)
         # dataFilename = os.path.join(dataDir, animalName, "processed_data", animalInfo.out_filename)
         dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
         if loadDebug:
@@ -191,10 +191,11 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
               f"with probe: {nCtrlWithProbe} Ctrl, {nSWRWithProbe} SWR)")
 
         data = [[
-            sesh.name, sesh.conditionString(), sesh.homeWell, len(sesh.visitedAwayWells), sesh.fillTimeCutoff()
+            sesh.name, sesh.conditionString(), sesh.homeWell, len(
+                sesh.visitedAwayWells), sesh.fillTimeCutoff(), sesh.btRipsPreStats[0].crossThreshIdx_lfpIdx
         ] for si, sesh in enumerate(sessions)]
         df = pd.DataFrame(data, columns=[
-            "name", "condition", "home well", "num aways found", "fill time"
+            "name", "condition", "home well", "num aways found", "fill time", "random stuff"
         ])
         s = df.to_string()
         pp.writeToInfoFile(s)

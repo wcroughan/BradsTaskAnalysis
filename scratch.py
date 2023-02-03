@@ -2,17 +2,122 @@
 from BTData import BTData
 from BTSession import BTSession, ImportOptions
 import numpy as np
-from UtilFunctions import Ripple, getRotatedWells
+from UtilFunctions import Ripple, getRotatedWells, getLoadInfo
+import os
+from ImportData import extractAndSave
 # import matplotlib.pyplot as plt
 # from UtilFunctions import getRipplePower
 import json
-from dataclasses import is_dataclass, asdict
+from dataclasses import is_dataclass, asdict, dataclass, fields, Field, replace
+from typing import Any, Tuple
+import sys
 
-print(f"{ getRotatedWells(2) = }")
-print(f"{ getRotatedWells(3) = }")
-print(f"{ getRotatedWells(27) = }")
-print(f"{ getRotatedWells(12) = }")
-print(f"{ getRotatedWells(29) = }")
+
+@dataclass
+class C:
+    aa: int
+    bb: float
+    cc: str
+    nn: np.ndarray = np.array([])
+
+
+@dataclass
+class C2:
+    aa: int
+    bb: float
+    cc: str
+    zz: C
+
+
+# c = C(1, 2, "ef", nn=np.arange(4))
+# cc = C(20, 2, "ei", nn=np.arange(9).reshape((3, 3)))
+# # c = C(1, 2, "ef")
+# # cc = C(20, 2, "ei")
+# dd = C2(33, 334, "iejf", cc)
+# d2 = replace(dd)
+# d2.bb = 93840394
+# d2.zz = c
+# v = [dd, d2]
+# print(f"{ v = }")
+# s = json.dumps(v, cls=E)
+# print(f"{ s = }")
+# c2 = json.loads(s, object_hook=decodeObjectHook)
+# print(f"{ c2 = }")
+
+# for x, y in zip(v, c2):
+#     print(f"{ x = }")
+#     print(f"{ y = }")
+#     # print(f"{ x == y = }")
+
+
+configName = "B17"
+importOptions = ImportOptions()
+importOptions.debugMode = True
+importOptions.debug_dontSave = False
+importOptions.debug_maxNumSessions = 2
+dataObj = extractAndSave(configName, importOptions)
+# print(dataObj)
+
+loadInfo = getLoadInfo(configName)
+dataFilename = os.path.join(loadInfo.output_dir, loadInfo.out_filename)
+ratData = BTData()
+ratData.loadFromFile(dataFilename + ".debug.dat")
+# print(ratData.allSessions)
+
+
+def recEq(v1, v2):
+    if type(v1) != type(v2):
+        print(type(v1), type(v2))
+        return 1
+    if hasattr(v1, "__iter__") and not isinstance(v1, str):
+        # print("recursing")
+        for vv1, vv2 in zip(v1, v2):
+            r = recEq(vv1, vv2)
+            if r > 0:
+                return r
+        return 0
+    else:
+        if v1 == v2:
+            return 0
+        if v1 is None and v2 is None:
+            return 0
+        try:
+            if np.isnan(v1) and np.isnan(v2):
+                return 0
+        except:
+            return 2
+        return 2
+
+
+for s1, s2 in zip(dataObj.allSessions, ratData.allSessions):
+    d1 = s1.__dict__
+    d2 = s2.__dict__
+    for k in d1:
+        if k not in d2:
+            print(f"Key {k} not in d2")
+            continue
+        v1 = d1[k]
+        v2 = d2[k]
+        # print(k)
+        r = recEq(v1, v2)
+        if r == 1:
+            print(f"d1 has type {type(v1)}, d2 has type {type(v2)} for key {k}")
+            # exit()
+            continue
+        if r == 2:
+            print(f"not equal for key {k}: v1 = {v1}, v2 = {v2}")
+            continue
+
+    for k in d2:
+        if k not in d1:
+            print(f"Key {k} not in d1")
+            continue
+
+# print(f"{ getRotatedWells(2) = }")
+# print(f"{ getRotatedWells(3) = }")
+# print(f"{ getRotatedWells(27) = }")
+# print(f"{ getRotatedWells(12) = }")
+# print(f"{ getRotatedWells(29) = }")
 
 # r = Ripple(0, 1, 2, 3, 4, 5, 6, 7, 8)
 # print(type(r))
@@ -28,8 +133,8 @@ print(f"{ getRotatedWells(29) = }")
 
 # i = ImportOptions()
 # i2 = ImportOptions(skipLFP=True)
-# r = Ripple(0, 1, 2, 3, 4, 5, 6, 7, 4)
-# r2 = Ripple(10, 11, 21, 31, 41, 51, 61, 71, 4)
+# r = Ripple(0, 1, 2, 3, 4, 5, 6, 7, 4, 5)
+# r2 = Ripple(10, 11, 21, 31, 41, 51, 61, 71, 4, 5)
 # d = BTData()
 # s1 = BTSession()
 # s1.name = "Hello i am s1"
@@ -44,8 +149,8 @@ print(f"{ getRotatedWells(29) = }")
 # s2.importOptions = i2
 # s2.animalName = r2
 # d.allSessions = [s1, s2]
-# d.saveToFile_new("./testSave.rat")
-# d.loadFromFile_new("./testSave.rat.npz")
+# d.saveToFile("./testSave.rat")
+# d.loadFromFile("./testSave.rat.npz")
 # print(d.allSessions)
 
 

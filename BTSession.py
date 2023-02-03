@@ -31,13 +31,14 @@ from UtilFunctions import LoadInfo, getWellPosCoordinates, Ripple, ImportOptions
 # *_posIdx - index in probe_pos* or bt_pos*
 # *_lfpIdx - index in lfp data
 
-
+@dataclass
 class BTSession:
     """
     Contains all data for a session on Brad's task with probe
     Also has references to previous and next session.
     """
 
+    # Static constants
     MOVE_FLAG_ALL = 0
     MOVE_FLAG_MOVING = 1
     MOVE_FLAG_STILL = 2
@@ -56,282 +57,282 @@ class BTSession:
     CONDITION_DELAY = 1
     CONDITION_NO_STIM = 2
 
-    def __init__(self) -> None:
-        self.loadInfo: LoadInfo = None
-        self.importOptions: ImportOptions = None
-        self.animalName = ""
+    # Member vars
+    loadInfo: LoadInfo = None
+    importOptions: ImportOptions = None
+    animalName: str = ""
+    # ==================================
+    # Info about the session
+    # ==================================
+    # The previous session chronologically, if one exists
+    prevSession: Optional[BTSession] = None
+    prevSessionDir: Optional[str] = None
+    # The next session chronologically, if one exists
+    nextSession: Optional[BTSession] = None
+    # date object representing the day of this recording
+    date: Optional[datetime] = None
 
-        # ==================================
-        # Info about the session
-        # ==================================
-        # The previous session chronologically, if one exists
-        self.prevSession: Optional[BTSession] = None
-        self.prevSessionDir: Optional[str] = None
-        # The next session chronologically, if one exists
-        self.nextSession: Optional[BTSession] = None
-        # date object representing the day of this recording
-        self.date: Optional[datetime] = None
+    # Just the date part of session filename (i.e. "20200112")
+    dateStr: str = ""
+    # Just the time part of session filename (i.e. "140259")
+    timeStr: str = ""
+    # Data string in general. May modify in future by appending "S1" for first session if doing multiple in one day
+    name: str = ""
+    # name of raw data folder in which brad's task part of session was recorded
+    btDir: str = ""
+    # name of raw data folder in which ITI part of session was recorded. May be missing (empty string).
+    # May be same as btDir
+    itiDir: str = ""
+    # name of raw data folder in which probe part of session was recorded. May be missing (empty string).
+    # May be same as btDir
+    probeDir: str = ""
+    fileStartString: str = ""
 
-        # Just the date part of session filename (i.e. "20200112")
-        self.dateStr = ""
-        # Just the time part of session filename (i.e. "140259")
-        self.timeStr = ""
-        # Data string in general. May modify in future by appending "S1" for first session if doing multiple in one day
-        self.name = ""
-        # name of raw data folder in which brad's task part of session was recorded
-        self.btDir = ""
-        # name of raw data folder in which ITI part of session was recorded. May be missing (empty string).
-        # May be same as btDir
-        self.itiDir = ""
-        # name of raw data folder in which probe part of session was recorded. May be missing (empty string).
-        # May be same as btDir
-        self.probeDir = ""
-        self.fileStartString = ""
+    infoFileName: str = ""
+    seshIdx: int = -1
+    conditionGroup: str = ""
 
-        self.infoFileName = ""
-        self.seshIdx = -1
-        self.conditionGroup = ""
+    prevInfoFileName: str = ""
+    prevSessionInfoParsed: bool = False
+    prevSessionHome: int = -1
+    prevSessionAways: List[int] = field(default_factory=list)
+    prevSessionLastAwayWell: int = -1
+    prevSessionEndedOnHome: bool = False
+    prevSessionItiStimOn: bool = False
+    prevSessionProbeStimOn: bool = False
+    prevSessionRippleDetectionThreshold: float = 0.0
+    prevSessionItiStimOn: bool = False
+    prevSessionIdx: int = -1
 
-        self.prevInfoFileName = ""
-        self.prevSessionInfoParsed = False
-        self.prevSessionHome = -1
-        self.prevSessionAways = []
-        self.prevSessionLastAwayWell = -1
-        self.prevSessionEndedOnHome = False
-        self.prevSessionItiStimOn = False
-        self.prevSessionProbeStimOn = False
-        self.prevSessionRippleDetectionThreshold = 0.0
-        self.prevSessionItiStimOn = False
-        self.prevSessionIdx = -1
+    hasActivelinkLog: bool = False
+    activelinkLogFileName: str = ""
+    loggedDetections_ts: np.ndarray = np.array([])
+    loggedStats: List[Tuple[str, float, float]] = field(
+        default_factory=list)  # contains all the stats listed in log file
+    rpowmLog: float = 0.0  # The entry from above log list that was active during the session
+    rpowsLog: float = 0.0  # The entry from above log list that was active during the session
 
-        self.hasActivelinkLog = False
-        self.activelinkLogFileName = ""
-        self.loggedDetections_ts = np.array([])
-        self.loggedStats = []  # contains all the stats listed in log file
-        self.rpowmLog = 0.0  # The entry from above log list that was active during the session
-        self.rpowsLog = 0.0  # The entry from above log list that was active during the session
+    # Some flags indicated whether ITI was recorded and whether ITI and probe are in the same rec file or not
+    separateItiFile: bool = False
+    recordedIti: bool = False
+    separateProbeFile: bool = False
 
-        # Some flags indicated whether ITI was recorded and whether ITI and probe are in the same rec file or not
-        self.separateItiFile = False
-        self.recordedIti = False
-        self.separateProbeFile = False
+    # more flags from info file
+    rippleDetectionThreshold: float = 0.0
+    lastAwayWell: float = 0
+    endedOnHome: bool = False
+    ItiStimOn: bool = False
+    probeStimOn: bool = False
 
-        # more flags from info file
-        self.rippleDetectionThreshold = 0.0
-        self.lastAwayWell = 0
-        self.endedOnHome = False
-        self.ItiStimOn = False
-        self.probeStimOn = False
+    btEndedAtWell: Optional[int] = None
+    probeEndedAtWell: Optional[int] = None
+    probePerformed: Optional[bool] = None
 
-        self.btEndedAtWell: Optional[int] = None
-        self.probeEndedAtWell: Optional[int] = None
-        self.probePerformed: Optional[bool] = None
+    # Any other notes that are stored in the info file are added here. Each list entry is one line from that file
+    notes: List[str] = field(default_factory=list)
 
-        # Any other notes that are stored in the info file are added here. Each list entry is one line from that file
-        self.notes = []
+    # Well number of home well
+    homeWell: int = 0
+    # Well number of away wells
+    awayWells: List[int] = field(default_factory=list)
+    numAwayFound: int = 0
+    numHomeFound: int = 0
+    foundWells: Optional[List[int]] = None
 
-        # Well number of home well
-        self.homeWell = 0
-        # Well number of away wells
-        self.awayWells = []
-        self.numAwayFound = 0
-        self.numHomeFound = 0
-        self.foundWells: Optional[List[int]] = None
+    # Flags indicating stim condition
+    rippleDetectionTetrodes: List[int] = field(default_factory=list)
+    rippleBaselineTetrode: Optional[int] = None
+    condition: Optional[int] = None
+    prevSessionCondition: Optional[int] = None
 
-        # Flags indicating stim condition
-        self.rippleDetectionTetrodes = []
-        self.rippleBaselineTetrode = None
-        self.condition: Optional[int] = None
-        self.prevSessionCondition: Optional[int] = None
+    probeFillTime: Optional[int] = None
 
-        self.probeFillTime = None
+    # indicates that any well at all was found
+    foundFirstHome: bool = False
 
-        # indicates that any well at all was found
-        self.foundFirstHome = False
+    # For purposes of light on/off times, ignore this many seconds at start of video
+    trodesLightsIgnoreSeconds: Optional[float] = None
 
-        # For purposes of light on/off times, ignore this many seconds at start of video
-        self.trodesLightsIgnoreSeconds = None
+    # ==================================
+    # Raw data (ish ... position data is fisheye corrected and scaled)
+    # ==================================
+    hasPositionData: bool = False
 
-        # ==================================
-        # Raw data (ish ... position data is fisheye corrected and scaled)
-        # ==================================
-        self.hasPositionData = False
+    # Position data during brad's task
+    btPos_ts: np.ndarray = np.array([])
+    btPosXs: np.ndarray = np.array([])
+    btPosYs: np.ndarray = np.array([])
+    btRecall_posIdx: int = -1
 
-        # Position data during brad's task
-        self.btPos_ts = np.array([])
-        self.btPosXs = np.array([])
-        self.btPosYs = np.array([])
-        self.btRecall_posIdx = -1
+    # Position data during probe
+    probePos_ts: np.ndarray = np.array([])
+    probePosXs: np.ndarray = np.array([])
+    probePosYs: np.ndarray = np.array([])
+    probeRecall_posIdx: int = -1
 
-        # Position data during probe
-        self.probePos_ts = np.array([])
-        self.probePosXs = np.array([])
-        self.probePosYs = np.array([])
-        self.probeRecall_posIdx = -1
+    # LFP data is huge, so only load on demand
+    # noise has a lower threshold, and is more for cleaning up the signal
+    # File names
+    btLfpFnames: List[str] = field(default_factory=list)
+    itiLfpFnames: List[str] = field(default_factory=list)
+    probeLfpFnames: List[str] = field(default_factory=list)
+    btLfpBaselineFname: Optional[str] = None
 
-        # LFP data is huge, so only load on demand
-        # noise has a lower threshold, and is more for cleaning up the signal
-        # File names
-        self.btLfpFnames = []
-        self.itiLfpFnames = []
-        self.probeLfpFnames = []
-        self.btLfpBaselineFname: Optional[str] = None
+    # Borders between sections of session
+    btLfpStart_lfpIdx: int = 0
+    btLfpEnd_lfpIdx: int = 0
+    itiLfpStart_ts: int = 0
+    itiLfpEnd_ts: int = 0
+    itiLfpStart_lfpIdx: int = 0
+    itiLfpEnd_lfpIdx: int = 0
+    probeLfpStart_lfpIdx: int = 0
+    probeLfpEnd_lfpIdx: int = 0
 
-        # Borders between sections of session
-        self.btLfpStart_lfpIdx = 0
-        self.btLfpEnd_lfpIdx = 0
-        self.itiLfpStart_ts = 0
-        self.itiLfpEnd_ts = 0
-        self.itiLfpStart_lfpIdx = 0
-        self.itiLfpEnd_lfpIdx = 0
-        self.probeLfpStart_lfpIdx = 0
-        self.probeLfpEnd_lfpIdx = 0
+    # IMPORTANT NOTE: The above variables are used in the full
+    # LFP data from the file. However all the other lfpIdx variables below
+    # are used to index to the specific region's lfp data, so
+    # i.e. probeLFPBumps_lfpIdx value of 0 indicates a bump at the start of the probe
 
-        # IMPORTANT NOTE: The above variables are used in the full
-        # LFP data from the file. However all the other lfpIdx variables below
-        # are used to index to the specific region's lfp data, so
-        # i.e. probeLFPBumps_lfpIdx value of 0 indicates a bump at the start of the probe
+    # Bumps are detected large deflections, likely interruptions
+    lfpBumps_lfpIdx: np.ndarray = np.array([])
+    lfpBumps_ts: np.ndarray = np.array([])
+    btLFPBumps_posIdx: np.ndarray = np.array([])
+    itiLFPBumps_posIdx: np.ndarray = np.array([])
+    probeLFPBumps_posIdx: np.ndarray = np.array([])
+    btLFPBumps_lfpIdx: np.ndarray = np.array([])
+    itiLFPBumps_lfpIdx: np.ndarray = np.array([])
+    probeLFPBumps_lfpIdx: np.ndarray = np.array([])
 
-        # Bumps are detected large deflections, likely interruptions
-        self.lfpBumps_lfpIdx = np.array([])
-        self.lfpBumps_ts = np.array([])
-        self.btLFPBumps_posIdx = np.array([])
-        self.itiLFPBumps_posIdx = np.array([])
-        self.probeLFPBumps_posIdx = np.array([])
-        self.btLFPBumps_lfpIdx = np.array([])
-        self.itiLFPBumps_lfpIdx = np.array([])
-        self.probeLFPBumps_lfpIdx = np.array([])
+    lfpNoise_lfpIdx: np.ndarray = np.array([])
+    lfpNoise_ts: np.ndarray = np.array([])
+    btLFPNoise_posIdx: np.ndarray = np.array([])
+    itiLFPNoise_posIdx: np.ndarray = np.array([])
+    probeLFPNoise_posIdx: np.ndarray = np.array([])
+    btLFPNoise_lfpIdx: np.ndarray = np.array([])
+    itiLFPNoise_lfpIdx: np.ndarray = np.array([])
+    probeLFPNoise_lfpIdx: np.ndarray = np.array([])
 
-        self.lfpNoise_lfpIdx = np.array([])
-        self.lfpNoise_ts = np.array([])
-        self.btLFPNoise_posIdx = np.array([])
-        self.itiLFPNoise_posIdx = np.array([])
-        self.probeLFPNoise_posIdx = np.array([])
-        self.btLFPNoise_lfpIdx = np.array([])
-        self.itiLFPNoise_lfpIdx = np.array([])
-        self.probeLFPNoise_lfpIdx = np.array([])
+    rpowmPreBt: np.float64 = np.float64(0)
+    rpowsPreBt: np.float64 = np.float64(0)
+    rpowmProbe: np.float64 = np.float64(0)
+    rpowsProbe: np.float64 = np.float64(0)
 
-        self.rpowmPreBt = 0.0
-        self.rpowsPreBt = 0.0
-        self.rpowmProbe = 0.0
-        self.rpowsProbe = 0.0
+    btRipsPreStats: List[Ripple] = field(default_factory=list)
+    itiRipsPreStats: List[Ripple] = field(default_factory=list)
+    probeRipsPreStats: List[Ripple] = field(default_factory=list)
+    btRipsProbeStats: List[Ripple] = field(default_factory=list)
+    itiRipsProbeStats: List[Ripple] = field(default_factory=list)
+    probeRipsProbeStats: List[Ripple] = field(default_factory=list)
+    btRipsLogStats: List[Ripple] = field(default_factory=list)
+    itiRipsLogStats: List[Ripple] = field(default_factory=list)
+    probeRipsLogStats: List[Ripple] = field(default_factory=list)
 
-        self.btRipsPreStats: List[Ripple] = []
-        self.itiRipsPreStats: List[Ripple] = []
-        self.probeRipsPreStats: List[Ripple] = []
-        self.btRipsProbeStats: List[Ripple] = []
-        self.itiRipsProbeStats: List[Ripple] = []
-        self.probeRipsProbeStats: List[Ripple] = []
-        self.btRipsLogStats: List[Ripple] = []
-        self.itiRipsLogStats: List[Ripple] = []
-        self.probeRipsLogStats: List[Ripple] = []
+    # Lighting stuff
+    frameTimes: np.ndarray = np.array([]).astype(np.uint32)
+    trodesLightOffTime: int = 0
+    trodesLightOnTime: int = 0
+    usbVidFile: str = ""
+    usbLightOffFrame: int = -1
+    usbLightOnFrame: int = -1
 
-        # Lighting stuff
-        self.frameTimes = np.array([])
-        self.trodesLightOffTime = 0
-        self.trodesLightOnTime = 0
-        self.usbVidFile = ""
-        self.usbLightOffFrame = -1
-        self.usbLightOnFrame = -1
+    # ==================================
+    # Analyzed data: Brad's task
+    # ==================================
+    hasRewardFindTimes: bool = False
+    homeRewardEnter_ts: np.ndarray = np.array([])
+    homeRewardEnter_posIdx: np.ndarray = np.array([])
+    homeRewardExit_ts: np.ndarray = np.array([])
+    homeRewardExit_posIdx: np.ndarray = np.array([])
 
-        # ==================================
-        # Analyzed data: Brad's task
-        # ==================================
-        self.hasRewardFindTimes = False
-        self.homeRewardEnter_ts = []
-        self.homeRewardEnter_posIdx = []
-        self.homeRewardExit_ts = []
-        self.homeRewardExit_posIdx = []
+    awayRewardEnter_ts: np.ndarray = np.array([])
+    awayRewardEnter_posIdx: np.ndarray = np.array([])
+    awayRewardExit_ts: np.ndarray = np.array([])
+    awayRewardExit_posIdx: np.ndarray = np.array([])
+    visitedAwayWells: List[int] = field(default_factory=list)
 
-        self.awayRewardEnter_ts = []
-        self.awayRewardEnter_posIdx = []
-        self.awayRewardExit_ts = []
-        self.awayRewardExit_posIdx = []
-        self.visitedAwayWells = []
+    # ==================================
+    # Analyzed data: Probe
+    # ==================================
+    btVelCmPerSRaw: np.ndarray = np.array([])
+    btVelCmPerS: np.ndarray = np.array([])
+    btIsMv: np.ndarray = np.array([])
+    probeVelCmPerSRaw: np.ndarray = np.array([])
+    probeVelCmPerS: np.ndarray = np.array([])
+    probeIsMv: np.ndarray = np.array([])
 
-        # ==================================
-        # Analyzed data: Probe
-        # ==================================
-        self.btVelCmPerSRaw = []
-        self.btVelCmPerS = []
-        self.btIsMv = []
-        self.probeVelCmPerSRaw = []
-        self.probeVelCmPerS = []
-        self.probeIsMv = []
+    probeNearestWells: np.ndarray = np.array([])
+    probeWellEntryTimes_posIdx: List[np.ndarray] = field(default_factory=list)
+    probeWellExitTimes_posIdx: List[np.ndarray] = field(default_factory=list)
+    probeWellEntryTimes_ts: List[np.ndarray] = field(default_factory=list)
+    probeWellExitTimes_ts: List[np.ndarray] = field(default_factory=list)
 
-        self.probeNearestWells = []
-        self.probeWellEntryTimes_posIdx = []
-        self.probeWellExitTimes_posIdx = []
-        self.probeWellEntryTimes_ts = []
-        self.probeWellExitTimes_ts = []
+    btNearestWells: np.ndarray = np.array([])
+    btWellEntryTimes_posIdx: List[np.ndarray] = field(default_factory=list)
+    btWellExitTimes_posIdx: List[np.ndarray] = field(default_factory=list)
+    btWellEntryTimes_ts: List[np.ndarray] = field(default_factory=list)
+    btWellExitTimes_ts: List[np.ndarray] = field(default_factory=list)
 
-        self.btNearestWells = []
-        self.btWellEntryTimes_posIdx = []
-        self.btWellExitTimes_posIdx = []
-        self.btWellEntryTimes_ts = []
-        self.btWellExitTimes_ts = []
+    btQuadrants: np.ndarray = np.array([])
+    btWellEntryTimesNinc_posIdx: List[np.ndarray] = field(default_factory=list)
+    btWellExitTimesNinc_posIdx: List[np.ndarray] = field(default_factory=list)
+    btWellEntryTimesNinc_ts: List[np.ndarray] = field(default_factory=list)
+    btWellExitTimesNinc_ts: List[np.ndarray] = field(default_factory=list)
+    btQuadrantEntryTimes_posIdx: List[np.ndarray] = field(default_factory=list)
+    btQuadrantExitTimes_posIdx: List[np.ndarray] = field(default_factory=list)
+    btQuadrantEntryTimes_ts: List[np.ndarray] = field(default_factory=list)
+    btQuadrantExitTimes_ts: List[np.ndarray] = field(default_factory=list)
 
-        self.btQuadrants = []
-        self.btWellEntryTimesNinc_posIdx = []
-        self.btWellExitTimesNinc_posIdx = []
-        self.btWellEntryTimesNinc_ts = []
-        self.btWellExitTimesNinc_ts = []
-        self.btQuadrantEntryTimes_posIdx = []
-        self.btQuadrantExitTimes_posIdx = []
-        self.btQuadrantEntryTimes_ts = []
-        self.btQuadrantExitTimes_ts = []
+    probeQuadrants: np.ndarray = np.array([])
+    probeWellEntryTimesNinc_posIdx: List[np.ndarray] = field(default_factory=list)
+    probeWellExitTimesNinc_posIdx: List[np.ndarray] = field(default_factory=list)
+    probeWellEntryTimesNinc_ts: List[np.ndarray] = field(default_factory=list)
+    probeWellExitTimesNinc_ts: List[np.ndarray] = field(default_factory=list)
+    probeQuadrantEntryTimes_posIdx: List[np.ndarray] = field(default_factory=list)
+    probeQuadrantExitTimes_posIdx: List[np.ndarray] = field(default_factory=list)
+    probeQuadrantEntryTimes_ts: List[np.ndarray] = field(default_factory=list)
+    probeQuadrantExitTimes_ts: List[np.ndarray] = field(default_factory=list)
 
-        self.probeQuadrants = []
-        self.probeWellEntryTimesNinc_posIdx = []
-        self.probeWellExitTimesNinc_posIdx = []
-        self.probeWellEntryTimesNinc_ts = []
-        self.probeWellExitTimesNinc_ts = []
-        self.probeQuadrantEntryTimes_posIdx = []
-        self.probeQuadrantExitTimes_posIdx = []
-        self.probeQuadrantEntryTimes_ts = []
-        self.probeQuadrantExitTimes_ts = []
+    btCurvature: np.ndarray = np.array([])
+    btCurvatureI1: np.ndarray = np.array([])
+    btCurvatureI2: np.ndarray = np.array([])
+    btCurvatureDxf: np.ndarray = np.array([])
+    btCurvatureDyf: np.ndarray = np.array([])
+    btCurvatureDxb: np.ndarray = np.array([])
+    btCurvatureDyb: np.ndarray = np.array([])
 
-        self.btCurvature = np.array([])
-        self.btCurvatureI1 = np.array([])
-        self.btCurvatureI2 = np.array([])
-        self.btCurvatureDxf = np.array([])
-        self.btCurvatureDyf = np.array([])
-        self.btCurvatureDxb = np.array([])
-        self.btCurvatureDyb = np.array([])
+    probeCurvature: np.ndarray = np.array([])
+    probeCurvatureI1: np.ndarray = np.array([])
+    probeCurvatureI2: np.ndarray = np.array([])
+    probeCurvatureDxf: np.ndarray = np.array([])
+    probeCurvatureDyf: np.ndarray = np.array([])
+    probeCurvatureDxb: np.ndarray = np.array([])
+    probeCurvatureDyb: np.ndarray = np.array([])
 
-        self.probeCurvature = np.array([])
-        self.probeCurvatureI1 = np.array([])
-        self.probeCurvatureI2 = np.array([])
-        self.probeCurvatureDxf = np.array([])
-        self.probeCurvatureDyf = np.array([])
-        self.probeCurvatureDxb = np.array([])
-        self.probeCurvatureDyb = np.array([])
+    btSmoothVel: np.ndarray = np.array([])
+    btBoutCategory: np.ndarray = np.array([])
+    btBoutLabel: np.ndarray = np.array([])
+    btExploreBoutStart_posIdx: np.ndarray = np.array([])
+    btExploreBoutEnd_posIdx: np.ndarray = np.array([])
+    btExploreBoutLensSecs: np.ndarray = np.array([])
 
-        self.btSmoothVel = []
-        self.btBoutCategory = np.array([])
-        self.btBoutLabel = np.array([])
-        self.btExploreBoutStart_posIdx = []
-        self.btExploreBoutEnd_posIdx = []
-        self.btExploreBoutLensSecs = []
+    probeSmoothVel: np.ndarray = np.array([])
+    probeBoutCategory: np.ndarray = np.array([])
+    probeBoutLabel: np.ndarray = np.array([])
+    probeExploreBoutStart_posIdx: np.ndarray = np.array([])
+    probeExploreBoutEnd_posIdx: np.ndarray = np.array([])
+    probeExploreBoutLensSecs: np.ndarray = np.array([])
 
-        self.probeSmoothVel = []
-        self.probeBoutCategory = np.array([])
-        self.probeBoutLabel = np.array([])
-        self.probeExploreBoutStart_posIdx = []
-        self.probeExploreBoutEnd_posIdx = []
-        self.probeExploreBoutLensSecs = []
+    btExcursionCategory: np.ndarray = np.array([])
+    btExcursionStart_posIdx: np.ndarray = np.array([])
+    btExcursionEnd_posIdx: np.ndarray = np.array([])
+    btExcursionLensSecs: np.ndarray = np.array([])
 
-        self.btExcursionCategory = []
-        self.btExcursionStart_posIdx = []
-        self.btExcursionEnd_posIdx = []
-        self.btExcursionLensSecs = np.array([])
+    probeExcursionCategory: np.ndarray = np.array([])
+    probeExcursionStart_posIdx: np.ndarray = np.array([])
+    probeExcursionEnd_posIdx: np.ndarray = np.array([])
+    probeExcursionLensSecs: np.ndarray = np.array([])
 
-        self.probeExcursionCategory = []
-        self.probeExcursionStart_posIdx = []
-        self.probeExcursionEnd_posIdx = []
-        self.probeExcursionLensSecs = np.array([])
-
-        self.positionFromDeepLabCut: Optional[bool] = None
+    positionFromDeepLabCut: Optional[bool] = None
 
     # def __eq__(self, __o: object) -> bool:
     #     if not isinstance(__o, BTSession):

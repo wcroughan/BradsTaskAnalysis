@@ -169,7 +169,7 @@ def parseActivelinkLog(sesh: BTSession) -> None:
                     lc = lineTxt.split(",")
                     meanVal = float(lc[0].split()[-1])
                     stdVal = float(lc[1].split()[-1])
-                    sesh.loggedStats.append((printTime, meanVal, stdVal))
+                    sesh.loggedStats.append([printTime, meanVal, stdVal])
                 elif lineTxt.startswith("Detected ripple at "):
                     ts = int(lineTxt.split("TS:")[1].split()[0][:-1])
                     detections.append(ts)
@@ -1158,7 +1158,7 @@ def loadLFPData(sesh: BTSession) -> Tuple[ArrayLike, Optional[ArrayLike]]:
 
 def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optional[ArrayLike], showPlot: bool = False) -> None:
     lfpV = lfpData[0][1]['voltage']
-    lfp_ts = lfpData[0][0]['time']
+    lfp_ts = lfpData[0][0]['time'].astype(np.int64)
     print("\tCondition - {}".format("SWR" if sesh.isRippleInterruption else "Ctrl"))
 
     peaks = signal.find_peaks(np.abs(np.diff(lfpV, prepend=lfpV[0])),
@@ -1182,8 +1182,8 @@ def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optiona
 
     if sesh.probePerformed:
         itiMargin = sesh.importOptions.ITI_MARGIN
-        sesh.itiLfpStart_ts = sesh.btPos_ts[-1] + itiMargin * TRODES_SAMPLING_RATE
-        sesh.itiLfpEnd_ts = sesh.probePos_ts[0] - itiMargin * TRODES_SAMPLING_RATE
+        sesh.itiLfpStart_ts = int(sesh.btPos_ts[-1] + itiMargin * TRODES_SAMPLING_RATE)
+        sesh.itiLfpEnd_ts = int(sesh.probePos_ts[0] - itiMargin * TRODES_SAMPLING_RATE)
         itiLfpStart_lfpIdx = np.searchsorted(lfp_ts, sesh.itiLfpStart_ts)
         itiLfpEnd_lfpIdx = np.searchsorted(lfp_ts, sesh.itiLfpEnd_ts)
         sesh.itiLfpStart_lfpIdx = itiLfpStart_lfpIdx
@@ -1233,7 +1233,6 @@ def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optiona
         lfpV[0:(btLfpStart_lfpIdx//2)], lfpDeflections=lfpNoise_lfpIdx)
     _, zpow, _, _ = getRipplePower(btLFPData, method="standard", meanPower=sesh.rpowmPreBt,
                                    stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.btLFPNoise_lfpIdx)
-
     sesh.btRipsPreStats = detectRipples(
         zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.btLfpStart_lfpIdx])
 
@@ -1774,7 +1773,7 @@ def runPositionAnalyses(sesh: BTSession) -> None:
     # posCalcRewardCategories(sesh)
 
 
-def extractAndSave(configName: str, importOptions: ImportOptions) -> None:
+def extractAndSave(configName: str, importOptions: ImportOptions) -> BTData:
     numExcluded = 0
     numExtracted = 0
 
@@ -1824,7 +1823,7 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> None:
 
         sesh = makeSessionObj(seshDir, prevSeshDir, sessionNumber, prevSessionNumber, loadInfo,
                               skipActivelinkLog=importOptions.skipActivelinkLog)
-        sesh.animalName = animalName
+        sesh.animalName = loadInfo.animalName
         sesh.importOptions = dataclasses.replace(importOptions)
         print("\n=======================================")
         print(f"Starting session {sesh.name}:")
@@ -1935,6 +1934,8 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> None:
     print(f"\tposCalcExplorationBouts: {posCalcExplorationBouts.totalTime}")
     print(f"\tposCalcExcursions: {posCalcExcursions.totalTime}")
 
+    return dataObj
+
 
 def parseCommandLineArgs():
     animalNames = parseCmdLineAnimalNames(default=["B17"])
@@ -1942,10 +1943,14 @@ def parseCommandLineArgs():
     return animalNames, importOptions
 
 
-if __name__ == "__main__":
+def main():
     animalNames, importOptions = parseCommandLineArgs()
 
     for animalName in animalNames:
         importOptions.skipUSB = animalName == "Martin"
         importOptions.skipActivelinkLog = animalName == "Martin"
         extractAndSave(animalName, importOptions)
+
+
+if __name__ == "__main__":
+    main()

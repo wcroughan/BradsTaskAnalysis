@@ -69,7 +69,7 @@ class ImportOptions:
     MIN_EXPLORE_TIME_SECS: float = 3.0
     MIN_EXPLORE_NUM_WELLS: int = 4
     #  constants for ballisticity
-    BALL_TIME_INTERVALS: list = field(default_factory=lambda: list(range(1, 24)))
+    BALL_TIME_INTERVALS: List[int] = field(default_factory=lambda: list(range(1, 24)))
     KNOT_H_CM: float = 8.0
 
     # ============
@@ -662,7 +662,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         return LoadInfo(configName=config, animalName="Martin",
                         X_START=200, X_FINISH=1175, Y_START=20, Y_FINISH=1275, excludeBoxes=None,
                         dataDirPath=["WDC1", "martindata", "bradtask"], outputDirPath=["WDC6", "Martin", "processed_data"],
-                        out_filename="martin_bradtask.dat",
+                        out_filename="martin_bradtask.rat",
                         excluded_dates=excluded_dates, excluded_sessions=excluded_sessions, minimum_date=None,
                         DEFAULT_RIP_DET_TET=37, DEFAULT_RIP_BAS_TET=None)
 
@@ -687,7 +687,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         return LoadInfo(configName=config, animalName="B13",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
                         dataDirPath=["WDC6", "B13", "bradtasksessions"], outputDirPath=["WDC6", "B13", "processed_data"],
-                        out_filename="B13_bradtask.dat",
+                        out_filename="B13_bradtask.rat",
                         excluded_dates=excluded_dates, excluded_sessions=excluded_sessions, minimum_date=None,
                         DEFAULT_RIP_DET_TET=7, DEFAULT_RIP_BAS_TET=2)
 
@@ -701,7 +701,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         return LoadInfo(configName=config, animalName="B14",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
                         dataDirPath=["WDC6", "B14", "bradtasksessions"], outputDirPath=["WDC6", "B14", "processed_data"],
-                        out_filename="B14_bradtask.dat",
+                        out_filename="B14_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date="20220220",
                         DEFAULT_RIP_DET_TET=3, DEFAULT_RIP_BAS_TET=2)
 
@@ -720,7 +720,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         return LoadInfo(configName=config, animalName="B16",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
                         dataDirPath=["WDC8", "B16", "bradtasksessions"], outputDirPath=["WDC8", "B16", "processed_data"],
-                        out_filename="B16_bradtask.dat",
+                        out_filename="B16_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date="20221101",
                         DEFAULT_RIP_DET_TET=4, DEFAULT_RIP_BAS_TET=7)
 
@@ -731,7 +731,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         return LoadInfo(configName=config, animalName="B17",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
                         dataDirPath=["WDC8", "B17", "bradtasksessions"], outputDirPath=["WDC8", "B17", "processed_data"],
-                        out_filename="B17_bradtask.dat",
+                        out_filename="B17_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
                         DEFAULT_RIP_DET_TET=6, DEFAULT_RIP_BAS_TET=5)
 
@@ -763,7 +763,7 @@ def getLoadInfo(config: str) -> LoadInfo:
         return LoadInfo(configName=config, animalName="B18",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=[(0, 0, 130, 60)],
                         dataDirPath=["WDC8", "B18", "bradtasksessions"], outputDirPath=["WDC8", "B18", "processed_data"],
-                        out_filename="B18_bradtask.dat",
+                        out_filename="B18_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
                         DEFAULT_RIP_DET_TET=5, DEFAULT_RIP_BAS_TET=3)
 
