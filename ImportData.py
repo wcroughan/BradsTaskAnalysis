@@ -1087,7 +1087,7 @@ def loadLFPData(sesh: BTSession) -> Tuple[ArrayLike, Optional[ArrayLike]]:
     if len(sesh.rippleDetectionTetrodes) == 0:
         sesh.rippleDetectionTetrodes = [sesh.loadInfo.DEFAULT_RIP_DET_TET]
 
-    print(f"\tUsing detection tetrodes: {sesh.rippleDetectionTetrodes}")
+    # print(f"\tUsing detection tetrodes: {sesh.rippleDetectionTetrodes}")
 
     for i in range(len(sesh.rippleDetectionTetrodes)):
         lfpdir = sesh.fileStartString + ".LFP"
@@ -1120,7 +1120,7 @@ def loadLFPData(sesh: BTSession) -> Tuple[ArrayLike, Optional[ArrayLike]]:
     if sesh.rippleBaselineTetrode is None:
         sesh.rippleBaselineTetrode = sesh.loadInfo.DEFAULT_RIP_BAS_TET
 
-    print(f"\tUsing baseline tetrode: {sesh.rippleBaselineTetrode}")
+    # print(f"\tUsing baseline tetrode: {sesh.rippleBaselineTetrode}")
 
     # I think Martin didn't have this baseline tetrode? Need to check
     if sesh.rippleBaselineTetrode is not None:
@@ -1159,7 +1159,7 @@ def loadLFPData(sesh: BTSession) -> Tuple[ArrayLike, Optional[ArrayLike]]:
 def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optional[ArrayLike], showPlot: bool = False) -> None:
     lfpV = lfpData[0][1]['voltage']
     lfp_ts = lfpData[0][0]['time'].astype(np.int64)
-    print("\tCondition - {}".format("SWR" if sesh.isRippleInterruption else "Ctrl"))
+    # print("\tCondition - {}".format("SWR" if sesh.isRippleInterruption else "Ctrl"))
 
     peaks = signal.find_peaks(np.abs(np.diff(lfpV, prepend=lfpV[0])),
                               height=sesh.importOptions.DEFLECTION_THRESHOLD_HI, distance=sesh.importOptions.MIN_ARTIFACT_DISTANCE)
@@ -1180,6 +1180,18 @@ def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optiona
     btLFPBumps_lfpIdx -= btLfpStart_lfpIdx
     sesh.btLFPBumps_lfpIdx = btLFPBumps_lfpIdx
 
+    if sesh.hasActivelinkLog:
+        sesh.loggedDetections_lfpIdx = np.searchsorted(lfp_ts, sesh.loggedDetections_ts)
+        assert len(sesh.loggedDetections_lfpIdx) == len(sesh.loggedDetections_ts)
+        sesh.btLoggedDetections_ts = sesh.loggedDetections_ts[(
+            sesh.loggedDetections_ts > sesh.btPos_ts[0]) & (sesh.loggedDetections_ts < sesh.btPos_ts[-1])]
+        sesh.btLoggedDetections_lfpIdx = sesh.loggedDetections_lfpIdx[(
+            sesh.loggedDetections_lfpIdx > btLfpStart_lfpIdx) & (sesh.loggedDetections_lfpIdx < btLfpEnd_lfpIdx)]
+        sesh.btLoggedDetections_lfpIdx -= btLfpStart_lfpIdx
+        # print(f"{ len(sesh.btLoggedDetections_lfpIdx)  = }")
+        # print(f"{ len(sesh.btLoggedDetections_ts) = }")
+        assert len(sesh.btLoggedDetections_lfpIdx) == len(sesh.btLoggedDetections_ts)
+
     if sesh.probePerformed:
         itiMargin = sesh.importOptions.ITI_MARGIN
         sesh.itiLfpStart_ts = int(sesh.btPos_ts[-1] + itiMargin * TRODES_SAMPLING_RATE)
@@ -1194,8 +1206,17 @@ def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optiona
         itiLFPBumps_lfpIdx -= itiLfpStart_lfpIdx
         sesh.itiLFPBumps_lfpIdx = itiLFPBumps_lfpIdx
 
-        probeLfpStart_lfpIdx = np.searchsorted(lfp_ts, sesh.btPos_ts[-1])
-        probeLfpEnd_lfpIdx = np.searchsorted(lfp_ts, sesh.probePos_ts[0])
+        if sesh.hasActivelinkLog:
+            sesh.loggedDetections_lfpIdx = np.searchsorted(lfp_ts, sesh.loggedDetections_ts)
+            sesh.itiLoggedDetections_ts = sesh.loggedDetections_ts[(
+                sesh.loggedDetections_ts > sesh.itiLfpStart_ts) & (sesh.loggedDetections_ts < sesh.itiLfpEnd_ts)]
+            sesh.itiLoggedDetections_lfpIdx = sesh.loggedDetections_lfpIdx[(
+                sesh.loggedDetections_lfpIdx > itiLfpStart_lfpIdx) & (sesh.loggedDetections_lfpIdx < itiLfpEnd_lfpIdx)]
+            sesh.itiLoggedDetections_lfpIdx -= sesh.itiLfpStart_lfpIdx
+            assert len(sesh.itiLoggedDetections_lfpIdx) == len(sesh.itiLoggedDetections_ts)
+
+        probeLfpStart_lfpIdx = np.searchsorted(lfp_ts, sesh.probePos_ts[0])
+        probeLfpEnd_lfpIdx = np.searchsorted(lfp_ts, sesh.probePos_ts[-1])
         sesh.probeLfpStart_lfpIdx = probeLfpStart_lfpIdx
         sesh.probeLfpEnd_lfpIdx = probeLfpEnd_lfpIdx
         probeLFPData = lfpV[probeLfpStart_lfpIdx:probeLfpEnd_lfpIdx]
@@ -1203,6 +1224,16 @@ def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optiona
             lfpBumps_lfpIdx < probeLfpEnd_lfpIdx)]
         probeLFPBumps_lfpIdx -= probeLfpStart_lfpIdx
         sesh.probeLFPBumps_lfpIdx = probeLFPBumps_lfpIdx
+
+        if sesh.hasActivelinkLog:
+            assert probeLfpEnd_lfpIdx < len(lfp_ts)
+            sesh.loggedDetections_lfpIdx = np.searchsorted(lfp_ts, sesh.loggedDetections_ts)
+            sesh.probeLoggedDetections_ts = sesh.loggedDetections_ts[(
+                sesh.loggedDetections_ts > sesh.probePos_ts[0]) & (sesh.loggedDetections_ts < sesh.probePos_ts[-1])]
+            sesh.probeLoggedDetections_lfpIdx = sesh.loggedDetections_lfpIdx[(
+                sesh.loggedDetections_lfpIdx > probeLfpStart_lfpIdx) & (sesh.loggedDetections_lfpIdx < probeLfpEnd_lfpIdx)]
+            sesh.probeLoggedDetections_lfpIdx -= sesh.probeLfpStart_lfpIdx
+            assert len(sesh.probeLoggedDetections_lfpIdx) == len(sesh.probeLoggedDetections_ts)
 
     peaks = signal.find_peaks(np.abs(
         np.diff(lfpV, prepend=lfpV[0])), height=sesh.importOptions.DEFLECTION_THRESHOLD_LO, distance=sesh.importOptions.MIN_ARTIFACT_DISTANCE)
@@ -1299,7 +1330,7 @@ def runSanityChecks(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Option
         # btInterruption_posIdx = sesh.btInterruption_posIdx[btInterruption_posIdx < len(
         #     sesh.btPos_ts)]
 
-        numInterruptions = len(sesh.btRipsPreStats)
+        numInterruptions = len(sesh.btLFPBumps_lfpIdx)
         print("\t{} interruptions detected".format(numInterruptions))
         if numInterruptions < 50:
             if sesh.isRippleInterruption and numInterruptions > 0:
@@ -1847,7 +1878,7 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> BTData:
             elif res == "s":
                 continue
 
-        print("Parsing info files")
+        # print("Parsing info files")
         try:
             parseInfoFiles(sesh)
         except Exception as e:
@@ -1863,7 +1894,7 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> BTData:
         #     infoProblemSessions.append((sesh.name, e))
         #     continue
 
-        print("Loading position data")
+        # print("Loading position data")
         loadPositionData(sesh)
         if sesh.isNoInterruption:
             sesh.importOptions.skipLFP = True
@@ -1872,7 +1903,7 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> BTData:
             lfpData = None
             baselineLfpData = None
         else:
-            print("Loading LFP")
+            # print("Loading LFP")
             lfpData, baselineLfpData = loadLFPData(sesh)
 
         if sesh.importOptions.justExtractData:
@@ -1881,15 +1912,15 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> BTData:
             continue
 
         if not sesh.importOptions.skipLFP:
-            print("Analyzing LFP")
+            # print("Analyzing LFP")
             runLFPAnalyses(sesh, lfpData, baselineLfpData)
-        print("Analyzing position")
+        # print("Analyzing position")
         runPositionAnalyses(sesh)
 
-        print("Running sanity checks")
+        # print("Running sanity checks")
         runSanityChecks(sesh, lfpData, baselineLfpData)
 
-        print(f"Done with session {sesh.name}")
+        # print(f"Done with session {sesh.name}")
         dataObj.allSessions.append(sesh)
 
     if importOptions.justExtractData:

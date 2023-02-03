@@ -45,7 +45,7 @@ class BTData:
             if is_dataclass(o):
                 o = replace(o)
                 fs: Tuple[Field, ...] = fields(o.__class__)
-                print(f"starting recursing for encoding type {type(o)}")
+                # print(f"starting recursing for encoding type {type(o)}")
                 for f in fs:
                     recurse = self.shouldRecurse(f.type)
                     # print(f.name, f.type, C, recurse, foundInModule, sep="\t")
@@ -53,7 +53,7 @@ class BTData:
                         fd = self.default(getattr(o, f.name))
                         setattr(o, f.name, fd)
                 d = asdict(o)
-                print(f"finished recursing for encoding type {type(o)}")
+                # print(f"finished recursing for encoding type {type(o)}")
                 d["__encoder_special_key_wdc"] = type(o).__name__
                 return d
             if isinstance(o, list):

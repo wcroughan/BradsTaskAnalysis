@@ -1,7 +1,7 @@
 from BTSession import BTSession
 from MeasureTypes import WellMeasure, TrialMeasure
 from BTData import BTData
-from PlotUtil import PlotManager, setupBehaviorTracePlot
+from PlotUtil import PlotManager, setupBehaviorTracePlot, plotIndividualAndAverage
 from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo, getRipplePower
 import os
 import time
@@ -14,6 +14,8 @@ import math
 import MountainViewIO
 from consts import TRODES_SAMPLING_RATE
 import pandas as pd
+import warnings
+import matplotlib.pyplot as plt
 
 # TODO
 # focus first on getting something on which to base discussion, like very basic demonstration of memory of home during probe
@@ -107,7 +109,7 @@ import pandas as pd
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
                 RUN_OPTIMALITY=None, PLOT_DETAILED_TASK_TRACES=None,
-                PLOT_DETAILED_PROBE_TRACES=None, RUN_NEW=True,
+                PLOT_DETAILED_PROBE_TRACES=None,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
@@ -192,10 +194,10 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
         data = [[
             sesh.name, sesh.conditionString(), sesh.homeWell, len(
-                sesh.visitedAwayWells), sesh.fillTimeCutoff(), sesh.btRipsPreStats[0].crossThreshIdx_lfpIdx
+                sesh.visitedAwayWells), sesh.fillTimeCutoff()
         ] for si, sesh in enumerate(sessions)]
         df = pd.DataFrame(data, columns=[
-            "name", "condition", "home well", "num aways found", "fill time", "random stuff"
+            "name", "condition", "home well", "num aways found", "fill time"
         ])
         s = df.to_string()
         pp.writeToInfoFile(s)
@@ -254,8 +256,6 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 False, h, boutFlag=BTSession.BOUT_STATE_EXPLORE),
                 sessionsWithProbe).makeFigures(pp, everySessionTraceType="task_bouts")
 
-        if RUN_NEW:
-            # Quick fig from mid meeting
             WellMeasure("probe dotprod score first entry", lambda s, h: s.getDotProductScore(
                 True, h, timeInterval=[0, s.getLatencyToWell(True, s.homeWell, returnUnits="secs")], boutFlag=BTSession.BOUT_STATE_EXPLORE),
                 sessionsWithProbe).makeFigures(pp, everySessionTraceTimeInterval=lambda s: [0, s.getLatencyToWell(True, s.homeWell, returnUnits="secs")],
@@ -437,21 +437,22 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 lfpData = MountainViewIO.loadLFP(data_file=sesh.btLfpBaselineFname)
                 baselfpV = lfpData[1]['voltage']
 
+                combinedDeflections = np.concatenate(
+                    (sesh.lfpBumps_lfpIdx, sesh.loggedDetections_lfpIdx))
+
                 ripPower_standard, ripZPower_standard, _, _ = getRipplePower(
-                    lfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog)
+                    lfpV, lfpDeflections=combinedDeflections)
                 baseRipPower_standard, _, _, _ = getRipplePower(
-                    baselfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog)
+                    baselfpV, lfpDeflections=combinedDeflections)
                 rp = ripPower_standard - baseRipPower_standard
                 m = np.nanmean(rp)
                 s = np.nanstd(rp)
                 ripZPower_standardOffset = (rp - m) / s
 
-                ripPower_causal, ripZPower_causal, _, _ = getRipplePower(
-                    lfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog,
-                    method="causal")
-                baseRipPower_causal, _, _, _ = getRipplePower(
-                    baselfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog,
-                    method="causal")
+                ripPower_causal, ripZPower_causal, _, _ = getRipplePower(lfpV, lfpDeflections=combinedDeflections,
+                                                                         method="causal")
+                baseRipPower_causal, _, _, _ = getRipplePower(baselfpV, lfpDeflections=combinedDeflections,
+                                                              method="causal")
                 rp = ripPower_causal - baseRipPower_causal
                 m = np.nanmean(rp)
                 s = np.nanstd(rp)
@@ -460,25 +461,43 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 _, ripZPower_activelink, _, _ = getRipplePower(
                     lfpV, meanPower=sesh.rpowmLog, stdPower=sesh.rpowsLog,
                     method="activelink", baselineLfpData=baselfpV)
+                # print(f"{ np.count_nonzero(np.isnan(ripZPower_activelink)) / len(ripZPower_activelink) = }")
+                # print(
+                #     f"{ np.count_nonzero(np.abs(ripZPower_activelink) > 1e300) / len(ripZPower_activelink) = }")
+                # print(f"{ np.count_nonzero(np.isinf(ripZPower_activelink)) / len(ripZPower_activelink) = }")
+                # print(f"{ np.nanmax(np.abs(ripZPower_activelink)) = }")
+
+                assert len(ripPower_causal) == len(ripZPower_causal) == len(ripZPower_activelink)
+                # print(f"{ np.count_nonzero(np.diff(ripZPower_activelink)) = }")
+                # print(f"{ len(ripZPower_activelink) = }")
+                assert np.count_nonzero(np.diff(ripZPower_activelink)
+                                        ) < len(ripZPower_activelink) / 2
+
+                # plt.plot(lfpT, lfpV / 3000.0, label="LFP")
+                # plt.plot(lfpT, baselfpV / 3000.0, label="base LFP")
+                # plt.plot(lfpT, ripZPower_activelink, label="activelink")
+                # plt.plot(lfpT, ripZPower_causal, label="causal")
+                # plt.legend()
+                # plt.show()
+
+                print(f"{ len(sesh.btLFPBumps_lfpIdx) = }")
+                print(f"{ len(sesh.btLoggedDetections_lfpIdx) = }")
 
                 MARGIN_SECS = 0.25
                 MARGIN_PTS = int(MARGIN_SECS * 1500)
-                allRipPowsArtifact_activelink = np.empty((len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
-                allRipPowsArtifact_standard = np.empty((len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
+                allRipPowsArtifact_activelink = np.empty(
+                    (len(sesh.btLFPBumps_lfpIdx), 2*MARGIN_PTS))
+                allRipPowsArtifact_standard = np.empty((len(sesh.btLFPBumps_lfpIdx), 2*MARGIN_PTS))
                 allRipPowsArtifact_standardOffset = np.empty(
-                    (len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
-                allRipPowsArtifact_causal = np.empty((len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
+                    (len(sesh.btLFPBumps_lfpIdx), 2*MARGIN_PTS))
+                allRipPowsArtifact_causal = np.empty((len(sesh.btLFPBumps_lfpIdx), 2*MARGIN_PTS))
                 allRipPowsArtifact_causalOffset = np.empty(
-                    (len(sesh.lfpBumps_lfpIdx), 2*MARGIN_PTS))
+                    (len(sesh.btLFPBumps_lfpIdx), 2*MARGIN_PTS))
                 pp.pushOutputSubDir("LFP_Interruptions")
                 pp.pushOutputSubDir("artifact")
-                for ai, aidx in enumerate(sesh.lfpBumps_lfpIdx):
-                    # This is just annoying to deal with and shouldn't affect much, can add back in later
-                    if aidx < MARGIN_PTS or aidx > len(lfpV) - MARGIN_PTS:
-                        continue
-
-                    i1 = aidx - MARGIN_PTS
-                    i2 = aidx + MARGIN_PTS
+                for ai, aidx in enumerate(sesh.btLFPBumps_lfpIdx):
+                    i1 = aidx - MARGIN_PTS + sesh.btLfpStart_lfpIdx
+                    i2 = aidx + MARGIN_PTS + sesh.btLfpStart_lfpIdx
 
                     allRipPowsArtifact_activelink[ai, :] = ripZPower_activelink[i1:i2]
                     allRipPowsArtifact_standard[ai, :] = ripZPower_standard[i1:i2]
@@ -487,7 +506,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                     allRipPowsArtifact_causalOffset[ai, :] = ripZPower_causalOffset[i1:i2]
 
                     if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS and \
-                            len(sesh.lfpBumps_lfpIdx) // 2 < ai < len(sesh.lfpBumps_lfpIdx) // 2 + 20:
+                            len(sesh.btLFPBumps_lfpIdx) // 2 < ai < len(sesh.btLFPBumps_lfpIdx) // 2 + 20:
                         with pp.newFig(f"interruption_{sesh.name}_{ai}", excludeFromCombo=True) as pc:
                             pc.ax.plot(lfpT[i1:i2], lfpV[i1:i2] / 1000, label="lfp")
                             pc.ax.plot(lfpT[i1:i2], ripZPower_activelink[i1:i2],
@@ -505,23 +524,19 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 pp.popOutputSubDir()
 
                 allRipPowsLogged_activelink = np.empty(
-                    (len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
-                allRipPowsLogged_standard = np.empty((len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
+                    (len(sesh.btLoggedDetections_lfpIdx), 2*MARGIN_PTS))
+                allRipPowsLogged_standard = np.empty(
+                    (len(sesh.btLoggedDetections_lfpIdx), 2*MARGIN_PTS))
                 allRipPowsLogged_standardOffset = np.empty(
-                    (len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
-                allRipPowsLogged_causal = np.empty((len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
+                    (len(sesh.btLoggedDetections_lfpIdx), 2*MARGIN_PTS))
+                allRipPowsLogged_causal = np.empty(
+                    (len(sesh.btLoggedDetections_lfpIdx), 2*MARGIN_PTS))
                 allRipPowsLogged_causalOffset = np.empty(
-                    (len(sesh.loggedDetections_ts), 2*MARGIN_PTS))
+                    (len(sesh.btLoggedDetections_lfpIdx), 2*MARGIN_PTS))
                 pp.pushOutputSubDir("logged")
-                detections_lfpIdx = np.searchsorted(
-                    lfpT, sesh.loggedDetections_ts / TRODES_SAMPLING_RATE)
-                for di, didx in enumerate(detections_lfpIdx):
-                    # This is just annoying to deal with and shouldn't affect much, can add back in later
-                    if didx < MARGIN_PTS or didx > len(lfpV) - MARGIN_PTS:
-                        continue
-
-                    i1 = didx - MARGIN_PTS
-                    i2 = didx + MARGIN_PTS
+                for di, didx in enumerate(sesh.btLoggedDetections_lfpIdx):
+                    i1 = didx - MARGIN_PTS + sesh.btLfpStart_lfpIdx
+                    i2 = didx + MARGIN_PTS + sesh.btLfpStart_lfpIdx
 
                     allRipPowsLogged_activelink[di, :] = ripZPower_activelink[i1:i2]
                     allRipPowsLogged_standard[di, :] = ripZPower_standard[i1:i2]
@@ -530,7 +545,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                     allRipPowsLogged_causalOffset[di, :] = ripZPower_causalOffset[i1:i2]
 
                     if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS and \
-                            len(detections_lfpIdx) // 2 < di < len(detections_lfpIdx) // 2 + 20:
+                            len(sesh.btLoggedDetections_lfpIdx) // 2 < di < len(sesh.btLoggedDetections_lfpIdx) // 2 + 20:
                         with pp.newFig(f"interruption_{sesh.name}_{di}", excludeFromCombo=True) as pc:
                             pc.ax.plot(lfpT[i1:i2], lfpV[i1:i2] / 1000, label="lfp")
                             pc.ax.plot(lfpT[i1:i2], ripZPower_activelink[i1:i2],
@@ -580,14 +595,25 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 # latencyToDetectionLoggedFrom25_all = np.append(
                 #     latencyToDetectionLoggedFrom25_all, latencyToDetectionLoggedFrom25)
 
-                if MAKE_INDIVIDUAL_INTERRUPTION_PLOTS:
-                    allRipPowsArtifact_activelink[np.isinf(allRipPowsArtifact_activelink)] = np.nan
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", r"Degrees of freedom <= 0 for slice")
+                    warnings.filterwarnings("ignore", r"Mean of empty slice")
+
+                    allRipPowsArtifact_activelink[np.isinf(
+                        allRipPowsArtifact_activelink)] = np.nan
                     m = np.nanmean(allRipPowsArtifact_activelink, axis=0)
                     s = np.nanstd(allRipPowsArtifact_activelink, axis=0)
                     with pp.newFig(f"lfp_psth_artifact_activelink", excludeFromCombo=True) as pc:
                         xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
                         pc.ax.plot(xvals, m)
                         pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    with pp.newFig(f"lfp_psth_artifact_activelink_individual", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        plotIndividualAndAverage(pc.ax, allRipPowsArtifact_activelink, xvals,
+                                                 individualAmt=50)
                         pc.ax.plot([0, 0], [-10, 10])
                         pc.ax.set_ylim(-2, 6)
 
@@ -640,6 +666,13 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                         xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
                         pc.ax.plot(xvals, m)
                         pc.ax.fill_between(xvals, m - s, m + s, alpha=0.3)
+                        pc.ax.plot([0, 0], [-10, 10])
+                        pc.ax.set_ylim(-2, 6)
+
+                    with pp.newFig(f"lfp_psth_logged_activelink_individual", excludeFromCombo=True) as pc:
+                        xvals = np.linspace(-MARGIN_SECS, MARGIN_SECS, len(m))
+                        plotIndividualAndAverage(pc.ax, allRipPowsLogged_activelink, xvals,
+                                                 individualAmt=50)
                         pc.ax.plot([0, 0], [-10, 10])
                         pc.ax.set_ylim(-2, 6)
 
@@ -719,9 +752,10 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_MANY_DOTPROD=True, RUN_DOT_PROD=True, RUN_SPOTLIGHT=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SMOOTHING_TEST=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
-    makeFigures(RUN_UNSPECIFIED=False)
+    # makeFigures(RUN_UNSPECIFIED=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
     # makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_PROBE_TRACES=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
-    #             MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
+                MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
+
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)

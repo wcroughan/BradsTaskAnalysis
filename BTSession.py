@@ -106,11 +106,22 @@ class BTSession:
 
     hasActivelinkLog: bool = False
     activelinkLogFileName: str = ""
-    loggedDetections_ts: np.ndarray = np.array([])
+    loggedDetections_ts: np.ndarray = np.array([])  # these are read directly from log file
     loggedStats: List[Tuple[str, float, float]] = field(
         default_factory=list)  # contains all the stats listed in log file
     rpowmLog: float = 0.0  # The entry from above log list that was active during the session
     rpowsLog: float = 0.0  # The entry from above log list that was active during the session
+
+    # the below are computed based on ts in log file
+    # Also similar to other lfpIdx section, bt/iti/probe specific lfpIdx are zeroed at the
+    # start of that section's lfp data
+    loggedDetections_lfpIdx: np.ndarray = np.array([])
+    btLoggedDetections_ts: np.ndarray = np.array([])
+    btLoggedDetections_lfpIdx: np.ndarray = np.array([])
+    itiLoggedDetections_ts: np.ndarray = np.array([])
+    itiLoggedDetections_lfpIdx: np.ndarray = np.array([])
+    probeLoggedDetections_ts: np.ndarray = np.array([])
+    probeLoggedDetections_lfpIdx: np.ndarray = np.array([])
 
     # Some flags indicated whether ITI was recorded and whether ITI and probe are in the same rec file or not
     separateItiFile: bool = False

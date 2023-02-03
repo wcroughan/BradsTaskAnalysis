@@ -288,8 +288,6 @@ def getWellPosCoordinates(wellName: int) -> Tuple[float, float]:
 def getRipplePower(lfpData: ArrayLike, method="standard", meanPower=None,
                    stdPower=None, lfpDeflections=None, smoothStd=0.05,
                    showPlot=False, baselineLfpData: Optional[ArrayLike] = None):
-    # TODO test out lfp deflections in scratch.py
-
     if method not in ["standard", "activelink", "causal"]:
         raise ValueError("Unknown ripple power method")
 
@@ -302,7 +300,7 @@ def getRipplePower(lfpData: ArrayLike, method="standard", meanPower=None,
     else:
         assert baselineLfpData is None
 
-    lfpData = lfpData.copy()
+    lfpData = lfpData.copy().astype(np.float64)
     smoothStd_frames = int(smoothStd * LFP_SAMPLING_RATE)
 
     lfpMask = np.zeros_like(lfpData).astype(bool)
@@ -392,23 +390,21 @@ def getRipplePower(lfpData: ArrayLike, method="standard", meanPower=None,
             lfpMask = lfpMask[:int(
                 len(lfpMask) // rippleFilterOrder)*rippleFilterOrder]
 
-        rmsWindows = np.sqrt(
-            np.mean(np.power(filteredSignal.reshape((rippleFilterOrder, -1)), 2.0), axis=0))
-        rmsBaselineWindows = np.sqrt(
-            np.mean(np.power(filteredBaselineSignal.reshape((rippleFilterOrder, -1)), 2.0), axis=0))
-        rmsWindows = rmsWindows - rmsBaselineWindows
+        rs = filteredSignal.reshape((-1, rippleFilterOrder)).T
+        rbs = filteredBaselineSignal.reshape((-1, rippleFilterOrder)).T
+        rmsWindows = np.sqrt(np.mean(np.power(rs, 2.0), axis=0))
+        rmsBaselineWindows = np.sqrt(np.mean(np.power(rbs, 2.0), axis=0))
+        powerMinusBaseline = rmsWindows - rmsBaselineWindows
 
-        powerMinusBaseline = np.empty_like(rmsWindows)
+        smoothedRipplePower = np.empty_like(powerMinusBaseline)
         prevVal = 0.0
 
-        for i in range(len(rmsWindows)):
-            powerMinusBaseline[i] = 0.8 * prevVal + rmsWindows[i]
-            prevVal = powerMinusBaseline[i]
+        for i in range(len(powerMinusBaseline)):
+            smoothedRipplePower[i] = 0.8 * prevVal + powerMinusBaseline[i]
+            prevVal = smoothedRipplePower[i]
 
-        smoothedRipplePower = powerMinusBaseline
-
-        lfpWindowMask = np.any(lfpMask.reshape((rippleFilterOrder, -1)), axis=0)
-        smoothedRipplePower[lfpWindowMask] = np.nan
+        # lfpWindowMask = np.any(lfpMask.reshape((rippleFilterOrder, -1)), axis=0)
+        # smoothedRipplePower[lfpWindowMask] = np.nan
         smoothedRipplePower = np.repeat(smoothedRipplePower, rippleFilterOrder)
         if len(smoothedRipplePower) < originalLength:
             z = np.zeros((1, originalLength - len(smoothedRipplePower)))

@@ -920,7 +920,10 @@ def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outl
 
 
 def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std",
-                             individualZOrder=1, averageZOrder=2, label=None):
+                             individualZOrder=1, averageZOrder=2, label=None, individualAmt=None):
+    """
+    values of individualAmt on range [0, 1] are interpreted as a fraction. Larger numbers as the count of traces to plot
+    """
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", r"Degrees of freedom <= 0 for slice")
         warnings.filterwarnings("ignore", r"Mean of empty slice")
@@ -931,7 +934,18 @@ def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey"
         hs = hs / np.sqrt(n)
     h1 = hm - hs
     h2 = hm + hs
-    ax.plot(xvals, dataPoints.T, c=individualColor, lw=0.5, zorder=individualZOrder)
+    if individualAmt is None:
+        ax.plot(xvals, dataPoints.T, c=individualColor, lw=0.5, zorder=individualZOrder)
+    else:
+        n = dataPoints.shape[0]
+        if individualAmt <= 1:
+            numPlot = int(individualAmt * n)
+        else:
+            numPlot = individualAmt
+            if numPlot > n:
+                numPlot = n
+        indIdxs = np.random.choice(n, size=numPlot, replace=False)
+        ax.plot(xvals, dataPoints[indIdxs, :].T, c=individualColor, lw=0.5, zorder=individualZOrder)
     if label is None:
         ax.plot(xvals, hm, color=avgColor, zorder=averageZOrder)
     else:
