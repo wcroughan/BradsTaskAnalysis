@@ -214,7 +214,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            WellMeasure("test", lambda s, w: s.getLatencyToWell(False, w), sessions[0:2])
+            WellMeasure("test", lambda s, w: w, sessions[0:5])
 
         if RUN_SMOOTHING_TEST:
             smoothVals = np.power(2.0, np.arange(-1, 5))
@@ -751,11 +751,11 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_MANY_DOTPROD=True, RUN_DOT_PROD=True, RUN_SPOTLIGHT=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SMOOTHING_TEST=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
     # makeFigures(RUN_UNSPECIFIED=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
     # makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_PROBE_TRACES=True)
-    makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
-                MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
+    #             MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
 
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
