@@ -21,9 +21,6 @@ import matplotlib.pyplot as plt
 # focus first on getting something on which to base discussion, like very basic demonstration of memory of home during probe
 #   once have measures showing home/away difference, can talk about condition difference
 #
-# make a dataclass that is a single ripple. Can contain start, stop, len, peak, mean, std, other stuff probs
-# Then return from detectRipples can be a list of those
-#
 # Quantify behavioral similarity, the typical routes taken to a well
 # First idea: make circular histogram (say 8 directions, with smoothing) of direction entering and exiting each well
 #   Compare dot prod or correlation between task and probe between conditions at home and maybe other wells
@@ -36,7 +33,7 @@ import matplotlib.pyplot as plt
 #           and other wells to compare with (i.e. aways or other seshs) and gives you a difference measure
 #   should have option instead of overlaying hists to have plots show up in pairs, so can have different traces on each
 #
-# Look at notes in LoadInfo section, deal with all of them
+# Look at notes in B18's LoadInfo section, deal with all of them
 # i.e. minimum date for B13
 #
 # Double check position tracking fill times for other rats. Especially B16 07_10 looks a bit wonky
@@ -71,15 +68,10 @@ import matplotlib.pyplot as plt
 #
 # Work on DLC
 #
-# Inspect fisheye correction more. Look at output closely, and if it seems legit (espcially at edges
-# of environment), should use that for velocity, curvature, etc. Otherwise center wells will think
-# they have slower speed, and curvature radius will change
-#
 # Do I need spline line in wellmeasure?
 #
-# Modify latency function in BTSession so can easily plot latency and optimality over trials
-#
 # Set a maximum gap for previous sessions, so large gaps aren't counted and prev dir goes back to None
+#
 # Some "well visits" are just one time point. Need to smooth more and/or just generally change logic away from this
 # visit stuff
 #
@@ -104,6 +96,14 @@ import matplotlib.pyplot as plt
 # fisheye correction
 #
 # refactor everything to unify units, get rid of unecessary stuff, make code more readable
+#
+# make a dataclass that is a single ripple. Can contain start, stop, len, peak, mean, std, other stuff probs
+# Then return from detectRipples can be a list of those
+#
+# Inspect fisheye correction more. Look at output closely, and if it seems legit (espcially at edges
+# of environment), should use that for velocity, curvature, etc. Otherwise center wells will think
+# they have slower speed, and curvature radius will change
+#
 
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,

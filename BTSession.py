@@ -568,10 +568,7 @@ class BTSession:
                 exts = np.delete(exts, todel)
 
         if timeInterval is not None:
-            if inProbe:
-                ts = self.probePos_ts
-            else:
-                ts = self.btPos_ts
+            ts = self.probePos_ts if inProbe else self.btPos_ts
 
             if isinstance(includeEdgeOverlap, str):
                 includeEdgeOverlap = (includeEdgeOverlap, includeEdgeOverlap)
@@ -915,7 +912,11 @@ class BTSession:
             raise ValueError("returnUnits incorrect")
 
         if startTime is not None:
-            raise Exception("UNIMPLEMENTED")
+            t1, _ = self.timeIntervalToPosIdx(
+                self.probePos_ts if inProbe else self.btPos_ts, (startTime, np.inf, returnUnits))
+            raise Exception("Unimplemented")
+        else:
+            t1 = 0
 
         ents = self.entryExitTimes(inProbe, wellName, returnIdxs=(returnUnits == "posIdx"))[0]
 
