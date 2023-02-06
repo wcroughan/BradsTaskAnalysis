@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from scipy.ndimage import gaussian_filter
 import numpy as np
 from typing import Optional, List, Dict, Tuple
 from datetime import datetime
@@ -490,7 +491,7 @@ class BTSession:
                        timeInterval: Optional[Tuple | list] = None,
                        includeNeighbors: bool = False, excludeReward: bool = False,
                        returnIdxs: bool = False,
-                       includeEdgeOverlap: str | Tuple[str, str] = "clip"):
+                       includeEdgeOverlap: str | Tuple[str, str] = "clip") -> Tuple[np.ndarray, np.ndarray]:
         """
         return units: trodes timestamps, unless returnIdxs==True
         includeEdgeOverlap: if one str given, applies to start and end of timeInterval.
@@ -1095,3 +1096,25 @@ class BTSession:
             return self.probeFillTime
         else:
             return 60*5
+
+    def occupancyMap(self, inProbe: bool, resolution: int = 36, smooth: Optional[float] = 1, movingOnly: bool = False,
+                     moveThresh=None) \
+            -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        xs = self.probePosXs if inProbe else self.btPosXs
+        ys = self.probePosYs if inProbe else self.btPosYs
+        if movingOnly:
+            if moveThresh is None:
+                mv = self.probeIsMv if inProbe else self.btIsMv
+            else:
+                vel = self.probeVelCmPerS if inProbe else self.btVelCmPerS
+                mv = vel > moveThresh
+                mv = np.append(mv, mv[-1])
+
+            xs = xs[mv]
+            ys = ys[mv]
+
+        occMap, occBinsX, occBinsY = np.histogram2d(
+            xs, ys, bins=np.linspace(-0.5, 6.5, resolution+1))
+        if smooth is not None:
+            occMap = gaussian_filter(occMap, smooth)
+        return occMap, occBinsX, occBinsY

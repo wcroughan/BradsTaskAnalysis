@@ -3,7 +3,7 @@ import os
 from BTSession import BTSession
 from BTData import BTData
 from PlotUtil import setupBehaviorTracePlot
-from UtilFunctions import getInfoForAnimal
+from UtilFunctions import getLoadInfo
 from consts import TRODES_SAMPLING_RATE
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -156,11 +156,11 @@ def makeAnimation(sesh: BTSession, saveFile=None):
 
 
 if __name__ == "__main__":
-    ratName = "B16"
+    ratName = "B17"
 
-    animalInfo = getInfoForAnimal(ratName)
+    animalInfo = getLoadInfo(ratName)
     dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
     print("loading from " + dataFilename)
     ratData = BTData()
     ratData.loadFromFile(dataFilename)
-    makeAnimation(ratData.getSessions()[0])
+    makeAnimation(ratData.getSessions()[10])

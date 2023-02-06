@@ -3,10 +3,11 @@ import math
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from typing import Callable, List
+from typing import Callable, List, Tuple, Optional, Iterable
 import pandas as pd
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
+from numpy.typing import ArrayLike
 
 from UtilFunctions import offWall
 from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot, blankPlot, \
@@ -340,12 +341,17 @@ class WellMeasure():
     wellFilter(away trial index, away well name)
         -> True if away well should be included in within-session diff, False if if should be skipped
         Note: measureFunc will be called on all wells regardless of this return value
+
+    optional display function:
+    displayFunc(session, wellname) -> array-like of values to display in the well as a circular histogram
+    in makeFigures, this will be used to populate the radial plot
     """
 
     def __init__(self, name: str = "",
                  measureFunc: Callable[[BTSession, int], float] = lambda _: np.nan,
                  sessionList: List[BTSession] = [],
                  wellFilter: Callable[[int, int], bool] = lambda ai, aw: offWall(aw),
+                 displayFunc: Optional[Callable[[BTSession, int], ArrayLike]] = None,
                  runStats: bool = True):
         self.measure = []
         self.wellCategory = []
@@ -363,10 +369,20 @@ class WellMeasure():
         self.measureMin = np.inf
         self.measureMax = -np.inf
 
+        if displayFunc is None:
+            self.hasRadialDisplayValues = False
+        else:
+            self.hasRadialDisplayValues = True
+            self.allDisplayValsBySession = []
+            self.displayColumns = 0
+            self.radialMin = np.inf
+            self.radialMax = -np.inf
+
         self.sessionList = sessionList
 
         for si, sesh in enumerate(sessionList):
             measureDict = {}
+            displayDict = {}
             for well in allWellNames:
                 v = measureFunc(sesh, well)
                 measureDict[well] = v
@@ -374,7 +390,20 @@ class WellMeasure():
                     self.measureMax = v
                 if v < self.measureMin:
                     self.measureMin = v
+
+                if self.hasRadialDisplayValues:
+                    v = displayFunc(sesh, well)
+                    if v.shape[0] > self.displayColumns:
+                        self.displayColumns = v.shape[0]
+                    displayDict[well] = v
+                    if np.nanmax(v) > self.radialMax:
+                        self.radialMax = np.nanmax(v)
+                    if np.nanmin(v) < self.radialMin:
+                        self.radialMin = np.nanmin(v)
+
             self.allMeasureValsBySession.append(measureDict)
+            if self.hasRadialDisplayValues:
+                self.allDisplayValsBySession.append(displayDict)
 
         for si, sesh in enumerate(sessionList):
             homeval = self.allMeasureValsBySession[si][sesh.homeWell]
@@ -494,12 +523,18 @@ class WellMeasure():
                     everySessionTraceType: None | str = None,
                     everySessionTraceTimeInterval: None | Callable[[
                         BTSession], tuple | list] = None,
+                    radialTraceType: None | str | Iterable[str] = None,
+                    radialTraceTimeInterval: None |
+                    Callable[[BTSession, int], tuple | list] |
+                    Iterable[Callable[[BTSession], tuple | list]] = None,
                     priority=None):
         figName = self.name.replace(" ", "_")
 
         if isinstance(plotFlags, str):
             if plotFlags == "all":
                 plotFlags = ["measure", "diff", "othersesh", "otherseshdiff", "everysession"]
+                if self.hasRadialDisplayValues:
+                    plotFlags.append("radial")
             else:
                 plotFlags = [plotFlags]
         else:
@@ -572,51 +607,163 @@ class WellMeasure():
                     pc.immediateShuffles.append((
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
 
-        if "everysession" in plotFlags:
-            plotFlags.remove("everysession")
-            assert everySessionTraceType is None or everySessionTraceType in [
-                "task", "probe", "task_bouts", "probe_bouts"
-            ]
+        if "radial" in plotFlags:
+            plotFlags.remove("radial")
 
-            numCols = math.ceil(math.sqrt(self.numSessions))
+            traceTypes = ["task", "probe"]
+            traceMods = ["", "_bouts", "_mv", "_mv_bouts", "_bouts_mv"]
+            validTraceStrings = [t + m for t in traceTypes for m in traceMods]
+            if not isinstance(radialTraceType, (tuple, list)):
+                radialTraceType = [radialTraceType] * self.displayColumns
+            for estt in radialTraceType:
+                assert estt is None or estt in validTraceStrings
+
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
 
-            with plotManager.newFig(figName + "_every_session", subPlots=(numCols, numCols), figScale=0.3) as pc:
-                # for si, (sk, cond) in enumerate(zip(self.allMeasureValsBySession, self.conditionCategoryBySession)):
+            with plotManager.newFig(figName + "_radial", subPlots=(len(self.sessionList), self.displayColumns), figScale=0.6) as pc:
+                for si, sesh in enumerate(self.sessionList):
+                    rvals = self.allDisplayValsBySession[si]
+                    ncols = rvals[2].shape[0]
+                    cond = self.conditionCategoryBySession[si]
+                    for ri in range(ncols):
+                        if self.displayColumns == 1:
+                            ax = pc.axs[si]
+                        elif len(self.sessionList) == 1:
+                            ax = pc.axs[ri]
+                        else:
+                            ax = pc.axs[si, ri]
+                        assert isinstance(ax, Axes)
+
+                        if radialTraceType[ri] is not None:
+                            rtt = radialTraceType[ri]
+                            if "task" in rtt:
+                                xs = sesh.btPosXs
+                                ys = sesh.btPosYs
+                                bout = sesh.btBoutCategory == BTSession.BOUT_STATE_EXPLORE
+                                mv = sesh.btIsMv
+                                ts = sesh.btPos_ts
+                            elif "probe" in rtt:
+                                xs = sesh.probePosXs
+                                ys = sesh.probePosYs
+                                bout = sesh.probeBoutCategory == BTSession.BOUT_STATE_EXPLORE
+                                mv = sesh.probeIsMv
+                                ts = sesh.probePos_ts
+
+                            if radialTraceTimeInterval is not None:
+                                if callable(radialTraceTimeInterval):
+                                    timeInterval = radialTraceTimeInterval(sesh)
+                                elif isinstance(radialTraceTimeInterval[0], (tuple, list)):
+                                    timeInterval = radialTraceTimeInterval[ri]
+                                else:
+                                    timeInterval = radialTraceTimeInterval
+
+                                durIdx = sesh.timeIntervalToPosIdx(ts, timeInterval)
+                                xs = xs[durIdx[0]:durIdx[1]]
+                                ys = ys[durIdx[0]:durIdx[1]]
+                                mv = mv[durIdx[0]:durIdx[1]]
+                                bout = bout[durIdx[0]:durIdx[1]]
+
+                            sectionFlag = np.ones_like(xs, dtype=bool)
+                            if "_bouts" in rtt:
+                                sectionFlag[~ bout] = False
+                            if "_mv" in rtt:
+                                sectionFlag[~ mv] = False
+                            xs[~ sectionFlag] = np.nan
+
+                            ax.plot(xs, ys, c="#deac7f", lw=0.5)
+                            if len(xs) > 0:
+                                ax.scatter(xs[-1], ys[-1], marker="*")
+
+                        c = "orange" if cond == "SWR" else "cyan"
+                        setupBehaviorTracePlot(ax, sesh, outlineColors=c,
+                                               wellSize=wellSize, showWells="HA")
+
+                        for v in ax.spines.values():
+                            v.set_zorder(0)
+                        ax.set_title(sesh.name, fontdict={'fontsize': 6})
+
+                        for wr in range(6):
+                            for wc in range(6):
+                                wname = 8*wr + wc + 2
+                                vals = rvals[wname][ri, :]
+                                # if wname == 10:
+                                #     print(f"vals: {vals}")
+                                normVals = (vals - self.radialMin) / \
+                                    (self.radialMax - self.radialMin)
+                                for vi in range(len(normVals)):
+                                    v = normVals[vi]
+                                    vrad = vi / len(normVals) * 2 * np.pi - np.pi
+                                    vx = v * np.cos(vrad) * 0.5
+                                    vy = v * np.sin(vrad) * 0.5
+                                    ax.plot([wc + 0.5, wc + vx + 0.5], [wr + 0.5,
+                                            wr + vy + 0.5], c="k", lw=0.5, zorder=3)
+                                    v2 = normVals[(vi + 1) % len(normVals)]
+                                    # v2rad = (vi + 1) / len(normVals)
+                                    v2rad = (vi + 1) / len(normVals) * 2 * np.pi - np.pi
+                                    v2x = v2 * np.cos(v2rad) * 0.5
+                                    v2y = v2 * np.sin(v2rad) * 0.5
+                                    ax.plot([wc + vx + 0.5, wc + v2x + 0.5], [wr + vy +
+                                            0.5, wr + v2y + 0.5], c="k", lw=0.5, zorder=3)
+
+                    for ri in range(ncols, self.displayColumns):
+                        if self.displayColumns == 1:
+                            ax = pc.axs[si]
+                        elif len(self.sessionList) == 1:
+                            ax = pc.axs[ri]
+                        else:
+                            ax = pc.axs[si, ri]
+                        blankPlot(ax)
+
+        if "everysession" in plotFlags:
+            plotFlags.remove("everysession")
+
+            traceTypes = ["task", "probe"]
+            traceMods = ["", "_bouts", "_mv", "_mv_bouts", "_bouts_mv"]
+            validTraceStrings = [t + m for t in traceTypes for m in traceMods]
+            assert everySessionTraceType is None or everySessionTraceType in validTraceStrings
+
+            ncols = math.ceil(np.sqrt(len(self.sessionList)))
+            wellSize = mpl.rcParams['lines.markersize']**2 / 4
+
+            with plotManager.newFig(figName + "_every_session", subPlots=(ncols, ncols), figScale=0.6) as pc:
                 for si, sesh in enumerate(self.sessionList):
                     sk = self.allMeasureValsBySession[si]
                     cond = self.conditionCategoryBySession[si]
-                    ax = pc.axs[si // numCols, si % numCols]
+                    ax = pc.axs[si // ncols, si % ncols]
                     assert isinstance(ax, Axes)
 
                     if everySessionTraceType is not None:
                         if "task" in everySessionTraceType:
-                            xs = np.array(sesh.btPosXs)
-                            ys = np.array(sesh.btPosYs)
-                            mv = np.array(sesh.btBoutCategory == BTSession.BOUT_STATE_EXPLORE)
-                            ts = np.array(sesh.btPos_ts)
+                            xs = sesh.btPosXs
+                            ys = sesh.btPosYs
+                            bout = sesh.btBoutCategory == BTSession.BOUT_STATE_EXPLORE
+                            mv = sesh.btIsMv
+                            ts = sesh.btPos_ts
                         elif "probe" in everySessionTraceType:
-                            xs = np.array(sesh.probePosXs)
-                            ys = np.array(sesh.probePosYs)
-                            mv = np.array(sesh.probeBoutCategory == BTSession.BOUT_STATE_EXPLORE)
-                            ts = np.array(sesh.probePos_ts)
+                            xs = sesh.probePosXs
+                            ys = sesh.probePosYs
+                            bout = sesh.probeBoutCategory == BTSession.BOUT_STATE_EXPLORE
+                            mv = sesh.probeIsMv
+                            ts = sesh.probePos_ts
 
                         if everySessionTraceTimeInterval is not None:
                             if callable(everySessionTraceTimeInterval):
                                 timeInterval = everySessionTraceTimeInterval(sesh)
                             else:
                                 timeInterval = everySessionTraceTimeInterval
+                            durIdx = sesh.timeIntervalToPosIdx(ts, timeInterval)
                             assert len(xs) == len(ts)
-                            durIdx = np.searchsorted(ts, np.array(
-                                [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] +
-                                 timeInterval[1] * TRODES_SAMPLING_RATE]))
                             xs = xs[durIdx[0]:durIdx[1]]
                             ys = ys[durIdx[0]:durIdx[1]]
                             mv = mv[durIdx[0]:durIdx[1]]
+                            bout = bout[durIdx[0]:durIdx[1]]
 
+                        sectionFlag = np.ones_like(xs, dtype=bool)
                         if "_bouts" in everySessionTraceType:
-                            xs = xs[mv]
-                            ys = ys[mv]
+                            sectionFlag[~ bout] = False
+                        if "_mv" in everySessionTraceType:
+                            sectionFlag[~ mv] = False
+                        xs[~ sectionFlag] = np.nan
 
                         ax.plot(xs, ys, c="#deac7f")
                         if len(xs) > 0:
@@ -626,7 +773,6 @@ class WellMeasure():
                     setupBehaviorTracePlot(ax, sesh, outlineColors=c,
                                            wellSize=wellSize, showWells="HA")
 
-                    # TODO might not need this?
                     for v in ax.spines.values():
                         v.set_zorder(0)
                     ax.set_title(sesh.name, fontdict={'fontsize': 6})
@@ -657,8 +803,161 @@ class WellMeasure():
                               interpolation="nearest", extent=(-0.5, 6.5, 0, 6),
                               origin="lower", zorder=z-0.02)
 
-                for si in range(self.numSessions, numCols * numCols):
-                    ax = pc.axs[si // numCols, si % numCols]
+                for si in range(self.numSessions, ncols * ncols):
+                    ax = pc.axs[si // ncols, si % ncols]
+                    blankPlot(ax)
+
+                plt.colorbar(im, ax=ax)
+
+        if len(plotFlags) > 0:
+            print(f"Warning: unused plot flags: {plotFlags}")
+
+
+class SessionMeasure():
+    def __init__(self, name: str, measureFunc: Callable[[BTSession], float],
+                 sessionList: List[BTSession], runStats: bool = True) -> None:
+        self.name = name
+        self.sessionList = sessionList
+        self.runStats = runStats
+        self.measureValsBySession = np.empty((len(sessionList)))
+        self.dotColorsBySession = [None] * len(sessionList)
+        self.conditionBySession = [None] * len(sessionList)
+
+        for si, sesh in enumerate(sessionList):
+            self.measureValsBySession[si] = measureFunc(sesh)
+            if sesh.isRippleInterruption:
+                self.conditionBySession[si] = "SWR"
+                self.dotColorsBySession[si] = "orange"
+            else:
+                self.conditionBySession[si] = "Ctrl"
+                self.dotColorsBySession[si] = "cyan"
+
+        self.valMin = np.nanmin(self.measureValsBySession)
+        self.valMax = np.nanmax(self.measureValsBySession)
+
+    def makeFigures(self,
+                    plotManager: PlotManager,
+                    plotFlags: str | List[str] = "all",
+                    everySessionTraceType: None | str = None,
+                    everySessionTraceTimeInterval: None | Callable[[
+                        BTSession], tuple | list] = None,
+                    everySessionBackground: None | Callable[[BTSession], ArrayLike] = None,
+                    priority=None):
+        """
+        Remember! images are indexed y-first, x-second
+        So i.e. if passing in occupancy map which is accessed as occMap[posx, posy], need to transpose
+        """
+        figName = self.name.replace(" ", "_")
+
+        if isinstance(plotFlags, str):
+            if plotFlags == "all":
+                plotFlags = ["measure", "everysession"]
+            else:
+                plotFlags = [plotFlags]
+        else:
+            # so list passed in isn't modified
+            plotFlags = [v for v in plotFlags]
+
+        if "measure" in plotFlags:
+            plotFlags.remove("measure")
+
+            with plotManager.newFig(figName) as pc:
+                violinPlot(pc.ax, self.measureValsBySession, self.conditionBySession,
+                           dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
+                pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+
+                if self.runStats:
+                    pc.yvals[figName] = self.measureValsBySession
+                    pc.categories["condition"] = self.conditionBySession
+                    pc.immediateShuffles.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+
+        if "everysession" in plotFlags:
+            plotFlags.remove("everysession")
+
+            traceTypes = ["task", "probe"]
+            traceMods = ["", "_bouts", "_mv", "_mv_bouts", "_bouts_mv"]
+            validTraceStrings = [t + m for t in traceTypes for m in traceMods]
+            assert everySessionTraceType is None or everySessionTraceType in validTraceStrings
+
+            # Compute bg images first to get full range
+            if everySessionBackground is not None:
+                bgImgs = []
+                for sesh in self.sessionList:
+                    bgImgs.append(everySessionBackground(sesh))
+                bgImgs = np.array(bgImgs)
+                bgMin = np.nanmin(bgImgs)
+                bgMax = np.nanmax(bgImgs)
+            else:
+                bgImgs = self.measureValsBySession
+                bgMin = self.valMin
+                bgMax = self.valMax
+
+            wellSize = mpl.rcParams['lines.markersize']**2 / 4
+            ncols = int(np.ceil(np.sqrt(len(self.sessionList))))
+            with plotManager.newFig(figName + "_every_session", subPlots=(ncols, ncols), figScale=0.6) as pc:
+                for si, sesh in enumerate(self.sessionList):
+                    sk = self.measureValsBySession[si]
+                    cond = self.conditionBySession[si]
+                    ax = pc.axs[si // ncols, si % ncols]
+                    assert isinstance(ax, Axes)
+
+                    if everySessionTraceType is not None:
+                        if "task" in everySessionTraceType:
+                            xs = sesh.btPosXs
+                            ys = sesh.btPosYs
+                            bout = sesh.btBoutCategory == BTSession.BOUT_STATE_EXPLORE
+                            mv = sesh.btIsMv
+                            # mv = sesh.btVelCmPerS > 20
+                            # mv = np.append(mv, mv[-1])
+                            ts = sesh.btPos_ts
+                        elif "probe" in everySessionTraceType:
+                            xs = sesh.probePosXs
+                            ys = sesh.probePosYs
+                            bout = sesh.probeBoutCategory == BTSession.BOUT_STATE_EXPLORE
+                            mv = sesh.probeIsMv
+                            # mv = sesh.probeVelCmPerS > 30
+                            # mv = np.append(mv, mv[-1])
+                            ts = sesh.probePos_ts
+
+                        if everySessionTraceTimeInterval is not None:
+                            if callable(everySessionTraceTimeInterval):
+                                timeInterval = everySessionTraceTimeInterval(sesh)
+                            else:
+                                timeInterval = everySessionTraceTimeInterval
+                            durIdx = sesh.timeIntervalToPosIdx(ts, timeInterval)
+                            assert len(xs) == len(ts)
+                            xs = xs[durIdx[0]:durIdx[1]]
+                            ys = ys[durIdx[0]:durIdx[1]]
+                            mv = mv[durIdx[0]:durIdx[1]]
+                            bout = bout[durIdx[0]:durIdx[1]]
+
+                        sectionFlag = np.ones_like(xs, dtype=bool)
+                        if "_bouts" in everySessionTraceType:
+                            sectionFlag[~ bout] = False
+                        if "_mv" in everySessionTraceType:
+                            sectionFlag[~ mv] = False
+                        xs[~ sectionFlag] = np.nan
+
+                        ax.plot(xs, ys, c="#deac7f", lw=0.5)
+                        if len(xs) > 0:
+                            ax.scatter(xs[-1], ys[-1], marker="*")
+
+                    c = "orange" if cond == "SWR" else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c,
+                                           wellSize=wellSize, showWells="HA")
+
+                    for v in ax.spines.values():
+                        v.set_zorder(0)
+                    ax.set_title(f"{sesh.name} - {sk}", fontdict={'fontsize': 6})
+
+                    im = ax.imshow(bgImgs[si], cmap=mpl.colormaps["coolwarm"],
+                                   vmin=bgMin, vmax=bgMax,
+                                   interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
+                                   origin="lower")
+
+                for si in range(len(self.sessionList), ncols * ncols):
+                    ax = pc.axs[si // ncols, si % ncols]
                     blankPlot(ax)
 
                 plt.colorbar(im, ax=ax)

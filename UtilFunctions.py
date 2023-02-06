@@ -54,7 +54,7 @@ class ImportOptions:
 
     # ===========
     # consts:
-    VEL_THRESH: float = 10.0  # cm/s
+    VEL_THRESH: float = 15.0  # cm/s
     MOVE_THRESH_SM_SIGMA_SECS: float = 0.8
     #  Typical observed amplitude of LFP deflection on stimulation
     DEFLECTION_THRESHOLD_HI: float = 6000.0

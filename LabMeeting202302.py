@@ -1,13 +1,14 @@
 from BTSession import BTSession
-from MeasureTypes import WellMeasure, TrialMeasure
+from MeasureTypes import WellMeasure, TrialMeasure, SessionMeasure
 from BTData import BTData
 from PlotUtil import PlotManager, setupBehaviorTracePlot, plotIndividualAndAverage
-from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo, getRipplePower
+from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo, getRipplePower, \
+    getWellPosCoordinates, offWall
 import os
 import time
 from datetime import datetime
 import numpy as np
-from scipy.ndimage import gaussian_filter1d
+from scipy.ndimage import gaussian_filter1d, gaussian_filter
 from typing import List
 from matplotlib.axes import Axes
 import math
@@ -16,22 +17,12 @@ from consts import TRODES_SAMPLING_RATE
 import pandas as pd
 import warnings
 import matplotlib.pyplot as plt
+from numpy.typing import ArrayLike
+from functools import partial
 
 # TODO
 # focus first on getting something on which to base discussion, like very basic demonstration of memory of home during probe
 #   once have measures showing home/away difference, can talk about condition difference
-#
-# Quantify behavioral similarity, the typical routes taken to a well
-# First idea: make circular histogram (say 8 directions, with smoothing) of direction entering and exiting each well
-#   Compare dot prod or correlation between task and probe between conditions at home and maybe other wells
-#   For plotting, allow measureFunc to be either a normal function as is or a tuple
-#   If it's a tuple, first part is measure func, which can return either float or any other kind of value
-#   If it's an array, treat like rotational histogram
-#   If array of arrays, overlay rotational histograms (i.e. one for task one for probe)
-#   If it's something else, don't display on the everysession plot (maybe just skip that plot then)
-#   Then second element of tuple is a combining function which takes the output of measure func for a session one well
-#           and other wells to compare with (i.e. aways or other seshs) and gives you a difference measure
-#   should have option instead of overlaying hists to have plots show up in pairs, so can have different traces on each
 #
 # Look at notes in B18's LoadInfo section, deal with all of them
 # i.e. minimum date for B13
@@ -68,8 +59,6 @@ import matplotlib.pyplot as plt
 #
 # Work on DLC
 #
-# Do I need spline line in wellmeasure?
-#
 # Set a maximum gap for previous sessions, so large gaps aren't counted and prev dir goes back to None
 #
 # Some "well visits" are just one time point. Need to smooth more and/or just generally change logic away from this
@@ -104,12 +93,15 @@ import matplotlib.pyplot as plt
 # of environment), should use that for velocity, curvature, etc. Otherwise center wells will think
 # they have slower speed, and curvature radius will change
 #
+# Look at path similarity between task and probe. Usual paths that are traced out during task don't seem to be
+# followed at all during probe
 
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
                 RUN_OPTIMALITY=None, PLOT_DETAILED_TASK_TRACES=None,
-                PLOT_DETAILED_PROBE_TRACES=None,
+                PLOT_DETAILED_PROBE_TRACES=None, RUN_ENTRY_EXIT_ANGLE=None,
+                RUN_PATH_OCCUPANCY=None,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
@@ -129,6 +121,10 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         PLOT_DETAILED_PROBE_TRACES = RUN_UNSPECIFIED
     if RUN_LFP_LATENCY is None:
         RUN_LFP_LATENCY = RUN_UNSPECIFIED
+    if RUN_ENTRY_EXIT_ANGLE is None:
+        RUN_ENTRY_EXIT_ANGLE = RUN_UNSPECIFIED
+    if RUN_PATH_OCCUPANCY is None:
+        RUN_PATH_OCCUPANCY = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -214,15 +210,144 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            WellMeasure("test", lambda s, w: w, sessions[0:5])
+            SessionMeasure("test", lambda sesh: sesh.homeWell, sessions).makeFigures(pp)
+
+        if RUN_PATH_OCCUPANCY:
+            def pathOccupancy(sesh: BTSession) -> float:
+                resolution = 36
+                occMap, occBinsX, occBinsY = sesh.occupancyMap(
+                    False, resolution=resolution, movingOnly=True, moveThresh=20)
+                probePosBinsX = np.digitize(sesh.probePosXs, occBinsX)
+                probePosBinsY = np.digitize(sesh.probePosYs, occBinsY)
+                wallMargin = 6
+                offWallIdxs = (probePosBinsX > wallMargin) & (probePosBinsX < resolution - wallMargin) & \
+                    (probePosBinsY > wallMargin) & (probePosBinsY < resolution - wallMargin)
+                return np.nanmean(occMap[probePosBinsX[offWallIdxs], probePosBinsY[offWallIdxs]])
+
+            def bgImgFunc(session: BTSession) -> np.ndarray:
+                wallMargin = 6
+                occMap, occBinsX, occBinsY = session.occupancyMap(
+                    False, movingOnly=True, moveThresh=20)
+                occMap[0:wallMargin, :] = np.nan
+                occMap[-wallMargin:, :] = np.nan
+                occMap[:, 0:wallMargin] = np.nan
+                occMap[:, -wallMargin:] = np.nan
+                return occMap.T
+
+            def pathOccupancyWithDirection(sesh: BTSession) -> float:
+                resolution = 36
+                moveThresh = 20
+                angleResolution = 4
+
+                xs = sesh.btPosXs
+                ys = sesh.btPosYs
+                dirs = np.arctan2(np.diff(ys), np.diff(xs))
+                dirs = np.append(dirs, dirs[-1])
+                # Rotate a half-bin to center the bins on the angles
+                dirs += np.pi / angleResolution
+                dirs[dirs > np.pi] -= 2 * np.pi
+
+                mv = sesh.btVelCmPerS > moveThresh
+                mv = np.append(mv, mv[-1])
+                xs = xs[mv]
+                ys = ys[mv]
+                dirs = dirs[mv]
+
+                xbins = np.linspace(-0.5, 6.5, resolution + 1)
+                ybins = np.linspace(-0.5, 6.5, resolution + 1)
+                abins = np.linspace(-np.pi, np.pi, angleResolution + 1)
+                # print(xbins, ybins, abins)
+                # print(xs.shape, ys.shape, dirs.shape)
+                occMap = np.histogramdd((xs, ys, dirs), bins=(xbins, ybins, abins))
+                # print(occMap)
+                occMap = occMap[0]
+                smooth = 1
+                occMap = gaussian_filter(occMap, (smooth, smooth, 0.5), mode="wrap")
+
+                probePosBinsX = np.digitize(sesh.probePosXs, xbins)
+                probePosBinsY = np.digitize(sesh.probePosYs, ybins)
+                wallMargin = 6
+                offWallIdxs = (probePosBinsX > wallMargin) & (probePosBinsX < resolution - wallMargin) & \
+                    (probePosBinsY > wallMargin) & (probePosBinsY < resolution - wallMargin)
+                return np.nanmean(occMap[probePosBinsX[offWallIdxs], probePosBinsY[offWallIdxs]])
+
+            sm = SessionMeasure("path occupancy", pathOccupancy, sessionsWithProbe)
+            sm.makeFigures(pp, everySessionTraceType="probe", everySessionBackground=bgImgFunc)
+            sm = SessionMeasure("path occupancy moving", pathOccupancy, sessionsWithProbe)
+            sm.makeFigures(pp, everySessionTraceType="probe", everySessionBackground=bgImgFunc)
+            sm = SessionMeasure("path occupancy with direction",
+                                pathOccupancyWithDirection, sessionsWithProbe)
+            sm.makeFigures(pp, everySessionTraceType="probe", everySessionBackground=bgImgFunc)
+
+        if RUN_ENTRY_EXIT_ANGLE:
+            # TODO modifications:
+            # - don't normalize everything
+            # - try tracing whole probe path (off wall), and then seeing how it lines up with behavior somehow
+            # Maybe first make off-wall occupancy map for during the task, and then for all probe timepoints,
+            #   see what the value of that map is. Slight smoothing but look by eye to see if you're capturing
+            #   the major pathways
+            def entryExitAngleHistogram(sesh: BTSession, well: int) -> np.ndarray:
+                numAngles = 8
+                hs = np.zeros((2, numAngles))
+
+                wx, wy = getWellPosCoordinates(well)
+
+                angles = []
+                angleBins = np.linspace(-np.pi, np.pi, numAngles+1)
+                angleBins -= (angleBins[1] - angleBins[0]) / 2
+                ents, exts = sesh.entryExitTimes(False, well, returnIdxs=True)
+                for pi in np.concatenate((ents, exts)):
+                    if pi == len(sesh.btPosXs):
+                        pi -= 1
+                    x = sesh.btPosXs[pi] - wx
+                    y = sesh.btPosYs[pi] - wy
+                    angle = np.arctan2(y, x)
+                    if angle > angleBins[-1]:
+                        angle -= 2 * np.pi
+                    angles.append(angle)
+                hs[0, :] = np.histogram(angles, bins=angleBins)[0]
+
+                angles = []
+                ents, exts = sesh.entryExitTimes(True, well, returnIdxs=True)
+                for pi in np.concatenate((ents, exts)):
+                    if pi == len(sesh.probePosXs):
+                        pi -= 1
+                    x = sesh.probePosXs[pi] - wx
+                    y = sesh.probePosYs[pi] - wy
+                    angle = np.arctan2(y, x)
+                    if angle > angleBins[-1]:
+                        angle -= 2 * np.pi
+                    angles.append(angle)
+                hs[1, :] = np.histogram(angles, bins=angleBins)[0]
+
+                # hs /= np.sum(hs, axis=1, keepdims=True)
+
+                # if well == 10:
+                #     print(angleBins)
+                #     print(angles)
+                #     print(hs)
+
+                hs = gaussian_filter1d(hs, 0.6, axis=1, mode="wrap")
+
+                return hs
+
+            def entryExitAngleMeasure(sesh: BTSession, well: int) -> float:
+                hs = entryExitAngleHistogram(sesh, well)
+                assert hs.shape[0] == 2
+                return np.corrcoef(hs)[0, 1] * np.sum(hs)
+
+            wm = WellMeasure("entryExitAngle", measureFunc=entryExitAngleMeasure,
+                             sessionList=sessionsWithProbe, displayFunc=entryExitAngleHistogram)
+            # for s in wm.allDisplayValsBySession:
+            #     print(s[10])
+            wm.makeFigures(pp, radialTraceType=["task", "probe"])
 
         if RUN_SMOOTHING_TEST:
             smoothVals = np.power(2.0, np.arange(-1, 5))
             for sesh in sessions:
                 pp.pushOutputSubDir(sesh.name)
 
-                with pp.newFig("probeTraceVariations", subPlots=(1, 1+len(smoothVals))) \
-                        as pc:
+                with pp.newFig("probeTraceVariations", subPlots=(1, 1+len(smoothVals))) as pc:
                     setupBehaviorTracePlot(pc.ax, sesh, showWells="")
                     pc.ax.plot(sesh.probePosXs, sesh.probePosYs)
                     pc.ax.set_title("raw")
@@ -751,7 +876,6 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_MANY_DOTPROD=True, RUN_DOT_PROD=True, RUN_SPOTLIGHT=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SMOOTHING_TEST=True)
-    makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
     # makeFigures(RUN_UNSPECIFIED=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
     # makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_PROBE_TRACES=True)
@@ -759,3 +883,6 @@ if __name__ == "__main__":
     #             MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
 
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
+
+    makeFigures(RUN_UNSPECIFIED=False, RUN_PATH_OCCUPANCY=True)
