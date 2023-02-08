@@ -42,11 +42,11 @@ def makeAnimation(sesh: BTSession, saveFile=None):
             for wc in range(6):
                 wname = 8*wr + wc + 2
                 cumulativeValImgs[fi, wr, wc] = \
-                    sesh.getDotProductScore(True, wname, timeInterval=[0, frameEndTimes[fi]],
-                                            moveFlag=BTSession.MOVE_FLAG_MOVING)
+                    sesh.getDotProductScoreAtWell(True, wname, timeInterval=[0, frameEndTimes[fi]],
+                                                  moveFlag=BTSession.MOVE_FLAG_MOVING)
                 currentValImgs[fi, wr, wc] = \
-                    sesh.getDotProductScore(True, wname, timeInterval=[frameStartTimes[fi], frameEndTimes[fi]],
-                                            moveFlag=BTSession.MOVE_FLAG_MOVING)
+                    sesh.getDotProductScoreAtWell(True, wname, timeInterval=[frameStartTimes[fi], frameEndTimes[fi]],
+                                                  moveFlag=BTSession.MOVE_FLAG_MOVING)
 
     cumulativeValMin = np.nanmin(cumulativeValImgs)
     cumulativeValMax = np.nanmax(cumulativeValImgs)

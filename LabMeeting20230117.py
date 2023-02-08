@@ -161,7 +161,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                     return 60*5
             WellMeasure("probe spotlight score 90sec", lambda s, h: s.getSpotlightScore(
                 True, h, timeInterval=[0, 90]), sessionsWithProbe).makeFigures(pp)
-            WellMeasure("probe dotprod score 90sec", lambda s, h: s.getDotProductScore(
+            WellMeasure("probe dotprod score 90sec", lambda s, h: s.getDotProductScoreAtWell(
                 True, h, timeInterval=[0, 90]), sessionsWithProbe).makeFigures(pp)
             WellMeasure("probe gravity from all 90sec", lambda s, h: s.gravityOfWell(
                 True, h, timeInterval=[0, 90]), sessionsWithProbe).makeFigures(pp)
@@ -781,9 +781,9 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True,
                 True, h), sessionsWithProbe).makeFigures(pp)
             WellMeasure("task spotlight score", lambda s, h: s.getSpotlightScore(
                 False, h), sessionsWithProbe).makeFigures(pp)
-            WellMeasure("probe dotprod score", lambda s, h: s.getDotProductScore(
+            WellMeasure("probe dotprod score", lambda s, h: s.getDotProductScoreAtWell(
                 True, h), sessionsWithProbe).makeFigures(pp)
-            WellMeasure("task dotprod score", lambda s, h: s.getDotProductScore(
+            WellMeasure("task dotprod score", lambda s, h: s.getDotProductScoreAtWell(
                 False, h), sessionsWithProbe).makeFigures(pp)
 
         if not RUN_SWR_LATENCY_PLOTS:

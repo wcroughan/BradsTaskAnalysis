@@ -869,7 +869,7 @@ class PlotManager:
         return ret
 
 
-def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outlineColors=None,
+def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outlineColors=-1,
                            wellSize=mpl.rcParams['lines.markersize']**2, extent=None):
     # showWells, string in any order containing or not contianing these letters as flags:
     #   H: home
@@ -881,6 +881,8 @@ def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outl
     elif not isinstance(axs, list):
         axs = [axs]
 
+    if outlineColors == -1:
+        outlineColors = "orange" if sesh.isRippleInterruption else "cyan"
     if outlineColors is not None:
         if isinstance(outlineColors, np.ndarray):
             outlineColors = outlineColors.flat

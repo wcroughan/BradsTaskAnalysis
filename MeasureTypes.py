@@ -9,11 +9,12 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from numpy.typing import ArrayLike
 
-from UtilFunctions import offWall
+from UtilFunctions import offWall, getWellPosCoordinates
 from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot, blankPlot, \
     plotIndividualAndAverage
 from consts import allWellNames, TRODES_SAMPLING_RATE
 from BTSession import BTSession
+from BTSession import BehaviorPeriod as BP
 
 
 class TrialMeasure():
@@ -814,17 +815,59 @@ class WellMeasure():
 
 
 class SessionMeasure():
-    def __init__(self, name: str, measureFunc: Callable[[BTSession], float],
-                 sessionList: List[BTSession], runStats: bool = True) -> None:
+    @staticmethod
+    def measureAtWell(vals: ArrayLike, well: int) -> ArrayLike:
+        v = np.array(vals)
+        wx, wy = getWellPosCoordinates(well)
+        wxc = np.digitize(wx, np.linspace(-0.5, 6.5, v.shape[0]))
+        wyc = np.digitize(wy, np.linspace(-0.5, 6.5, v.shape[1]))
+        return v[wxc, wyc]
+
+    @staticmethod
+    def measureValueAtHome(sesh: BTSession, vals: ArrayLike) -> ArrayLike:
+        return SessionMeasure.measureAtWell(vals, sesh.homeWell)
+
+    @staticmethod
+    def measureValueAtAwayWells(sesh: BTSession, vals: ArrayLike, allVals: ArrayLike, seshIdx: int, offWallOnly=True) -> ArrayLike:
+        awVals = []
+        for aw in sesh.visitedAwayWells:
+            if offWallOnly and not offWall(aw):
+                continue
+            awVals.append(SessionMeasure.measureAtWell(vals, aw))
+        return np.nanmean(awVals)
+
+    @staticmethod
+    def measureValueAtHomeOtherSeshs(sesh: BTSession, vals: ArrayLike, allVals: ArrayLike,  seshIdx: int, offWallOnly=True) -> ArrayLike:
+        osVals = []
+        for i in range(allVals.shape[0]):
+            if i == seshIdx:
+                continue
+            osVals.append(SessionMeasure.measureAtWell(allVals[i], sesh.homeWell))
+        return np.nanmean(osVals)
+
+    def __init__(self, name: str, measureFunc: Callable[[BTSession], ArrayLike],
+                 sessionList: List[BTSession],
+                 sessionValFunc: Callable[[BTSession, ArrayLike],
+                                          ArrayLike] = measureValueAtHome,
+                 sessionCtrlValFunc: Callable[[BTSession, ArrayLike, ArrayLike, int],
+                                              ArrayLike] = measureValueAtAwayWells,
+                 runStats: bool = True) -> None:
+        """
+        for the sake of using measure as a background image, it should be indexed x-first
+        """
         self.name = name
         self.sessionList = sessionList
         self.runStats = runStats
-        self.measureValsBySession = np.empty((len(sessionList)))
+        self.measureValsBySession = [None] * len(sessionList)
+        self.sessionValsBySession = [None] * len(sessionList)
+        self.sessionCtrlValsBySession = [None] * len(sessionList)
         self.dotColorsBySession = [None] * len(sessionList)
         self.conditionBySession = [None] * len(sessionList)
 
         for si, sesh in enumerate(sessionList):
-            self.measureValsBySession[si] = measureFunc(sesh)
+            v = measureFunc(sesh)
+            self.measureValsBySession[si] = v
+            self.sessionValsBySession[si] = sessionValFunc(sesh, v)
             if sesh.isRippleInterruption:
                 self.conditionBySession[si] = "SWR"
                 self.dotColorsBySession[si] = "orange"
@@ -832,26 +875,27 @@ class SessionMeasure():
                 self.conditionBySession[si] = "Ctrl"
                 self.dotColorsBySession[si] = "cyan"
 
+        self.measureValsBySession = np.array(self.measureValsBySession)
+        self.sessionValsBySession = np.array(self.sessionValsBySession)
+        for si, sesh in enumerate(sessionList):
+            self.sessionCtrlValsBySession[si] = sessionCtrlValFunc(
+                sesh, self.measureValsBySession[si], self.measureValsBySession, si)
+
         self.valMin = np.nanmin(self.measureValsBySession)
         self.valMax = np.nanmax(self.measureValsBySession)
+        self.sessionValMin = np.nanmin((self.sessionValsBySession, self.sessionCtrlValsBySession))
+        self.sessionValMax = np.nanmax((self.sessionValsBySession, self.sessionCtrlValsBySession))
 
     def makeFigures(self,
                     plotManager: PlotManager,
                     plotFlags: str | List[str] = "all",
-                    everySessionTraceType: None | str = None,
-                    everySessionTraceTimeInterval: None | Callable[[
-                        BTSession], tuple | list] = None,
-                    everySessionBackground: None | Callable[[BTSession], ArrayLike] = None,
+                    everySessionBehaviorPeriod: Optional[BP | Callable[[BTSession], BP]] = None,
                     priority=None):
-        """
-        Remember! images are indexed y-first, x-second
-        So i.e. if passing in occupancy map which is accessed as occMap[posx, posy], need to transpose
-        """
         figName = self.name.replace(" ", "_")
 
         if isinstance(plotFlags, str):
             if plotFlags == "all":
-                plotFlags = ["measure", "everysession"]
+                plotFlags = ["measure", "diff", "everysession"]
             else:
                 plotFlags = [plotFlags]
         else:
@@ -862,12 +906,26 @@ class SessionMeasure():
             plotFlags.remove("measure")
 
             with plotManager.newFig(figName) as pc:
-                violinPlot(pc.ax, self.measureValsBySession, self.conditionBySession,
+                violinPlot(pc.ax, self.sessionValsBySession, self.conditionBySession,
                            dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
                 pc.ax.set_title(self.name, fontdict={'fontsize': 6})
 
                 if self.runStats:
-                    pc.yvals[figName] = self.measureValsBySession
+                    pc.yvals[figName] = self.sessionValsBySession
+                    pc.categories["condition"] = self.conditionBySession
+                    pc.immediateShuffles.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+
+        if "diff" in plotFlags:
+            plotFlags.remove("diff")
+
+            with plotManager.newFig(figName + "_diff") as pc:
+                violinPlot(pc.ax, self.sessionValsBySession - self.sessionCtrlValsBySession, self.conditionBySession,
+                           dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
+                pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+
+                if self.runStats:
+                    pc.yvals[figName] = self.sessionValsBySession - self.sessionCtrlValsBySession
                     pc.categories["condition"] = self.conditionBySession
                     pc.immediateShuffles.append((
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
@@ -875,84 +933,37 @@ class SessionMeasure():
         if "everysession" in plotFlags:
             plotFlags.remove("everysession")
 
-            traceTypes = ["task", "probe"]
-            traceMods = ["", "_bouts", "_mv", "_mv_bouts", "_bouts_mv"]
-            validTraceStrings = [t + m for t in traceTypes for m in traceMods]
-            assert everySessionTraceType is None or everySessionTraceType in validTraceStrings
-
-            # Compute bg images first to get full range
-            if everySessionBackground is not None:
-                bgImgs = []
-                for sesh in self.sessionList:
-                    bgImgs.append(everySessionBackground(sesh))
-                bgImgs = np.array(bgImgs)
-                bgMin = np.nanmin(bgImgs)
-                bgMax = np.nanmax(bgImgs)
-            else:
-                bgImgs = self.measureValsBySession
-                bgMin = self.valMin
-                bgMax = self.valMax
-
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
             ncols = int(np.ceil(np.sqrt(len(self.sessionList))))
             with plotManager.newFig(figName + "_every_session", subPlots=(ncols, ncols), figScale=0.6) as pc:
                 for si, sesh in enumerate(self.sessionList):
-                    sk = self.measureValsBySession[si]
+                    sk = np.array(self.measureValsBySession[si])
                     cond = self.conditionBySession[si]
                     ax = pc.axs[si // ncols, si % ncols]
                     assert isinstance(ax, Axes)
 
-                    if everySessionTraceType is not None:
-                        if "task" in everySessionTraceType:
-                            xs = sesh.btPosXs
-                            ys = sesh.btPosYs
-                            bout = sesh.btBoutCategory == BTSession.BOUT_STATE_EXPLORE
-                            mv = sesh.btIsMv
-                            # mv = sesh.btVelCmPerS > 20
-                            # mv = np.append(mv, mv[-1])
-                            ts = sesh.btPos_ts
-                        elif "probe" in everySessionTraceType:
-                            xs = sesh.probePosXs
-                            ys = sesh.probePosYs
-                            bout = sesh.probeBoutCategory == BTSession.BOUT_STATE_EXPLORE
-                            mv = sesh.probeIsMv
-                            # mv = sesh.probeVelCmPerS > 30
-                            # mv = np.append(mv, mv[-1])
-                            ts = sesh.probePos_ts
+                    if everySessionBehaviorPeriod is not None:
+                        if callable(everySessionBehaviorPeriod):
+                            bp = everySessionBehaviorPeriod(sesh)
+                        else:
+                            bp = everySessionBehaviorPeriod
 
-                        if everySessionTraceTimeInterval is not None:
-                            if callable(everySessionTraceTimeInterval):
-                                timeInterval = everySessionTraceTimeInterval(sesh)
-                            else:
-                                timeInterval = everySessionTraceTimeInterval
-                            durIdx = sesh.timeIntervalToPosIdx(ts, timeInterval)
-                            assert len(xs) == len(ts)
-                            xs = xs[durIdx[0]:durIdx[1]]
-                            ys = ys[durIdx[0]:durIdx[1]]
-                            mv = mv[durIdx[0]:durIdx[1]]
-                            bout = bout[durIdx[0]:durIdx[1]]
-
-                        sectionFlag = np.ones_like(xs, dtype=bool)
-                        if "_bouts" in everySessionTraceType:
-                            sectionFlag[~ bout] = False
-                        if "_mv" in everySessionTraceType:
-                            sectionFlag[~ mv] = False
-                        xs[~ sectionFlag] = np.nan
-
+                        _, xs, ys = sesh.posDuringBehaviorPeriod(bp)
                         ax.plot(xs, ys, c="#deac7f", lw=0.5)
                         if len(xs) > 0:
                             ax.scatter(xs[-1], ys[-1], marker="*")
 
-                    c = "orange" if cond == "SWR" else "cyan"
-                    setupBehaviorTracePlot(ax, sesh, outlineColors=c,
-                                           wellSize=wellSize, showWells="HA")
+                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
 
                     for v in ax.spines.values():
                         v.set_zorder(0)
-                    ax.set_title(f"{sesh.name} - {sk}", fontdict={'fontsize': 6})
+                    if np.isscalar(sk):
+                        ax.set_title(f"{sesh.name} - {sk}", fontdict={'fontsize': 6})
+                    else:
+                        ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
-                    im = ax.imshow(bgImgs[si], cmap=mpl.colormaps["coolwarm"],
-                                   vmin=bgMin, vmax=bgMax,
+                    im = ax.imshow(self.measureValsBySession[si].T, cmap=mpl.colormaps["coolwarm"],
+                                   vmin=self.valMin, vmax=self.valMax,
                                    interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
                                    origin="lower")
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from scipy.ndimage import gaussian_filter
 import numpy as np
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Iterable, Callable
 from datetime import datetime
 from numpy.typing import ArrayLike
 from dataclasses import dataclass, field
@@ -31,6 +31,28 @@ from UtilFunctions import LoadInfo, getWellPosCoordinates, Ripple, ImportOptions
 # *_ts - trodes timestamps
 # *_posIdx - index in probe_pos* or bt_pos*
 # *_lfpIdx - index in lfp data
+
+@dataclass
+class BehaviorPeriod:
+    """
+    Specifies a period of behavior in a session. Can be passed to functions to include/exclude
+    certain periods of behavior, specify whether to use BT or probe data, etc.
+    Note for a time point to be included, it must evaluate to true for all of the methods specified
+    :param inProbe: True if this period is in probe, False if in BT
+    :param timeInterval: A tuple of (start, end) times in seconds. If only one time is given, it is
+        interpreted as the end time and the start time is assumed to be 0. If a third string is given,
+        it is interpreted as units. Valid units are "s" for seconds, "ts" for trodes timestamps, and
+        "posIdx" for probe or BT position indices. Default is "s".
+    :param inclusionFlags: A string or iterable of strings from the following list:
+        "moving", "still", "reward", "rest", "explore", "offWall", "onWall", "homeTrial", "awayTrial"
+    :param inclusionArray: A boolean array of the same length as the number of time points in the
+        session. If not None, this array is used to determine which time points to include.
+    """
+    probe: bool = False
+    timeInterval: Optional[Tuple[int, int] | Tuple[int, int, str]] = None
+    inclusionFlags: Optional[str | Iterable[str]] = None
+    inclusionArray: Optional[np.ndarray] = None
+
 
 @dataclass
 class BTSession:
@@ -410,6 +432,85 @@ class BTSession:
                                    np.array([timeInterval[0], timeInterval[1]]))
         else:
             raise ValueError("Couldn't parse time interval")
+
+    def posDuringBehaviorPeriod(self, behaviorPeriod: BehaviorPeriod, mode="nan") -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Returns position arrays for given behavior period (ts, xs, ys). If mode is "nan", then
+        returns array with nans for positions outside of behavior period. If mode
+        is "delete", then returns arrays within behavior period concatenated directly
+        """
+        keepFlag = self.evalBehaviorPeriod(behaviorPeriod)
+        xs = self.probePos_xs if behaviorPeriod.probe else self.btPos_xs
+        ys = self.probePos_ys if behaviorPeriod.probe else self.btPos_ys
+        ts = self.probePos_ts if behaviorPeriod.probe else self.btPos_ts
+
+        if mode == "nan":
+            xs[~keepFlag] = np.nan
+            ys[~keepFlag] = np.nan
+            ts[~keepFlag] = np.nan
+            return ts, xs, ys
+        elif mode == "delete":
+            return ts[keepFlag], xs[keepFlag], ys[keepFlag]
+
+    def evalBehaviorPeriod(self, behaviorPeriod: BehaviorPeriod) -> np.ndarray:
+        ts = self.probePos_ts if behaviorPeriod.probe else self.btPos_ts
+
+        keepFlag = np.ones_like(ts).astype(bool)
+        if behaviorPeriod.inclusionArray is not None:
+            keepFlag = keepFlag & behaviorPeriod.inclusionArray
+
+        if behaviorPeriod.inclusionFlags is not None:
+            if isinstance(behaviorPeriod.inclusionFlags, str):
+                behaviorPeriod.inclusionFlags = [behaviorPeriod.inclusionFlags]
+            for flag in behaviorPeriod.inclusionFlags:
+                if flag == "moving":
+                    mv = self.probeIsMv if behaviorPeriod.probe else self.btIsMv
+                    keepFlag = keepFlag & mv
+                elif flag == "still":
+                    mv = self.probeIsMv if behaviorPeriod.probe else self.btIsMv
+                    keepFlag = keepFlag & ~mv
+                elif flag == "reward":
+                    boutCats = self.probeBoutCategory if behaviorPeriod.probe else self.btBoutCategory
+                    keepFlag = keepFlag & (boutCats == BTSession.BOUT_STATE_REWARD)
+                elif flag == "rest":
+                    boutCats = self.probeBoutCategory if behaviorPeriod.probe else self.btBoutCategory
+                    keepFlag = keepFlag & (boutCats == BTSession.BOUT_STATE_REST)
+                elif flag == "explore":
+                    boutCats = self.probeBoutCategory if behaviorPeriod.probe else self.btBoutCategory
+                    keepFlag = keepFlag & (boutCats == BTSession.BOUT_STATE_EXPLORE)
+                elif flag == "onWall":
+                    excursionCats = self.probeExcursionCategory if behaviorPeriod.probe else self.btExcursionCategory
+                    keepFlag = keepFlag & (excursionCats == BTSession.EXCURSION_STATE_ON_WALL)
+                elif flag == "offWall":
+                    excursionCats = self.probeExcursionCategory if behaviorPeriod.probe else self.btExcursionCategory
+                    keepFlag = keepFlag & (excursionCats == BTSession.EXCURSION_STATE_OFF_WALL)
+                elif flag == "homeTrial":
+                    ht1 = self.homeRewardEnter_posIdx
+                    ht0 = np.hstack(([0], self.awayRewardExit_posIdx))
+                    if not self.endedOnHome:
+                        ht0 = ht0[0:-1]
+                    hFlag = np.zeros_like(keepFlag).astype(bool)
+                    for t0, t1 in zip(ht0, ht1):
+                        hFlag[t0:t1] = True
+                    keepFlag = keepFlag & hFlag
+                elif flag == "awayTrial":
+                    at1 = self.awayRewardEnter_posIdx
+                    at0 = self.homeRewardExit_posIdx
+                    if self.endedOnHome:
+                        at0 = at0[0:-1]
+                    aFlag = np.zeros_like(keepFlag).astype(bool)
+                    for t0, t1 in zip(at0, at1):
+                        aFlag[t0:t1] = True
+                    keepFlag = keepFlag & aFlag
+                else:
+                    raise ValueError(f"Invalid inclusion flag: {flag}")
+
+        durIdx = self.timeIntervalToPosIdx(
+            ts, behaviorPeriod.timeInterval, noneVal=(0, len(keepFlag)))
+        keepFlag[0:durIdx[0]] = False
+        keepFlag[durIdx[1]:] = False
+
+        return keepFlag
 
     def avgDistToWell(self, inProbe: bool, wellName: int,
                       timeInterval=None, moveFlag=None, avgFunc=np.nanmean) -> float:
@@ -1006,9 +1107,55 @@ class BTSession:
         exts = np.nonzero(borders == -1)[0]
         return ents, exts
 
-    def getDotProductScore(self, inProbe: bool, wellName: int, timeInterval=None, moveFlag=None,
-                           boutFlag=None, excludeTimesAtWell=True, binarySpotlight=False, spotlightAngle=70,
-                           excursionFlag=None) -> float:
+    def getDotProductScore(self, pos: Tuple[float, float], behaviorPeriod: BehaviorPeriod,
+                           excludeRadius: Optional[float] = 0.5,
+                           binarySpotlight: bool = False, spotlightAngle: float = 70) -> float:
+        """
+        :param pos: (x, y) position to calculate dot product score at
+        :param behaviorPeriod: behavior period to calculate score over
+        :param excludeRadius: radius around pos to exclude from calculation
+        :param binarySpotlight: whether to use binary spotlight (only include points within spotlightAngle)
+        :param spotlightAngle: angle of spotlight
+        :return: dot product score
+        """
+        x = self.probePosXs if behaviorPeriod.probe else self.btPosXs
+        y = self.probePosYs if behaviorPeriod.probe else self.btPosYs
+        keepFlag = self.evalBehaviorPeriod(behaviorPeriod)[:-1]
+
+        if excludeRadius is not None:
+            dist2 = np.power(x - pos[0], 2) + np.power(y - pos[1], 2)
+            keepFlag[dist2[:-1] <= excludeRadius * excludeRadius] = False
+
+        dx = np.diff(x)
+        dy = np.diff(y)
+        dwx = pos[0] - np.array(x[1:])
+        dwy = pos[1] - np.array(y[1:])
+
+        keepFlag &= (dx != 0).astype(bool) | (dy != 0).astype(bool)
+
+        dx = dx[keepFlag]
+        dy = dy[keepFlag]
+        dwx = dwx[keepFlag]
+        dwy = dwy[keepFlag]
+
+        dots = dx * dwx + dy * dwy
+        magp = np.sqrt(dx * dx + dy * dy)
+        magw = np.sqrt(dwx * dwx + dwy * dwy)
+        mags = magp * magw
+        udots = dots / mags
+
+        if binarySpotlight:
+            angle = np.arccos(udots)
+            allVals = (angle < np.deg2rad(spotlightAngle)).astype(float)
+        else:
+            # allVals = udots / magw
+            allVals = udots
+
+        return np.sum(allVals)
+
+    def getDotProductScoreAtWell(self, inProbe: bool, wellName: int, timeInterval=None, moveFlag=None,
+                                 boutFlag=None, excludeTimesAtWell=True, binarySpotlight=False, spotlightAngle=70,
+                                 excursionFlag=None) -> float:
         if moveFlag is None:
             moveFlag = BTSession.MOVE_FLAG_ALL
 
@@ -1038,14 +1185,6 @@ class BTSession:
         durIdx = self.timeIntervalToPosIdx(ts, timeInterval, noneVal=(0, len(keepMv)))
         keepTimeInt = np.zeros_like(keepMv).astype(bool)
         keepTimeInt[durIdx[0]:durIdx[1]] = True
-        # if timeInterval is None:
-        #     keepTimeInt = np.ones_like(keepMv)
-        # else:
-        #     assert x.shape == ts.shape
-        #     keepTimeInt = np.zeros_like(keepMv).astype(bool)
-        #     durIdx = np.searchsorted(ts, np.array(
-        #         [ts[0] + timeInterval[0] * TRODES_SAMPLING_RATE, ts[0] + timeInterval[1] * TRODES_SAMPLING_RATE]))
-        #     keepTimeInt[durIdx[0]:durIdx[1]] = True
 
         if boutFlag is None:
             keepBout = np.ones_like(boutCats).astype(bool)

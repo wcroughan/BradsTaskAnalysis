@@ -1,4 +1,5 @@
 from BTSession import BTSession
+from BTSession import BehaviorPeriod as BP
 from MeasureTypes import WellMeasure, TrialMeasure, SessionMeasure
 from BTData import BTData
 from PlotUtil import PlotManager, setupBehaviorTracePlot, plotIndividualAndAverage
@@ -19,6 +20,9 @@ import warnings
 import matplotlib.pyplot as plt
 from numpy.typing import ArrayLike
 from functools import partial
+
+# TODO
+# Left off right after doing a bunch of stuff jiwth BehavioralPeriod and SessionMeasure. Totally untested
 
 # TODO
 # focus first on getting something on which to base discussion, like very basic demonstration of memory of home during probe
@@ -101,7 +105,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
                 RUN_OPTIMALITY=None, PLOT_DETAILED_TASK_TRACES=None,
                 PLOT_DETAILED_PROBE_TRACES=None, RUN_ENTRY_EXIT_ANGLE=None,
-                RUN_PATH_OCCUPANCY=None,
+                RUN_PATH_OCCUPANCY=None, RUN_SPOTLIGHT_EXPLORATION=None,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
@@ -125,6 +129,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         RUN_ENTRY_EXIT_ANGLE = RUN_UNSPECIFIED
     if RUN_PATH_OCCUPANCY is None:
         RUN_PATH_OCCUPANCY = RUN_UNSPECIFIED
+    if RUN_SPOTLIGHT_EXPLORATION is None:
+        RUN_SPOTLIGHT_EXPLORATION = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -212,6 +218,29 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         if RUN_TESTS:
             SessionMeasure("test", lambda sesh: sesh.homeWell, sessions).makeFigures(pp)
 
+        if RUN_SPOTLIGHT_EXPLORATION:
+            def bgImg(sesh: BTSession, resolution: int = 36) -> np.ndarray:
+                trials_posIdx = sesh.getAllTrialPosIdxs()
+                homeTrials_posIdx = trials_posIdx[::2, :]
+                homeTrial = np.zeros_like(sesh.btPos_ts).astype(bool)
+                for ti in range(homeTrials_posIdx.shape[0]):
+                    homeTrial[homeTrials_posIdx[ti, 0]:homeTrials_posIdx[ti, 1]] = True
+                homeTrial = homeTrial[:-1]
+
+                pixelWidth = 7 / resolution
+                pixelCenters = np.linspace(-0.5, 6.5, resolution, endpoint=False) + pixelWidth / 2
+                ret = np.empty((resolution, resolution))
+                for i in range(resolution):
+                    for j in range(resolution):
+                        x = pixelCenters[i]
+                        y = pixelCenters[j]
+                        ret[i, j] = sesh.getDotProductScore(
+                            (x, y), BP(probe=False, inclusionArray=homeTrial))
+                return ret
+
+            SessionMeasure("homeTrialDotProd", lambda sesh: 0, sessions).makeFigures(
+                pp, everySessionBackground=bgImg, everySessionTraceType="task")
+
         if RUN_PATH_OCCUPANCY:
             def pathOccupancy(sesh: BTSession) -> float:
                 resolution = 36
@@ -232,7 +261,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 occMap[-wallMargin:, :] = np.nan
                 occMap[:, 0:wallMargin] = np.nan
                 occMap[:, -wallMargin:] = np.nan
-                return occMap.T
+                return occMap
 
             def pathOccupancyWithDirection(sesh: BTSession) -> float:
                 resolution = 36
@@ -364,7 +393,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 pp.popOutputSubDir()
 
         if RUN_SPOTLIGHT:
-            WellMeasure("probe spotlight score before fill", lambda s, h: s.getDotProductScore(
+            WellMeasure("probe spotlight score before fill", lambda s, h: s.getDotProductScoreAtWell(
                 True, h, timeInterval=[0, s.fillTimeCutoff()], binarySpotlight=True,
                 boutFlag=BTSession.BOUT_STATE_EXPLORE),
                 sessionsWithProbe).makeFigures(pp,
@@ -373,32 +402,32 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                                                everySessionTraceType="probe")
 
         if RUN_DOT_PROD:
-            WellMeasure("probe dotprod score before fill", lambda s, h: s.getDotProductScore(
+            WellMeasure("probe dotprod score before fill", lambda s, h: s.getDotProductScoreAtWell(
                 True, h, timeInterval=[0, s.fillTimeCutoff()], boutFlag=BTSession.BOUT_STATE_EXPLORE),
                 sessionsWithProbe).makeFigures(pp, everySessionTraceTimeInterval=lambda s: [0, s.fillTimeCutoff()],
                                                everySessionTraceType="probe_bouts")
-            WellMeasure("task dotprod score", lambda s, h: s.getDotProductScore(
+            WellMeasure("task dotprod score", lambda s, h: s.getDotProductScoreAtWell(
                 False, h, boutFlag=BTSession.BOUT_STATE_EXPLORE),
                 sessionsWithProbe).makeFigures(pp, everySessionTraceType="task_bouts")
 
-            WellMeasure("probe dotprod score first entry", lambda s, h: s.getDotProductScore(
+            WellMeasure("probe dotprod score first entry", lambda s, h: s.getDotProductScoreAtWell(
                 True, h, timeInterval=[0, s.getLatencyToWell(True, s.homeWell, returnUnits="secs")], boutFlag=BTSession.BOUT_STATE_EXPLORE),
                 sessionsWithProbe).makeFigures(pp, everySessionTraceTimeInterval=lambda s: [0, s.getLatencyToWell(True, s.homeWell, returnUnits="secs")],
                                                everySessionTraceType="probe_bouts", plotFlags="everysession")
 
         if RUN_MANY_DOTPROD:
             SECTION_LEN = 5
-            WellMeasure("short dotprod 1", lambda s, h: s.getDotProductScore(
+            WellMeasure("short dotprod 1", lambda s, h: s.getDotProductScoreAtWell(
                 True, h, timeInterval=[0, SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
             ), sessionsWithProbe).makeFigures(pp, plotFlags="everysession",
                                               everySessionTraceTimeInterval=lambda _: [
                                                   0, SECTION_LEN], everySessionTraceType="probe")
-            WellMeasure("short dotprod 2", lambda s, h: s.getDotProductScore(
+            WellMeasure("short dotprod 2", lambda s, h: s.getDotProductScoreAtWell(
                 True, h, timeInterval=[SECTION_LEN, 2*SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
             ), sessionsWithProbe).makeFigures(pp, plotFlags="everysession",
                                               everySessionTraceTimeInterval=lambda _: [
                                                   SECTION_LEN, 2*SECTION_LEN], everySessionTraceType="probe")
-            WellMeasure("short dotprod 1 and 2", lambda s, h: s.getDotProductScore(
+            WellMeasure("short dotprod 1 and 2", lambda s, h: s.getDotProductScoreAtWell(
                 True, h, timeInterval=[0, 2*SECTION_LEN], boutFlag=BTSession.BOUT_STATE_EXPLORE
             ), sessionsWithProbe).makeFigures(pp, plotFlags="everysession",
                                               everySessionTraceTimeInterval=lambda _: [
@@ -885,4 +914,4 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
 
-    makeFigures(RUN_UNSPECIFIED=False, RUN_PATH_OCCUPANCY=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION=True)
