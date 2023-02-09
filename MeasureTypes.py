@@ -3,13 +3,13 @@ import math
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from typing import Callable, List, Tuple, Optional, Iterable
+from typing import Callable, List, Tuple, Optional, Iterable, Dict
 import pandas as pd
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from numpy.typing import ArrayLike
 
-from UtilFunctions import offWall, getWellPosCoordinates
+from UtilFunctions import offWall, getWellPosCoordinates, getRotatedWells
 from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot, blankPlot, \
     plotIndividualAndAverage
 from consts import allWellNames, TRODES_SAMPLING_RATE
@@ -814,60 +814,142 @@ class WellMeasure():
             print(f"Warning: unused plot flags: {plotFlags}")
 
 
-class SessionMeasure():
+class LocationMeasure():
     @staticmethod
-    def measureAtWell(vals: ArrayLike, well: int) -> ArrayLike:
-        v = np.array(vals)
-        wx, wy = getWellPosCoordinates(well)
-        wxc = np.digitize(wx, np.linspace(-0.5, 6.5, v.shape[0]))
-        wyc = np.digitize(wy, np.linspace(-0.5, 6.5, v.shape[1]))
-        return v[wxc, wyc]
+    def measureAtLocation(vals: np.ndarray, pos: Tuple[float, float], smoothDist: Optional[float] = 0.5) -> ArrayLike:
+        x = pos[0]
+        y = pos[1]
+        if x < -0.5 or x > 6.5 or y < -0.5 or y > 6.5:
+            return np.nan
+
+        pxc = np.digitize(x, np.linspace(-0.5, 6.5, vals.shape[0]))
+        pyc = np.digitize(y, np.linspace(-0.5, 6.5, vals.shape[1]))
+        if smoothDist is None:
+            return vals[pxc, pyc]
+
+        pxc0 = np.digitize(x - smoothDist, np.linspace(-0.5, 6.5, vals.shape[0]))
+        pyc0 = np.digitize(y - smoothDist, np.linspace(-0.5, 6.5, vals.shape[1]))
+        pxc1 = np.digitize(x + smoothDist, np.linspace(-0.5, 6.5, vals.shape[0]))
+        pyc1 = np.digitize(y + smoothDist, np.linspace(-0.5, 6.5, vals.shape[1]))
+
+        pxlWidth = 7 / vals.shape[0]
+
+        numer = 0
+        denom = 0
+        for x in range(pxc0, pxc1):
+            for y in range(pyc0, pyc1):
+                fac = smoothDist - np.linalg.norm([pxc - x, pyc - y]) * pxlWidth
+                if fac < 0:
+                    continue
+                numer += vals[x, y] * fac
+                denom += fac
+
+        return numer / denom
 
     @staticmethod
-    def measureValueAtHome(sesh: BTSession, vals: ArrayLike) -> ArrayLike:
-        return SessionMeasure.measureAtWell(vals, sesh.homeWell)
+    def measureAtWell(vals: ArrayLike, well: int, smoothDist: Optional[float] = 0.5) -> ArrayLike:
+        return LocationMeasure.measureAtLocation(vals, getWellPosCoordinates(well), smoothDist)
 
     @staticmethod
-    def measureValueAtAwayWells(sesh: BTSession, vals: ArrayLike, allVals: ArrayLike, seshIdx: int, offWallOnly=True) -> ArrayLike:
+    def measureValueAtHome(sesh: BTSession, vals: ArrayLike, smoothDist: Optional[float] = 0.5) -> ArrayLike:
+        return LocationMeasure.measureAtWell(vals, sesh.homeWell, smoothDist=smoothDist)
+
+    @staticmethod
+    def measureValueAtAwayWells(sesh: BTSession, vals: ArrayLike, allVals: ArrayLike, seshIdx: int,
+                                offWallOnly=True, smoothDist: Optional[float] = 0.5) -> ArrayLike:
         awVals = []
         for aw in sesh.visitedAwayWells:
             if offWallOnly and not offWall(aw):
                 continue
-            awVals.append(SessionMeasure.measureAtWell(vals, aw))
+            awVals.append(LocationMeasure.measureAtWell(vals, aw, smoothDist=smoothDist))
         return np.nanmean(awVals)
 
     @staticmethod
-    def measureValueAtHomeOtherSeshs(sesh: BTSession, vals: ArrayLike, allVals: ArrayLike,  seshIdx: int, offWallOnly=True) -> ArrayLike:
+    def measureValueAtSymmetricWells(sesh: BTSession, vals: ArrayLike, allVals: ArrayLike, seshIdx: int,
+                                     offWallOnly=True, smoothDist: Optional[float] = 0.5) -> ArrayLike:
+        swVals = [LocationMeasure.measureAtWell(vals, rw, smoothDist=smoothDist)
+                  for rw in getRotatedWells(sesh.homeWell)]
+        return np.nanmean(swVals)
+
+    @staticmethod
+    def measureValueAtHomeOtherSeshs(sesh: BTSession, vals: ArrayLike, allVals: ArrayLike,  seshIdx: int,
+                                     offWallOnly=True, smoothDist: Optional[float] = 0.5) -> ArrayLike:
         osVals = []
         for i in range(allVals.shape[0]):
             if i == seshIdx:
                 continue
-            osVals.append(SessionMeasure.measureAtWell(allVals[i], sesh.homeWell))
+            osVals.append(LocationMeasure.measureAtWell(
+                allVals[i], sesh.homeWell, smoothDist=smoothDist))
         return np.nanmean(osVals)
+
+    @staticmethod
+    def defaultCtrlLocations(sesh: BTSession, seshIdx: int, otherSessions: List[BTSession]) -> List[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]:
+        ret = []
+        aret = []
+        for aw in sesh.visitedAwayWells:
+            if offWall(aw):
+                aret.append((seshIdx, *getWellPosCoordinates(aw)))
+        ret.append((aret, "away", ("home", "away", "well type")))
+
+        sret = []
+        for sw in getRotatedWells(sesh.homeWell):
+            sret.append((seshIdx, *getWellPosCoordinates(sw)))
+        ret.append((sret, "symmetric", ("home", "symmetric", "well type")))
+
+        osret = []
+        for i in range(len(otherSessions)):
+            if i == seshIdx:
+                continue
+            osret.append((i, *getWellPosCoordinates(sesh.homeWell)))
+        ret.append((osret, "othersessions", ("same session", "other sessions", "session type")))
+
+        return ret
 
     def __init__(self, name: str, measureFunc: Callable[[BTSession], ArrayLike],
                  sessionList: List[BTSession],
-                 sessionValFunc: Callable[[BTSession, ArrayLike],
-                                          ArrayLike] = measureValueAtHome,
-                 sessionCtrlValFunc: Callable[[BTSession, ArrayLike, ArrayLike, int],
-                                              ArrayLike] = measureValueAtAwayWells,
-                 runStats: bool = True) -> None:
+                 sessionValLocation: Callable[[BTSession], Tuple[float,
+                                                                 float]] = lambda s: getWellPosCoordinates(s.homeWell),
+                 sessionCtrlLocations: Callable[[BTSession, int, List[BTSession]],
+                                                Iterable[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]] = defaultCtrlLocations,
+                 distancePlotResolution: Tuple[int, int, int] = (20, 8, 15)) -> None:
         """
-        for the sake of using measure as a background image, it should be indexed x-first
+        :param name: name of the measure
+        :param measureFunc: function that takes a session and returns a 2D array of values
+                The array of values is indexed by x coordinate first. The returned array should be a square
+                array with the same number of pixels in each dimension.
+        :param sessionList: list of sessions to process
+        :param sessionValLocation: function that takes a session and returns the location within the measureFunction return
+                array where the session value should be measured. The location is given as a tuple of (x, y) coordinates.
+        :param sessionCtrlLocations: function that takes a session, its index, and the list of all sessions, and returns
+                a list of triplets. Each triplets is a list of locations, a name for the control, and three strings that are
+                the names for the measure group, control group, and axis label. The locations are given as a list of tuples
+                of (session index, x, y) coordinates. The name is a string that will be used to label the control values.
+        :param distancePlotResolution: resolution of the distance plot, specified as a tuple of
+                (number of distances to sample, number of samples at closest distance, number of samples at furthest distance)
         """
         self.name = name
         self.sessionList = sessionList
-        self.runStats = runStats
         self.measureValsBySession = [None] * len(sessionList)
         self.sessionValsBySession = [None] * len(sessionList)
-        self.sessionCtrlValsBySession = [None] * len(sessionList)
         self.dotColorsBySession = [None] * len(sessionList)
         self.conditionBySession = [None] * len(sessionList)
+        self.sessionValLocations = [None] * len(sessionList)
+
+        self.controlVals: Dict[str, List[List[float]]] = {}
+        self.controlValMeans: Dict[str, List[float]] = {}
+        self.controlValLabels: Dict[str, Tuple[str, str, str]] = {}
+        self.dotColorsByCtrlVal: Dict[str, List[str]] = {}
+        conditionByCtrlVal: Dict[str, List[str]] = {}
 
         for si, sesh in enumerate(sessionList):
-            v = measureFunc(sesh)
+            v = np.array(measureFunc(sesh))
+            if v.shape[0] != v.shape[1]:
+                raise ValueError("measureFunc must return a square array")
             self.measureValsBySession[si] = v
-            self.sessionValsBySession[si] = sessionValFunc(sesh, v)
+            self.sessionValLocations[si] = sessionValLocation(sesh)
+            self.sessionValsBySession[si] = LocationMeasure.measureAtLocation(
+                v, self.sessionValLocations[si])
+
             if sesh.isRippleInterruption:
                 self.conditionBySession[si] = "SWR"
                 self.dotColorsBySession[si] = "orange"
@@ -875,70 +957,287 @@ class SessionMeasure():
                 self.conditionBySession[si] = "Ctrl"
                 self.dotColorsBySession[si] = "cyan"
 
+        self.sessionValMin = np.nanmin(self.sessionValsBySession)
+        self.sessionValMax = np.nanmax(self.sessionValsBySession)
+
+        self.controlSpecsBySession = [sessionCtrlLocations(
+            sesh, si, sessionList) for si, sesh in enumerate(sessionList)]
+
+        for si, sesh in enumerate(sessionList):
+            for ctrlLocs, ctrlName, ctrlLabels in self.controlSpecsBySession[si]:
+                if ctrlName not in self.controlVals:
+                    self.controlVals[ctrlName] = []
+                    self.controlValMeans[ctrlName] = []
+                    self.controlValLabels[ctrlName] = ctrlLabels
+                    self.dotColorsByCtrlVal[ctrlName] = []
+                    conditionByCtrlVal[ctrlName] = []
+                else:
+                    if self.controlValLabels[ctrlName] != ctrlLabels:
+                        raise ValueError("control labels must be the same for each control")
+                ctrlVals = []
+                for ctrlLoc in ctrlLocs:
+                    ctrlVals.append(LocationMeasure.measureAtLocation(
+                        self.measureValsBySession[ctrlLoc[0]], (ctrlLoc[1], ctrlLoc[2])))
+
+                self.controlVals[ctrlName].append(ctrlVals)
+                self.controlValMeans[ctrlName].append(np.nanmean(ctrlVals))
+                c = "orange" if sesh.isRippleInterruption else "cyan"
+                self.dotColorsByCtrlVal[ctrlName] += [c] * len(ctrlVals)
+                c = "SWR" if sesh.isRippleInterruption else "Ctrl"
+                conditionByCtrlVal[ctrlName] += [c] * len(ctrlVals)
+
+                if np.nanmean(ctrlVals) > self.sessionValMax:
+                    self.sessionValMax = np.nanmean(ctrlVals)
+                if np.nanmean(ctrlVals) < self.sessionValMin:
+                    self.sessionValMin = np.nanmean(ctrlVals)
+
+        self.distancePlotXVals = np.linspace(0, 7*np.sqrt(2), distancePlotResolution[0])
+        self.numSamples = np.round(np.linspace(
+            distancePlotResolution[1], distancePlotResolution[2], distancePlotResolution[0])).astype(int)
+        self.measureValsByDistance = np.empty((len(self.sessionList), len(self.distancePlotXVals)))
+        self.measureValsByDistance[:] = np.nan
+        self.controlMeasureValsByDistance: Dict[str, np.ndarray] = {}
+
+        for si, sesh in enumerate(sessionList):
+            for di, d in enumerate(self.distancePlotXVals):
+                if d == 0:
+                    self.measureValsByDistance[si, di] = self.sessionValsBySession[si]
+                    continue
+
+                nsamps = self.numSamples[di]
+                vals = []
+                for i in range(nsamps):
+                    theta = i * 2 * np.pi / nsamps
+                    x = d * np.cos(theta) + self.sessionValLocations[si][0]
+                    y = d * np.sin(theta) + self.sessionValLocations[si][1]
+                    vals.append(LocationMeasure.measureAtLocation(
+                        self.measureValsBySession[si], (x, y)))
+                self.measureValsByDistance[si, di] = np.nanmean(vals)
+
+        for ctrlName in self.controlVals:
+            self.controlMeasureValsByDistance[ctrlName] = np.empty(
+                (len(self.dotColorsByCtrlVal[ctrlName]), len(self.distancePlotXVals)))
+            self.controlMeasureValsByDistance[ctrlName][:] = np.nan
+            cidx = 0
+            for si, sesh in enumerate(sessionList):
+                for ctrlLocs, cname, ctrlLabels in self.controlSpecsBySession[si]:
+                    if cname != ctrlName:
+                        continue
+
+                    for li, loc in enumerate(ctrlLocs):
+                        for di, d in enumerate(self.distancePlotXVals):
+                            if d == 0:
+                                self.controlMeasureValsByDistance[ctrlName][cidx, di] = \
+                                    self.controlVals[ctrlName][si][li]
+                                continue
+
+                            nsamps = self.numSamples[di]
+                            vals = []
+                            for i in range(nsamps):
+                                theta = i * 2 * np.pi / nsamps
+                                x = d * np.cos(theta) + loc[1]
+                                y = d * np.sin(theta) + loc[2]
+                                vals.append(LocationMeasure.measureAtLocation(
+                                    self.measureValsBySession[loc[0]], (x, y)))
+                            self.controlMeasureValsByDistance[ctrlName][cidx, di] = np.nanmean(vals)
+                        cidx += 1
+
         self.measureValsBySession = np.array(self.measureValsBySession)
         self.sessionValsBySession = np.array(self.sessionValsBySession)
-        for si, sesh in enumerate(sessionList):
-            self.sessionCtrlValsBySession[si] = sessionCtrlValFunc(
-                sesh, self.measureValsBySession[si], self.measureValsBySession, si)
+        self.conditionBySession = np.array(self.conditionBySession)
+        self.conditionByCtrlVal: Dict[str, np.ndarray] = {}
+        for ctrlName in conditionByCtrlVal:
+            self.conditionByCtrlVal[ctrlName] = np.array(conditionByCtrlVal[ctrlName])
 
         self.valMin = np.nanmin(self.measureValsBySession)
         self.valMax = np.nanmax(self.measureValsBySession)
-        self.sessionValMin = np.nanmin((self.sessionValsBySession, self.sessionCtrlValsBySession))
-        self.sessionValMax = np.nanmax((self.sessionValsBySession, self.sessionCtrlValsBySession))
 
     def makeFigures(self,
                     plotManager: PlotManager,
                     plotFlags: str | List[str] = "all",
                     everySessionBehaviorPeriod: Optional[BP | Callable[[BTSession], BP]] = None,
-                    priority=None):
+                    runStats: bool = True,
+                    excludeFromCombo=False) -> None:
+        """
+        :param plotManager: PlotManager to use to make figures
+        :param plotFlags: "all" or list of strings indicating which figures to make. Possible values are:
+            "measureByCondition": plot the measure values for each session, separated by condition
+            "measureVsCtrl": plot the measure values for each session, with the control values for each session
+            "measureVsCtrlByCondition": plot the measure values for each session, with the control values for each session, separated by condition
+            "diff": plot the difference between the measure values for each session and the mean control values within that session
+            "measureByDistance": plot average measure values for each session as a function of distance from the session location
+            "measureByDistanceByCondition": plot average measure values for each session as a function of distance from the session location, separated by condition
+            "measureVsCtrlByDistance": plot average measure values for each session as a function of distance from the session location,
+                                    compared to measure values as a function of distance from the control location
+            "measureVsCtrlByDistanceByCondition": plot average measure values for each session as a function of distance from the session location, separated by condition,
+                                                compared to measure values as a function of distance from the control location, separated by condition
+            "everysession": plot the measure values for each session overlaid with behavior and well locations
+            "everysessionoverlay": plot the measure values for each session overlaid on top of each other and summed to line up the session locations
+            Optionally, any of the above can be preceded by "not" to exclude it from the list of figures to make
+                If any flag starts with "not", all flags must start with "not", and any flag not excluded will be included
+        :param everySessionBehaviorPeriod: if not None, behavior period to use for everySession plot
+        :param runStats: if True, run stats on the data and add p value to output plot
+        :param excludeFromCombo: if True, don't include this measure in the combo plot
+        """
+
         figName = self.name.replace(" ", "_")
+
+        allPossibleFlags = ["measureByCondition", "measureVsCtrl",
+                            "measureVsCtrlByCondition", "diff",
+                            "measureByDistance", "measureByDistanceByCondition",
+                            "measureVsCtrlByDistance", "measureVsCtrlByDistanceByCondition",
+                            "everysession", "everysessionoverlay"]
 
         if isinstance(plotFlags, str):
             if plotFlags == "all":
-                plotFlags = ["measure", "diff", "everysession"]
+                plotFlags = allPossibleFlags
             else:
                 plotFlags = [plotFlags]
         else:
             # so list passed in isn't modified
             plotFlags = [v for v in plotFlags]
 
-        if "measure" in plotFlags:
-            plotFlags.remove("measure")
+        if len(plotFlags) > 0 and plotFlags[0].startswith("not"):
+            if not all([v.startswith("not") for v in plotFlags]):
+                raise ValueError("if one plot flag starts with 'not', all must")
+            plotFlags = [v[3:] for v in plotFlags]
+            plotFlags = list(set(allPossibleFlags) - set(plotFlags))
 
-            with plotManager.newFig(figName) as pc:
+        if "measureByCondition" in plotFlags:
+            plotFlags.remove("measureByCondition")
+
+            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
                 violinPlot(pc.ax, self.sessionValsBySession, self.conditionBySession,
                            dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
                 pc.ax.set_title(self.name, fontdict={'fontsize': 6})
 
-                if self.runStats:
+                if runStats:
                     pc.yvals[figName] = self.sessionValsBySession
                     pc.categories["condition"] = self.conditionBySession
                     pc.immediateShuffles.append((
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
 
+        if "measureVsCtrl" in plotFlags:
+            plotFlags.remove("measureVsCtrl")
+            for ctrlName in self.controlValLabels:
+                vals = np.concatenate((self.sessionValsBySession, *self.controlVals[ctrlName]))
+                dotColors = np.concatenate(
+                    (self.dotColorsBySession, self.dotColorsByCtrlVal[ctrlName]))
+                valCtrlCats = np.concatenate((np.full_like(self.sessionValsBySession, self.controlValLabels[ctrlName][0], dtype=object),
+                                              np.full_like(self.dotColorsByCtrlVal[ctrlName], self.controlValLabels[ctrlName][1], dtype=object)))
+
+                with plotManager.newFig(figName + "_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
+                    violinPlot(pc.ax, vals, categories=valCtrlCats,
+                               dotColors=dotColors, axesNames=[self.controlValLabels[ctrlName][2], self.name])
+                    pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+
+                    if runStats:
+                        catName = self.controlValLabels[ctrlName][2].replace(" ", "_")
+                        pc.yvals[figName] = vals
+                        pc.categories[catName] = valCtrlCats
+                        pc.immediateShuffles.append((
+                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName=catName, value=self.controlValLabels[ctrlName][0])], 100))
+
+        if "measureVsCtrlByCondition" in plotFlags:
+            plotFlags.remove("measureVsCtrlByCondition")
+            for ctrlName in self.controlValLabels:
+                vals = np.concatenate((self.sessionValsBySession, *self.controlVals[ctrlName]))
+                conditionCats = np.concatenate(
+                    (self.conditionBySession, self.conditionByCtrlVal[ctrlName]))
+                dotColors = np.concatenate(
+                    (self.dotColorsBySession, self.dotColorsByCtrlVal[ctrlName]))
+                valCtrlCats = np.concatenate((np.full_like(self.sessionValsBySession, self.controlValLabels[ctrlName][0], dtype=object),
+                                              np.full_like(self.conditionByCtrlVal[ctrlName], self.controlValLabels[ctrlName][1], dtype=object)))
+
+                with plotManager.newFig(figName + "_ctrl_" + ctrlName + "_cond", excludeFromCombo=excludeFromCombo) as pc:
+                    violinPlot(pc.ax, vals, conditionCats, categories2=valCtrlCats,
+                               dotColors=dotColors, axesNames=["Condition", self.name, self.controlValLabels[ctrlName][2]])
+                    pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+
+                    if runStats:
+                        pc.yvals[figName] = vals
+                        pc.categories["condition"] = conditionCats
+                        pc.categories[self.controlValLabels[ctrlName]
+                                      [2].replace(" ", "_")] = valCtrlCats
+                        # pc.immediateShuffles.append((
+                        #     [ShuffSpec(shuffType=ShuffSpec.ShuffType.INTERACTION, categoryName="condition", value="Ctrl")], 100))
+
         if "diff" in plotFlags:
             plotFlags.remove("diff")
+            for ctrlName in self.controlValLabels:
+                vals = self.sessionValsBySession - self.controlValMeans[ctrlName]
+                with plotManager.newFig(figName + "_ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
+                    violinPlot(pc.ax, vals, self.conditionBySession,
+                               dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
+                    pc.ax.set_title(self.name + " difference", fontdict={'fontsize': 6})
 
-            with plotManager.newFig(figName + "_diff") as pc:
-                violinPlot(pc.ax, self.sessionValsBySession - self.sessionCtrlValsBySession, self.conditionBySession,
-                           dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
+                    if runStats:
+                        pc.yvals[figName] = vals
+                        pc.categories["condition"] = self.conditionBySession
+                        pc.immediateShuffles.append((
+                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+
+        if "measureByDistance" in plotFlags:
+            plotFlags.remove("measureByDistance")
+            with plotManager.newFig(figName + "_by_distance", excludeFromCombo=excludeFromCombo) as pc:
+                plotIndividualAndAverage(pc.ax, self.measureValsByDistance, self.distancePlotXVals)
                 pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+                pc.ax.set_xlabel("Distance from well (ft)")
 
-                if self.runStats:
-                    pc.yvals[figName] = self.sessionValsBySession - self.sessionCtrlValsBySession
-                    pc.categories["condition"] = self.conditionBySession
-                    pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+        if "measureByDistanceByCondition" in plotFlags:
+            plotFlags.remove("measureByDistanceByCondition")
+            swrIdx = self.conditionBySession == "SWR"
+            ctrlIdx = ~swrIdx
+
+            with plotManager.newFig(figName + "_by_distance_by_condition", excludeFromCombo=excludeFromCombo) as pc:
+                plotIndividualAndAverage(pc.ax, self.measureValsByDistance[swrIdx], self.distancePlotXVals,
+                                         color="orange", label="SWR")
+                plotIndividualAndAverage(pc.ax, self.measureValsByDistance[ctrlIdx], self.distancePlotXVals,
+                                         color="cyan", label="Ctrl")
+                pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+                pc.ax.set_xlabel("Distance from well (ft)")
+                pc.ax.legend()
+
+        if "measureVsCtrlByDistance" in plotFlags:
+            plotFlags.remove("measureVsCtrlByDistance")
+            for ctrlName in self.controlVals:
+                with plotManager.newFig(figName + "_vs_ctrl_" + ctrlName + "_by_distance", excludeFromCombo=excludeFromCombo) as pc:
+                    plotIndividualAndAverage(pc.ax, self.measureValsByDistance, self.distancePlotXVals,
+                                             color="red", label="vals")
+                    plotIndividualAndAverage(pc.ax, self.controlMeasureValsByDistance[ctrlName], self.distancePlotXVals,
+                                             color="blue", label="ctrl")
+                    pc.ax.set_title(self.name + " vs Ctrl", fontdict={'fontsize': 6})
+                    pc.ax.set_xlabel("Distance from well (ft)")
+
+        if "measureVsCtrlByDistanceByCondition" in plotFlags:
+            plotFlags.remove("measureVsCtrlByDistanceByCondition")
+            swrIdx = self.conditionBySession == "SWR"
+            ctrlIdx = ~swrIdx
+
+            for ctrlName in self.controlVals:
+                swrIdxByCtrlVal = self.conditionByCtrlVal[ctrlName] == "SWR"
+                ctrlIdxByCtrlVal = ~swrIdxByCtrlVal
+                with plotManager.newFig(figName + "_vs_ctrl_" + ctrlName + "_by_distance_by_condition", excludeFromCombo=excludeFromCombo) as pc:
+                    plotIndividualAndAverage(pc.ax, self.measureValsByDistance[swrIdx], self.distancePlotXVals,
+                                             color="orange", label="SWR")
+                    plotIndividualAndAverage(pc.ax, self.measureValsByDistance[ctrlIdx], self.distancePlotXVals,
+                                             color="cyan", label="Ctrl")
+                    plotIndividualAndAverage(pc.ax, self.controlMeasureValsByDistance[ctrlName][swrIdxByCtrlVal, :], self.distancePlotXVals,
+                                             color="red", label="SWR ctrl")
+                    plotIndividualAndAverage(pc.ax, self.controlMeasureValsByDistance[ctrlName][ctrlIdxByCtrlVal, :], self.distancePlotXVals,
+                                             color="blue", label="Ctrl ctrl")
+                    pc.ax.set_title(self.name + " vs Ctrl", fontdict={'fontsize': 6})
+                    pc.ax.set_xlabel("Distance from well (ft)")
+                    pc.ax.legend()
 
         if "everysession" in plotFlags:
             plotFlags.remove("everysession")
 
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
             ncols = int(np.ceil(np.sqrt(len(self.sessionList))))
-            with plotManager.newFig(figName + "_every_session", subPlots=(ncols, ncols), figScale=0.6) as pc:
+            with plotManager.newFig(figName + "_every_session", subPlots=(ncols, ncols),
+                                    figScale=0.6, excludeFromCombo=excludeFromCombo) as pc:
                 for si, sesh in enumerate(self.sessionList):
-                    sk = np.array(self.measureValsBySession[si])
-                    cond = self.conditionBySession[si]
                     ax = pc.axs[si // ncols, si % ncols]
                     assert isinstance(ax, Axes)
 
@@ -957,10 +1256,7 @@ class SessionMeasure():
 
                     for v in ax.spines.values():
                         v.set_zorder(0)
-                    if np.isscalar(sk):
-                        ax.set_title(f"{sesh.name} - {sk}", fontdict={'fontsize': 6})
-                    else:
-                        ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+                    ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                     im = ax.imshow(self.measureValsBySession[si].T, cmap=mpl.colormaps["coolwarm"],
                                    vmin=self.valMin, vmax=self.valMax,
@@ -972,6 +1268,36 @@ class SessionMeasure():
                     blankPlot(ax)
 
                 plt.colorbar(im, ax=ax)
+
+        if "everysessionoverlay" in plotFlags:
+            plotFlags.remove("everysessionoverlay")
+
+            wellSize = mpl.rcParams['lines.markersize']**2 / 4
+            resolution = self.measureValsBySession[0].shape[0]
+            overlayImg = np.empty((2 * resolution - 1, 2 * resolution - 1, len(self.sessionList)))
+            overlayImg[:] = np.nan
+
+            for si, sesh in enumerate(self.sessionList):
+                centerPoint = self.sessionValLocations[si]
+
+                px = np.digitize(centerPoint[0], np.linspace(-0.5, 6.5, resolution))
+                py = np.digitize(centerPoint[1], np.linspace(-0.5, 6.5, resolution))
+                ox = resolution - px - 1
+                oy = resolution - py - 1
+
+                overlayImg[ox:ox + resolution, oy:oy + resolution,
+                           si] = self.measureValsBySession[si]
+
+            combinedImg = np.nanmean(overlayImg, axis=2)
+
+            with plotManager.newFig(figName + "_every_session_overlay", excludeFromCombo=excludeFromCombo) as pc:
+                pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+
+                im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
+                                  interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
+                                  origin="lower")
+
+                plt.colorbar(im, ax=pc.ax)
 
         if len(plotFlags) > 0:
             print(f"Warning: unused plot flags: {plotFlags}")

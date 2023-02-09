@@ -922,10 +922,14 @@ def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outl
 
 
 def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std",
-                             individualZOrder=1, averageZOrder=2, label=None, individualAmt=None):
+                             individualZOrder=1, averageZOrder=2, label=None, individualAmt=None, color=None):
     """
     values of individualAmt on range [0, 1] are interpreted as a fraction. Larger numbers as the count of traces to plot
     """
+    if color is not None:
+        avgColor = color
+        individualColor = color
+
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", r"Degrees of freedom <= 0 for slice")
         warnings.filterwarnings("ignore", r"Mean of empty slice")

@@ -953,3 +953,6 @@ class TimeThisFunction:
         run_time = end_time - start_time    # 3
         self.totalTime += run_time
         return value
+
+    def resetTimer(self):
+        self.totalTime = 0

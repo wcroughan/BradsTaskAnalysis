@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from scipy.ndimage import gaussian_filter
 import numpy as np
-from typing import Optional, List, Dict, Tuple, Iterable, Callable
+from typing import Optional, List, Dict, Tuple, Iterable, Callable, TypeVar
 from datetime import datetime
 from numpy.typing import ArrayLike
 from dataclasses import dataclass, field
@@ -32,6 +32,10 @@ from UtilFunctions import LoadInfo, getWellPosCoordinates, Ripple, ImportOptions
 # *_posIdx - index in probe_pos* or bt_pos*
 # *_lfpIdx - index in lfp data
 
+TimeInterval = TypeVar("TimeInterval", Tuple[int, int], Tuple[int, int, str],
+                       Callable[["BTSession"], Tuple[int, int]], Callable[["BTSession"], Tuple[int, int, str]])
+
+
 @dataclass
 class BehaviorPeriod:
     """
@@ -43,15 +47,48 @@ class BehaviorPeriod:
         interpreted as the end time and the start time is assumed to be 0. If a third string is given,
         it is interpreted as units. Valid units are "s" for seconds, "ts" for trodes timestamps, and
         "posIdx" for probe or BT position indices. Default is "s".
+        Can also be a function that takes in a BTSession and returns a tuple as above.
     :param inclusionFlags: A string or iterable of strings from the following list:
         "moving", "still", "reward", "rest", "explore", "offWall", "onWall", "homeTrial", "awayTrial"
+        Optionally, the string can be prefixed with "not" to invert the flag. For example, "notMoving"
     :param inclusionArray: A boolean array of the same length as the number of time points in the
         session. If not None, this array is used to determine which time points to include.
+    :param moveThresh: The minimum speed in cm/s for a time point to be considered moving. If None,
+        the default value is used that is specified in the ImportOptions. If inclusionFlags does not
+        contain "moving" or "still", this parameter is ignored.
     """
     probe: bool = False
-    timeInterval: Optional[Tuple[int, int] | Tuple[int, int, str]] = None
+    timeInterval: Optional[TimeInterval] = None
     inclusionFlags: Optional[str | Iterable[str]] = None
     inclusionArray: Optional[np.ndarray] = None
+    moveThreshold: Optional[float] = None
+
+    def filenameString(self) -> str:
+        """
+        Returns a string that can be used in a filename to identify this behavior period
+        """
+        s = "probe" if self.probe else "bt"
+        if self.timeInterval is not None:
+            if isinstance(self.timeInterval, (tuple, list)):
+                s += f"_{self.timeInterval[0]}_{self.timeInterval[1]}"
+                if len(self.timeInterval) == 3:
+                    s += f"_{self.timeInterval[2]}"
+            else:
+                if "<lambda>" in self.timeInterval.__name__:
+                    s += "_lambdaTI"
+                else:
+                    s += f"_{self.timeInterval.__name__}"
+        if self.inclusionFlags is not None:
+            if isinstance(self.inclusionFlags, str):
+                s += f"_{self.inclusionFlags}"
+            else:
+                for flag in self.inclusionFlags:
+                    s += f"_{flag}"
+        if self.inclusionArray is not None:
+            s += "_inclusionArray"
+        if self.moveThreshold is not None:
+            s += f"_moveThresh_{self.moveThreshold}"
+        return s
 
 
 @dataclass
@@ -410,7 +447,7 @@ class BTSession:
             return "NoStim"
 
     def timeIntervalToPosIdx(self, ts: ArrayLike[int],
-                             timeInterval: Optional[Tuple[int, int] | Tuple[int, int, str]],
+                             timeInterval: Optional[TimeInterval],
                              noneVal=None) -> ArrayLike[int]:
         """
         Returns posIdx indices in ts (which has units timestamps) corresponding
@@ -419,6 +456,9 @@ class BTSession:
         """
         if timeInterval is None:
             return noneVal
+
+        if callable(timeInterval):
+            timeInterval = timeInterval(self)
 
         if len(timeInterval) == 2 or (len(timeInterval) == 3 and timeInterval[2] is None):
             timeInterval = [*timeInterval, "secs"]
@@ -440,11 +480,14 @@ class BTSession:
         is "delete", then returns arrays within behavior period concatenated directly
         """
         keepFlag = self.evalBehaviorPeriod(behaviorPeriod)
-        xs = self.probePos_xs if behaviorPeriod.probe else self.btPos_xs
-        ys = self.probePos_ys if behaviorPeriod.probe else self.btPos_ys
+        xs = self.probePosXs if behaviorPeriod.probe else self.btPosXs
+        ys = self.probePosYs if behaviorPeriod.probe else self.btPosYs
         ts = self.probePos_ts if behaviorPeriod.probe else self.btPos_ts
 
         if mode == "nan":
+            xs = xs.copy()
+            ys = ys.copy()
+            ts = ts.copy()
             xs[~keepFlag] = np.nan
             ys[~keepFlag] = np.nan
             ts[~keepFlag] = np.nan
@@ -463,27 +506,43 @@ class BTSession:
             if isinstance(behaviorPeriod.inclusionFlags, str):
                 behaviorPeriod.inclusionFlags = [behaviorPeriod.inclusionFlags]
             for flag in behaviorPeriod.inclusionFlags:
+                if flag.startswith("not"):
+                    invert = True
+                    flag = flag[3:]
+                else:
+                    invert = False
+
                 if flag == "moving":
-                    mv = self.probeIsMv if behaviorPeriod.probe else self.btIsMv
-                    keepFlag = keepFlag & mv
+                    if behaviorPeriod.moveThreshold is not None:
+                        vel = self.probeVelCmPerS if behaviorPeriod.probe else self.btVelCmPerS
+                        vel = np.append(vel, vel[-1])  # pad with last value to match length of ts
+                        mv = vel > behaviorPeriod.moveThreshold
+                    else:
+                        mv = self.probeIsMv if behaviorPeriod.probe else self.btIsMv
+                    flagBools = mv
                 elif flag == "still":
-                    mv = self.probeIsMv if behaviorPeriod.probe else self.btIsMv
-                    keepFlag = keepFlag & ~mv
+                    if behaviorPeriod.moveThreshold is not None:
+                        vel = self.probeVelCmPerS if behaviorPeriod.probe else self.btVelCmPerS
+                        vel = np.append(vel, vel[-1])  # pad with last value to match length of ts
+                        mv = vel > behaviorPeriod.moveThreshold
+                    else:
+                        mv = self.probeIsMv if behaviorPeriod.probe else self.btIsMv
+                    flagBools = ~mv
                 elif flag == "reward":
                     boutCats = self.probeBoutCategory if behaviorPeriod.probe else self.btBoutCategory
-                    keepFlag = keepFlag & (boutCats == BTSession.BOUT_STATE_REWARD)
+                    flagBools = boutCats == BTSession.BOUT_STATE_REWARD
                 elif flag == "rest":
                     boutCats = self.probeBoutCategory if behaviorPeriod.probe else self.btBoutCategory
-                    keepFlag = keepFlag & (boutCats == BTSession.BOUT_STATE_REST)
+                    flagBools = boutCats == BTSession.BOUT_STATE_REST
                 elif flag == "explore":
                     boutCats = self.probeBoutCategory if behaviorPeriod.probe else self.btBoutCategory
-                    keepFlag = keepFlag & (boutCats == BTSession.BOUT_STATE_EXPLORE)
+                    flagBools = boutCats == BTSession.BOUT_STATE_EXPLORE
                 elif flag == "onWall":
                     excursionCats = self.probeExcursionCategory if behaviorPeriod.probe else self.btExcursionCategory
-                    keepFlag = keepFlag & (excursionCats == BTSession.EXCURSION_STATE_ON_WALL)
+                    flagBools = excursionCats == BTSession.EXCURSION_STATE_ON_WALL
                 elif flag == "offWall":
                     excursionCats = self.probeExcursionCategory if behaviorPeriod.probe else self.btExcursionCategory
-                    keepFlag = keepFlag & (excursionCats == BTSession.EXCURSION_STATE_OFF_WALL)
+                    flagBools = excursionCats == BTSession.EXCURSION_STATE_OFF_WALL
                 elif flag == "homeTrial":
                     ht1 = self.homeRewardEnter_posIdx
                     ht0 = np.hstack(([0], self.awayRewardExit_posIdx))
@@ -492,7 +551,7 @@ class BTSession:
                     hFlag = np.zeros_like(keepFlag).astype(bool)
                     for t0, t1 in zip(ht0, ht1):
                         hFlag[t0:t1] = True
-                    keepFlag = keepFlag & hFlag
+                    flagBools = hFlag
                 elif flag == "awayTrial":
                     at1 = self.awayRewardEnter_posIdx
                     at0 = self.homeRewardExit_posIdx
@@ -501,9 +560,13 @@ class BTSession:
                     aFlag = np.zeros_like(keepFlag).astype(bool)
                     for t0, t1 in zip(at0, at1):
                         aFlag[t0:t1] = True
-                    keepFlag = keepFlag & aFlag
+                    flagBools = aFlag
                 else:
                     raise ValueError(f"Invalid inclusion flag: {flag}")
+
+                if invert:
+                    flagBools = ~flagBools
+                keepFlag = keepFlag & flagBools
 
         durIdx = self.timeIntervalToPosIdx(
             ts, behaviorPeriod.timeInterval, noneVal=(0, len(keepFlag)))
@@ -1107,7 +1170,7 @@ class BTSession:
         exts = np.nonzero(borders == -1)[0]
         return ents, exts
 
-    def getDotProductScore(self, pos: Tuple[float, float], behaviorPeriod: BehaviorPeriod,
+    def getDotProductScore(self,  behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
                            excludeRadius: Optional[float] = 0.5,
                            binarySpotlight: bool = False, spotlightAngle: float = 70) -> float:
         """
@@ -1236,24 +1299,28 @@ class BTSession:
         else:
             return 60*5
 
-    def occupancyMap(self, inProbe: bool, resolution: int = 36, smooth: Optional[float] = 1, movingOnly: bool = False,
-                     moveThresh=None) \
+    def fillTimeInterval(self) -> tuple[float, float, str]:
+        if self.probeFillTime is not None:
+            return 0, self.probeFillTime, "secs"
+        else:
+            return 0, 60*5, "secs"
+
+    def occupancyMap(self, behaviorPeriod: BehaviorPeriod, resolution: int = 36, smooth: Optional[float] = 1) \
             -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        xs = self.probePosXs if inProbe else self.btPosXs
-        ys = self.probePosYs if inProbe else self.btPosYs
-        if movingOnly:
-            if moveThresh is None:
-                mv = self.probeIsMv if inProbe else self.btIsMv
-            else:
-                vel = self.probeVelCmPerS if inProbe else self.btVelCmPerS
-                mv = vel > moveThresh
-                mv = np.append(mv, mv[-1])
-
-            xs = xs[mv]
-            ys = ys[mv]
-
+        _, xs, ys = self.posDuringBehaviorPeriod(behaviorPeriod, mode="delete")
         occMap, occBinsX, occBinsY = np.histogram2d(
             xs, ys, bins=np.linspace(-0.5, 6.5, resolution+1))
         if smooth is not None:
             occMap = gaussian_filter(occMap, smooth)
         return occMap, occBinsX, occBinsY
+
+    def getValueMap(self, func: Callable[[Tuple[float, float]], float], resolution: int = 36) -> np.ndarray:
+        pxls = np.linspace(-0.5, 6.5, resolution, endpoint=False)
+        pxls += (pxls[1] - pxls[0]) / 2
+        return np.array([[func((x, y)) for y in pxls] for x in pxls])
+
+    def getTestMap(self) -> np.ndarray:
+        """
+        Returns a map that is a gradient with a min near the home well
+        """
+        return self.getValueMap(lambda x: np.linalg.norm(np.array(x) - np.array(getWellPosCoordinates(self.homeWell))))

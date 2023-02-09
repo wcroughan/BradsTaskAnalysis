@@ -1,6 +1,6 @@
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
-from MeasureTypes import WellMeasure, TrialMeasure, SessionMeasure
+from MeasureTypes import WellMeasure, TrialMeasure, LocationMeasure
 from BTData import BTData
 from PlotUtil import PlotManager, setupBehaviorTracePlot, plotIndividualAndAverage
 from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo, getRipplePower, \
@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 import numpy as np
 from scipy.ndimage import gaussian_filter1d, gaussian_filter
-from typing import List
+from typing import List, Tuple
 from matplotlib.axes import Axes
 import math
 import MountainViewIO
@@ -21,8 +21,24 @@ import matplotlib.pyplot as plt
 from numpy.typing import ArrayLike
 from functools import partial
 
-# TODO
-# Left off right after doing a bunch of stuff jiwth BehavioralPeriod and SessionMeasure. Totally untested
+
+# Today's tasks:
+# 1. For session measure, control val func should be a list of functions, then make figures can iterate through each type of control
+#   and make a figure for each. Also each function should return a list of data points and a summary value.
+#   For below combo plot, would also be nice to get a list of positions associated with the control data points.
+#       Can be list of positions and session idxs, since that's the form all my controls take now anyway
+#       Might make things cleaner in general to do it that way
+#
+# 2. Make these combo plots:
+#   a. overlaid everysession plots centered at home. Possibly also choose a control way to center
+#   b. plot that's just distance to home vs measure. Control can be same for each ctrl location
+#
+# 3. Try these variations on dot prod:
+#  a. distance discount
+#  b. velocity weighting
+#
+# 4. Throw figures in a doc, send to David
+
 
 # TODO
 # focus first on getting something on which to base discussion, like very basic demonstration of memory of home during probe
@@ -102,12 +118,13 @@ from functools import partial
 
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
-                RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None,
+                RUN_JUST_THIS_SESSION=None, RUN_SPOTLIGHT=None, RUN_FRAC_EXCURSIONS_VISITED=None,
                 RUN_OPTIMALITY=None, PLOT_DETAILED_TASK_TRACES=None,
                 PLOT_DETAILED_PROBE_TRACES=None, RUN_ENTRY_EXIT_ANGLE=None,
-                RUN_PATH_OCCUPANCY=None, RUN_SPOTLIGHT_EXPLORATION=None,
+                RUN_PATH_OCCUPANCY=None, RUN_SPOTLIGHT_EXPLORATION_TASK=None,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
+                PLOT_OCCUPANCY=None, RUN_SPOTLIGHT_EXPLORATION_PROBE=None,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
@@ -129,8 +146,14 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         RUN_ENTRY_EXIT_ANGLE = RUN_UNSPECIFIED
     if RUN_PATH_OCCUPANCY is None:
         RUN_PATH_OCCUPANCY = RUN_UNSPECIFIED
-    if RUN_SPOTLIGHT_EXPLORATION is None:
-        RUN_SPOTLIGHT_EXPLORATION = RUN_UNSPECIFIED
+    if RUN_SPOTLIGHT_EXPLORATION_TASK is None:
+        RUN_SPOTLIGHT_EXPLORATION_TASK = RUN_UNSPECIFIED
+    if PLOT_OCCUPANCY is None:
+        PLOT_OCCUPANCY = RUN_UNSPECIFIED
+    if RUN_SPOTLIGHT_EXPLORATION_PROBE is None:
+        RUN_SPOTLIGHT_EXPLORATION_PROBE = RUN_UNSPECIFIED
+    if RUN_FRAC_EXCURSIONS_VISITED is None:
+        RUN_FRAC_EXCURSIONS_VISITED = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -216,30 +239,77 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            SessionMeasure("test", lambda sesh: sesh.homeWell, sessions).makeFigures(pp)
+            LocationMeasure("test", BTSession.getTestMap, sessions).makeFigures(
+                pp, everySessionBehaviorPeriod=BP(probe=True), excludeFromCombo=True,
+                plotFlags="everysessionoverlay")
 
-        if RUN_SPOTLIGHT_EXPLORATION:
-            def bgImg(sesh: BTSession, resolution: int = 36) -> np.ndarray:
-                trials_posIdx = sesh.getAllTrialPosIdxs()
-                homeTrials_posIdx = trials_posIdx[::2, :]
-                homeTrial = np.zeros_like(sesh.btPos_ts).astype(bool)
-                for ti in range(homeTrials_posIdx.shape[0]):
-                    homeTrial[homeTrials_posIdx[ti, 0]:homeTrials_posIdx[ti, 1]] = True
-                homeTrial = homeTrial[:-1]
+        if RUN_FRAC_EXCURSIONS_VISITED:
+            def fracExcursionsVisited(sesh: BTSession, pos: Tuple[float, float], radius=0.25) -> float:
+                if len(sesh.probeExcursionStart_posIdx) == 0:
+                    return np.nan
+                ret = 0
+                for i0, i1 in zip(sesh.probeExcursionStart_posIdx, sesh.probeExcursionEnd_posIdx):
+                    x = sesh.probePosXs[i0:i1]
+                    y = sesh.probePosYs[i0:i1]
+                    d = np.sqrt((x - pos[0])**2 + (y - pos[1])**2)
+                    if np.any(d < radius):
+                        ret += 1
+                return ret / len(sesh.probeExcursionStart_posIdx)
 
-                pixelWidth = 7 / resolution
-                pixelCenters = np.linspace(-0.5, 6.5, resolution, endpoint=False) + pixelWidth / 2
-                ret = np.empty((resolution, resolution))
-                for i in range(resolution):
-                    for j in range(resolution):
-                        x = pixelCenters[i]
-                        y = pixelCenters[j]
-                        ret[i, j] = sesh.getDotProductScore(
-                            (x, y), BP(probe=False, inclusionArray=homeTrial))
-                return ret
+            LocationMeasure("frac Excursions visited", lambda sesh: sesh.getValueMap(partial(fracExcursionsVisited, sesh)),
+                            sessions).makeFigures(pp, everySessionBehaviorPeriod=BP(probe=True, inclusionFlags="offWall"))
 
-            SessionMeasure("homeTrialDotProd", lambda sesh: 0, sessions).makeFigures(
-                pp, everySessionBackground=bgImg, everySessionTraceType="task")
+        if PLOT_OCCUPANCY:
+            bp = BP(probe=False, inclusionFlags="moving", moveThreshold=20)
+            LocationMeasure("moving task occupancy", lambda sesh: sesh.occupancyMap(bp)[0],
+                            sessions).makeFigures(pp, everySessionBehaviorPeriod=bp)
+
+        if RUN_SPOTLIGHT_EXPLORATION_TASK:
+            bp = BP(probe=False, inclusionFlags="homeTrial")
+            LocationMeasure("task home trial dot prod", lambda sesh:
+                            sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
+                            sessions).makeFigures(pp, everySessionBehaviorPeriod=bp)
+
+            bp = BP(probe=False, inclusionFlags="awayTrial")
+            LocationMeasure("task away trial dot prod", lambda sesh:
+                            sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
+                            sessions).makeFigures(pp, everySessionBehaviorPeriod=bp)
+
+            bp = BP(probe=False, inclusionFlags=["moving", "offWall", "notreward"])
+            LocationMeasure("task moving, offwall, not reward", lambda sesh:
+                            sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
+                            sessions).makeFigures(pp, everySessionBehaviorPeriod=bp)
+
+        if RUN_SPOTLIGHT_EXPLORATION_PROBE:
+            def dotProdFigsForBP(bp: BP):
+                sm = LocationMeasure("probe dot prod {}".format(bp.filenameString()), lambda sesh:
+                                     sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
+                                     sessions)
+                sm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
+
+                sm = LocationMeasure("probe dot prod vs other sessions {}".format(bp.filenameString()), lambda sesh:
+                                     sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
+                                     sessions, sessionCtrlValFunc=LocationMeasure.measureValueAtHomeOtherSeshs)
+                sm.makeFigures(pp, plotFlags=["notmeasure",
+                               "noteverysession"], excludeFromCombo=True)
+
+                sm = LocationMeasure("probe dot prod vs symmetric {}".format(bp.filenameString()), lambda sesh:
+                                     sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
+                                     sessions, sessionCtrlValFunc=LocationMeasure.measureValueAtSymmetricWells)
+                sm.makeFigures(pp, plotFlags=["notmeasure",
+                               "noteverysession"], excludeFromCombo=True)
+
+            dotProdFigsForBP(BP(probe=True, inclusionFlags="moving"))
+            dotProdFigsForBP(BP(probe=True))
+            dotProdFigsForBP(BP(probe=True, inclusionFlags="moving", moveThreshold=20))
+            dotProdFigsForBP(BP(probe=True, inclusionFlags="moving", moveThreshold=40))
+            dotProdFigsForBP(BP(probe=True, inclusionFlags="moving",
+                             timeInterval=BTSession.fillTimeInterval))
+            dotProdFigsForBP(BP(probe=True, timeInterval=BTSession.fillTimeInterval))
+            dotProdFigsForBP(BP(probe=True, inclusionFlags="moving", timeInterval=(0, 60)))
+            dotProdFigsForBP(BP(probe=True, timeInterval=(0, 60)))
+            dotProdFigsForBP(BP(probe=True, inclusionFlags="moving", timeInterval=(0, 120)))
+            dotProdFigsForBP(BP(probe=True, timeInterval=(0, 120)))
 
         if RUN_PATH_OCCUPANCY:
             def pathOccupancy(sesh: BTSession) -> float:
@@ -300,12 +370,15 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                     (probePosBinsY > wallMargin) & (probePosBinsY < resolution - wallMargin)
                 return np.nanmean(occMap[probePosBinsX[offWallIdxs], probePosBinsY[offWallIdxs]])
 
-            sm = SessionMeasure("path occupancy", pathOccupancy, sessionsWithProbe)
+            raise NotImplementedError(
+                "TODO: This is using old version where each session is just one number")
+            # Should call these SessionMeasure again and make that a new thing that's simpler
+            sm = LocationMeasure("path occupancy", pathOccupancy, sessionsWithProbe)
             sm.makeFigures(pp, everySessionTraceType="probe", everySessionBackground=bgImgFunc)
-            sm = SessionMeasure("path occupancy moving", pathOccupancy, sessionsWithProbe)
+            sm = LocationMeasure("path occupancy moving", pathOccupancy, sessionsWithProbe)
             sm.makeFigures(pp, everySessionTraceType="probe", everySessionBackground=bgImgFunc)
-            sm = SessionMeasure("path occupancy with direction",
-                                pathOccupancyWithDirection, sessionsWithProbe)
+            sm = LocationMeasure("path occupancy with direction",
+                                 pathOccupancyWithDirection, sessionsWithProbe)
             sm.makeFigures(pp, everySessionTraceType="probe", everySessionBackground=bgImgFunc)
 
         if RUN_ENTRY_EXIT_ANGLE:
@@ -914,4 +987,7 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
 
-    makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_PROBE=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_FRAC_EXCURSIONS_VISITED=True)
