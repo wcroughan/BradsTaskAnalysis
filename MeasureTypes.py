@@ -1294,7 +1294,7 @@ class LocationMeasure():
                 pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                 im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
-                                  interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
+                                  interpolation="nearest", extent=(-7, 7, -7, 7),
                                   origin="lower")
 
                 plt.colorbar(im, ax=pc.ax)
