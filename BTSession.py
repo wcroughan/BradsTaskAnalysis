@@ -6,6 +6,7 @@ from typing import Optional, List, Dict, Tuple, Iterable, Callable, TypeVar
 from datetime import datetime
 from numpy.typing import ArrayLike
 from dataclasses import dataclass, field
+import matplotlib.pyplot as plt
 
 from consts import TRODES_SAMPLING_RATE, allWellNames, CM_PER_FT, LFP_SAMPLING_RATE
 from UtilFunctions import LoadInfo, getWellPosCoordinates, Ripple, ImportOptions
@@ -1171,8 +1172,10 @@ class BTSession:
         return ents, exts
 
     def getDotProductScore(self,  behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
-                           excludeRadius: Optional[float] = 0.5,
-                           binarySpotlight: bool = False, spotlightAngle: float = 70) -> float:
+                           excludeRadius: Optional[float] = 0.5, velocityWeight: float = 0.0,
+                           distanceWeight: float = 0.0, normalize: bool = False,
+                           binarySpotlight: bool = False, spotlightAngle: float = 70,
+                           showPlot=False) -> float:
         """
         :param pos: (x, y) position to calculate dot product score at
         :param behaviorPeriod: behavior period to calculate score over
@@ -1214,7 +1217,17 @@ class BTSession:
             # allVals = udots / magw
             allVals = udots
 
-        return np.sum(allVals)
+        distanceFactor = 1 - np.exp(-100 * magw)
+        allVals = allVals * distanceFactor * distanceWeight + allVals * (1 - distanceWeight)
+
+        velocityFactor = 1 - np.exp(-10 * magp)
+        allVals = allVals * velocityFactor * velocityWeight + allVals * (1 - velocityWeight)
+
+        if normalize:
+            ret = np.mean(allVals)
+        else:
+            ret = np.sum(allVals)
+        return ret
 
     def getDotProductScoreAtWell(self, inProbe: bool, wellName: int, timeInterval=None, moveFlag=None,
                                  boutFlag=None, excludeTimesAtWell=True, binarySpotlight=False, spotlightAngle=70,

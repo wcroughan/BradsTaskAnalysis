@@ -1,6 +1,7 @@
 import numpy as np
 import os
 from BTSession import BTSession
+from BTSession import BehaviorPeriod as BP
 from BTData import BTData
 from PlotUtil import setupBehaviorTracePlot
 from UtilFunctions import getLoadInfo
@@ -9,14 +10,26 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from functools import partial
 import matplotlib as mpl
+from multiprocessing import Pool
+import chime
+
+
+def getFrame(sesh: BTSession, DIST_FACTOR, VEL_FACTOR, resolution, frame):
+    frameStartTime, frameEndTime = frame
+    # pre-evaluate bp for efficiency
+    keepFlags1 = sesh.evalBehaviorPeriod(
+        BP(True, timeInterval=[frameStartTime, frameEndTime, "posIdx"], inclusionFlags="moving"))
+    bp1 = BP(True, inclusionArray=keepFlags1)
+    return sesh.getValueMap(lambda pos: sesh.getDotProductScore(
+        bp1, pos, distanceWeight=DIST_FACTOR, velocityWeight=VEL_FACTOR), resolution=resolution).T
 
 
 def makeAnimation(sesh: BTSession, saveFile=None):
-    FRAME_RATE = 30
-    VIDEO_SPEED = 5
+    FRAME_RATE = 10
+    VIDEO_SPEED = 2
     PLOT_LEN = 0.5
-    TSTART = 30
-    TEND = None
+    TSTART = 20
+    TEND = 60
     x = sesh.probePosXs
     y = sesh.probePosYs
     mv = sesh.probeIsMv
@@ -26,6 +39,10 @@ def makeAnimation(sesh: BTSession, saveFile=None):
     t = sesh.probePos_ts / TRODES_SAMPLING_RATE
     t = t - t[0]
 
+    resolution = 21
+    DIST_FACTOR = 1.0
+    VEL_FACTOR = 0.0
+
     if TEND is None:
         TEND = t[-1]
 
@@ -34,20 +51,30 @@ def makeAnimation(sesh: BTSession, saveFile=None):
     frameStarts_posIdx = np.searchsorted(t, frameStartTimes)
     frameEnds_posIdx = np.searchsorted(t, frameEndTimes)
     frames = list(zip(frameStarts_posIdx, frameEnds_posIdx, range(len(frameEnds_posIdx))))
+    cumFrames = list(zip([0] * len(frameEnds_posIdx), frameEnds_posIdx))
+    curFrames = list(zip(frameStarts_posIdx, frameEnds_posIdx))
 
-    cumulativeValImgs = np.empty((len(frames), 6, 6))
-    currentValImgs = np.empty((len(frames), 6, 6))
-    for fi in range(len(frames)):
-        for wr in range(6):
-            for wc in range(6):
-                wname = 8*wr + wc + 2
-                cumulativeValImgs[fi, wr, wc] = \
-                    sesh.getDotProductScoreAtWell(True, wname, timeInterval=[0, frameEndTimes[fi]],
-                                                  moveFlag=BTSession.MOVE_FLAG_MOVING)
-                currentValImgs[fi, wr, wc] = \
-                    sesh.getDotProductScoreAtWell(True, wname, timeInterval=[frameStartTimes[fi], frameEndTimes[fi]],
-                                                  moveFlag=BTSession.MOVE_FLAG_MOVING)
+    # cumulativeValImgs = np.empty((len(frames), resolution, resolution))
+    # currentValImgs = np.empty((len(frames), resolution, resolution))
+    cumulativeValImgs = [np.empty((resolution, resolution)) for _ in range(len(frames))]
+    currentValImgs = [np.empty((resolution, resolution)) for _ in range(len(frames))]
+    with Pool() as p:
+        currentValImgs = p.map(partial(getFrame, sesh, DIST_FACTOR,
+                               VEL_FACTOR, resolution), curFrames)
+        cumulativeValImgs = p.map(partial(getFrame, sesh, DIST_FACTOR,
+                                  VEL_FACTOR, resolution), cumFrames)
+    chime.info(sync=True)
+    chime.success()
 
+    # for fi in range(len(frames)):
+    #     print("frame %d of %d" % (fi, len(frames)) + " " * 20, end="\r")
+    #     cumulativeValImgs[fi] = getFrame(sesh, DIST_FACTOR, VEL_FACTOR, resolution, cumFrames[fi]).T
+    #     currentValImgs[fi] = getFrame(sesh, DIST_FACTOR, VEL_FACTOR,  resolution, curFrames[fi]).T
+    # print(" " * 100, end="\r")
+    input("press enter to continue")
+
+    cumulativeValImgs = np.array(cumulativeValImgs)
+    currentValImgs = np.array(currentValImgs)
     cumulativeValMin = np.nanmin(cumulativeValImgs)
     cumulativeValMax = np.nanmax(cumulativeValImgs)
     currentValMin = np.nanmin(currentValImgs)
@@ -155,7 +182,7 @@ def makeAnimation(sesh: BTSession, saveFile=None):
     # print(f"{animFuncRunTime = }")
 
 
-if __name__ == "__main__":
+def main():
     ratName = "B17"
 
     animalInfo = getLoadInfo(ratName)
@@ -164,3 +191,7 @@ if __name__ == "__main__":
     ratData = BTData()
     ratData.loadFromFile(dataFilename)
     makeAnimation(ratData.getSessions()[10])
+
+
+if __name__ == "__main__":
+    main()

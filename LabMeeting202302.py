@@ -263,29 +263,23 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             LocationMeasure("moving task occupancy", lambda sesh: sesh.occupancyMap(bp)[0],
                             sessions).makeFigures(pp, everySessionBehaviorPeriod=bp)
 
+        def dotProdFigsForBP(bp: BP):
+            distFactors = np.linspace(0, 1, 3)
+            velFactors = np.linspace(0, 1, 3)
+            for distFactor in distFactors:
+                for velFactor in velFactors:
+                    sm = LocationMeasure("dot prod {} d{} v{}".format(bp.filenameString(), distFactor, velFactor), lambda sesh:
+                                         sesh.getValueMap(lambda pos: sesh.getDotProductScore(
+                                             bp, pos, distanceWeight=distFactor, velocityWeight=velFactor, showPlot=True)),
+                                         sessions)
+                    sm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
+
         if RUN_SPOTLIGHT_EXPLORATION_TASK:
-            bp = BP(probe=False, inclusionFlags="homeTrial")
-            LocationMeasure("task home trial dot prod", lambda sesh:
-                            sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
-                            sessions).makeFigures(pp, everySessionBehaviorPeriod=bp)
-
-            bp = BP(probe=False, inclusionFlags="awayTrial")
-            LocationMeasure("task away trial dot prod", lambda sesh:
-                            sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
-                            sessions).makeFigures(pp, everySessionBehaviorPeriod=bp)
-
-            bp = BP(probe=False, inclusionFlags=["moving", "offWall", "notreward"])
-            LocationMeasure("task moving, offwall, not reward", lambda sesh:
-                            sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
-                            sessions).makeFigures(pp, everySessionBehaviorPeriod=bp)
+            dotProdFigsForBP(BP(probe=False, inclusionFlags="homeTrial"))
+            dotProdFigsForBP(BP(probe=False, inclusionFlags="awayTrial"))
+            dotProdFigsForBP(BP(probe=False, inclusionFlags=["moving", "offWall", "notreward"]))
 
         if RUN_SPOTLIGHT_EXPLORATION_PROBE:
-            def dotProdFigsForBP(bp: BP):
-                sm = LocationMeasure("probe dot prod {}".format(bp.filenameString()), lambda sesh:
-                                     sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
-                                     sessions)
-                sm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
-
             dotProdFigsForBP(BP(probe=True, inclusionFlags="moving"))
             dotProdFigsForBP(BP(probe=True))
             dotProdFigsForBP(BP(probe=True, inclusionFlags="moving", moveThreshold=20))
@@ -974,5 +968,5 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
 
-    makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True, RUN_SPOTLIGHT_EXPLORATION_PROBE=True, PLOT_OCCUPANCY=True,
-                RUN_FRAC_EXCURSIONS_VISITED=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True,
+                RUN_SPOTLIGHT_EXPLORATION_PROBE=True)
