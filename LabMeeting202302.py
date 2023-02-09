@@ -240,8 +240,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
         if RUN_TESTS:
             LocationMeasure("test", BTSession.getTestMap, sessions).makeFigures(
-                pp, everySessionBehaviorPeriod=BP(probe=True), excludeFromCombo=True,
-                plotFlags="everysessionoverlay")
+                pp, everySessionBehaviorPeriod=BP(probe=True), excludeFromCombo=True)
 
         if RUN_FRAC_EXCURSIONS_VISITED:
             def fracExcursionsVisited(sesh: BTSession, pos: Tuple[float, float], radius=0.25) -> float:
@@ -286,18 +285,6 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                                      sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
                                      sessions)
                 sm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
-
-                sm = LocationMeasure("probe dot prod vs other sessions {}".format(bp.filenameString()), lambda sesh:
-                                     sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
-                                     sessions, sessionCtrlValFunc=LocationMeasure.measureValueAtHomeOtherSeshs)
-                sm.makeFigures(pp, plotFlags=["notmeasure",
-                               "noteverysession"], excludeFromCombo=True)
-
-                sm = LocationMeasure("probe dot prod vs symmetric {}".format(bp.filenameString()), lambda sesh:
-                                     sesh.getValueMap(partial(sesh.getDotProductScore, bp)),
-                                     sessions, sessionCtrlValFunc=LocationMeasure.measureValueAtSymmetricWells)
-                sm.makeFigures(pp, plotFlags=["notmeasure",
-                               "noteverysession"], excludeFromCombo=True)
 
             dotProdFigsForBP(BP(probe=True, inclusionFlags="moving"))
             dotProdFigsForBP(BP(probe=True))
@@ -987,7 +974,5 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
 
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_PROBE=True)
-    makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_FRAC_EXCURSIONS_VISITED=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True, RUN_SPOTLIGHT_EXPLORATION_PROBE=True, PLOT_OCCUPANCY=True,
+                RUN_FRAC_EXCURSIONS_VISITED=True)

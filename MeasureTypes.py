@@ -1072,7 +1072,10 @@ class LocationMeasure():
             "measureVsCtrlByDistanceByCondition": plot average measure values for each session as a function of distance from the session location, separated by condition,
                                                 compared to measure values as a function of distance from the control location, separated by condition
             "everysession": plot the measure values for each session overlaid with behavior and well locations
-            "everysessionoverlay": plot the measure values for each session overlaid on top of each other and summed to line up the session locations
+            "everysessionoverlayatlocation": plot the measure values for each session overlaid on top of each other and summed to line up the session locations
+            "everysessionoverlayatctrl": plot the measure values for each session overlaid on top of each other and summed to line up the control locations. Note each
+                                        map is weighted to contribute the same (its values are divided by the number of control locations)
+            "everysessionoverlaydirect": plot the measure values for each session overlaid on top of each other and summed. Maps are not lined up by their session locations
             Optionally, any of the above can be preceded by "not" to exclude it from the list of figures to make
                 If any flag starts with "not", all flags must start with "not", and any flag not excluded will be included
         :param everySessionBehaviorPeriod: if not None, behavior period to use for everySession plot
@@ -1086,7 +1089,8 @@ class LocationMeasure():
                             "measureVsCtrlByCondition", "diff",
                             "measureByDistance", "measureByDistanceByCondition",
                             "measureVsCtrlByDistance", "measureVsCtrlByDistanceByCondition",
-                            "everysession", "everysessionoverlay"]
+                            "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl",
+                            "everysessionoverlaydirect"]
 
         if isinstance(plotFlags, str):
             if plotFlags == "all":
@@ -1208,6 +1212,7 @@ class LocationMeasure():
                                              color="blue", label="ctrl")
                     pc.ax.set_title(self.name + " vs Ctrl", fontdict={'fontsize': 6})
                     pc.ax.set_xlabel("Distance from well (ft)")
+                    pc.ax.legend()
 
         if "measureVsCtrlByDistanceByCondition" in plotFlags:
             plotFlags.remove("measureVsCtrlByDistanceByCondition")
@@ -1269,8 +1274,8 @@ class LocationMeasure():
 
                 plt.colorbar(im, ax=ax)
 
-        if "everysessionoverlay" in plotFlags:
-            plotFlags.remove("everysessionoverlay")
+        if "everysessionoverlayatlocation" in plotFlags:
+            plotFlags.remove("everysessionoverlayatlocation")
 
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
             resolution = self.measureValsBySession[0].shape[0]
@@ -1290,12 +1295,82 @@ class LocationMeasure():
 
             combinedImg = np.nanmean(overlayImg, axis=2)
 
-            with plotManager.newFig(figName + "_every_session_overlay", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName + "_every_session_overlay_at_location", excludeFromCombo=excludeFromCombo) as pc:
                 pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                 im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
                                   interpolation="nearest", extent=(-7, 7, -7, 7),
                                   origin="lower")
+
+                pc.ax.set_xlabel("Distance from well (ft)")
+                pc.ax.set_ylabel("Distance from well (ft)")
+
+                plt.colorbar(im, ax=pc.ax)
+
+        if "everysessionoverlayatctrl" in plotFlags:
+            plotFlags.remove("everysessionoverlayatctrl")
+
+            wellSize = mpl.rcParams['lines.markersize']**2 / 4
+            resolution = self.measureValsBySession[0].shape[0]
+
+            for ctrlName in self.controlVals:
+                overlayImg = np.empty((2 * resolution - 1, 2 * resolution - 1,
+                                      len(self.dotColorsByCtrlVal[ctrlName])))
+                overlayImg[:] = np.nan
+                overlayWeights = np.empty_like(overlayImg)
+                overlayWeights[:] = np.nan
+                cidx = 0
+
+                for si, sesh in enumerate(self.sessionList):
+                    for ctrlLocs, cname, ctrlLabels in self.controlSpecsBySession[si]:
+                        if cname != ctrlName:
+                            continue
+                        for centerPoint in ctrlLocs:
+                            px = np.digitize(centerPoint[1], np.linspace(-0.5, 6.5, resolution))
+                            py = np.digitize(centerPoint[2], np.linspace(-0.5, 6.5, resolution))
+                            ox = resolution - px - 1
+                            oy = resolution - py - 1
+
+                            overlayImg[ox:ox + resolution, oy:oy + resolution,
+                                       cidx] = self.measureValsBySession[centerPoint[0]]
+                            overlayWeights[ox:ox + resolution, oy:oy +
+                                           resolution, cidx] = 1 / len(ctrlLocs)
+
+                            cidx += 1
+
+                # print(overlayImg.shape)
+                # print(overlayWeights.shape)
+                # print(np.count_nonzero(np.isnan(overlayImg)))
+                # print(np.count_nonzero(np.isnan(overlayWeights)))
+                combinedImg = np.nansum(overlayImg * overlayWeights, axis=2) / \
+                    np.nansum(overlayWeights, axis=2)
+
+                with plotManager.newFig(figName + "_every_session_overlay_at_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
+                    pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+
+                    im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
+                                      interpolation="nearest", extent=(-7, 7, -7, 7),
+                                      origin="lower")
+
+                    pc.ax.set_xlabel("Distance from well (ft)")
+                    pc.ax.set_ylabel("Distance from well (ft)")
+
+                    plt.colorbar(im, ax=pc.ax)
+
+        if "everysessionoverlaydirect" in plotFlags:
+            plotFlags.remove("everysessionoverlaydirect")
+
+            combinedImg = np.nanmean(self.measureValsBySession, axis=0)
+
+            with plotManager.newFig(figName + "_every_session_overlay_direct", excludeFromCombo=excludeFromCombo) as pc:
+                pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+
+                im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
+                                  interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
+                                  origin="lower")
+
+                pc.ax.set_xlabel("xpos (ft)")
+                pc.ax.set_ylabel("ypos (ft)")
 
                 plt.colorbar(im, ax=pc.ax)
 
