@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from scipy.ndimage import gaussian_filter
+from scipy.signal import find_peaks
 import numpy as np
 from typing import Optional, List, Dict, Tuple, Iterable, Callable, TypeVar
 from datetime import datetime
 from numpy.typing import ArrayLike
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import matplotlib.pyplot as plt
 
 from consts import TRODES_SAMPLING_RATE, allWellNames, CM_PER_FT, LFP_SAMPLING_RATE
@@ -463,6 +464,9 @@ class BTSession:
 
         if len(timeInterval) == 2 or (len(timeInterval) == 3 and timeInterval[2] is None):
             timeInterval = [*timeInterval, "secs"]
+
+        if timeInterval[1] is None:
+            timeInterval[1] = ts[-1]
 
         if timeInterval[2] == "posIdx":
             return np.array([timeInterval[0], timeInterval[1]])
@@ -1180,6 +1184,8 @@ class BTSession:
         :param pos: (x, y) position to calculate dot product score at
         :param behaviorPeriod: behavior period to calculate score over
         :param excludeRadius: radius around pos to exclude from calculation
+        :param velocityWeight: weight to apply to velocity. Range is [-1, 1]. Negative values mean slower is more highly weighted
+        :param distanceWeight: weight to apply to distance. Range is [-1, 1]. Negative values mean closer is more highly weighted
         :param binarySpotlight: whether to use binary spotlight (only include points within spotlightAngle)
         :param spotlightAngle: angle of spotlight
         :return: dot product score
@@ -1217,10 +1223,22 @@ class BTSession:
             # allVals = udots / magw
             allVals = udots
 
-        distanceFactor = 1 - np.exp(-100 * magw)
+        if not (-1 <= distanceWeight <= 1):
+            raise ValueError("distanceWeight must be between -1 and 1")
+        if distanceWeight < 0:
+            distanceWeight = -distanceWeight
+            distanceFactor = np.exp(-0.3 * magw)
+        else:
+            distanceFactor = 1 - np.exp(-0.3 * magw)
         allVals = allVals * distanceFactor * distanceWeight + allVals * (1 - distanceWeight)
 
-        velocityFactor = 1 - np.exp(-10 * magp)
+        if not (-1 <= velocityWeight <= 1):
+            raise ValueError("velocityWeight must be between -1 and 1")
+        if velocityWeight < 0:
+            velocityWeight = -velocityWeight
+            velocityFactor = np.exp(-1 * magp)
+        else:
+            velocityFactor = 1 - np.exp(-1 * magp)
         allVals = allVals * velocityFactor * velocityWeight + allVals * (1 - velocityWeight)
 
         if normalize:
@@ -1337,3 +1355,68 @@ class BTSession:
         Returns a map that is a gradient with a min near the home well
         """
         return self.getValueMap(lambda x: np.linalg.norm(np.array(x) - np.array(getWellPosCoordinates(self.homeWell))))
+
+    def getGravity(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
+                   passRadius=1.25, visitRadius=0.25, passDenoiseFactor=1.1, showPlot=False) -> float:
+        """
+        New gravity function based on position instead of well visits
+        :param behaviorPeriod: behavior period to use. Note that only the probe flag and time interval are used.
+                                Currently can't deal with discountinuous behavior periods
+        :param pos: (x, y) position
+        :param passRadius: radius to be considered a pass by
+        :param visitRadius: radius to be considered a visit
+        :param passDenoiseFactor: rat has to be passRadius * passDenoiseFactor from pos to separate two passes
+        """
+        bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
+        _, xs, ys = self.posDuringBehaviorPeriod(behaviorPeriod)
+
+        dx = xs - pos[0]
+        dy = ys - pos[1]
+        dist2 = dx * dx + dy * dy
+        dist2[np.isnan(dist2)] = np.inf
+        pks, _ = find_peaks(-dist2, height=-passRadius * passRadius)
+        if len(pks) == 0:
+            return np.nan
+
+        minDistances = np.sqrt(dist2[pks])
+        # goodPks = np.array([[pks[0], minDistances[0]]])
+        # goodPkIdxs = np.array([pks[0]]).astype(int)
+        # goodPkHeights = np.array([minDistances[0]])
+        goodPkIdxs = [pks[0]]
+        goodPkHeights = [minDistances[0]]
+
+        # pkpos = np.array([xs[pks[0]], ys[pks[0]]])
+        # print(f"{ pkpos = }")
+        # print(f"{ goodPkIdxs = }")
+        # print(f"{ goodPkHeights = }")
+
+        passDenoiseThreshold2 = passRadius * passRadius * passDenoiseFactor * passDenoiseFactor
+        # print(f"{ passDenoiseThreshold2 = }")
+        for i in range(1, len(pks)):
+            sigMax = np.max(dist2[goodPkIdxs[-1]:pks[i]])
+            # pkpos = np.array([xs[pks[i]], ys[pks[i]]])
+            # print(f"{ pkpos = }")
+            # print(f"{ sigMax = }")
+            if sigMax > passDenoiseThreshold2:
+                goodPkIdxs.append(pks[i])
+                goodPkHeights.append(minDistances[i])
+                # print(f"{ goodPkIdxs = }")
+                # print(f"{ goodPkHeights = }")
+            else:
+                if minDistances[i] < goodPkHeights[-1]:
+                    goodPkIdxs[-1] = pks[i]
+                    goodPkHeights[-1] = minDistances[i]
+
+        if showPlot:
+            plt.plot(xs, ys)
+            plt.plot(xs[pks], ys[pks], "x")
+            plt.plot(xs[np.array(goodPkIdxs)], ys[np.array(goodPkIdxs)], "o")
+            plt.plot(pos[0], pos[1], "o")
+            ax = plt.gca()
+            ax.add_patch(plt.Circle(pos, passRadius, color="r", fill=False))
+            ax.add_patch(plt.Circle(pos, visitRadius, color="g", fill=False))
+            ax.add_patch(plt.Circle(pos, passRadius * passDenoiseFactor, color="b", fill=False))
+            plt.show()
+
+        numVisits = np.count_nonzero(np.array(goodPkHeights) < visitRadius)
+        return numVisits / len(goodPkIdxs)

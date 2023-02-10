@@ -11,7 +11,6 @@ from matplotlib.animation import FuncAnimation
 from functools import partial
 import matplotlib as mpl
 from multiprocessing import Pool
-import chime
 
 
 def getFrame(sesh: BTSession, DIST_FACTOR, VEL_FACTOR, resolution, frame):
@@ -28,8 +27,8 @@ def makeAnimation(sesh: BTSession, saveFile=None):
     FRAME_RATE = 10
     VIDEO_SPEED = 2
     PLOT_LEN = 0.5
-    TSTART = 20
-    TEND = 60
+    TSTART = 25
+    TEND = 45
     x = sesh.probePosXs
     y = sesh.probePosYs
     mv = sesh.probeIsMv
@@ -40,7 +39,7 @@ def makeAnimation(sesh: BTSession, saveFile=None):
     t = t - t[0]
 
     resolution = 21
-    DIST_FACTOR = 1.0
+    DIST_FACTOR = 0.0
     VEL_FACTOR = 0.0
 
     if TEND is None:
@@ -63,8 +62,6 @@ def makeAnimation(sesh: BTSession, saveFile=None):
                                VEL_FACTOR, resolution), curFrames)
         cumulativeValImgs = p.map(partial(getFrame, sesh, DIST_FACTOR,
                                   VEL_FACTOR, resolution), cumFrames)
-    chime.info(sync=True)
-    chime.success()
 
     # for fi in range(len(frames)):
     #     print("frame %d of %d" % (fi, len(frames)) + " " * 20, end="\r")

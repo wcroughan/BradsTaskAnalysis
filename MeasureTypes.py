@@ -8,6 +8,8 @@ import pandas as pd
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from numpy.typing import ArrayLike
+from multiprocessing import Pool
+import warnings
 
 from UtilFunctions import offWall, getWellPosCoordinates, getRotatedWells
 from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot, blankPlot, \
@@ -814,6 +816,18 @@ class WellMeasure():
             print(f"Warning: unused plot flags: {plotFlags}")
 
 
+_poolWorkerFunc = None
+
+
+def poolWorkerFuncWrapper(args):
+    return _poolWorkerFunc(args)
+
+
+def poolWorkerInit(func):
+    global _poolWorkerFunc
+    _poolWorkerFunc = func
+
+
 class LocationMeasure():
     @staticmethod
     def measureAtLocation(vals: np.ndarray, pos: Tuple[float, float], smoothDist: Optional[float] = 0.5) -> ArrayLike:
@@ -824,7 +838,7 @@ class LocationMeasure():
 
         pxc = np.digitize(x, np.linspace(-0.5, 6.5, vals.shape[0]))
         pyc = np.digitize(y, np.linspace(-0.5, 6.5, vals.shape[1]))
-        if smoothDist is None:
+        if smoothDist is None or smoothDist == 0:
             return vals[pxc, pyc]
 
         pxc0 = np.digitize(x - smoothDist, np.linspace(-0.5, 6.5, vals.shape[0]))
@@ -838,11 +852,16 @@ class LocationMeasure():
         denom = 0
         for x in range(pxc0, pxc1):
             for y in range(pyc0, pyc1):
+                if np.isnan(vals[x, y]):
+                    continue
                 fac = smoothDist - np.linalg.norm([pxc - x, pyc - y]) * pxlWidth
                 if fac < 0:
                     continue
                 numer += vals[x, y] * fac
                 denom += fac
+
+        if denom == 0:
+            return np.nan
 
         return numer / denom
 
@@ -911,7 +930,9 @@ class LocationMeasure():
                                                                  float]] = lambda s: getWellPosCoordinates(s.homeWell),
                  sessionCtrlLocations: Callable[[BTSession, int, List[BTSession]],
                                                 Iterable[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]] = defaultCtrlLocations,
-                 distancePlotResolution: Tuple[int, int, int] = (20, 8, 15)) -> None:
+                 smoothDist: Optional[float] = 0.5,
+                 distancePlotResolution: Tuple[int, int, int] = (15, 8, 15),
+                 parallelize=True) -> None:
         """
         :param name: name of the measure
         :param measureFunc: function that takes a session and returns a 2D array of values
@@ -924,12 +945,13 @@ class LocationMeasure():
                 a list of triplets. Each triplets is a list of locations, a name for the control, and three strings that are
                 the names for the measure group, control group, and axis label. The locations are given as a list of tuples
                 of (session index, x, y) coordinates. The name is a string that will be used to label the control values.
+        :param smoothDist: distance over which to smooth the measure values, in feet
         :param distancePlotResolution: resolution of the distance plot, specified as a tuple of
                 (number of distances to sample, number of samples at closest distance, number of samples at furthest distance)
+        :param parallelize: whether to parallelize the processing of the sessions
         """
         self.name = name
         self.sessionList = sessionList
-        self.measureValsBySession = [None] * len(sessionList)
         self.sessionValsBySession = [None] * len(sessionList)
         self.dotColorsBySession = [None] * len(sessionList)
         self.conditionBySession = [None] * len(sessionList)
@@ -941,14 +963,21 @@ class LocationMeasure():
         self.dotColorsByCtrlVal: Dict[str, List[str]] = {}
         conditionByCtrlVal: Dict[str, List[str]] = {}
 
+        if parallelize:
+            with Pool(None, initializer=poolWorkerInit, initargs=(measureFunc, )) as p:
+                self.measureValsBySession: List[np.ndarray] = p.map(
+                    poolWorkerFuncWrapper, sessionList)
+        else:
+            self.measureValsBySession = [measureFunc(sesh) for sesh in sessionList]
+
         for si, sesh in enumerate(sessionList):
-            v = np.array(measureFunc(sesh))
+            self.measureValsBySession[si] = np.array(self.measureValsBySession[si])
+            v = self.measureValsBySession[si]
             if v.shape[0] != v.shape[1]:
                 raise ValueError("measureFunc must return a square array")
-            self.measureValsBySession[si] = v
             self.sessionValLocations[si] = sessionValLocation(sesh)
             self.sessionValsBySession[si] = LocationMeasure.measureAtLocation(
-                v, self.sessionValLocations[si])
+                v, self.sessionValLocations[si], smoothDist=smoothDist)
 
             if sesh.isRippleInterruption:
                 self.conditionBySession[si] = "SWR"
@@ -977,19 +1006,22 @@ class LocationMeasure():
                 ctrlVals = []
                 for ctrlLoc in ctrlLocs:
                     ctrlVals.append(LocationMeasure.measureAtLocation(
-                        self.measureValsBySession[ctrlLoc[0]], (ctrlLoc[1], ctrlLoc[2])))
+                        self.measureValsBySession[ctrlLoc[0]], (ctrlLoc[1], ctrlLoc[2]), smoothDist=smoothDist))
 
                 self.controlVals[ctrlName].append(ctrlVals)
-                self.controlValMeans[ctrlName].append(np.nanmean(ctrlVals))
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", r"Mean of empty slice")
+                    cvalMean = np.nanmean(ctrlVals)
+                self.controlValMeans[ctrlName].append(cvalMean)
                 c = "orange" if sesh.isRippleInterruption else "cyan"
                 self.dotColorsByCtrlVal[ctrlName] += [c] * len(ctrlVals)
                 c = "SWR" if sesh.isRippleInterruption else "Ctrl"
                 conditionByCtrlVal[ctrlName] += [c] * len(ctrlVals)
 
-                if np.nanmean(ctrlVals) > self.sessionValMax:
-                    self.sessionValMax = np.nanmean(ctrlVals)
-                if np.nanmean(ctrlVals) < self.sessionValMin:
-                    self.sessionValMin = np.nanmean(ctrlVals)
+                if cvalMean > self.sessionValMax:
+                    self.sessionValMax = cvalMean
+                if cvalMean < self.sessionValMin:
+                    self.sessionValMin = cvalMean
 
         self.distancePlotXVals = np.linspace(0, 7*np.sqrt(2), distancePlotResolution[0])
         self.numSamples = np.round(np.linspace(
@@ -1011,8 +1043,10 @@ class LocationMeasure():
                     x = d * np.cos(theta) + self.sessionValLocations[si][0]
                     y = d * np.sin(theta) + self.sessionValLocations[si][1]
                     vals.append(LocationMeasure.measureAtLocation(
-                        self.measureValsBySession[si], (x, y)))
-                self.measureValsByDistance[si, di] = np.nanmean(vals)
+                        self.measureValsBySession[si], (x, y), smoothDist=smoothDist))
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", r"Mean of empty slice")
+                    self.measureValsByDistance[si, di] = np.nanmean(vals)
 
         for ctrlName in self.controlVals:
             self.controlMeasureValsByDistance[ctrlName] = np.empty(
@@ -1038,8 +1072,11 @@ class LocationMeasure():
                                 x = d * np.cos(theta) + loc[1]
                                 y = d * np.sin(theta) + loc[2]
                                 vals.append(LocationMeasure.measureAtLocation(
-                                    self.measureValsBySession[loc[0]], (x, y)))
-                            self.controlMeasureValsByDistance[ctrlName][cidx, di] = np.nanmean(vals)
+                                    self.measureValsBySession[loc[0]], (x, y), smoothDist=smoothDist))
+                            with warnings.catch_warnings():
+                                warnings.filterwarnings("ignore", r"Mean of empty slice")
+                                self.controlMeasureValsByDistance[ctrlName][cidx, di] = np.nanmean(
+                                    vals)
                         cidx += 1
 
         self.measureValsBySession = np.array(self.measureValsBySession)
@@ -1056,7 +1093,7 @@ class LocationMeasure():
                     plotManager: PlotManager,
                     plotFlags: str | List[str] = "all",
                     everySessionBehaviorPeriod: Optional[BP | Callable[[BTSession], BP]] = None,
-                    runStats: bool = True,
+                    runStats: bool = True, subFolder: bool = True,
                     excludeFromCombo=False) -> None:
         """
         :param plotManager: PlotManager to use to make figures
@@ -1075,21 +1112,27 @@ class LocationMeasure():
             "everysessionoverlayatlocation": plot the measure values for each session overlaid on top of each other and summed to line up the session locations
             "everysessionoverlayatctrl": plot the measure values for each session overlaid on top of each other and summed to line up the control locations. Note each
                                         map is weighted to contribute the same (its values are divided by the number of control locations)
+            "everysessionoverlayatlocationbycondition": plot the measure values for each session overlaid on top of each other and summed to line up the session locations.
+                                        Two plots are made, one for each condition
             "everysessionoverlaydirect": plot the measure values for each session overlaid on top of each other and summed. Maps are not lined up by their session locations
             Optionally, any of the above can be preceded by "not" to exclude it from the list of figures to make
                 If any flag starts with "not", all flags must start with "not", and any flag not excluded will be included
         :param everySessionBehaviorPeriod: if not None, behavior period to use for everySession plot
         :param runStats: if True, run stats on the data and add p value to output plot
+        :param subFolder: if True, put figures in a subfolder named after the measure
         :param excludeFromCombo: if True, don't include this measure in the combo plot
         """
 
         figName = self.name.replace(" ", "_")
+        if subFolder:
+            plotManager.pushOutputSubDir("LM_" + figName)
 
         allPossibleFlags = ["measureByCondition", "measureVsCtrl",
                             "measureVsCtrlByCondition", "diff",
                             "measureByDistance", "measureByDistanceByCondition",
                             "measureVsCtrlByDistance", "measureVsCtrlByDistanceByCondition",
                             "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl",
+                            "everysessionoverlayatlocationbycondition",
                             "everysessionoverlaydirect"]
 
         if isinstance(plotFlags, str):
@@ -1293,12 +1336,64 @@ class LocationMeasure():
                 overlayImg[ox:ox + resolution, oy:oy + resolution,
                            si] = self.measureValsBySession[si]
 
-            combinedImg = np.nanmean(overlayImg, axis=2)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", r"Mean of empty slice")
+                combinedImg = np.nanmean(overlayImg, axis=2)
 
             with plotManager.newFig(figName + "_every_session_overlay_at_location", excludeFromCombo=excludeFromCombo) as pc:
-                pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+                # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                 im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
+                                  interpolation="nearest", extent=(-7, 7, -7, 7),
+                                  origin="lower")
+
+                pc.ax.set_xlabel("Distance from well (ft)")
+                pc.ax.set_ylabel("Distance from well (ft)")
+
+                plt.colorbar(im, ax=pc.ax)
+
+        if "everysessionoverlayatlocationbycondition" in plotFlags:
+            plotFlags.remove("everysessionoverlayatlocationbycondition")
+
+            wellSize = mpl.rcParams['lines.markersize']**2 / 4
+            resolution = self.measureValsBySession[0].shape[0]
+            overlayImg = np.empty((2 * resolution - 1, 2 * resolution - 1, len(self.sessionList)))
+            overlayImg[:] = np.nan
+
+            for si, sesh in enumerate(self.sessionList):
+                centerPoint = self.sessionValLocations[si]
+
+                px = np.digitize(centerPoint[0], np.linspace(-0.5, 6.5, resolution))
+                py = np.digitize(centerPoint[1], np.linspace(-0.5, 6.5, resolution))
+                ox = resolution - px - 1
+                oy = resolution - py - 1
+
+                overlayImg[ox:ox + resolution, oy:oy + resolution,
+                           si] = self.measureValsBySession[si]
+
+            swrIdx = self.conditionBySession == "SWR"
+            ctrlIdx = ~swrIdx
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", r"Mean of empty slice")
+                combinedImgSWR = np.nanmean(overlayImg[:, :, swrIdx], axis=2)
+                combinedImgCtrl = np.nanmean(overlayImg[:, :, ctrlIdx], axis=2)
+
+            with plotManager.newFig(figName + "_every_session_overlay_at_location_swr", excludeFromCombo=excludeFromCombo) as pc:
+                # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+
+                im = pc.ax.imshow(combinedImgSWR.T, cmap=mpl.colormaps["coolwarm"],
+                                  interpolation="nearest", extent=(-7, 7, -7, 7),
+                                  origin="lower")
+
+                pc.ax.set_xlabel("Distance from well (ft)")
+                pc.ax.set_ylabel("Distance from well (ft)")
+
+                plt.colorbar(im, ax=pc.ax)
+
+            with plotManager.newFig(figName + "_every_session_overlay_at_location_ctrl", excludeFromCombo=excludeFromCombo) as pc:
+                # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+
+                im = pc.ax.imshow(combinedImgCtrl.T, cmap=mpl.colormaps["coolwarm"],
                                   interpolation="nearest", extent=(-7, 7, -7, 7),
                                   origin="lower")
 
@@ -1342,11 +1437,13 @@ class LocationMeasure():
                 # print(overlayWeights.shape)
                 # print(np.count_nonzero(np.isnan(overlayImg)))
                 # print(np.count_nonzero(np.isnan(overlayWeights)))
-                combinedImg = np.nansum(overlayImg * overlayWeights, axis=2) / \
-                    np.nansum(overlayWeights, axis=2)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", r"invalid value encountered in divide")
+                    combinedImg = np.nansum(overlayImg * overlayWeights, axis=2) / \
+                        np.nansum(overlayWeights, axis=2)
 
                 with plotManager.newFig(figName + "_every_session_overlay_at_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
-                    pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+                    # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                     im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
                                       interpolation="nearest", extent=(-7, 7, -7, 7),
@@ -1360,10 +1457,12 @@ class LocationMeasure():
         if "everysessionoverlaydirect" in plotFlags:
             plotFlags.remove("everysessionoverlaydirect")
 
-            combinedImg = np.nanmean(self.measureValsBySession, axis=0)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", r"Mean of empty slice")
+                combinedImg = np.nanmean(self.measureValsBySession, axis=0)
 
             with plotManager.newFig(figName + "_every_session_overlay_direct", excludeFromCombo=excludeFromCombo) as pc:
-                pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+                # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                 im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
                                   interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
@@ -1376,3 +1475,6 @@ class LocationMeasure():
 
         if len(plotFlags) > 0:
             print(f"Warning: unused plot flags: {plotFlags}")
+
+        if subFolder:
+            plotManager.popOutputSubDir()

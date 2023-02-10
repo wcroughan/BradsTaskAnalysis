@@ -16,8 +16,10 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from UtilFunctions import getWellPosCoordinates
 from dataclasses import dataclass, field
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any, List, Callable
 from numpy.typing import ArrayLike
+from tqdm import tqdm
+import multiprocessing
 
 
 class ShuffSpec:
@@ -34,10 +36,10 @@ class ShuffSpec:
         INTERACTION = auto()
         RECURSIVE_ALL = auto()  # includes interaction, across, and within
 
-        def __repr__(self):
+        def __repr__(self) -> str:
             return self.name
 
-        def __str__(self):
+        def __str__(self) -> str:
             return self.name[0:3]
 
     def __init__(self, shuffType=ShuffType.UNSPECIFIED, categoryName="", value=None):
@@ -45,20 +47,20 @@ class ShuffSpec:
         self.categoryName = categoryName
         self.value = value
 
-    def copy(self):
+    def copy(self) -> ShuffSpec:
         ret = ShuffSpec()
         ret.shuffType = self.shuffType
         ret.categoryName = self.categoryName
         ret.value = self.value
         return ret
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "{} {} ({})".format(self.shuffType, self.categoryName, self.value)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "{} {} ({})".format(self.shuffType, self.categoryName, self.value)
 
-    def __lt__(self, other):
+    def __lt__(self, other) -> bool:
         if self.shuffType < other.shuffType:
             return True
         elif self.shuffType > other.shuffType:
@@ -85,13 +87,13 @@ class ShuffSpec:
 
 
 class ShuffleResult:
-    def __init__(self, specs=[], diff=np.nan, shuffleDiffs=None, dataNames=[]):
+    def __init__(self, specs: List[ShuffSpec] = [], diff=np.nan, shuffleDiffs=None, dataNames: List[str] = []) -> None:
         self.specs = specs
         self.diff = diff
         self.shuffleDiffs = shuffleDiffs
         self.dataNames = dataNames
 
-    def copy(self):
+    def copy(self) -> ShuffleResult:
         ret = ShuffleResult()
         ret.diff = self.diff
         if self.shuffleDiffs is not None:
@@ -100,14 +102,14 @@ class ShuffleResult:
         ret.dataNames = self.dataNames.copy()
         return ret
 
-    def getPVals(self):
+    def getPVals(self) -> np.ndarray:
         pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
                                   axis=0) / self.shuffleDiffs.shape[0]
         pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
                                   axis=0) / self.shuffleDiffs.shape[0]
         return (pvals1 + pvals2) / 2
 
-    def getFullInfoString(self, linePfx=""):
+    def getFullInfoString(self, linePfx="") -> str:
         sdmin = np.min(self.shuffleDiffs, axis=0)
         sdmax = np.max(self.shuffleDiffs, axis=0)
         pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
@@ -118,13 +120,13 @@ class ShuffleResult:
                                     f"p1 = {pvals1[i]}\tp2 = {pvals2[i]}" for i in range(len(self.diff))]
         return "\n".join(ret)
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.shuffleDiffs is None:
             return "{}: {}".format(self.specs, self.diff)
         else:
             return "{}: {} ({}, {})".format(self.specs, self.diff, np.min(self.shuffleDiffs), np.max(self.shuffleDiffs))
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.shuffleDiffs is None:
             return "{}: {}".format(self.specs, self.diff)
         else:
@@ -135,10 +137,10 @@ class ShuffleResult:
 class PlotContext:
     figName: str
     axs: ArrayLike[Axes]
-    yvals: dict = field(default_factory=dict)
-    immediateShuffles: list = field(default_factory=list)
-    categories: dict = field(default_factory=dict)
-    infoVals: dict = field(default_factory=dict)
+    yvals: Dict[str, ArrayLike] = field(default_factory=dict)
+    immediateShuffles: List[Tuple[List[ShuffSpec], int]] = field(default_factory=list)
+    categories: Dict[str, ArrayLike] = field(default_factory=dict)
+    infoVals: Dict[str, ArrayLike] = field(default_factory=dict)
     showPlot: Optional[bool] = None
     savePlot: Optional[bool] = None
     excludeFromCombo: bool = False
@@ -165,55 +167,61 @@ class PlotContext:
 
 
 class PlotManager:
-    def __init__(self, outputDir=None, priorityLevel=None, randomSeed=None, verbosity=3, infoFileName=None):
-        self.figSizeX, self.figSizeY = 5, 5
+    def __init__(self, outputDir: Optional[str] = None, priorityLevel: Optional[int] = None,
+                 randomSeed=None, verbosity: int = 3, infoFileName: Optional[str] = None) -> None:
+        self.figSizeX: int = 5
+        self.figSizeY: int = 5
         self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
         self.fig.clf()
         self.axs = self.fig.subplots()
         if isinstance(self.axs, Axes):
             self.axs = np.array([self.axs])
         # Save when exiting context?
-        self.defaultSavePlot = True
+        self.defaultSavePlot: bool = True
         # Show when exiting context?
-        self.defaultShowPlot = False
-        self.verbosity = verbosity
-        self.showedLastFig = False
+        self.defaultShowPlot: bool = False
+        self.verbosity: int = verbosity
+        self.showedLastFig: bool = False
 
         if infoFileName is None:
             self.infoFileName = datetime.now().strftime("%Y%m%d_%H%M%S_info.txt")
         else:
             self.infoFileName = infoFileName
         self.outputSubDir = ""
-        self.outputSubDirStack = []
+        self.outputSubDirStack: List[str] = []
         if outputDir is None:
             outputDir = os.curdir
         self.setOutputDir(outputDir)
         self.createdPlots = set()
-        self.savedFigsByName = {}
+        self.savedFigsByName: Dict[str, List[str]] = {}
 
         self.priorityLevel = priorityLevel
-        self.priority = None
+        self.priority: Optional[int] = None
 
-        self.persistentCategories = {}
-        self.persistentInfoValues = {}
-        self.savedYVals = {}
-        self.savedCategories = {}
-        self.savedPersistentCategories = {}
-        self.savedInfoVals = {}
-        self.savedImmediateShuffles = {}
+        self.persistentCategories: Dict[str, Any] = {}
+        self.persistentInfoValues: Dict[str, Any] = {}
+        self.savedYVals: Dict[str, Dict[str, ArrayLike]] = {}
+        self.savedCategories: Dict[str, Dict[str, ArrayLike]] = {}
+        self.savedPersistentCategories: Dict[str, Dict[str, ArrayLike]] = {}
+        self.savedInfoVals: Dict[str, Dict[str, ArrayLike]] = {}
+        self.savedImmediateShuffles: Dict[str, Optional[List[ShuffSpec]]] = {}
         self.numShuffles = 0
 
         self.rng = np.random.default_rng(seed=randomSeed)
-        self.customShuffleFunctions = {}
+        self.customShuffleFunctions: Dict[str, Callable[[
+            pd.DataFrame, str, np.random.Generator], pd.Series]] = {}
 
         self.plotContext = None
+
+        self.infoFileLock = multiprocessing.Lock()
+        self.globalLock = multiprocessing.Lock()
 
     def __enter__(self) -> PlotContext:
         return self.plotContext
 
-    def newFig(self, figName, subPlots=None, figScale=1.0, priority=None, excludeFromCombo=False,
-               showPlot=None, savePlot=None, enableOverwriteSameName=False) -> PlotManager:
-        # print(self.savedPersistentCategories)
+    def newFig(self, figName: str, subPlots: Optional[Tuple[int, int] | List[int, int]] = None,
+               figScale: float = 1.0, priority: Optional[int] = None, excludeFromCombo: bool = False,
+               showPlot: bool = None, savePlot: bool = None, enableOverwriteSameName: bool = False) -> PlotManager:
         fname = os.path.join(self.outputDir, self.outputSubDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
@@ -238,7 +246,6 @@ class PlotManager:
         self.plotContext = PlotContext(fname, self.axs, showPlot=showPlot,
                                        savePlot=savePlot, excludeFromCombo=excludeFromCombo)
 
-        # print(self.savedPersistentCategories)
         return self
 
     def continueFig(self, figName, priority=None, showPlot=None, savePlot=None, excludeFromCombo=False, enableOverwriteSameName=False):
@@ -259,13 +266,13 @@ class PlotManager:
         self.plotContext.infoVals = {}
         return self
 
-    def setStatCategory(self, category, value):
+    def setStatCategory(self, category: str, value: Any):
         self.persistentCategories[category] = value
 
-    def setStatInfo(self, infoCategory, value):
+    def setStatInfo(self, infoCategory: str, value: Any):
         self.persistentInfoValues[infoCategory] = value
 
-    def setCustomShuffleFunction(self, category, func):
+    def setCustomShuffleFunction(self, category: str, func: Callable[[pd.DataFrame, str, np.random.Generator], pd.Series]):
         self.customShuffleFunctions[category] = func
 
     def setPriorityLevel(self, priorityLevel):
@@ -275,13 +282,78 @@ class PlotManager:
         if self.priority is not None and self.priorityLevel is not None and self.priority > self.priorityLevel:
             return
 
+        # TODO save all this data to a file, and then just have a small amount of shared state that is a list of files
+        # Then write to info file the file name with the stats, so can go back and look at them later
+
         if len(self.plotContext.yvals) > 0:
-            # print(self.savedPersistentCategories)
-            # statsName = self.plotContext.figName.split("/")[-1]
-            statsName = os.path.basename(self.plotContext.figName)
-            assert len(self.plotContext.yvals) > 0
+            # Everything is referenced according to this name
+            figureName = os.path.basename(self.plotContext.figName)
+
+            # There needs to be at least one category over which to shuffle
             assert len(self.persistentCategories) + len(self.plotContext.categories) > 0
 
+            # Build a pandas dataframe with all the data
+            allData = self.plotContext.categories.copy()
+            allData.update(self.plotContext.yvals)
+            allData.update(self.plotContext.infoVals)
+            allData.update(self.persistentCategories)
+            allData.update(self.persistentInfoValues)
+            df = pd.DataFrame(data=allData)
+            yvalNames = pd.Series(list(self.plotContext.yvals.keys()), dtype=object)
+            categoryNames = pd.Series(list(self.plotContext.categories.keys()), dtype=object)
+            persistentCategoryNames = pd.Series(
+                list(self.persistentCategories.keys()), dtype=object)
+            infoNames = pd.Series(list(self.plotContext.infoVals.keys()), dtype=object)
+            persistentInfoNames = pd.Series(list(self.persistentInfoValues.keys()), dtype=object)
+
+            # Save the stats to a file
+            statsDir = os.path.join(self.outputDir, self.outputSubDir, "stats")
+            if not os.path.exists(statsDir):
+                os.makedirs(statsDir)
+            statsFile = os.path.join(statsDir, figureName + ".h5")
+            df.to_hdf(statsFile, key="stats", mode="w")
+            yvalNames.to_hdf(statsFile, key="yvalNames", mode="a")
+            categoryNames.to_hdf(statsFile, key="categoryNames", mode="a")
+            persistentCategoryNames.to_hdf(statsFile, key="persistentCategoryNames", mode="a")
+            infoNames.to_hdf(statsFile, key="infoNames", mode="a")
+            persistentInfoNames.to_hdf(statsFile, key="persistentInfoNames", mode="a")
+            self.writeToInfoFile(f"statsFile:__!__{figureName}__!__{statsFile}")
+
+            # Now if there are any immediate shuffles, do them
+
+            if len(self.plotContext.immediateShuffles) > 0:
+                ss = [len(s) for s, _ in self.plotContext.immediateShuffles]
+                self.plotContext.immediateShuffles = [x for _, x in sorted(
+                    zip(ss, self.plotContext.immediateShuffles))]
+                shufSpecs = [x for x, _ in self.plotContext.immediateShuffles]
+                numShuffles = [x for _, x in self.plotContext.immediateShuffles]
+                df.drop(columns=list(self.persistentCategories.keys()) +
+                        list(self.persistentInfoValues.keys()), inplace=True)
+                # print("\n".join([str(s) for s in shufSpecs]))
+                immediateRes = self._doShuffles(df, shufSpecs, list(
+                    self.plotContext.yvals.keys()), numShuffles=numShuffles)
+                # print(immediateRes)
+                pval = None
+                for rr in immediateRes:
+                    for r in rr:
+                        if pval is not None:
+                            raise Exception("Should only be doing one shuffle here!")
+                        pval = r.getPVals().item()
+
+                if not self.plotContext.isSinglePlot:
+                    raise Exception("Can't have multiple plots and do shuffle")
+
+                self.plotContext.ax.add_artist(AnchoredText(f"p={pval}", "upper center"))
+
+        # This is the old way, savign for reference later
+        if len(self.plotContext.yvals) > 0 and False:
+            # Everything is referenced later with the figure name.
+            figureName = os.path.basename(self.plotContext.figName)
+
+            # There needs to be at least one category over which to shuffle
+            assert len(self.persistentCategories) + len(self.plotContext.categories) > 0
+
+            # Make sure all the arrays are the same length
             savedLen = None
             for k in self.plotContext.yvals:
                 if savedLen is None:
@@ -311,22 +383,23 @@ class PlotManager:
                         "WARNING: overlap between persistent info category and this-plot category, "
                         "both named {}".format(k))
 
-            if statsName in self.savedYVals:
-                savedYVals = self.savedYVals[statsName]
+            if figureName in self.savedYVals:
+                # Another figure with the same name has been made, so append to the existing arrays
+                savedYVals = self.savedYVals[figureName]
                 for k in savedYVals:
                     savedYVals[k] = np.append(savedYVals[k], self.plotContext.yvals[k])
-                savedCategories = self.savedCategories[statsName]
+                savedCategories = self.savedCategories[figureName]
                 for k in savedCategories:
                     savedCategories[k] = np.append(
                         savedCategories[k], self.plotContext.categories[k])
-                savedPersistentCategories = self.savedPersistentCategories[statsName]
+                savedPersistentCategories = self.savedPersistentCategories[figureName]
                 for k in savedPersistentCategories:
                     savedPersistentCategories[k] = np.append(savedPersistentCategories[k], [
                                                              self.persistentCategories[k]] * savedLen)
-                savedInfoVals = self.savedInfoVals[statsName]
+                savedInfoVals = self.savedInfoVals[figureName]
                 for k in savedInfoVals:
                     savedInfoVals[k] = np.append(savedInfoVals[k], self.plotContext.infoVals[k])
-                savedImmediateShuffles = self.savedImmediateShuffles[statsName]
+                savedImmediateShuffles = self.savedImmediateShuffles[figureName]
                 if savedImmediateShuffles is not None:
                     print(savedImmediateShuffles)
                     print(self.plotContext.immediateShuffles)
@@ -336,14 +409,15 @@ class PlotManager:
                 elif len(self.plotContext.immediateShuffles) != 0:
                     raise Exception("Repeated figure must have identical immediate shuffle")
             else:
-                self.savedYVals[statsName] = self.plotContext.yvals.copy()
-                self.savedCategories[statsName] = self.plotContext.categories
-                self.savedPersistentCategories[statsName] = self.persistentCategories.copy()
-                for k in self.savedPersistentCategories[statsName]:
-                    self.savedPersistentCategories[statsName][k] = [
-                        self.savedPersistentCategories[statsName][k]] * savedLen
-                self.savedInfoVals[statsName] = self.plotContext.infoVals
-                self.savedImmediateShuffles[statsName] = None if len(
+                # First time this figure has been made, so save the arrays
+                self.savedYVals[figureName] = self.plotContext.yvals.copy()
+                self.savedCategories[figureName] = self.plotContext.categories
+                self.savedPersistentCategories[figureName] = self.persistentCategories.copy()
+                for k in self.savedPersistentCategories[figureName]:
+                    self.savedPersistentCategories[figureName][k] = [
+                        self.savedPersistentCategories[figureName][k]] * savedLen
+                self.savedInfoVals[figureName] = self.plotContext.infoVals
+                self.savedImmediateShuffles[figureName] = None if len(
                     self.plotContext.immediateShuffles) == 0 else self.plotContext.immediateShuffles[0][0].copy()
 
             if len(self.plotContext.immediateShuffles) > 0:
@@ -362,22 +436,20 @@ class PlotManager:
                 # print(immediateRes)
                 pval = None
                 for rr in immediateRes:
-                    # print(rr)
                     for r in rr:
-                        # print(r.getFullInfoString(linePfx="\t"))
                         if pval is not None:
                             raise Exception("Should only be doing one shuffle here!")
-                        pval = r.getPVals()[0]
+                        pval = r.getPVals().item()
 
                 if not self.plotContext.isSinglePlot:
                     raise Exception("Can't have multiple plots and do shuffle")
 
                 self.plotContext.ax.add_artist(AnchoredText(f"p={pval}", "upper center"))
 
+        # Finally, save or show the figure
         if (self.plotContext.savePlot is not None and self.plotContext.savePlot) or \
                 (self.plotContext.savePlot is None and self.defaultSavePlot):
             self.saveFig()
-
         if (self.plotContext.showPlot is not None and self.plotContext.showPlot) or \
                 (self.plotContext.showPlot is None and self.defaultShowPlot):
             self.showedLastFig = True
@@ -386,12 +458,10 @@ class PlotManager:
         else:
             self.showedLastFig = False
 
-        # print(self.savedPersistentCategories)
-
     def saveFig(self):
         fname = os.path.join(self.outputDir, self.outputSubDir, self.plotContext.figName)
 
-        if fname[-4:] != ".png":
+        if fname[-4:] != ".png" and fname[-4:] != ".pdf":
             fname += ".png"
 
         if self.plotContext.isSinglePlot and not self.plotContext.excludeFromCombo:
@@ -403,44 +473,47 @@ class PlotManager:
                 except RuntimeError:
                     pass
 
-        plt.savefig(fname, bbox_inches="tight", dpi=200)
+        plt.savefig(fname, bbox_inches="tight", dpi=100)
         self.writeToInfoFile("wrote file {}".format(fname))
         if self.verbosity >= 3:
             print("wrote file {}".format(fname))
         self.createdPlots.add(fname)
 
-        # figFileName = fname.split('/')[-1]
         figFileName = os.path.basename(fname)
-        if figFileName in self.savedFigsByName:
-            self.savedFigsByName[figFileName].append(self.outputSubDir)
-        else:
+        self.globalLock.acquire()
+        if figFileName not in self.savedFigsByName:
             self.savedFigsByName[figFileName] = [self.outputSubDir]
+            self.globalLock.release()
+        else:
+            thisFigList = self.savedFigsByName[figFileName]
+            self.globalLock.release()
+            thisFigList.append(self.outputSubDir)
 
-    def clearFig(self):
+    def clearFig(self) -> None:
         self.fig.clf()
         self.axs = np.array([self.fig.subplots(1, 1)])
         self.axs[0].cla()
 
-    def setOutputDir(self, outputDir):
+    def setOutputDir(self, outputDir: str) -> None:
         self.outputDir = outputDir
         if not os.path.exists(os.path.join(outputDir, self.outputSubDir)):
             os.makedirs(os.path.join(outputDir, self.outputSubDir))
         self.infoFileFullName = os.path.join(
             outputDir, self.infoFileName)
 
-    def setOutputSubDir(self, outputSubDir):
+    def setOutputSubDir(self, outputSubDir: str) -> None:
         self.outputSubDirStack = [outputSubDir]
         self.outputSubDir = outputSubDir
         if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
             os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
 
-    def pushOutputSubDir(self, outputSubDir):
+    def pushOutputSubDir(self, outputSubDir: str) -> None:
         self.outputSubDirStack.append(outputSubDir)
         self.outputSubDir = os.path.join(*self.outputSubDirStack)
         if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
             os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
 
-    def popOutputSubDir(self):
+    def popOutputSubDir(self) -> None:
         self.outputSubDirStack.pop()
         if len(self.outputSubDirStack) == 0:
             self.outputSubDir = ""
@@ -449,11 +522,13 @@ class PlotManager:
         if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
             os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
 
-    def writeToInfoFile(self, txt, suffix="\n"):
-        with open(self.infoFileFullName, "a") as f:
-            f.write(txt + suffix)
+    def writeToInfoFile(self, txt: str, suffix="\n") -> None:
+        with self.infoFileLock:
+            with open(self.infoFileFullName, "a") as f:
+                f.write(txt + suffix)
 
-    def makeCombinedFigs(self, outputSubDir="combined", suggestedSubPlotLayout=None):
+    def makeCombinedFigs(self, outputSubDir: str = "combined",
+                         suggestedSubPlotLayout: Optional[Tuple[int, int] | List[int, int]] = None) -> None:
         if not os.path.exists(os.path.join(self.outputDir, outputSubDir)):
             os.makedirs(os.path.join(self.outputDir, outputSubDir))
 
@@ -564,10 +639,8 @@ class PlotManager:
             if self.verbosity >= 3:
                 print("wrote file {}".format(fname))
 
-    def printShuffleResult(self, results):
-        print("\n".join([str(v) for v in sorted(results)]))
-
-    def runImmidateShufflesAcrossPersistentCategories(self, numShuffles=100):
+    def runImmidateShufflesAcrossPersistentCategories(self, numShuffles=100) -> None:
+        raise NotImplementedError("This is not implemented yet, still uses old save format")
         self.numShuffles = numShuffles
         for plotName in self.savedCategories:
             categories = self.savedCategories[plotName]
@@ -618,54 +691,73 @@ class PlotManager:
             self._doShuffles(df, specs, list(yvals.keys()))
             # print(sr)
 
-    def runShuffles(self, numShuffles=100):
+    def getListOfStatsFiles(self) -> List[Tuple[str, str]]:
+        with open(self.infoFileFullName, "r") as fid:
+            lines = fid.readlines()
+            statsFiles = []
+            for line in lines:
+                if line.startswith("statsFile:"):
+                    statsFiles.append((line.split("__!__")[1], line.split("__!__")[2]))
+        return statsFiles
+
+    def runShuffles(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
+                    resultsFilter: Callable[[str, ShuffleResult, float], bool] = lambda *_: True) -> None:
         self.numShuffles = numShuffles
-        for plotName in self.savedCategories:
-            categories = self.savedCategories[plotName]
-            persistentCategories = self.savedPersistentCategories[plotName]
-            categories.update(persistentCategories)
-            yvals = self.savedYVals[plotName]
-            infoVals = self.savedInfoVals[plotName]
-            print("========================================\nRunning shuffles from plot", plotName)
-            print("Evaluating {} yvals:".format(len(yvals)))
-            for yvalName in yvals:
-                print("\t{}".format(yvalName))
-            print("Shuffling {} categories:".format(len(categories)))
-            for catName in categories:
-                print("\t{}\t{}".format(catName, set(categories[catName])))
-                if not isinstance(categories[catName], np.ndarray):
-                    categories[catName] = np.array(categories[catName])
 
-            for yvalName in yvals:
-                assert yvalName not in categories
+        savedStatsFiles = self.getListOfStatsFiles()
+        filesForEachPlot = {}
+        for plotName, statsFile in savedStatsFiles:
+            if plotName not in filesForEachPlot:
+                filesForEachPlot[plotName] = []
+            filesForEachPlot[plotName].append(statsFile)
 
-            catsToShuffle = list(categories.keys())
+        shuffResults: List[Tuple[str, List[List[ShuffleResult]]]] = []
+        for plotName in tqdm(filesForEachPlot, desc="Running shuffles", total=len(filesForEachPlot)):
+            df = pd.concat([pd.read_hdf(f, key="stats") for f in filesForEachPlot[plotName]])
+            yvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="yvalNames")
+            categoryNames = pd.read_hdf(filesForEachPlot[plotName][0], key="categoryNames")
+            persistentCategoryNames = pd.read_hdf(
+                filesForEachPlot[plotName][0], key="persistentCategoryNames")
+            # infoNames = pd.read_hdf(filesForEachPlot[plotName][0], key="infoNames")
+            # persistentInfoNames = pd.read_hdf(filesForEachPlot[plotName][0], key="persistentInfoNames")
+
+            catsToShuffle = list(categoryNames) + list(persistentCategoryNames)
             todel = set()
             for cat in catsToShuffle:
-                vals = set(categories[cat])
+                vals = set(df[cat])
                 if len(vals) <= 1:
                     todel.add(cat)
                     print("Category {} has only one val ({}). Not including in shuffle for plot {}".format(
                         cat, vals, plotName))
-
             for td in todel:
                 catsToShuffle.remove(td)
 
-            categories.update(yvals)
-            categories.update(infoVals)
-            df = pd.DataFrame(data=categories)
             specs = self.getAllShuffleSpecs(df, columnsToShuffle=catsToShuffle)
             ss = [len(s) for s in specs]
             specs = [x for _, x in sorted(zip(ss, specs))]
-            print("\n".join([str(s) for s in specs]))
-            self._doShuffles(df, specs, list(yvals.keys()))
+            # print("\n".join([str(s) for s in specs]))
+            sr = self._doShuffles(df, specs, yvalNames)
+            shuffResults.append((plotName, sr))
 
-            # for yvalName in yvals:
-            #     yv = np.array(yvals[yvalName])
-            #     r = self._doShuffle(yv, yvalName, categories, numShuffles=numShuffles)
-            #     self.printShuffleResult(r)
+        if significantThreshold is not None:
+            significantResults: List[str, ShuffleResult, float] = []
+            for plotName, sr in shuffResults:
+                for s in sr:
+                    for s2 in s:
+                        pval = s2.getPVals().item()
+                        if pval < significantThreshold or pval > 1 - significantThreshold:
+                            if resultsFilter(plotName, s2):
+                                significantResults.append(
+                                    (plotName, s2, pval if pval < 0.5 else 1 - pval))
 
-    def getAllShuffleSpecsWithLeaf(self, df: pd.DataFrame, leaf: ShuffSpec, columnsToShuffle=None):
+            sdf = pd.DataFrame([(pn, str(s.specs), pv) for pn, s, pv, in significantResults],
+                               columns=["plot", "shuffle", "pval"])
+            sdf.sort_values(by="pval", ascending=False, inplace=True)
+            # print(sdf.to_string(index=False))
+
+            sdf.to_hdf(self.infoFileFullName + "_significantShuffles.h5", key="significantShuffles")
+
+    def getAllShuffleSpecsWithLeaf(self, df: pd.DataFrame, leaf: List[ShuffSpec], columnsToShuffle=None) -> List[List[ShuffSpec]]:
         if columnsToShuffle is None:
             columnsToShuffle = set(df.columns)
             columnsToShuffle.remove(leaf.categoryName)
@@ -702,14 +794,14 @@ class PlotManager:
 
         return ret
 
-    def _doOneWayShuffle(self, df, spec, dataNames):
+    def _doOneWayShuffle(self, df: pd.DataFrame, spec: ShuffSpec, dataNames: List[str]) -> ShuffleResult:
         assert isinstance(spec, ShuffSpec) and \
             spec.shuffType == ShuffSpec.ShuffType.GLOBAL
 
         if spec.categoryName in self.customShuffleFunctions:
             shufFunc = self.customShuffleFunctions[spec.categoryName]
         else:
-            def shufFunc(dataframe, colName, rng):
+            def shufFunc(dataframe: pd.DataFrame, colName: str, rng: np.random.Generator) -> pd.Series:
                 return dataframe[colName].sample(frac=1, random_state=rng).reset_index(drop=True)
 
         ret = ShuffleResult([spec], dataNames=dataNames)
@@ -728,7 +820,7 @@ class PlotManager:
 
         return ret
 
-    def _doShuffleSpec(self, df, spec, valSet, dataNames):
+    def _doShuffleSpec(self, df: pd.DataFrame, spec: List[ShuffSpec], valSet: Dict[str, set], dataNames: List[str]) -> List[ShuffleResult]:
         assert isinstance(spec, list)
         for si, s in enumerate(spec):
             assert isinstance(s, ShuffSpec)
@@ -762,7 +854,7 @@ class PlotManager:
 
         if s.shuffType == ShuffSpec.ShuffType.ACROSS:
             vals = valSet[s.categoryName]
-            withinRes = []
+            withinRes: List[List[ShuffleResult]] = []
             for val in vals:
                 withinIdx = df[s.categoryName] == val
                 withinRes.append(self._doShuffleSpec(
@@ -836,7 +928,8 @@ class PlotManager:
 
             return ret
 
-    def _doShuffles(self, df, specs, dataNames, numShuffles=None):
+    def _doShuffles(self, df: pd.DataFrame, specs: List[List[ShuffSpec]],
+                    dataNames: List[str], numShuffles: List[int] = None, writeToInfoFile: bool = False) -> List[List[ShuffleResult]]:
         if numShuffles is not None:
             assert len(numShuffles) == len(specs)
 
@@ -846,7 +939,7 @@ class PlotManager:
                 columnsToShuffle.add(s.categoryName)
 
         # print(df)
-        valSet = {}
+        valSet: Dict[str, set] = {}
         for col in columnsToShuffle:
             vs = set(df[col])
             if len(vs) <= 1:
@@ -854,17 +947,17 @@ class PlotManager:
             valSet[col] = vs
         # print("created valset:", valSet)
 
-        ret = []
-        with open(self.infoFileFullName, "a") as f:
-            for si, spec in enumerate(specs):
-                # print(f'\r{spec}                 ', end='')
-                if numShuffles is not None:
-                    self.numShuffles = numShuffles[si]
-                res = self._doShuffleSpec(df, spec, valSet, dataNames)
-                ret.append(res)
-                for r in res:
-                    # print(r.getFullInfoString(linePfx="\t"))
-                    f.write(r.getFullInfoString(linePfx="\t") + "\n")
+        ret: List[List[ShuffleResult]] = []
+        for si, spec in enumerate(specs):
+            # print(f'{spec}                 ', end='\r')
+            if numShuffles is not None:
+                self.numShuffles = numShuffles[si]
+            res = self._doShuffleSpec(df, spec, valSet, dataNames)
+            ret.append(res)
+
+        if writeToInfoFile:
+            resStr = "\n".join([r.getFullInfoString(linePfx="\t") for res in ret for r in res])
+            self.writeToInfoFile(resStr)
         # print("")
         return ret
 

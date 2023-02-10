@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 import numpy as np
 from scipy.ndimage import gaussian_filter1d, gaussian_filter
-from typing import List, Tuple
+from typing import List, Tuple, Iterable, Callable, Dict
 from matplotlib.axes import Axes
 import math
 import MountainViewIO
@@ -20,25 +20,15 @@ import warnings
 import matplotlib.pyplot as plt
 from numpy.typing import ArrayLike
 from functools import partial
+from DataminingFactory import runEveryCombination
+import multiprocessing
 
 
-# Today's tasks:
-# 1. For session measure, control val func should be a list of functions, then make figures can iterate through each type of control
-#   and make a figure for each. Also each function should return a list of data points and a summary value.
-#   For below combo plot, would also be nice to get a list of positions associated with the control data points.
-#       Can be list of positions and session idxs, since that's the form all my controls take now anyway
-#       Might make things cleaner in general to do it that way
-#
-# 2. Make these combo plots:
-#   a. overlaid everysession plots centered at home. Possibly also choose a control way to center
-#   b. plot that's just distance to home vs measure. Control can be same for each ctrl location
-#
-# 3. Try these variations on dot prod:
-#  a. distance discount
-#  b. velocity weighting
-#
-# 4. Throw figures in a doc, send to David
-
+# Today's TODO
+#  - Make plotmanager threadsafe
+#  - test datamining on small set, inspect shuffle output
+#  - implement all basic measures from slide
+#  - start big run before leaving
 
 # TODO
 # focus first on getting something on which to base discussion, like very basic demonstration of memory of home during probe
@@ -63,16 +53,7 @@ from functools import partial
 # Probably better way to look also, how often after interruption is there another ripple?
 #
 # Datamine B17
-# Especially debugged dot product not divided by total time
-# Histogram balance might be a good visual?
-# Add control that is rotated-similar wells instead of aways
 # Task gravity, exclude reward?
-# Tune up spotlight/dotprod measure by just looking at behavior during home trials, should see clear trend toward home
-# Symetrical controls might be more important here than other measures
-# Distance discount?
-# Plus velocity weighting perhaps??
-# Maybe exclude times when at well? At least need to way to deal with looking right pas a well
-# Maybe for everysession plots try centering on home to combine, see if clear gradient situation appears
 # A measure that tries to capture the consistent paths that develop during a session, and compares that
 #   to probe behavior. Something like frequency of entering a well from each angle maybe, so if
 #   always approaching 35 from top and leaving from left, how consistent is that with probe?
@@ -87,9 +68,6 @@ from functools import partial
 # Better optimized clip correction region output. Save til the end so can:
 #   compare to task and probe times, weed out ones that aren't during behavior
 #   print separately at the end all at once
-#
-# Shuffles can go crazy with different measures when in datamine mode.
-# Also have this output a helpful ranking of shuffles that showed up significant
 
 
 # COmpleted:
@@ -115,6 +93,43 @@ from functools import partial
 #
 # Look at path similarity between task and probe. Usual paths that are traced out during task don't seem to be
 # followed at all during probe
+#
+# Datamining:
+# Especially debugged dot product not divided by total time
+# Add control that is rotated-similar wells instead of aways
+# Tune up spotlight/dotprod measure by just looking at behavior during home trials, should see clear trend toward home
+# Symetrical controls might be more important here than other measures
+# Distance discount?
+# Plus velocity weighting perhaps??
+# Maybe exclude times when at well? At least need to way to deal with looking right pas a well
+# Maybe for everysession plots try centering on home to combine, see if clear gradient situation appears
+#
+# Shuffles can go crazy with different measures when in datamine mode.
+# Also have this output a helpful ranking of shuffles that showed up significant
+#
+# Histogram balance might be a good visual?
+
+def runDMFOnLM(measureFunc: Callable[..., LocationMeasure], allParams: Dict[str, Iterable], pp: PlotManager, minParamsSequential=3):
+    def measureFuncWrapper(params: Dict[str, Iterable]):
+        lm = measureFunc(**params)
+        if "bp" in params:
+            lm.makeFigures(pp, excludeFromCombo=True, everySessionBehaviorPeriod=params["bp"])
+        else:
+            lm.makeFigures(pp, excludeFromCombo=True)
+
+    runEveryCombination(measureFuncWrapper, allParams,
+                        numParametersSequential=min(minParamsSequential, len(allParams)))
+
+
+def hacky_RunOldStats(infoFileName: str):
+    dataDir = findDataDir()
+    globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
+    rseed = int(time.perf_counter())
+    print("random seed =", rseed)
+
+    pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
+                     priorityLevel=1, infoFileName=infoFileName, verbosity=2)
+    pp.runShuffles()
 
 
 def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
@@ -125,6 +140,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
                 PLOT_OCCUPANCY=None, RUN_SPOTLIGHT_EXPLORATION_PROBE=None,
+                RUN_NEW_GRAVITY=None, RUN_GRAVITY_FACTORY=None,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
@@ -154,6 +170,10 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         RUN_SPOTLIGHT_EXPLORATION_PROBE = RUN_UNSPECIFIED
     if RUN_FRAC_EXCURSIONS_VISITED is None:
         RUN_FRAC_EXCURSIONS_VISITED = RUN_UNSPECIFIED
+    if RUN_NEW_GRAVITY is None:
+        RUN_NEW_GRAVITY = RUN_UNSPECIFIED
+    if RUN_GRAVITY_FACTORY is None:
+        RUN_GRAVITY_FACTORY = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -171,7 +191,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
     infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
-                     priorityLevel=1, infoFileName=infoFileName)
+                     priorityLevel=1, infoFileName=infoFileName, verbosity=2)
 
     allSessionsByRat = {}
     for animalName in animalNames:
@@ -239,8 +259,81 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            LocationMeasure("test", BTSession.getTestMap, sessions).makeFigures(
-                pp, everySessionBehaviorPeriod=BP(probe=True), excludeFromCombo=True)
+            def makeTestMeasure(p1, p2, p3):
+                print(f"test {p1} {p2} {p3}")
+                return LocationMeasure(f"test {p1} {p2} {p3}",
+                                       BTSession.getTestMap,
+                                       sessions,
+                                       parallelize=False)
+            allParams = {
+                "p1": np.arange(3),
+                "p2": np.arange(3),
+                "p3": np.arange(3),
+            }
+
+            runDMFOnLM(makeTestMeasure, allParams, pp, minParamsSequential=1)
+
+        if RUN_GRAVITY_FACTORY:
+            def makeGravityMeasure(bp: BP, passRadius, visitRadiusFactor, passDenoiseFactor, measureSmoothDist):
+                return LocationMeasure(f"gravity {bp.filenameString()} "
+                                       f"passRadius={passRadius:.2f} "
+                                       f"visitRadiusFactor={visitRadiusFactor:.2f} "
+                                       f"denoiseFactor={passDenoiseFactor:.2f} "
+                                       f"measureSmoothDist={measureSmoothDist:.2f}",
+                                       lambda sesh: sesh.getValueMap(
+                                           lambda pos: sesh.getGravity(bp, pos,
+                                                                       passRadius=passRadius,
+                                                                       visitRadius=passRadius * visitRadiusFactor,
+                                                                       passDenoiseFactor=passDenoiseFactor)),
+                                       sessions,
+                                       smoothDist=measureSmoothDist, parallelize=False)
+            allParams = {
+                "passRadius": np.linspace(0.5, 1.5, 3),
+                "visitRadiusFactor": np.linspace(0.2, 0.4, 2),
+                "passDenoiseFactor": np.linspace(1.2, 2, 3),
+                "measureSmoothDist": np.linspace(0, 0.5, 3),
+                "bp": [BP(probe=True), BP(probe=False), BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+                       BP(probe=True, timeInterval=(0, 90)), BP(probe=False, timeInterval=(60 * 5, None))]
+            }
+
+            runDMFOnLM(makeGravityMeasure, allParams, pp)
+
+        if RUN_NEW_GRAVITY:
+            def gravityFigsForBP(bp: BP):
+                passRadii = np.linspace(0.5, 1.5, 3)
+                visitRadiusFactors = np.linspace(0.2, 0.4, 2)
+                denoiseFactors = np.linspace(1.2, 2, 3)
+                measureSmoothDists = np.linspace(0, 0.5, 3)
+                for passRadius in passRadii:
+                    for visitRadiusFactor in visitRadiusFactors:
+                        visitRadius = passRadius * visitRadiusFactor
+                        for denoiseFactor in denoiseFactors:
+                            for measureSmoothDist in measureSmoothDists:
+                                lm = LocationMeasure(f"gravity {bp.filenameString()} "
+                                                     f"passRadius={passRadius:.2f} "
+                                                     f"visitRadiusFactor={visitRadiusFactor:.2f} "
+                                                     f"denoiseFactor={denoiseFactor:.2f}"
+                                                     f"measureSmoothDist={measureSmoothDist:.2f}",
+                                                     lambda sesh: sesh.getValueMap(
+                                                         lambda pos: sesh.getGravity(bp, pos,
+                                                                                     passRadius=passRadius,
+                                                                                     visitRadius=visitRadius,
+                                                                                     passDenoiseFactor=denoiseFactor)
+                                                     ), sessions, smoothDist=measureSmoothDist)
+                                lm.makeFigures(pp, everySessionBehaviorPeriod=bp,
+                                               excludeFromCombo=True)
+
+                # passRadius=1.25, visitRadius=0.25, passDenoiseFactor=1.1,
+                lm = LocationMeasure(f"gravity {bp.filenameString()}", lambda sesh: sesh.getValueMap(
+                    partial(BTSession.getGravity, sesh, bp)
+                ), sessions)
+                lm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
+
+            gravityFigsForBP(BP(probe=True))
+            gravityFigsForBP(BP(probe=False))
+            gravityFigsForBP(BP(probe=True, timeInterval=BTSession.fillTimeInterval))
+            gravityFigsForBP(BP(probe=True, timeInterval=(0, 90)))
+            gravityFigsForBP(BP(probe=False, timeInterval=(60 * 5, None)))
 
         if RUN_FRAC_EXCURSIONS_VISITED:
             def fracExcursionsVisited(sesh: BTSession, pos: Tuple[float, float], radius=0.25) -> float:
@@ -264,15 +357,14 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                             sessions).makeFigures(pp, everySessionBehaviorPeriod=bp)
 
         def dotProdFigsForBP(bp: BP):
-            distFactors = np.linspace(0, 1, 3)
-            velFactors = np.linspace(0, 1, 3)
+            distFactors = [-1, -0.25, -0.1, 0, 0.1, 0.25, 1]
+            # distFactors = [0]
             for distFactor in distFactors:
-                for velFactor in velFactors:
-                    sm = LocationMeasure("dot prod {} d{} v{}".format(bp.filenameString(), distFactor, velFactor), lambda sesh:
-                                         sesh.getValueMap(lambda pos: sesh.getDotProductScore(
-                                             bp, pos, distanceWeight=distFactor, velocityWeight=velFactor, showPlot=True)),
-                                         sessions)
-                    sm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
+                sm = LocationMeasure("dot prod {} d{}".format(bp.filenameString(), distFactor), lambda sesh:
+                                     sesh.getValueMap(lambda pos: sesh.getDotProductScore(
+                                         bp, pos, distanceWeight=distFactor, showPlot=True)),
+                                     sessions)
+                sm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
 
         if RUN_SPOTLIGHT_EXPLORATION_TASK:
             dotProdFigsForBP(BP(probe=False, inclusionFlags="homeTrial"))
@@ -968,5 +1060,11 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
 
-    makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True,
-                RUN_SPOTLIGHT_EXPLORATION_PROBE=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_NEW_GRAVITY=True, DATAMINE=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True,
+    #             RUN_SPOTLIGHT_EXPLORATION_PROBE=True, DATAMINE=True, RUN_NEW_GRAVITY=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True, DATAMINE=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_GRAVITY_FACTORY=True, DATAMINE=True)
+
+    hacky_RunOldStats("B17_20230210_144854.txt")

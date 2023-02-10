@@ -21,7 +21,7 @@ autopep8 = "*"
 tables = "*"
 mountainlab-pytools = "*"
 ipython-genutils = "*"
-chime = "*"
+tqdm = "*"
 
 [dev-packages]
 
