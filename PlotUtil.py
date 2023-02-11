@@ -8,7 +8,6 @@ import matplotlib as mpl
 import pandas as pd
 import seaborn as sns
 import warnings
-from enum import IntEnum, auto
 import matplotlib.image as mpimg
 from matplotlib.offsetbox import AnchoredText
 import pickle
@@ -20,117 +19,7 @@ from typing import Optional, Tuple, Dict, Any, List, Callable
 from numpy.typing import ArrayLike
 from tqdm import tqdm
 import multiprocessing
-
-
-class ShuffSpec:
-    """
-    Specifies one shuffle to run
-    if type is WITHIN, GLOBAL, or INTERACTION, value is a single value
-    if type is ACROSS or RECURSIVE_ALL, value is None
-    """
-    class ShuffType(IntEnum):
-        UNSPECIFIED = auto()
-        GLOBAL = auto()
-        WITHIN = auto()
-        ACROSS = auto()
-        INTERACTION = auto()
-        RECURSIVE_ALL = auto()  # includes interaction, across, and within
-
-        def __repr__(self) -> str:
-            return self.name
-
-        def __str__(self) -> str:
-            return self.name[0:3]
-
-    def __init__(self, shuffType=ShuffType.UNSPECIFIED, categoryName="", value=None):
-        self.shuffType = shuffType
-        self.categoryName = categoryName
-        self.value = value
-
-    def copy(self) -> ShuffSpec:
-        ret = ShuffSpec()
-        ret.shuffType = self.shuffType
-        ret.categoryName = self.categoryName
-        ret.value = self.value
-        return ret
-
-    def __str__(self) -> str:
-        return "{} {} ({})".format(self.shuffType, self.categoryName, self.value)
-
-    def __repr__(self) -> str:
-        return "{} {} ({})".format(self.shuffType, self.categoryName, self.value)
-
-    def __lt__(self, other) -> bool:
-        if self.shuffType < other.shuffType:
-            return True
-        elif self.shuffType > other.shuffType:
-            return False
-
-        if self.categoryName < other.categoryName:
-            return True
-        elif self.categoryName > other.categoryName:
-            return False
-
-        if self.value is None or other.value is None:
-            return False
-        return self.value < other.value
-
-    def __eq__(self, __o: object) -> bool:
-        if not isinstance(__o, ShuffSpec):
-            return False
-        return self.shuffType == __o.shuffType and self.categoryName == __o.categoryName and \
-            (self.value is None) == (__o.value is None) and (
-                self.value is None or self.value == __o.value)
-
-    def __ne__(self, __o: object) -> bool:
-        return not self == __o
-
-
-class ShuffleResult:
-    def __init__(self, specs: List[ShuffSpec] = [], diff=np.nan, shuffleDiffs=None, dataNames: List[str] = []) -> None:
-        self.specs = specs
-        self.diff = diff
-        self.shuffleDiffs = shuffleDiffs
-        self.dataNames = dataNames
-
-    def copy(self) -> ShuffleResult:
-        ret = ShuffleResult()
-        ret.diff = self.diff
-        if self.shuffleDiffs is not None:
-            ret.shuffleDiffs = np.copy(self.shuffleDiffs)
-        ret.specs = [s.copy() for s in self.specs]
-        ret.dataNames = self.dataNames.copy()
-        return ret
-
-    def getPVals(self) -> np.ndarray:
-        pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
-                                  axis=0) / self.shuffleDiffs.shape[0]
-        pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
-                                  axis=0) / self.shuffleDiffs.shape[0]
-        return (pvals1 + pvals2) / 2
-
-    def getFullInfoString(self, linePfx="") -> str:
-        sdmin = np.min(self.shuffleDiffs, axis=0)
-        sdmax = np.max(self.shuffleDiffs, axis=0)
-        pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
-                                  axis=0) / self.shuffleDiffs.shape[0]
-        pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
-                                  axis=0) / self.shuffleDiffs.shape[0]
-        ret = [f"{self.specs}:"] + [linePfx + f"{self.dataNames[i]}: {float(self.diff[i])} ({sdmin[i]}, {sdmax[i]}) "
-                                    f"p1 = {pvals1[i]}\tp2 = {pvals2[i]}" for i in range(len(self.diff))]
-        return "\n".join(ret)
-
-    def __str__(self) -> str:
-        if self.shuffleDiffs is None:
-            return "{}: {}".format(self.specs, self.diff)
-        else:
-            return "{}: {} ({}, {})".format(self.specs, self.diff, np.min(self.shuffleDiffs), np.max(self.shuffleDiffs))
-
-    def __repr__(self) -> str:
-        if self.shuffleDiffs is None:
-            return "{}: {}".format(self.specs, self.diff)
-        else:
-            return "{}: {} ({}-{})".format(self.specs, self.diff, np.min(self.shuffleDiffs), np.max(self.shuffleDiffs))
+from Shuffler import ShuffSpec, Shuffler, ShuffleResult
 
 
 @dataclass
@@ -216,6 +105,8 @@ class PlotManager:
         self.infoFileLock = multiprocessing.Lock()
         self.globalLock = multiprocessing.Lock()
 
+        self.shuffler = Shuffler(self.rng)
+
     def __enter__(self) -> PlotContext:
         return self.plotContext
 
@@ -282,9 +173,6 @@ class PlotManager:
         if self.priority is not None and self.priorityLevel is not None and self.priority > self.priorityLevel:
             return
 
-        # TODO save all this data to a file, and then just have a small amount of shared state that is a list of files
-        # Then write to info file the file name with the stats, so can go back and look at them later
-
         if len(self.plotContext.yvals) > 0:
             # Everything is referenced according to this name
             figureName = os.path.basename(self.plotContext.figName)
@@ -332,6 +220,8 @@ class PlotManager:
                 # print("\n".join([str(s) for s in shufSpecs]))
                 immediateRes = self._doShuffles(df, shufSpecs, list(
                     self.plotContext.yvals.keys()), numShuffles=numShuffles)
+                # immediateRes = self.shuffler.doShuffles(df, shufSpecs, list(
+                #     self.plotContext.yvals.keys()), numShuffles=numShuffles)
                 # print(immediateRes)
                 pval = None
                 for rr in immediateRes:
@@ -697,7 +587,8 @@ class PlotManager:
             statsFiles = []
             for line in lines:
                 if line.startswith("statsFile:"):
-                    statsFiles.append((line.split("__!__")[1], line.split("__!__")[2]))
+                    statsFiles.append(
+                        (line.split("__!__")[1].strip(), line.split("__!__")[2].strip()))
         return statsFiles
 
     def runShuffles(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
@@ -752,8 +643,8 @@ class PlotManager:
 
             sdf = pd.DataFrame([(pn, str(s.specs), pv) for pn, s, pv, in significantResults],
                                columns=["plot", "shuffle", "pval"])
-            sdf.sort_values(by="pval", ascending=False, inplace=True)
-            # print(sdf.to_string(index=False))
+            sdf.sort_values(by="pval", inplace=True)
+            print(sdf.to_string(index=False))
 
             sdf.to_hdf(self.infoFileFullName + "_significantShuffles.h5", key="significantShuffles")
 

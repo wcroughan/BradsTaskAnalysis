@@ -819,7 +819,7 @@ class BTSession:
 
         return self.avgContinuousMeasureAtWell(inProbe, wellName, yvals, **kwargs)
 
-    def dwellTimes(self, inProbe, wellName, **kwargs):
+    def dwellTimesAtWell(self, inProbe, wellName, **kwargs):
         """
         return units: trodes timestamps
         """
@@ -831,17 +831,17 @@ class BTSession:
             inProbe, wellName, includeEdgeOverlap=("omit", "full"), **kwargs)
         return ents.size
 
-    def totalDwellTime(self, inProbe, wellName, **kwargs):
+    def totalDwellTimeAtWell(self, inProbe, wellName, **kwargs):
         """
         return units: seconds
         """
-        return np.sum(self.dwellTimes(inProbe, wellName, **kwargs) / TRODES_SAMPLING_RATE)
+        return np.sum(self.dwellTimesAtWell(inProbe, wellName, **kwargs) / TRODES_SAMPLING_RATE)
 
-    def avgDwellTime(self, inProbe, wellName, avgFunc=np.nanmean, emptyVal=np.nan, **kwargs):
+    def avgDwellTimeAtWell(self, inProbe, wellName, avgFunc=np.nanmean, emptyVal=np.nan, **kwargs):
         """
         return units: seconds
         """
-        ret = self.dwellTimes(inProbe, wellName, **kwargs)
+        ret = self.dwellTimesAtWell(inProbe, wellName, **kwargs)
         if len(ret) == 0:
             return emptyVal
         else:
@@ -1345,10 +1345,21 @@ class BTSession:
             occMap = gaussian_filter(occMap, smooth)
         return occMap, occBinsX, occBinsY
 
-    def getValueMap(self, func: Callable[[Tuple[float, float]], float], resolution: int = 36) -> np.ndarray:
+    def getValueMap(self, func: Callable[[Tuple[float, float]], float],
+                    resolution: int = 36, outlierPctile: Optional[float] = None) -> np.ndarray:
+        """
+        outlier percentile is on the range [0, 100]
+        """
         pxls = np.linspace(-0.5, 6.5, resolution, endpoint=False)
         pxls += (pxls[1] - pxls[0]) / 2
-        return np.array([[func((x, y)) for y in pxls] for x in pxls])
+        ret = np.array([[func((x, y)) for y in pxls] for x in pxls])
+
+        if outlierPctile is not None:
+            ret[ret > np.nanpercentile(ret, outlierPctile)] = np.nanpercentile(ret, outlierPctile)
+            ret[ret < np.nanpercentile(ret, 100 - outlierPctile)
+                ] = np.nanpercentile(ret, 100 - outlierPctile)
+
+        return ret
 
     def getTestMap(self) -> np.ndarray:
         """
@@ -1420,3 +1431,88 @@ class BTSession:
 
         numVisits = np.count_nonzero(np.array(goodPkHeights) < visitRadius)
         return numVisits / len(goodPkIdxs)
+
+    def totalTimeAtPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+        ts, xs, ys = self.posDuringBehaviorPeriod(behaviorPeriod)
+        dx = xs - pos[0]
+        dy = ys - pos[1]
+        dist2 = dx * dx + dy * dy
+        dt = np.diff(ts)
+        dt = np.append(dt, dt[-1])
+        return np.nansum(dt[dist2 < radius * radius]) / TRODES_SAMPLING_RATE
+
+    def avgDwellTimeAtPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+        bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
+        ts, xs, ys = self.posDuringBehaviorPeriod(bp)
+        dx = xs - pos[0]
+        dy = ys - pos[1]
+        dist2 = dx * dx + dy * dy
+        inRadius = dist2 < radius * radius
+        entries = np.where(np.diff(inRadius.astype(int)) == 1)[0]
+        exits = np.where(np.diff(inRadius.astype(int)) == -1)[0]
+        if len(entries) == 0 or len(exits) == 0:
+            return np.nan
+        if exits[0] < entries[0]:
+            exits = exits[1:]
+        if entries[-1] > exits[-1]:
+            entries = entries[:-1]
+        if len(entries) != len(exits):
+            raise ValueError("Number of entries and exits don't match")
+
+        dwellTimes = ts[exits] - ts[entries]
+        return np.nanmean(dwellTimes) / TRODES_SAMPLING_RATE
+
+    def numVisitsToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+        bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
+        ts, xs, ys = self.posDuringBehaviorPeriod(bp)
+        dx = xs - pos[0]
+        dy = ys - pos[1]
+        dist2 = dx * dx + dy * dy
+        inRadius = dist2 < radius * radius
+        entries = np.where(np.diff(inRadius.astype(int)) == 1)[0]
+        exits = np.where(np.diff(inRadius.astype(int)) == -1)[0]
+        if len(entries) == 0 or len(exits) == 0:
+            return np.nan
+        if exits[0] < entries[0]:
+            exits = exits[1:]
+        if entries[-1] > exits[-1]:
+            entries = entries[:-1]
+        if len(entries) != len(exits):
+            raise ValueError("Number of entries and exits don't match")
+
+        return len(entries)
+
+    def latencyToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+        bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
+        ts, xs, ys = self.posDuringBehaviorPeriod(bp)
+        dx = xs - pos[0]
+        dy = ys - pos[1]
+        dist2 = dx * dx + dy * dy
+        inRadius = dist2 < radius * radius
+        entries = np.where(np.diff(inRadius.astype(int)) == 1)[0]
+        if len(entries) == 0:
+            return np.nan
+        return (ts[entries[0]] - ts[0]) / TRODES_SAMPLING_RATE
+
+    def pathOptimalityToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+        bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
+        _, xs, ys = self.posDuringBehaviorPeriod(bp)
+        dx = xs - pos[0]
+        dy = ys - pos[1]
+        dist2 = dx * dx + dy * dy
+        inRadius = dist2 < radius * radius
+        if inRadius[0]:
+            return np.nan
+
+        entries = np.where(np.diff(inRadius.astype(int)) == 1)[0]
+        if len(entries) == 0 or entries[0] == 0:
+            return np.nan
+
+        totalDistance = np.nansum(
+            np.sqrt(np.diff(xs[:entries[0]]) ** 2 + np.diff(ys[:entries[0]]) ** 2))
+        totalDisplacement = np.sqrt((xs[entries[0]] - xs[0]) ** 2 + (ys[entries[0]] - ys[0]) ** 2)
+        # print(f"{ totalDistance = }", f"{ totalDisplacement = }")
+        ret = totalDistance / totalDisplacement
+        # input(ret)
+
+        return ret

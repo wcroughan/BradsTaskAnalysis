@@ -12,9 +12,10 @@ from multiprocessing import Pool
 import warnings
 
 from UtilFunctions import offWall, getWellPosCoordinates, getRotatedWells
-from PlotUtil import violinPlot, PlotManager, ShuffSpec, setupBehaviorTracePlot, blankPlot, \
+from PlotUtil import violinPlot, PlotManager, setupBehaviorTracePlot, blankPlot, \
     plotIndividualAndAverage
-from consts import allWellNames, TRODES_SAMPLING_RATE
+from Shuffler import ShuffSpec
+from consts import allWellNames
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
 
@@ -1214,6 +1215,8 @@ class LocationMeasure():
             for ctrlName in self.controlValLabels:
                 vals = self.sessionValsBySession - self.controlValMeans[ctrlName]
                 with plotManager.newFig(figName + "_ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
+                    if all(np.isnan(vals)):
+                        continue
                     violinPlot(pc.ax, vals, self.conditionBySession,
                                dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
                     pc.ax.set_title(self.name + " difference", fontdict={'fontsize': 6})

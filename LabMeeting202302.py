@@ -24,15 +24,9 @@ from DataminingFactory import runEveryCombination
 import multiprocessing
 
 
-# Today's TODO
-#  - Make plotmanager threadsafe
-#  - test datamining on small set, inspect shuffle output
-#  - implement all basic measures from slide
-#  - start big run before leaving
-
 # TODO
-# focus first on getting something on which to base discussion, like very basic demonstration of memory of home during probe
-#   once have measures showing home/away difference, can talk about condition difference
+# Separate plotmanager and shuffler
+# Have shuffler load a list of info files from which it grabs stats
 #
 # Look at notes in B18's LoadInfo section, deal with all of them
 # i.e. minimum date for B13
@@ -108,6 +102,9 @@ import multiprocessing
 # Also have this output a helpful ranking of shuffles that showed up significant
 #
 # Histogram balance might be a good visual?
+#
+# focus first on getting something on which to base discussion, like very basic demonstration of memory of home during probe
+#   once have measures showing home/away difference, can talk about condition difference
 
 def runDMFOnLM(measureFunc: Callable[..., LocationMeasure], allParams: Dict[str, Iterable], pp: PlotManager, minParamsSequential=3):
     def measureFuncWrapper(params: Dict[str, Iterable]):
@@ -140,7 +137,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
                 PLOT_OCCUPANCY=None, RUN_SPOTLIGHT_EXPLORATION_PROBE=None,
-                RUN_NEW_GRAVITY=None, RUN_GRAVITY_FACTORY=None,
+                RUN_NEW_GRAVITY=None, RUN_GRAVITY_FACTORY=None, RUN_SIMPLE_MEASURES=None,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
@@ -174,6 +171,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         RUN_NEW_GRAVITY = RUN_UNSPECIFIED
     if RUN_GRAVITY_FACTORY is None:
         RUN_GRAVITY_FACTORY = RUN_UNSPECIFIED
+    if RUN_SIMPLE_MEASURES is None:
+        RUN_SIMPLE_MEASURES = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -258,20 +257,50 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         if len(animalNames) > 1:
             pp.setStatCategory("rat", ratName)
 
-        if RUN_TESTS:
-            def makeTestMeasure(p1, p2, p3):
-                print(f"test {p1} {p2} {p3}")
-                return LocationMeasure(f"test {p1} {p2} {p3}",
-                                       BTSession.getTestMap,
-                                       sessions,
+        if RUN_SIMPLE_MEASURES:
+            def makeSimpleMeasure(func, radius, smoothDist, bp: BP):
+                # print(f"test {func.__name__} {radius:.2f} {bp.filenameString()} {smoothDist:.2f}")
+                return LocationMeasure(f"simple {func.__name__} {radius:.2f} {bp.filenameString()} {smoothDist:.2f}",
+                                       lambda sesh: sesh.getValueMap(
+                                           lambda pos: func(sesh, bp, pos, radius=radius),
+                                       ),
+                                       sessions[0:3],
+                                       smoothDist=smoothDist,
                                        parallelize=False)
+            # allParams = {
+            #     "func": [BTSession.totalTimeAtPosition,
+            #              BTSession.pathOptimalityToPosition],
+            #     "radius": [0.25, 0.5],
+            #     "smoothDist": [0, 0.5],
+            #     "bp": [BP(probe=True, timeInterval=(0, 60)),
+            #            BP(probe=True, timeInterval=BTSession.fillTimeInterval),]
+            # }
+
             allParams = {
-                "p1": np.arange(3),
-                "p2": np.arange(3),
-                "p3": np.arange(3),
+                "func": [BTSession.totalTimeAtPosition,
+                         BTSession.avgDwellTimeAtPosition,
+                         BTSession.numVisitsToPosition,
+                         BTSession.latencyToPosition,
+                         BTSession.pathOptimalityToPosition],
+                "radius": [0.25, 0.5, 0.75, 1, 1.5],
+                "smoothDist": [0, 0.5, 1.0],
+                "bp": [BP(probe=True), BP(probe=False),
+                       BP(probe=True, timeInterval=(0, 60)),
+                       BP(probe=True, timeInterval=BTSession.fillTimeInterval),]
             }
 
-            runDMFOnLM(makeTestMeasure, allParams, pp, minParamsSequential=1)
+            runDMFOnLM(makeSimpleMeasure, allParams, pp, minParamsSequential=2)
+
+        if RUN_TESTS:
+            def optimFunc(pctile, sesh: BTSession):
+                # print(sesh.name)
+                return sesh.getValueMap(
+                    lambda pos: sesh.pathOptimalityToPosition(BP(probe=False), pos, radius=0.5),
+                    outlierPctile=pctile)
+            LocationMeasure("test optimality 95", partial(optimFunc, 95),
+                            sessions).makeFigures(pp, excludeFromCombo=True,
+                                                  everySessionBehaviorPeriod=BP(probe=False),
+                                                  runStats=False)
 
         if RUN_GRAVITY_FACTORY:
             def makeGravityMeasure(bp: BP, passRadius, visitRadiusFactor, passDenoiseFactor, measureSmoothDist):
@@ -1060,11 +1089,13 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
 
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True, DATAMINE=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_SIMPLE_MEASURES=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_NEW_GRAVITY=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True,
     #             RUN_SPOTLIGHT_EXPLORATION_PROBE=True, DATAMINE=True, RUN_NEW_GRAVITY=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_GRAVITY_FACTORY=True, DATAMINE=True)
 
-    hacky_RunOldStats("B17_20230210_144854.txt")
+    # hacky_RunOldStats("B17_20230210_144854.txt")
+    # hacky_RunOldStats("B17_20230210_144854.txt")
