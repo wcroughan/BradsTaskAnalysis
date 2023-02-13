@@ -125,7 +125,7 @@ def hacky_RunOldStats(infoFileName: str):
     print("random seed =", rseed)
 
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
-                     priorityLevel=1, infoFileName=infoFileName, verbosity=2)
+                     infoFileName=infoFileName, verbosity=2)
     pp.runShuffles()
 
 
@@ -190,7 +190,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
     infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
-                     priorityLevel=1, infoFileName=infoFileName, verbosity=2)
+                     infoFileName=infoFileName, verbosity=3 if RUN_TESTS else 2)
 
     allSessionsByRat = {}
     for animalName in animalNames:
@@ -257,6 +257,26 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         if len(animalNames) > 1:
             pp.setStatCategory("rat", ratName)
 
+        if RUN_TESTS:
+            print("First half")
+            pp.pushOutputSubDir("firsthalf")
+            pp.setStatCategory("test", "firsthalf")
+            LocationMeasure("testhalves", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.totalTimeAtPosition(BP(probe=True), pos, radius=0.25)
+            ), sessions[0:4]).makeFigures(pp, plotFlags=["measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+            pp.popOutputSubDir()
+            print("Second half")
+            pp.pushOutputSubDir("secondhalf")
+            pp.setStatCategory("test", "secondhalf")
+            LocationMeasure("testhalves", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.totalTimeAtPosition(BP(probe=True), pos, radius=0.25)
+            ), sessions[4:8]).makeFigures(pp, plotFlags=["measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+            pp.popOutputSubDir()
+            print("Running immediate shuffles")
+            pp.runImmediateShufflesAcrossPersistentCategories()
+            print("Running shuffles")
+            pp.runShuffles()
+
         if RUN_SIMPLE_MEASURES:
             def makeSimpleMeasure(func, radius, smoothDist, bp: BP):
                 # print(f"test {func.__name__} {radius:.2f} {bp.filenameString()} {smoothDist:.2f}")
@@ -290,17 +310,6 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             }
 
             runDMFOnLM(makeSimpleMeasure, allParams, pp, minParamsSequential=2)
-
-        if RUN_TESTS:
-            def optimFunc(pctile, sesh: BTSession):
-                # print(sesh.name)
-                return sesh.getValueMap(
-                    lambda pos: sesh.pathOptimalityToPosition(BP(probe=False), pos, radius=0.5),
-                    outlierPctile=pctile)
-            LocationMeasure("test optimality 95", partial(optimFunc, 95),
-                            sessions).makeFigures(pp, excludeFromCombo=True,
-                                                  everySessionBehaviorPeriod=BP(probe=False),
-                                                  runStats=False)
 
         if RUN_GRAVITY_FACTORY:
             def makeGravityMeasure(bp: BP, passRadius, visitRadiusFactor, passDenoiseFactor, measureSmoothDist):
@@ -1071,7 +1080,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         pp.makeCombinedFigs(outputSubDir=comboStr, suggestedSubPlotLayout=suggestedLayout)
 
     if RUN_SHUFFLES:
-        pp.runImmidateShufflesAcrossPersistentCategories()
+        pp.runImmediateShufflesAcrossPersistentCategories()
 
     if DATAMINE:
         pp.runShuffles()
@@ -1089,8 +1098,8 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
 
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True, DATAMINE=True)
-    makeFigures(RUN_UNSPECIFIED=False, RUN_SIMPLE_MEASURES=True, DATAMINE=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_SIMPLE_MEASURES=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_NEW_GRAVITY=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True,
     #             RUN_SPOTLIGHT_EXPLORATION_PROBE=True, DATAMINE=True, RUN_NEW_GRAVITY=True)

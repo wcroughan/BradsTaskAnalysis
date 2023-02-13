@@ -56,7 +56,7 @@ class PlotContext:
 
 
 class PlotManager:
-    def __init__(self, outputDir: Optional[str] = None, priorityLevel: Optional[int] = None,
+    def __init__(self, outputDir: Optional[str] = None,
                  randomSeed=None, verbosity: int = 3, infoFileName: Optional[str] = None) -> None:
         self.figSizeX: int = 5
         self.figSizeY: int = 5
@@ -84,21 +84,10 @@ class PlotManager:
         self.createdPlots = set()
         self.savedFigsByName: Dict[str, List[str]] = {}
 
-        self.priorityLevel = priorityLevel
-        self.priority: Optional[int] = None
-
         self.persistentCategories: Dict[str, Any] = {}
         self.persistentInfoValues: Dict[str, Any] = {}
-        self.savedYVals: Dict[str, Dict[str, ArrayLike]] = {}
-        self.savedCategories: Dict[str, Dict[str, ArrayLike]] = {}
-        self.savedPersistentCategories: Dict[str, Dict[str, ArrayLike]] = {}
-        self.savedInfoVals: Dict[str, Dict[str, ArrayLike]] = {}
-        self.savedImmediateShuffles: Dict[str, Optional[List[ShuffSpec]]] = {}
-        self.numShuffles = 0
 
         self.rng = np.random.default_rng(seed=randomSeed)
-        self.customShuffleFunctions: Dict[str, Callable[[
-            pd.DataFrame, str, np.random.Generator], pd.Series]] = {}
 
         self.plotContext = None
 
@@ -111,14 +100,13 @@ class PlotManager:
         return self.plotContext
 
     def newFig(self, figName: str, subPlots: Optional[Tuple[int, int] | List[int, int]] = None,
-               figScale: float = 1.0, priority: Optional[int] = None, excludeFromCombo: bool = False,
+               figScale: float = 1.0, excludeFromCombo: bool = False,
                showPlot: bool = None, savePlot: bool = None, enableOverwriteSameName: bool = False) -> PlotManager:
         fname = os.path.join(self.outputDir, self.outputSubDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
 
         self.clearFig()
-        self.priority = priority
 
         if subPlots is not None:
             assert len(subPlots) == 2
@@ -139,7 +127,7 @@ class PlotManager:
 
         return self
 
-    def continueFig(self, figName, priority=None, showPlot=None, savePlot=None, excludeFromCombo=False, enableOverwriteSameName=False):
+    def continueFig(self, figName, showPlot=None, savePlot=None, excludeFromCombo=False, enableOverwriteSameName=False):
         if self.showedLastFig:
             raise Exception("currently unable to show a figure and then continue it")
 
@@ -150,7 +138,6 @@ class PlotManager:
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
         self.plotContext.figName = fname
-        self.priority = priority
         self.plotContext.yvals = {}
         self.plotContext.immediateShuffles = []
         self.plotContext.categories = {}
@@ -164,15 +151,9 @@ class PlotManager:
         self.persistentInfoValues[infoCategory] = value
 
     def setCustomShuffleFunction(self, category: str, func: Callable[[pd.DataFrame, str, np.random.Generator], pd.Series]):
-        self.customShuffleFunctions[category] = func
-
-    def setPriorityLevel(self, priorityLevel):
-        self.priorityLevel = priorityLevel
+        self.shuffler.setCustomShuffleFunction(category, func)
 
     def __exit__(self, *args):
-        if self.priority is not None and self.priorityLevel is not None and self.priority > self.priorityLevel:
-            return
-
         if len(self.plotContext.yvals) > 0:
             # Everything is referenced according to this name
             figureName = os.path.basename(self.plotContext.figName)
@@ -210,6 +191,9 @@ class PlotManager:
             # Now if there are any immediate shuffles, do them
 
             if len(self.plotContext.immediateShuffles) > 0:
+                with open(os.path.join(statsDir, figureName + "_immediateShuffles.pkl"), "wb") as fid:
+                    pickle.dump(self.plotContext.immediateShuffles, fid)
+
                 ss = [len(s) for s, _ in self.plotContext.immediateShuffles]
                 self.plotContext.immediateShuffles = [x for _, x in sorted(
                     zip(ss, self.plotContext.immediateShuffles))]
@@ -218,111 +202,10 @@ class PlotManager:
                 df.drop(columns=list(self.persistentCategories.keys()) +
                         list(self.persistentInfoValues.keys()), inplace=True)
                 # print("\n".join([str(s) for s in shufSpecs]))
-                immediateRes = self._doShuffles(df, shufSpecs, list(
+                immediateRes = self.shuffler._doShuffles(df, shufSpecs, list(
                     self.plotContext.yvals.keys()), numShuffles=numShuffles)
                 # immediateRes = self.shuffler.doShuffles(df, shufSpecs, list(
                 #     self.plotContext.yvals.keys()), numShuffles=numShuffles)
-                # print(immediateRes)
-                pval = None
-                for rr in immediateRes:
-                    for r in rr:
-                        if pval is not None:
-                            raise Exception("Should only be doing one shuffle here!")
-                        pval = r.getPVals().item()
-
-                if not self.plotContext.isSinglePlot:
-                    raise Exception("Can't have multiple plots and do shuffle")
-
-                self.plotContext.ax.add_artist(AnchoredText(f"p={pval}", "upper center"))
-
-        # This is the old way, savign for reference later
-        if len(self.plotContext.yvals) > 0 and False:
-            # Everything is referenced later with the figure name.
-            figureName = os.path.basename(self.plotContext.figName)
-
-            # There needs to be at least one category over which to shuffle
-            assert len(self.persistentCategories) + len(self.plotContext.categories) > 0
-
-            # Make sure all the arrays are the same length
-            savedLen = None
-            for k in self.plotContext.yvals:
-                if savedLen is None:
-                    savedLen = len(self.plotContext.yvals[k])
-                else:
-                    assert len(self.plotContext.yvals[k]) == savedLen
-            for k in self.plotContext.categories:
-                assert len(self.plotContext.categories[k]) == savedLen
-            for k in self.plotContext.infoVals:
-                assert len(self.plotContext.infoVals[k]) == savedLen
-
-            for k in self.persistentCategories:
-                if k not in self.plotContext.categories:
-                    # self.plotContext.categories[k] = [self.persistentCategories[k]] * savedLen
-                    # Now gonna save these separately
-                    pass
-                else:
-                    print(
-                        "WARNING: overlap between persistent category and this-plot category, "
-                        "both named {}".format(k))
-
-            for k in self.persistentInfoValues:
-                if k not in self.plotContext.infoVals:
-                    self.plotContext.infoVals[k] = [self.persistentInfoValues[k]] * savedLen
-                else:
-                    print(
-                        "WARNING: overlap between persistent info category and this-plot category, "
-                        "both named {}".format(k))
-
-            if figureName in self.savedYVals:
-                # Another figure with the same name has been made, so append to the existing arrays
-                savedYVals = self.savedYVals[figureName]
-                for k in savedYVals:
-                    savedYVals[k] = np.append(savedYVals[k], self.plotContext.yvals[k])
-                savedCategories = self.savedCategories[figureName]
-                for k in savedCategories:
-                    savedCategories[k] = np.append(
-                        savedCategories[k], self.plotContext.categories[k])
-                savedPersistentCategories = self.savedPersistentCategories[figureName]
-                for k in savedPersistentCategories:
-                    savedPersistentCategories[k] = np.append(savedPersistentCategories[k], [
-                                                             self.persistentCategories[k]] * savedLen)
-                savedInfoVals = self.savedInfoVals[figureName]
-                for k in savedInfoVals:
-                    savedInfoVals[k] = np.append(savedInfoVals[k], self.plotContext.infoVals[k])
-                savedImmediateShuffles = self.savedImmediateShuffles[figureName]
-                if savedImmediateShuffles is not None:
-                    print(savedImmediateShuffles)
-                    print(self.plotContext.immediateShuffles)
-                    if len(self.plotContext.immediateShuffles) == 0 or \
-                            savedImmediateShuffles != self.plotContext.immediateShuffles[0][0]:
-                        raise Exception("Repeated figure must have identical immediate shuffle")
-                elif len(self.plotContext.immediateShuffles) != 0:
-                    raise Exception("Repeated figure must have identical immediate shuffle")
-            else:
-                # First time this figure has been made, so save the arrays
-                self.savedYVals[figureName] = self.plotContext.yvals.copy()
-                self.savedCategories[figureName] = self.plotContext.categories
-                self.savedPersistentCategories[figureName] = self.persistentCategories.copy()
-                for k in self.savedPersistentCategories[figureName]:
-                    self.savedPersistentCategories[figureName][k] = [
-                        self.savedPersistentCategories[figureName][k]] * savedLen
-                self.savedInfoVals[figureName] = self.plotContext.infoVals
-                self.savedImmediateShuffles[figureName] = None if len(
-                    self.plotContext.immediateShuffles) == 0 else self.plotContext.immediateShuffles[0][0].copy()
-
-            if len(self.plotContext.immediateShuffles) > 0:
-                ss = [len(s) for s, _ in self.plotContext.immediateShuffles]
-                self.plotContext.immediateShuffles = [x for _, x in sorted(
-                    zip(ss, self.plotContext.immediateShuffles))]
-                shufSpecs = [x for x, _ in self.plotContext.immediateShuffles]
-                numShuffles = [x for _, x in self.plotContext.immediateShuffles]
-                shufCats = self.plotContext.categories.copy()
-                shufCats.update(self.plotContext.yvals)
-                shufCats.update(self.plotContext.infoVals)
-                df = pd.DataFrame(data=shufCats)
-                # print("\n".join([str(s) for s in shufSpecs]))
-                immediateRes = self._doShuffles(df, shufSpecs, list(
-                    self.plotContext.yvals.keys()), numShuffles=numShuffles)
                 # print(immediateRes)
                 pval = None
                 for rr in immediateRes:
@@ -529,328 +412,14 @@ class PlotManager:
             if self.verbosity >= 3:
                 print("wrote file {}".format(fname))
 
-    def runImmidateShufflesAcrossPersistentCategories(self, numShuffles=100) -> None:
-        raise NotImplementedError("This is not implemented yet, still uses old save format")
-        self.numShuffles = numShuffles
-        for plotName in self.savedCategories:
-            categories = self.savedCategories[plotName]
-            persistentCategories = self.savedPersistentCategories[plotName]
-            yvals = self.savedYVals[plotName]
-            infoVals = self.savedInfoVals[plotName]
-            immediateShuffles = self.savedImmediateShuffles[plotName]
-            if immediateShuffles is None:
-                print(f"No immediate shuffles for {plotName}, skipping")
-                continue
-            print("========================================\nRunning earlier shuffles from "
-                  f"{plotName} across persistent categories")
-            print("Evaluating {} yvals:".format(len(yvals)))
-            for yvalName in yvals:
-                print("\t{}".format(yvalName))
-            print(f"Original spec: {immediateShuffles}")
-            print("Shuffling {} categories:".format(len(persistentCategories)))
-            for catName in persistentCategories:
-                print("\t{}\t{}".format(catName, set(persistentCategories[catName])))
-                if not isinstance(persistentCategories[catName], np.ndarray):
-                    persistentCategories[catName] = np.array(persistentCategories[catName])
-
-            for yvalName in yvals:
-                assert yvalName not in categories
-                assert yvalName not in persistentCategories
-
-            catsToShuffle = list(persistentCategories.keys())
-            todel = set()
-            for cat in catsToShuffle:
-                vals = set(persistentCategories[cat])
-                if len(vals) <= 1:
-                    todel.add(cat)
-                    print("Category {} has only one val ({}). Not including in shuffle for plot {}".format(
-                        cat, vals, plotName))
-
-            for td in todel:
-                catsToShuffle.remove(td)
-
-            categories.update(yvals)
-            categories.update(infoVals)
-            categories.update(persistentCategories)
-            df = pd.DataFrame(data=categories)
-            specs = self.getAllShuffleSpecsWithLeaf(
-                df, leaf=immediateShuffles, columnsToShuffle=catsToShuffle)
-            ss = [len(s) for s in specs]
-            specs = [x for _, x in sorted(zip(ss, specs))]
-            print("\n".join([str(s) for s in specs]))
-            self._doShuffles(df, specs, list(yvals.keys()))
-            # print(sr)
-
-    def getListOfStatsFiles(self) -> List[Tuple[str, str]]:
-        with open(self.infoFileFullName, "r") as fid:
-            lines = fid.readlines()
-            statsFiles = []
-            for line in lines:
-                if line.startswith("statsFile:"):
-                    statsFiles.append(
-                        (line.split("__!__")[1].strip(), line.split("__!__")[2].strip()))
-        return statsFiles
+    def runImmediateShufflesAcrossPersistentCategories(self, numShuffles=100) -> None:
+        self.shuffler.runImmediateShufflesAcrossPersistentCategories(
+            self.infoFileFullName, numShuffles)
 
     def runShuffles(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
                     resultsFilter: Callable[[str, ShuffleResult, float], bool] = lambda *_: True) -> None:
-        self.numShuffles = numShuffles
-
-        savedStatsFiles = self.getListOfStatsFiles()
-        filesForEachPlot = {}
-        for plotName, statsFile in savedStatsFiles:
-            if plotName not in filesForEachPlot:
-                filesForEachPlot[plotName] = []
-            filesForEachPlot[plotName].append(statsFile)
-
-        shuffResults: List[Tuple[str, List[List[ShuffleResult]]]] = []
-        for plotName in tqdm(filesForEachPlot, desc="Running shuffles", total=len(filesForEachPlot)):
-            df = pd.concat([pd.read_hdf(f, key="stats") for f in filesForEachPlot[plotName]])
-            yvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="yvalNames")
-            categoryNames = pd.read_hdf(filesForEachPlot[plotName][0], key="categoryNames")
-            persistentCategoryNames = pd.read_hdf(
-                filesForEachPlot[plotName][0], key="persistentCategoryNames")
-            # infoNames = pd.read_hdf(filesForEachPlot[plotName][0], key="infoNames")
-            # persistentInfoNames = pd.read_hdf(filesForEachPlot[plotName][0], key="persistentInfoNames")
-
-            catsToShuffle = list(categoryNames) + list(persistentCategoryNames)
-            todel = set()
-            for cat in catsToShuffle:
-                vals = set(df[cat])
-                if len(vals) <= 1:
-                    todel.add(cat)
-                    print("Category {} has only one val ({}). Not including in shuffle for plot {}".format(
-                        cat, vals, plotName))
-            for td in todel:
-                catsToShuffle.remove(td)
-
-            specs = self.getAllShuffleSpecs(df, columnsToShuffle=catsToShuffle)
-            ss = [len(s) for s in specs]
-            specs = [x for _, x in sorted(zip(ss, specs))]
-            # print("\n".join([str(s) for s in specs]))
-            sr = self._doShuffles(df, specs, yvalNames)
-            shuffResults.append((plotName, sr))
-
-        if significantThreshold is not None:
-            significantResults: List[str, ShuffleResult, float] = []
-            for plotName, sr in shuffResults:
-                for s in sr:
-                    for s2 in s:
-                        pval = s2.getPVals().item()
-                        if pval < significantThreshold or pval > 1 - significantThreshold:
-                            if resultsFilter(plotName, s2):
-                                significantResults.append(
-                                    (plotName, s2, pval if pval < 0.5 else 1 - pval))
-
-            sdf = pd.DataFrame([(pn, str(s.specs), pv) for pn, s, pv, in significantResults],
-                               columns=["plot", "shuffle", "pval"])
-            sdf.sort_values(by="pval", inplace=True)
-            print(sdf.to_string(index=False))
-
-            sdf.to_hdf(self.infoFileFullName + "_significantShuffles.h5", key="significantShuffles")
-
-    def getAllShuffleSpecsWithLeaf(self, df: pd.DataFrame, leaf: List[ShuffSpec], columnsToShuffle=None) -> List[List[ShuffSpec]]:
-        if columnsToShuffle is None:
-            columnsToShuffle = set(df.columns)
-            columnsToShuffle.remove(leaf.categoryName)
-            columnsToShuffle = list(columnsToShuffle)
-
-        ret = [leaf]
-        for col in columnsToShuffle:
-            otherCols = [c for c in columnsToShuffle if c != col]
-            rec = self.getAllShuffleSpecsWithLeaf(df, leaf, otherCols)
-            for r in rec:
-                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL,
-                                      categoryName=col, value=None)] + r)
-
-        return ret
-
-    def getAllShuffleSpecs(self, df, columnsToShuffle=None):
-        if columnsToShuffle is None:
-            columnsToShuffle = list(df.columns)
-
-        valSet = {}
-        for col in columnsToShuffle:
-            valSet[col] = sorted(list(set(df[col])))
-
-        ret = []
-        for col in columnsToShuffle:
-            for val in valSet[col]:
-                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName=col, value=val)])
-
-            otherCols = [c for c in columnsToShuffle if c != col]
-            rec = self.getAllShuffleSpecs(df, otherCols)
-            for r in rec:
-                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL,
-                           categoryName=col, value=None)] + r)
-
-        return ret
-
-    def _doOneWayShuffle(self, df: pd.DataFrame, spec: ShuffSpec, dataNames: List[str]) -> ShuffleResult:
-        assert isinstance(spec, ShuffSpec) and \
-            spec.shuffType == ShuffSpec.ShuffType.GLOBAL
-
-        if spec.categoryName in self.customShuffleFunctions:
-            shufFunc = self.customShuffleFunctions[spec.categoryName]
-        else:
-            def shufFunc(dataframe: pd.DataFrame, colName: str, rng: np.random.Generator) -> pd.Series:
-                return dataframe[colName].sample(frac=1, random_state=rng).reset_index(drop=True)
-
-        ret = ShuffleResult([spec], dataNames=dataNames)
-
-        withinIdx = df[spec.categoryName] == spec.value
-        d = np.array(df[withinIdx][dataNames].mean() - df[~withinIdx][dataNames].mean())
-        ret.diff = np.reshape(d, (-1, 1))
-
-        ret.shuffleDiffs = np.empty((self.numShuffles, len(dataNames)))
-        sdf = df.copy().reset_index(drop=True)
-        for si in range(self.numShuffles):
-            sdf[spec.categoryName] = shufFunc(sdf, spec.categoryName, self.rng)
-            withinIdx = sdf[spec.categoryName] == spec.value
-            ret.shuffleDiffs[si, :] = sdf[withinIdx][dataNames].mean() - \
-                sdf[~withinIdx][dataNames].mean()
-
-        return ret
-
-    def _doShuffleSpec(self, df: pd.DataFrame, spec: List[ShuffSpec], valSet: Dict[str, set], dataNames: List[str]) -> List[ShuffleResult]:
-        assert isinstance(spec, list)
-        for si, s in enumerate(spec):
-            assert isinstance(s, ShuffSpec)
-            assert s.shuffType != ShuffSpec.ShuffType.UNSPECIFIED
-            assert s.shuffType != ShuffSpec.ShuffType.GLOBAL or si == len(spec) - 1
-
-        s = spec[0]
-        if s.shuffType == ShuffSpec.ShuffType.GLOBAL:
-            return [self._doOneWayShuffle(df, s, dataNames)]
-
-        if s.shuffType == ShuffSpec.ShuffType.WITHIN:
-            withinIdx = df[s.categoryName] == s.value
-            recres = self._doShuffleSpec(df.loc[withinIdx], spec[1:], valSet, dataNames)
-            for r in recres:
-                r.specs = [s] + r.specs.copy()
-            return recres
-
-        if s.shuffType == ShuffSpec.ShuffType.INTERACTION:
-            withinIdx = df[s.categoryName] == s.value
-            withoutIdx = ~ withinIdx
-            rin = self._doShuffleSpec(df.loc[withinIdx], spec[1:], valSet, dataNames)
-            rout = self._doShuffleSpec(df.loc[withoutIdx], spec[1:], valSet, dataNames)
-            ret = []
-            for reti, (i, o) in enumerate(zip(rin, rout)):
-                r = i.copy()
-                r.specs = [s] + i.specs.copy()
-                r.diff = i.diff - o.diff
-                r.shuffleDiffs = i.shuffleDiffs - o.shuffleDiffs
-                ret.append(r)
-            return ret
-
-        if s.shuffType == ShuffSpec.ShuffType.ACROSS:
-            vals = valSet[s.categoryName]
-            withinRes: List[List[ShuffleResult]] = []
-            for val in vals:
-                withinIdx = df[s.categoryName] == val
-                withinRes.append(self._doShuffleSpec(
-                    df.loc[withinIdx], spec[1:], valSet, dataNames))
-
-            numEffects = len(withinRes[0])
-            ret = []
-            for ei in range(numEffects):
-                r = withinRes[0][ei].copy()
-                r.specs = [s] + r.specs.copy()
-                r.diff = np.zeros((len(dataNames), 1))
-                r.shuffleDiffs = np.zeros((self.numShuffles, len(dataNames)))
-                for vi in range(len(vals)):
-                    r.diff += withinRes[vi][ei].diff
-                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs
-                ret.append(r)
-            return ret
-
-        if s.shuffType == ShuffSpec.ShuffType.RECURSIVE_ALL:
-            # all the recursive calls needed
-            vals = valSet[s.categoryName]
-            withinRes = []
-            withoutRes = []
-            for val in vals:
-                withinIdx = df[s.categoryName] == val
-                withinRes.append(self._doShuffleSpec(
-                    df.loc[withinIdx], spec[1:], valSet, dataNames))
-                withoutIdx = ~ withinIdx
-                withoutRes.append(self._doShuffleSpec(
-                    df.loc[withoutIdx], spec[1:], valSet, dataNames))
-
-            ret = []
-            # within effects
-            for vi, val in enumerate(vals):
-                wr = withinRes[vi]
-                for ei, effect in enumerate(wr):
-                    r = effect.copy()
-                    ss = s.copy()
-                    ss.shuffType = ShuffSpec.ShuffType.WITHIN
-                    ss.value = val
-                    r.specs = [ss] + r.specs.copy()
-                    ret.append(r)
-
-            # across effect
-            numEffects = len(withinRes[0])
-            for ei in range(numEffects):
-                r = withinRes[0][ei].copy()
-                ss = s.copy()
-                ss.shuffType = ShuffSpec.ShuffType.ACROSS
-                r.specs = [ss] + r.specs.copy()
-                r.diff = np.zeros((len(dataNames), 1))
-                r.shuffleDiffs = np.zeros((self.numShuffles, len(dataNames)))
-                for vi in range(len(vals)):
-                    r.diff += withinRes[vi][ei].diff
-                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs
-                ret.append(r)
-
-            # interaction effects
-            for vi, val in enumerate(vals):
-                wr = withinRes[vi]
-                wor = withoutRes[vi]
-                for ei, (rin, rout) in enumerate(zip(wr, wor)):
-                    ss = s.copy()
-                    ss.shuffType = ShuffSpec.ShuffType.INTERACTION
-                    ss.value = val
-                    r = ShuffleResult([ss] + rin.specs.copy())
-                    r.dataNames = dataNames
-                    r.diff = rin.diff - rout.diff
-                    r.shuffleDiffs = rin.shuffleDiffs - rout.shuffleDiffs
-                    ret.append(r)
-
-            return ret
-
-    def _doShuffles(self, df: pd.DataFrame, specs: List[List[ShuffSpec]],
-                    dataNames: List[str], numShuffles: List[int] = None, writeToInfoFile: bool = False) -> List[List[ShuffleResult]]:
-        if numShuffles is not None:
-            assert len(numShuffles) == len(specs)
-
-        columnsToShuffle = set()
-        for spec in specs:
-            for s in spec:
-                columnsToShuffle.add(s.categoryName)
-
-        # print(df)
-        valSet: Dict[str, set] = {}
-        for col in columnsToShuffle:
-            vs = set(df[col])
-            if len(vs) <= 1:
-                raise Exception("Only one value {} for category {}".format(vs, col))
-            valSet[col] = vs
-        # print("created valset:", valSet)
-
-        ret: List[List[ShuffleResult]] = []
-        for si, spec in enumerate(specs):
-            # print(f'{spec}                 ', end='\r')
-            if numShuffles is not None:
-                self.numShuffles = numShuffles[si]
-            res = self._doShuffleSpec(df, spec, valSet, dataNames)
-            ret.append(res)
-
-        if writeToInfoFile:
-            resStr = "\n".join([r.getFullInfoString(linePfx="\t") for res in ret for r in res])
-            self.writeToInfoFile(resStr)
-        # print("")
-        return ret
+        self.shuffler.runAllShuffles(self.infoFileFullName, numShuffles,
+                                     significantThreshold, resultsFilter)
 
 
 def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outlineColors=-1,

@@ -530,8 +530,7 @@ class WellMeasure():
                     radialTraceType: None | str | Iterable[str] = None,
                     radialTraceTimeInterval: None |
                     Callable[[BTSession, int], tuple | list] |
-                    Iterable[Callable[[BTSession], tuple | list]] = None,
-                    priority=None):
+                    Iterable[Callable[[BTSession], tuple | list]] = None):
         figName = self.name.replace(" ", "_")
 
         if isinstance(plotFlags, str):

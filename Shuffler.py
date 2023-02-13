@@ -1,8 +1,11 @@
 from __future__ import annotations
 from enum import IntEnum, auto
-from typing import List, Dict
+from typing import List, Dict, Tuple, Optional, Callable
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
+import os
+import pickle
 
 
 class ShuffSpec:
@@ -120,6 +123,11 @@ class Shuffler:
     def __init__(self, rng: np.random.Generator = None, numShuffles=100) -> None:
         self.rng = rng
         self.numShuffles = numShuffles
+        self.customShuffleFunctions: Dict[str, Callable[[
+            pd.DataFrame, str, np.random.Generator], pd.Series]] = {}
+
+    def setCustomShuffleFunction(self, category: str, func: Callable[[pd.DataFrame, str, np.random.Generator], pd.Series]):
+        self.customShuffleFunctions[category] = func
 
     def doShuffles(self, df: pd.DataFrame, specs: List[List[ShuffSpec]],
                    dataNames: List[str], numShuffles: List[int] = None) -> List[List[ShuffleResult]]:
@@ -150,8 +158,252 @@ class Shuffler:
 
         return ret
 
-    def runAllShuffles(self, infoFileName: str) -> None:
-        pass
+    def getListOfStatsFiles(self, infoFileName: str) -> List[Tuple[str, str]]:
+        with open(infoFileName, "r") as fid:
+            lines = fid.readlines()
+            statsFiles = []
+            for line in lines:
+                if line.startswith("statsFile:"):
+                    statsFiles.append(
+                        (line.split("__!__")[1].strip(), line.split("__!__")[2].strip()))
+        return statsFiles
+
+    def runImmediateShufflesAcrossPersistentCategories(
+        self, infoFileName: str, numShuffles=100,
+            resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = lambda *_: True) -> None:
+        # TODO when adjusting this to combine possible multiple info file names, need to make sure
+        # all the immediate shuffles are the same. Maybe split into groups
+
+        self.numShuffles = numShuffles
+
+        savedStatsFiles = self.getListOfStatsFiles(infoFileName)
+        filesForEachPlot = {}
+        for plotName, statsFile in savedStatsFiles:
+            if plotName not in filesForEachPlot:
+                filesForEachPlot[plotName] = []
+            filesForEachPlot[plotName].append(statsFile)
+
+        shuffResults: List[Tuple[str, List[List[ShuffleResult]], str]] = []
+        for plotName in tqdm(filesForEachPlot, desc="Running shuffles", total=len(filesForEachPlot)):
+            # for plotName in filesForEachPlot:
+            # Get the immediate shuffles. Should be the same for all files
+            fname = filesForEachPlot[plotName][0]
+            pickleFile = fname[:-3] + "_immediateShuffles.pkl"
+            if not os.path.exists(pickleFile):
+                # print("No immediate shuffles for {}".format(pickleFile))
+                continue
+            with open(pickleFile, "rb") as fid:
+                immediateShuffles = pickle.load(fid)
+
+            df = pd.concat([pd.read_hdf(f, key="stats") for f in filesForEachPlot[plotName]])
+            yvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="yvalNames")
+            # categoryNames = pd.read_hdf(filesForEachPlot[plotName][0], key="categoryNames")
+            persistentCategoryNames = pd.read_hdf(
+                filesForEachPlot[plotName][0], key="persistentCategoryNames")
+            # infoNames = pd.read_hdf(filesForEachPlot[plotName][0], key="infoNames")
+            # persistentInfoNames = pd.read_hdf(filesForEachPlot[plotName][0], key="persistentInfoNames")
+            measureName = os.path.dirname(filesForEachPlot[plotName][0]).split(os.path.sep)[-2]
+
+            # print("Plot: {}, measure: {}".format(plotName, measureName))
+            # print(df.to_string())
+
+            nu = df.nunique(axis=0)
+            catsToShuffle = list(persistentCategoryNames)
+            # print("Categories to shuffle: {}".format(catsToShuffle))
+            # print("Unique vals per category:\n{}".format(nu))
+            todel = set()
+            for cat in catsToShuffle:
+                if nu[cat] <= 1:
+                    todel.add(cat)
+                    print("Category {} has only one val. Not including in shuffle for plot {}".format(
+                        cat, plotName))
+            for td in todel:
+                catsToShuffle.remove(td)
+
+            specs = []
+            for ish in immediateShuffles:
+                specs += self.getAllShuffleSpecsWithLeaf(
+                    df, leaf=ish[0], columnsToShuffle=catsToShuffle)
+            ss = [len(s) for s in specs]
+            specs = [x for _, x in sorted(zip(ss, specs))]
+            # print("All specs:")
+            # print("\n".join(["\t" + str(s) for s in specs]))
+            sr = self._doShuffles(df, specs, yvalNames)
+            shuffResults.append((plotName, sr, measureName))
+
+        filteredResults: List[Tuple[str, ShuffleResult, float, str]] = []
+        for plotName, sr, measureName in shuffResults:
+            for s in sr:
+                for s2 in s:
+                    pval = s2.getPVals().item()
+                    if resultsFilter(plotName, s2, pval, measureName):
+                        filteredResults.append(
+                            (plotName, s2, pval if pval < 0.5 else 1 - pval,
+                                measureName))
+
+        sdf = pd.DataFrame([(pn, str(s.specs), pv, mn) for pn, s, pv, mn in filteredResults],
+                           columns=["plot", "shuffle", "pval", "measure"])
+        sdf.sort_values(by="pval", inplace=True)
+        print("immediateShufflesAcrossPersistentCategories")
+        print(sdf.to_string(index=False))
+
+        sdf.to_hdf(infoFileName + "_immediateShuffles.h5", key="immediateShuffles")
+
+    def getAllShuffleSpecsWithLeaf(self, df: pd.DataFrame, leaf: List[ShuffleResult],
+                                   columnsToShuffle: Optional[List[str]] = None) -> List[List[ShuffSpec]]:
+        if columnsToShuffle is None:
+            raise Exception("Not implemented. leaf is a list...")
+            columnsToShuffle = set(df.columns)
+            columnsToShuffle.remove(leaf.categoryName)
+            columnsToShuffle = list(columnsToShuffle)
+
+        ret = [leaf]
+        for col in columnsToShuffle:
+            otherCols = [c for c in columnsToShuffle if c != col]
+            rec = self.getAllShuffleSpecsWithLeaf(df, leaf, columnsToShuffle=otherCols)
+            for r in rec:
+                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL,
+                                      categoryName=col, value=None)] + r)
+        return ret
+
+    def runAllShuffles(self, infoFileName: str, numShuffles: int,
+                       significantThreshold: Optional[float] = 0.15,
+                       resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = lambda *_: True) -> None:
+        self.numShuffles = numShuffles
+
+        savedStatsFiles = self.getListOfStatsFiles(infoFileName)
+        filesForEachPlot = {}
+        for plotName, statsFile in savedStatsFiles:
+            if plotName not in filesForEachPlot:
+                filesForEachPlot[plotName] = []
+            filesForEachPlot[plotName].append(statsFile)
+
+        shuffResults: List[Tuple[str, List[List[ShuffleResult]], str]] = []
+        for plotName in tqdm(filesForEachPlot, desc="Running shuffles", total=len(filesForEachPlot)):
+            df = pd.concat([pd.read_hdf(f, key="stats") for f in filesForEachPlot[plotName]])
+            yvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="yvalNames")
+            categoryNames = pd.read_hdf(filesForEachPlot[plotName][0], key="categoryNames")
+            persistentCategoryNames = pd.read_hdf(
+                filesForEachPlot[plotName][0], key="persistentCategoryNames")
+            # infoNames = pd.read_hdf(filesForEachPlot[plotName][0], key="infoNames")
+            # persistentInfoNames = pd.read_hdf(filesForEachPlot[plotName][0], key="persistentInfoNames")
+            measureName = os.path.dirname(filesForEachPlot[plotName][0]).split(os.path.sep)[-2]
+
+            catsToShuffle = list(categoryNames) + list(persistentCategoryNames)
+            todel = set()
+            for cat in catsToShuffle:
+                vals = set(df[cat])
+                if len(vals) <= 1:
+                    todel.add(cat)
+                    print("Category {} has only one val ({}). Not including in shuffle for plot {}".format(
+                        cat, vals, plotName))
+            for td in todel:
+                catsToShuffle.remove(td)
+
+            specs = self.getAllShuffleSpecs(df, columnsToShuffle=catsToShuffle)
+            ss = [len(s) for s in specs]
+            specs = [x for _, x in sorted(zip(ss, specs))]
+            # print("\n".join([str(s) for s in specs]))
+            sr = self._doShuffles(df, specs, yvalNames)
+            shuffResults.append((plotName, sr, measureName))
+
+        if significantThreshold is None:
+            significantThreshold = 1.0
+
+        significantResults: List[Tuple[str, ShuffleResult, float, str]] = []
+        for plotName, sr, measureName in shuffResults:
+            for s in sr:
+                for s2 in s:
+                    pval = s2.getPVals().item()
+                    if pval < significantThreshold or pval > 1 - significantThreshold:
+                        if resultsFilter(plotName, s2, pval, measureName):
+                            significantResults.append(
+                                (plotName, s2, pval if pval < 0.5 else 1 - pval,
+                                 measureName))
+
+        sdf = pd.DataFrame([(pn, str(s.specs), pv, mn) for pn, s, pv, mn in significantResults],
+                           columns=["plot", "shuffle", "pval", "measure"])
+        sdf.sort_values(by="pval", inplace=True)
+        print("all shuffles")
+        print(sdf.to_string(index=False))
+
+        sdf.to_hdf(infoFileName + "_significantShuffles.h5", key="significantShuffles")
+
+    def _doShuffles(self, df: pd.DataFrame, specs: List[List[ShuffSpec]],
+                    dataNames: List[str], numShuffles: List[int] = None) -> List[List[ShuffleResult]]:
+        if numShuffles is not None:
+            assert len(numShuffles) == len(specs)
+
+        columnsToShuffle = set()
+        for spec in specs:
+            for s in spec:
+                columnsToShuffle.add(s.categoryName)
+
+        # print(df)
+        valSet: Dict[str, set] = {}
+        for col in columnsToShuffle:
+            vs = set(df[col])
+            if len(vs) <= 1:
+                raise Exception("Only one value {} for category {}".format(vs, col))
+            valSet[col] = vs
+        # print("created valset:", valSet)
+
+        ret: List[List[ShuffleResult]] = []
+        for si, spec in enumerate(specs):
+            # print(f'{spec}                 ', end='\r')
+            if numShuffles is not None:
+                self.numShuffles = numShuffles[si]
+            res = self._doShuffleSpec(df, spec, valSet, dataNames)
+            ret.append(res)
+
+        return ret
+
+    def getAllShuffleSpecs(self, df, columnsToShuffle=None):
+        if columnsToShuffle is None:
+            columnsToShuffle = list(df.columns)
+
+        valSet = {}
+        for col in columnsToShuffle:
+            valSet[col] = sorted(list(set(df[col])))
+
+        ret = []
+        for col in columnsToShuffle:
+            for val in valSet[col]:
+                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName=col, value=val)])
+
+            otherCols = [c for c in columnsToShuffle if c != col]
+            rec = self.getAllShuffleSpecs(df, otherCols)
+            for r in rec:
+                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL,
+                           categoryName=col, value=None)] + r)
+
+        return ret
+
+    def _doOneWayShuffle(self, df: pd.DataFrame, spec: ShuffSpec, dataNames: List[str]) -> ShuffleResult:
+        assert isinstance(spec, ShuffSpec) and \
+            spec.shuffType == ShuffSpec.ShuffType.GLOBAL
+
+        if spec.categoryName in self.customShuffleFunctions:
+            shufFunc = self.customShuffleFunctions[spec.categoryName]
+        else:
+            def shufFunc(dataframe: pd.DataFrame, colName: str, rng: np.random.Generator) -> pd.Series:
+                return dataframe[colName].sample(frac=1, random_state=rng).reset_index(drop=True)
+
+        ret = ShuffleResult([spec], dataNames=dataNames)
+
+        withinIdx = df[spec.categoryName] == spec.value
+        d = np.array(df[withinIdx][dataNames].mean() - df[~withinIdx][dataNames].mean())
+        ret.diff = np.reshape(d, (-1, 1))
+
+        ret.shuffleDiffs = np.empty((self.numShuffles, len(dataNames)))
+        sdf = df.copy().reset_index(drop=True)
+        for si in range(self.numShuffles):
+            sdf[spec.categoryName] = shufFunc(sdf, spec.categoryName, self.rng)
+            withinIdx = sdf[spec.categoryName] == spec.value
+            ret.shuffleDiffs[si, :] = sdf[withinIdx][dataNames].mean() - \
+                sdf[~withinIdx][dataNames].mean()
+
+        return ret
 
     def _doShuffleSpec(self, df: pd.DataFrame, spec: List[ShuffSpec], valSet: Dict[str, set], dataNames: List[str]) -> List[ShuffleResult]:
         assert isinstance(spec, list)
