@@ -6,6 +6,8 @@ import pandas as pd
 from tqdm import tqdm
 import os
 import pickle
+import time
+from datetime import datetime
 
 
 class ShuffSpec:
@@ -169,19 +171,42 @@ class Shuffler:
         return statsFiles
 
     def runImmediateShufflesAcrossPersistentCategories(
-        self, infoFileName: str, numShuffles=100,
-            resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = lambda *_: True) -> None:
-        # TODO when adjusting this to combine possible multiple info file names, need to make sure
-        # all the immediate shuffles are the same. Maybe split into groups
-
+        self, infoFileNames: List[str], numShuffles=100,
+            resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = lambda *_: True) -> str:
         self.numShuffles = numShuffles
 
-        savedStatsFiles = self.getListOfStatsFiles(infoFileName)
+        savedStatsFiles = []
+        for infoFileName in infoFileNames:
+            savedStatsFiles += self.getListOfStatsFiles(infoFileName)
         filesForEachPlot = {}
         for plotName, statsFile in savedStatsFiles:
             if plotName not in filesForEachPlot:
                 filesForEachPlot[plotName] = []
             filesForEachPlot[plotName].append(statsFile)
+
+        todel = []
+        for plotName in filesForEachPlot:
+            # Get the immediate shuffles, and if there's multiple versions, run each separately
+            immGroups = {}
+            for fname in filesForEachPlot[plotName]:
+                pickleFile = fname[:-3] + "_immediateShuffles.pkl"
+                if not os.path.exists(pickleFile):
+                    print("No immediate shuffles for {}".format(pickleFile))
+                    continue
+                with open(pickleFile, "rb") as fid:
+                    key = str(pickle.load(fid))
+
+                if key not in immGroups:
+                    immGroups[key] = [fname]
+                else:
+                    immGroups[key].append(fname)
+
+            if len(immGroups) > 1:
+                for ki, key in enumerate(immGroups):
+                    filesForEachPlot[f"{plotName}_immgroup{ki}"] = immGroups[key]
+                todel.append(plotName)
+        for d in todel:
+            del filesForEachPlot[d]
 
         shuffResults: List[Tuple[str, List[List[ShuffleResult]], str]] = []
         for plotName in tqdm(filesForEachPlot, desc="Running shuffles", total=len(filesForEachPlot)):
@@ -244,10 +269,13 @@ class Shuffler:
         sdf = pd.DataFrame([(pn, str(s.specs), pv, mn) for pn, s, pv, mn in filteredResults],
                            columns=["plot", "shuffle", "pval", "measure"])
         sdf.sort_values(by="pval", inplace=True)
-        print("immediateShufflesAcrossPersistentCategories")
-        print(sdf.to_string(index=False))
+        # print("immediateShufflesAcrossPersistentCategories")
+        # print(sdf.to_string(index=False))
 
-        sdf.to_hdf(infoFileName + "_immediateShuffles.h5", key="immediateShuffles")
+        outputFileName = os.path.join(os.path.dirname(
+            infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_immediateShuffles.h5"))
+        sdf.to_hdf(outputFileName, key="immediateShuffles")
+        return outputFileName
 
     def getAllShuffleSpecsWithLeaf(self, df: pd.DataFrame, leaf: List[ShuffleResult],
                                    columnsToShuffle: Optional[List[str]] = None) -> List[List[ShuffSpec]]:
@@ -266,12 +294,14 @@ class Shuffler:
                                       categoryName=col, value=None)] + r)
         return ret
 
-    def runAllShuffles(self, infoFileName: str, numShuffles: int,
+    def runAllShuffles(self, infoFileNames: List[str], numShuffles: int,
                        significantThreshold: Optional[float] = 0.15,
-                       resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = lambda *_: True) -> None:
+                       resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = lambda *_: True) -> str:
         self.numShuffles = numShuffles
 
-        savedStatsFiles = self.getListOfStatsFiles(infoFileName)
+        savedStatsFiles = []
+        for infoFileName in infoFileNames:
+            savedStatsFiles += self.getListOfStatsFiles(infoFileName)
         filesForEachPlot = {}
         for plotName, statsFile in savedStatsFiles:
             if plotName not in filesForEachPlot:
@@ -310,24 +340,51 @@ class Shuffler:
         if significantThreshold is None:
             significantThreshold = 1.0
 
-        significantResults: List[Tuple[str, ShuffleResult, float, str]] = []
+        significantResults: List[Tuple[str, ShuffleResult, float, str, str, bool, bool]] = []
         for plotName, sr, measureName in shuffResults:
             for s in sr:
                 for s2 in s:
                     pval = s2.getPVals().item()
                     if pval < significantThreshold or pval > 1 - significantThreshold:
                         if resultsFilter(plotName, s2, pval, measureName):
+                            plotSuffix = plotName[len(measureName)-3:]
+                            isCondShuf = plotSuffix == "" or plotSuffix.endswith(
+                                "diff") or plotSuffix.endswith("cond")
+                            isCtrlShuf = plotSuffix.endswith("cond") or (
+                                "ctrl_" in plotSuffix and "diff" not in plotSuffix)
                             significantResults.append(
-                                (plotName, s2, pval if pval < 0.5 else 1 - pval,
-                                 measureName))
+                                (plotName, str(s2), pval if pval < 0.5 else 1 - pval,
+                                 measureName, plotSuffix, isCondShuf, isCtrlShuf))
 
-        sdf = pd.DataFrame([(pn, str(s.specs), pv, mn) for pn, s, pv, mn in significantResults],
-                           columns=["plot", "shuffle", "pval", "measure"])
+        sdf = pd.DataFrame(significantResults,
+                           columns=["plot", "shuffle", "pval", "measure", "plotSuffix", "isCondShuf", "isCtrlShuf"])
         sdf.sort_values(by="pval", inplace=True)
-        print("all shuffles")
-        print(sdf.to_string(index=False))
+        # print("all shuffles")
+        # print(sdf.to_string(index=False))
 
-        sdf.to_hdf(infoFileName + "_significantShuffles.h5", key="significantShuffles")
+        outputFileName = os.path.join(os.path.dirname(
+            infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_significantShuffles.h5"))
+        sdf.to_hdf(outputFileName, key="significantShuffles")
+        return outputFileName
+
+    def summarizeShuffleResults(self, hdfFile: str) -> None:
+        df = pd.read_hdf(hdfFile, key="significantShuffles")
+        # print("summarizeShuffleResults")
+        # print(df.to_string(index=False))
+
+        # print("summarizeShuffleResults")
+        condCounts = df.groupby(["isCondShuf", "measure"])["pval"].count().xs(
+            True, level="isCondShuf").sort_values(ascending=False).rename("CondShufCount").reset_index()
+        ctrlCounts = df.groupby(["isCtrlShuf", "measure"])["pval"].count().xs(
+            True, level="isCtrlShuf").sort_values(ascending=False).rename("CtrlShufCount").reset_index()
+        df = pd.merge(condCounts, ctrlCounts, on="measure")
+        df.sort_values(by="CondShufCount", inplace=True, ascending=False)
+        print(df.to_string(index=False))
+
+        outputFileName = os.path.join(os.path.dirname(
+            infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_summary.txt"))
+        with open(outputFileName, "w") as f:
+            f.write(df.to_string(index=False))
 
     def _doShuffles(self, df: pd.DataFrame, specs: List[List[ShuffSpec]],
                     dataNames: List[str], numShuffles: List[int] = None) -> List[List[ShuffleResult]]:
@@ -512,3 +569,21 @@ class Shuffler:
                     ret.append(r)
 
             return ret
+
+
+if __name__ == "__main__":
+    randomSeed = int(time.perf_counter())
+    print(f"{ randomSeed = }")
+    s = Shuffler(np.random.default_rng(randomSeed), 100)
+    infoFileNames = []
+    # infoFileNames.append("B17_20230210_171338.txt")
+    dataDir = "/media/WDC8/figures/202302_labmeeting"
+    # infoFileNames.append("B17_20230213_103244.txt")
+    # infoFileNames.append("B17_20230213_133656.txt")
+    # infoFileNames.append("B17_20230210_171338.txt")  # "simple" measures like latency
+    infoFileNames.append("B17_20230213_173328.txt")
+    infoFileNames = [os.path.join(dataDir, f) for f in infoFileNames]
+    outFile = s.runAllShuffles(infoFileNames, 100)
+    print(outFile)
+    # outFile = "/media/WDC8/figures/202302_labmeeting/20230213_162512_significantShuffles.h5"
+    s.summarizeShuffleResults(outFile)

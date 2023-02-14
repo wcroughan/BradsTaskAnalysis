@@ -413,13 +413,15 @@ class PlotManager:
                 print("wrote file {}".format(fname))
 
     def runImmediateShufflesAcrossPersistentCategories(self, numShuffles=100) -> None:
-        self.shuffler.runImmediateShufflesAcrossPersistentCategories(
-            self.infoFileFullName, numShuffles)
+        outFile = self.shuffler.runImmediateShufflesAcrossPersistentCategories(
+            [self.infoFileFullName], numShuffles)
+        self.shuffler.summarizeShuffleResults(outFile)
 
     def runShuffles(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
                     resultsFilter: Callable[[str, ShuffleResult, float], bool] = lambda *_: True) -> None:
-        self.shuffler.runAllShuffles(self.infoFileFullName, numShuffles,
-                                     significantThreshold, resultsFilter)
+        outFile = self.shuffler.runAllShuffles([self.infoFileFullName], numShuffles,
+                                               significantThreshold, resultsFilter)
+        self.shuffler.summarizeShuffleResults(outFile)
 
 
 def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outlineColors=-1,

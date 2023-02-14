@@ -1371,14 +1371,14 @@ class BTSession:
                    passRadius=1.25, visitRadius=0.25, passDenoiseFactor=1.1, showPlot=False) -> float:
         """
         New gravity function based on position instead of well visits
-        :param behaviorPeriod: behavior period to use. Note that only the probe flag and time interval are used.
-                                Currently can't deal with discountinuous behavior periods
+        :param behaviorPeriod: behavior period to use. If a part of the behavior period starts or
+                        ends within the pass radius, it won't be counted
         :param pos: (x, y) position
         :param passRadius: radius to be considered a pass by
         :param visitRadius: radius to be considered a visit
         :param passDenoiseFactor: rat has to be passRadius * passDenoiseFactor from pos to separate two passes
         """
-        bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
+        # bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
         _, xs, ys = self.posDuringBehaviorPeriod(behaviorPeriod)
 
         dx = xs - pos[0]
@@ -1418,6 +1418,27 @@ class BTSession:
                     goodPkIdxs[-1] = pks[i]
                     goodPkHeights[-1] = minDistances[i]
 
+        if any(np.isnan(dist2)):
+            # Likely some period excluded based on behaviorPeriod.
+            # If a peak is present but the rat goes to nan on either side before distance is > passDenoiseThreshold,
+            # exclude the peak
+            todel = []
+            for pi, pk in enumerate(goodPkIdxs):
+                i = pk
+                while i > 0 and not np.isnan(dist2[i]) and not dist2[i] > passDenoiseThreshold2:
+                    i -= 1
+                if np.isnan(dist2[i]):
+                    todel.append(pi)
+                    continue
+                i = pk
+                while i < len(dist2) - 1 and not np.isnan(dist2[i]) and not dist2[i] > passDenoiseThreshold2:
+                    i += 1
+                if np.isnan(dist2[i]):
+                    todel.append(pi)
+                    continue
+            goodPkIdxs = [i for j, i in enumerate(goodPkIdxs) if j not in todel]
+            goodPkHeights = [i for j, i in enumerate(goodPkHeights) if j not in todel]
+
         if showPlot:
             plt.plot(xs, ys)
             plt.plot(xs[pks], ys[pks], "x")
@@ -1454,6 +1475,8 @@ class BTSession:
             return np.nan
         if exits[0] < entries[0]:
             exits = exits[1:]
+        if len(entries) == 0 or len(exits) == 0:
+            return np.nan
         if entries[-1] > exits[-1]:
             entries = entries[:-1]
         if len(entries) != len(exits):
@@ -1475,6 +1498,8 @@ class BTSession:
             return np.nan
         if exits[0] < entries[0]:
             exits = exits[1:]
+        if len(entries) == 0 or len(exits) == 0:
+            return np.nan
         if entries[-1] > exits[-1]:
             entries = entries[:-1]
         if len(entries) != len(exits):

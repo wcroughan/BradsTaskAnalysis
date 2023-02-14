@@ -1,6 +1,6 @@
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
-from MeasureTypes import WellMeasure, TrialMeasure, LocationMeasure
+from MeasureTypes import WellMeasure, TrialMeasure, LocationMeasure, SessionMeasure
 from BTData import BTData
 from PlotUtil import PlotManager, setupBehaviorTracePlot, plotIndividualAndAverage
 from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo, getRipplePower, \
@@ -22,6 +22,7 @@ from numpy.typing import ArrayLike
 from functools import partial
 from DataminingFactory import runEveryCombination
 import multiprocessing
+from dataclasses import replace
 
 
 # TODO
@@ -137,6 +138,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_DOT_PROD=None, RUN_SMOOTHING_TEST=None, RUN_MANY_DOTPROD=None,
                 RUN_LFP_LATENCY=None, MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=False,
                 PLOT_OCCUPANCY=None, RUN_SPOTLIGHT_EXPLORATION_PROBE=None,
+                RUN_OCCUPANCY_CORRELATION=None, RUN_TASK_GRAVITY=None,
                 RUN_NEW_GRAVITY=None, RUN_GRAVITY_FACTORY=None, RUN_SIMPLE_MEASURES=None,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
     if RUN_SPOTLIGHT is None:
@@ -173,6 +175,10 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         RUN_GRAVITY_FACTORY = RUN_UNSPECIFIED
     if RUN_SIMPLE_MEASURES is None:
         RUN_SIMPLE_MEASURES = RUN_UNSPECIFIED
+    if RUN_OCCUPANCY_CORRELATION is None:
+        RUN_OCCUPANCY_CORRELATION = RUN_UNSPECIFIED
+    if RUN_TASK_GRAVITY is None:
+        RUN_TASK_GRAVITY = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -258,24 +264,83 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            print("First half")
-            pp.pushOutputSubDir("firsthalf")
-            pp.setStatCategory("test", "firsthalf")
-            LocationMeasure("testhalves", lambda sesh: sesh.getValueMap(
-                lambda pos: sesh.totalTimeAtPosition(BP(probe=True), pos, radius=0.25)
-            ), sessions[0:4]).makeFigures(pp, plotFlags=["measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
-            pp.popOutputSubDir()
-            print("Second half")
-            pp.pushOutputSubDir("secondhalf")
-            pp.setStatCategory("test", "secondhalf")
-            LocationMeasure("testhalves", lambda sesh: sesh.getValueMap(
-                lambda pos: sesh.totalTimeAtPosition(BP(probe=True), pos, radius=0.25)
-            ), sessions[4:8]).makeFigures(pp, plotFlags=["measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
-            pp.popOutputSubDir()
-            print("Running immediate shuffles")
-            pp.runImmediateShufflesAcrossPersistentCategories()
-            print("Running shuffles")
-            pp.runShuffles()
+            SessionMeasure("test0",
+                           lambda sesh: sesh.totalTimeAtPosition(BP(probe=True),
+                                                                 getWellPosCoordinates(sesh.homeWell)),
+                           sessions[0:4]).makeFigures(pp)
+            SessionMeasure("test1",
+                           lambda sesh: sesh.totalTimeAtPosition(BP(probe=True),
+                                                                 getWellPosCoordinates(sesh.homeWell)),
+                           sessions[0:4]).makeFigures(pp, everySessionBehaviorPeriod=BP(probe=True))
+            SessionMeasure("test2",
+                           lambda sesh: sesh.totalTimeAtPosition(BP(probe=True),
+                                                                 getWellPosCoordinates(sesh.homeWell)),
+                           sessions[0:4]).makeFigures(pp, everySessionBackground=BTSession.getTestMap)
+            SessionMeasure("test3",
+                           lambda sesh: sesh.totalTimeAtPosition(BP(probe=True),
+                                                                 getWellPosCoordinates(sesh.homeWell)),
+                           sessions[0:4]).makeFigures(pp, everySessionBackground=BTSession.getTestMap,
+                                                      everySessionBehaviorPeriod=BP(probe=True))
+
+            # print("First half")
+            # pp.pushOutputSubDir("firsthalf")
+            # pp.setStatCategory("test", "firsthalf")
+            # LocationMeasure("testhalves", lambda sesh: sesh.getValueMap(
+            #     lambda pos: sesh.totalTimeAtPosition(BP(probe=True), pos, radius=0.25)
+            # ), sessions[0:4]).makeFigures(pp, plotFlags=["measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+            # pp.popOutputSubDir()
+            # print("Second half")
+            # pp.pushOutputSubDir("secondhalf")
+            # pp.setStatCategory("test", "secondhalf")
+            # LocationMeasure("testhalves", lambda sesh: sesh.getValueMap(
+            #     lambda pos: sesh.totalTimeAtPosition(BP(probe=True), pos, radius=0.25)
+            # ), sessions[4:8]).makeFigures(pp, plotFlags=["measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+            # pp.popOutputSubDir()
+            # print("Running immediate shuffles")
+            # pp.runImmediateShufflesAcrossPersistentCategories()
+            # print("Running shuffles")
+            # pp.runShuffles()
+
+        if RUN_OCCUPANCY_CORRELATION:
+            def occupancyCorrelation(bp: BP, sesh: BTSession) -> float:
+                bpProbe = replace(bp, probe=True)
+                ocprobe, _, _ = sesh.occupancyMap(bpProbe)
+                bpTask = replace(bp, probe=False)
+                octask, _, _ = sesh.occupancyMap(bpTask)
+                return np.corrcoef(ocprobe.flatten(), octask.flatten())[0, 1]
+
+            def occupancyCorrelationImage(bp: BP, sesh: BTSession) -> np.ndarray:
+                bpProbe = replace(bp, probe=True)
+                ocprobe, _, _ = sesh.occupancyMap(bpProbe)
+                ocprobe = ocprobe / np.max(ocprobe)
+                bpTask = replace(bp, probe=False)
+                octask, _, _ = sesh.occupancyMap(bpTask)
+                octask = octask / np.max(octask)
+                return octask * ocprobe
+
+            SessionMeasure("Occupancy correlation",
+                           partial(occupancyCorrelation, BP(inclusionFlags="moving")),
+                           sessions).makeFigures(pp, everySessionBackground=partial(occupancyCorrelationImage,
+                                                                                    BP(inclusionFlags="moving")))
+
+        if RUN_TASK_GRAVITY:
+            LocationMeasure("Task gravity home trials",
+                            lambda sesh: sesh.getValueMap(
+                                lambda pos: sesh.getGravity(
+                                    BP(inclusionFlags="homeTrial", probe=False), pos)
+                            ), sessions).makeFigures(pp, excludeFromCombo=True,
+                                                     everySessionBehaviorPeriod=BP(inclusionFlags="homeTrial", probe=False))
+            LocationMeasure("Task gravity away trials",
+                            lambda sesh: sesh.getValueMap(
+                                lambda pos: sesh.getGravity(
+                                    BP(inclusionFlags="awayTrial", probe=False), pos)
+                            ), sessions).makeFigures(pp, excludeFromCombo=True,
+                                                     everySessionBehaviorPeriod=BP(inclusionFlags="awayTrial", probe=False))
+            LocationMeasure("Task gravity all",
+                            lambda sesh: sesh.getValueMap(
+                                lambda pos: sesh.getGravity(BP(probe=False), pos)
+                            ), sessions).makeFigures(pp, excludeFromCombo=True,
+                                                     everySessionBehaviorPeriod=BP(probe=False))
 
         if RUN_SIMPLE_MEASURES:
             def makeSimpleMeasure(func, radius, smoothDist, bp: BP):
@@ -284,7 +349,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                                        lambda sesh: sesh.getValueMap(
                                            lambda pos: func(sesh, bp, pos, radius=radius),
                                        ),
-                                       sessions[0:3],
+                                       sessions,
                                        smoothDist=smoothDist,
                                        parallelize=False)
             # allParams = {
@@ -1098,8 +1163,8 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
 
-    makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_SIMPLE_MEASURES=True, DATAMINE=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_TASK_GRAVITY=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_SIMPLE_MEASURES=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_NEW_GRAVITY=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True,
     #             RUN_SPOTLIGHT_EXPLORATION_PROBE=True, DATAMINE=True, RUN_NEW_GRAVITY=True)

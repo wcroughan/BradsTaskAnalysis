@@ -20,6 +20,19 @@ from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
 
 
+# Some stuff for allowing me to run lambda functions in parallel
+_poolWorkerFunc = None
+
+
+def poolWorkerFuncWrapper(args):
+    return _poolWorkerFunc(args)
+
+
+def poolWorkerInit(func):
+    global _poolWorkerFunc
+    _poolWorkerFunc = func
+
+
 class TrialMeasure():
     """
     A measure that has a value for every trial during a task, such as trial duration.
@@ -816,16 +829,140 @@ class WellMeasure():
             print(f"Warning: unused plot flags: {plotFlags}")
 
 
-_poolWorkerFunc = None
+class SessionMeasure:
+    def __init__(self, name: str,
+                 measureFunc: Callable[[BTSession], float],
+                 sessionList: List[BTSession],
+                 parallelize: bool = True) -> None:
+        """
+        A measurement that summarizes an entire session with a float.
+        Comparison is done between control and SWR sessions
+        :param name: name of the measure
+        :param measureFunc: function that takes a BTSession and returns a float
+        :param sessionList: list of sessions to measure
+        :param parallelize: whether to parallelize the measure computation across sessions
+        """
+        self.name = name
+        self.sessionList = sessionList
+        self.dotColors = ["orange" if s.isRippleInterruption else "cyan" for s in sessionList]
+        self.conditionBySession = ["SWR" if s.isRippleInterruption else "Ctrl" for s in sessionList]
 
+        if parallelize:
+            with Pool(None, initializer=poolWorkerInit, initargs=(measureFunc, )) as p:
+                self.sessionVals: np.ndarray = p.map(
+                    poolWorkerFuncWrapper, sessionList)
+        else:
+            self.sessionVals = np.array([measureFunc(sesh) for sesh in sessionList])
 
-def poolWorkerFuncWrapper(args):
-    return _poolWorkerFunc(args)
+    def makeFigures(self,
+                    plotManager: PlotManager,
+                    plotFlags: str | List[str] = "all",
+                    everySessionBehaviorPeriod: Optional[BP | Callable[[BTSession], BP]] = None,
+                    everySessionBackground: Optional[Callable[[BTSession], ArrayLike]] = None,
+                    runStats: bool = True, subFolder: bool = True,
+                    excludeFromCombo=False) -> None:
+        """
+        Make figures for this measure
+        :param plotManager: plot manager to use
+        :param plotFlags: "all" or list of plot flags to make. Possible flags are:
+            "all": make all figures
+            "violin": make violin plot of session measure divided by condition
+            "everySession": make everysession figure
+        :param everySessionBehaviorPeriod: behavior period to use for everysession path trace
+        :param everySessionBackground: background to use for everysession plot
+        :param runStats: whether to run stats
+        :param subFolder: whether to put the figures in a subfolder
+        :param excludeFromCombo: whether to exclude this measure from the combo figure
+        """
+        figName = self.name.replace(" ", "_")
+        if subFolder:
+            plotManager.pushOutputSubDir("SM_" + figName)
 
+        allPossibleFlags = ["violin", "everysession"]
 
-def poolWorkerInit(func):
-    global _poolWorkerFunc
-    _poolWorkerFunc = func
+        if isinstance(plotFlags, str):
+            if plotFlags == "all":
+                plotFlags = allPossibleFlags
+            else:
+                plotFlags = [plotFlags]
+        else:
+            # so list passed in isn't modified
+            plotFlags = [v for v in plotFlags]
+
+        if len(plotFlags) > 0 and plotFlags[0].startswith("not"):
+            if not all([v.startswith("not") for v in plotFlags]):
+                raise ValueError("if one plot flag starts with 'not', all must")
+            plotFlags = [v[3:] for v in plotFlags]
+            plotFlags = list(set(allPossibleFlags) - set(plotFlags))
+
+        if "violin" in plotFlags:
+            plotFlags.remove("violin")
+            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
+                violinPlot(pc.ax, self.sessionVals, categories=self.conditionBySession,
+                           dotColors=self.dotColors, axesNames=["Condition", self.name])
+
+                if runStats:
+                    pc.yvals[figName] = self.sessionVals
+                    pc.categories["condition"] = self.conditionBySession
+                    pc.immediateShuffles.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+
+        if "everysession" in plotFlags:
+            plotFlags.remove("everysession")
+
+            if everySessionBackground is not None:
+                valImgs = [everySessionBackground(sesh) for sesh in self.sessionList]
+                valMin = np.nanmin(valImgs)
+                valMax = np.nanmax(valImgs)
+            else:
+                normVals = (self.sessionVals - np.nanmin(self.sessionVals)) / \
+                    (np.nanmax(self.sessionVals) - np.nanmin(self.sessionVals))
+
+            wellSize = mpl.rcParams['lines.markersize']**2 / 4
+            ncols = int(np.ceil(np.sqrt(len(self.sessionList))))
+            with plotManager.newFig(figName + "_every_session", subPlots=(ncols, ncols),
+                                    figScale=0.6, excludeFromCombo=excludeFromCombo) as pc:
+                for si, sesh in enumerate(self.sessionList):
+                    ax = pc.axs[si // ncols, si % ncols]
+                    assert isinstance(ax, Axes)
+
+                    if everySessionBehaviorPeriod is not None:
+                        if callable(everySessionBehaviorPeriod):
+                            bp = everySessionBehaviorPeriod(sesh)
+                        else:
+                            bp = everySessionBehaviorPeriod
+
+                        _, xs, ys = sesh.posDuringBehaviorPeriod(bp)
+                        ax.plot(xs, ys, c="#deac7f", lw=0.5)
+                        if len(xs) > 0:
+                            ax.scatter(xs[-1], ys[-1], marker="*")
+
+                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+
+                    for v in ax.spines.values():
+                        v.set_zorder(0)
+                    ax.set_title(f"{self.sessionVals[si]:.3f} {sesh.name}", fontdict={
+                                 'fontsize': 6})
+
+                    if everySessionBackground is not None:
+                        im = ax.imshow(valImgs[si].T, cmap=mpl.colormaps["coolwarm"],
+                                       vmin=valMin, vmax=valMax, interpolation="nearest",
+                                       extent=(-0.5, 6.5, -0.5, 6.5), origin="lower")
+                    else:
+                        ax.set_facecolor(mpl.colormaps["coolwarm"](normVals[si]))
+
+                for si in range(len(self.sessionList), ncols * ncols):
+                    ax = pc.axs[si // ncols, si % ncols]
+                    blankPlot(ax)
+
+                if everySessionBackground is not None:
+                    plt.colorbar(im, ax=ax)
+
+        if len(plotFlags) > 0:
+            print(f"Warning: unused plot flags: {plotFlags}")
+
+        if subFolder:
+            plotManager.popOutputSubDir()
 
 
 class LocationMeasure():
