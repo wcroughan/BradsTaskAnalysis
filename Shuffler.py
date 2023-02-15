@@ -382,7 +382,7 @@ class Shuffler:
         print(df.to_string(index=False))
 
         outputFileName = os.path.join(os.path.dirname(
-            infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_summary.txt"))
+            hdfFile), datetime.now().strftime("%Y%m%d_%H%M%S_summary.txt"))
         with open(outputFileName, "w") as f:
             f.write(df.to_string(index=False))
 
@@ -581,9 +581,10 @@ if __name__ == "__main__":
     # infoFileNames.append("B17_20230213_103244.txt")
     # infoFileNames.append("B17_20230213_133656.txt")
     # infoFileNames.append("B17_20230210_171338.txt")  # "simple" measures like latency
-    infoFileNames.append("B17_20230213_173328.txt")
-    infoFileNames = [os.path.join(dataDir, f) for f in infoFileNames]
-    outFile = s.runAllShuffles(infoFileNames, 100)
-    print(outFile)
+    # infoFileNames.append("B17_20230213_173328.txt")
+    # infoFileNames = [os.path.join(dataDir, f) for f in infoFileNames]
+    # outFile = s.runAllShuffles(infoFileNames, 100)
+    # print(outFile)
+    outFile = os.path.join(dataDir, "20230214_092451_significantShuffles.h5")
     # outFile = "/media/WDC8/figures/202302_labmeeting/20230213_162512_significantShuffles.h5"
     s.summarizeShuffleResults(outFile)

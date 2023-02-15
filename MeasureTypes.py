@@ -1088,6 +1088,7 @@ class LocationMeasure():
         :param parallelize: whether to parallelize the processing of the sessions
         """
         self.name = name
+        self.valid = True
         self.sessionList = sessionList
         self.sessionValsBySession = [None] * len(sessionList)
         self.dotColorsBySession = [None] * len(sessionList)
@@ -1106,6 +1107,11 @@ class LocationMeasure():
                     poolWorkerFuncWrapper, sessionList)
         else:
             self.measureValsBySession = [measureFunc(sesh) for sesh in sessionList]
+
+        if np.isnan(self.measureValsBySession).all():
+            print(f"WARNING: all values for {name} are NaN. Not plotting.")
+            self.valid = False
+            return
 
         for si, sesh in enumerate(sessionList):
             self.measureValsBySession[si] = np.array(self.measureValsBySession[si])
@@ -1259,6 +1265,9 @@ class LocationMeasure():
         :param subFolder: if True, put figures in a subfolder named after the measure
         :param excludeFromCombo: if True, don't include this measure in the combo plot
         """
+
+        if not self.valid:
+            return
 
         figName = self.name.replace(" ", "_")
         if subFolder:

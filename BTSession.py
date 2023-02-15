@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import gaussian_filter, binary_dilation, binary_erosion
 from scipy.signal import find_peaks
 import numpy as np
 from typing import Optional, List, Dict, Tuple, Iterable, Callable, TypeVar
@@ -58,12 +58,18 @@ class BehaviorPeriod:
     :param moveThresh: The minimum speed in cm/s for a time point to be considered moving. If None,
         the default value is used that is specified in the ImportOptions. If inclusionFlags does not
         contain "moving" or "still", this parameter is ignored.
+    :param erode: The approximate amount of time in seconds to erode the included time points by. This occurs after
+        all other inclusion criteria are applied, except for dilate.
+    :param dilate: The approximate amount of time in seconds to dilate the included time points by. This occurs after
+        all other inclusion criteria are applied. 
     """
     probe: bool = False
     timeInterval: Optional[TimeInterval] = None
     inclusionFlags: Optional[str | Iterable[str]] = None
     inclusionArray: Optional[np.ndarray] = None
     moveThreshold: Optional[float] = None
+    erode: Optional[int] = None
+    dilate: Optional[int] = None
 
     def filenameString(self) -> str:
         """
@@ -90,6 +96,10 @@ class BehaviorPeriod:
             s += "_inclusionArray"
         if self.moveThreshold is not None:
             s += f"_moveThresh_{self.moveThreshold}"
+        if self.erode is not None:
+            s += f"_erode_{self.erode}"
+        if self.dilate is not None:
+            s += f"_dilate_{self.dilate}"
         return s
 
 
@@ -577,6 +587,16 @@ class BTSession:
             ts, behaviorPeriod.timeInterval, noneVal=(0, len(keepFlag)))
         keepFlag[0:durIdx[0]] = False
         keepFlag[durIdx[1]:] = False
+
+        # erosion and dilation
+        if behaviorPeriod.erode is not None:
+            frameDuration = np.nanmean(np.diff(ts)) / TRODES_SAMPLING_RATE
+            numFrames = int(behaviorPeriod.erode / frameDuration)
+            keepFlag = binary_erosion(keepFlag, iterations=numFrames)
+        if behaviorPeriod.dilate is not None:
+            frameDuration = np.nanmean(np.diff(ts)) / TRODES_SAMPLING_RATE
+            numFrames = int(behaviorPeriod.dilate / frameDuration)
+            keepFlag = binary_dilation(keepFlag, iterations=numFrames)
 
         return keepFlag
 
@@ -1193,6 +1213,8 @@ class BTSession:
         x = self.probePosXs if behaviorPeriod.probe else self.btPosXs
         y = self.probePosYs if behaviorPeriod.probe else self.btPosYs
         keepFlag = self.evalBehaviorPeriod(behaviorPeriod)[:-1]
+        if not keepFlag.any():
+            return np.nan
 
         if excludeRadius is not None:
             dist2 = np.power(x - pos[0], 2) + np.power(y - pos[1], 2)
@@ -1462,7 +1484,29 @@ class BTSession:
         dt = np.append(dt, dt[-1])
         return np.nansum(dt[dist2 < radius * radius]) / TRODES_SAMPLING_RATE
 
-    def avgDwellTimeAtPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+    def filterEntryExits(self, entries: np.ndarray, exits: np.ndarray, dist2: np.ndarray,
+                         distThreshold: float) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Given some entry and exit position indices and a distance array, return the indices of the entries and exits
+        that are separated by a period in which dist2 exceeds distThresh.
+        So if eni, exi = filterEntryExits(entries, exits, dist2, distThreshold),
+        then for any i, there's a period in which dist2[exits[exi[i]]:entries[eni[i+1]]] > distThreshold,
+        and you can use entries[eni] and exits[exi] as the filtered entry and exit indices.
+        """
+        eni = [0]
+        exi = [0]
+
+        for i in range(1, len(entries)):
+            if np.any(dist2[exits[exi[-1]]:entries[i]] > distThreshold):
+                eni.append(i)
+                exi.append(i)
+            else:
+                exi[-1] = i
+
+        return np.array(eni).astype(int), np.array(exi).astype(int)
+
+    def avgDwellTimeAtPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
+                               radius: float = 0.5, denoiseFactor: float = 1.25) -> float:
         bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
         ts, xs, ys = self.posDuringBehaviorPeriod(bp)
         dx = xs - pos[0]
@@ -1481,11 +1525,62 @@ class BTSession:
             entries = entries[:-1]
         if len(entries) != len(exits):
             raise ValueError("Number of entries and exits don't match")
+
+        ens, exs = self.filterEntryExits(
+            entries, exits, dist2, radius * radius * denoiseFactor * denoiseFactor)
+        entries = entries[ens]
+        exits = exits[exs]
 
         dwellTimes = ts[exits] - ts[entries]
         return np.nanmean(dwellTimes) / TRODES_SAMPLING_RATE
 
-    def numVisitsToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+    def avgCurvatureAtPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
+                               radius: float = 0.5, denoiseFactor: float = 1.25) -> float:
+        ts, xs, ys = self.posDuringBehaviorPeriod(behaviorPeriod)
+        dx = xs - pos[0]
+        dy = ys - pos[1]
+        dist2 = dx * dx + dy * dy
+        inRadius = dist2 < radius * radius
+        entries = np.where(np.diff(inRadius.astype(int)) == 1)[0]
+        exits = np.where(np.diff(inRadius.astype(int)) == -1)[0]
+        if len(entries) == 0 or len(exits) == 0:
+            return np.nan
+        if exits[0] < entries[0]:
+            exits = exits[1:]
+        if len(entries) == 0 or len(exits) == 0:
+            return np.nan
+        if entries[-1] > exits[-1]:
+            entries = entries[:-1]
+        if len(entries) != len(exits):
+            raise ValueError("Number of entries and exits don't match")
+
+        ens, exs = self.filterEntryExits(
+            entries, exits, dist2, radius * radius * denoiseFactor * denoiseFactor)
+        entries = entries[ens]
+        exits = exits[exs]
+
+        # If behavior is excluded during a visit, exclude the visit
+        for i in range(len(entries)):
+            if any(np.isnan(xs[entries[i]:exits[i]])):
+                entries[i] = np.nan
+                exits[i] = np.nan
+        entries = entries[~np.isnan(entries)]
+        exits = exits[~np.isnan(exits)]
+
+        if len(entries) == 0 or len(exits) == 0:
+            return np.nan
+
+        cs = self.probeCurvature if behaviorPeriod.probe else self.btCurvature
+        allVals = np.concatenate([cs[e1:e2] for e1, e2 in zip(entries, exits)])
+        allVals = allVals[~np.isnan(allVals)]
+
+        if len(allVals) == 0:
+            return np.nan
+
+        return np.nanmean(allVals)
+
+    def numVisitsToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
+                            radius: float = 0.5, denoiseFactor: float = 1.25) -> float:
         bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
         ts, xs, ys = self.posDuringBehaviorPeriod(bp)
         dx = xs - pos[0]
@@ -1504,6 +1599,11 @@ class BTSession:
             entries = entries[:-1]
         if len(entries) != len(exits):
             raise ValueError("Number of entries and exits don't match")
+
+        ens, exs = self.filterEntryExits(
+            entries, exits, dist2, radius * radius * denoiseFactor * denoiseFactor)
+        entries = entries[ens]
+        exits = exits[exs]
 
         return len(entries)
 
