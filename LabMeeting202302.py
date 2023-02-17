@@ -27,14 +27,7 @@ from dataclasses import replace
 
 # TODO
 # To accomplish goal of first drafts, have the following plots made:
-#  - Task explanation
-#  - Hardware setup explanation
 #  - Interruption confirmation - Try and remove artifact
-#  - Raw examples, illustration of home memory
-#  - B17 datamining results, ready to be run on other rats
-#       curvature
-#       dot product during task with buffer around each trial period
-#       Behavior period(s) that exclude corner time
 #
 # =================
 # Data Cleanup
@@ -160,8 +153,10 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 PLOT_OCCUPANCY=None, RUN_SPOTLIGHT_EXPLORATION_PROBE=None,
                 RUN_OCCUPANCY_CORRELATION=None, RUN_TASK_GRAVITY=None,
                 RUN_AVG_DWELL_WITHOUT_OUTLIER=None, RUN_CURVATURE=None,
-                RUN_DOT_PROD_FACTORY=None,
+                RUN_DOT_PROD_FACTORY=None, FIND_AVG_DWELL_OUTLIER=None,
                 RUN_NEW_GRAVITY=None, RUN_GRAVITY_FACTORY=None, RUN_SIMPLE_MEASURES=None,
+                PLOT_TASK_TRIAL_PERFORMANCE=None, RUN_PREV_SESSION_PERSEVERATION=None,
+                REDO_NUM_VISITS=None,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
@@ -207,6 +202,14 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         RUN_CURVATURE = RUN_UNSPECIFIED
     if RUN_DOT_PROD_FACTORY is None:
         RUN_DOT_PROD_FACTORY = RUN_UNSPECIFIED
+    if FIND_AVG_DWELL_OUTLIER is None:
+        FIND_AVG_DWELL_OUTLIER = RUN_UNSPECIFIED
+    if PLOT_TASK_TRIAL_PERFORMANCE is None:
+        PLOT_TASK_TRIAL_PERFORMANCE = RUN_UNSPECIFIED
+    if RUN_PREV_SESSION_PERSEVERATION is None:
+        RUN_PREV_SESSION_PERSEVERATION = RUN_UNSPECIFIED
+    if REDO_NUM_VISITS is None:
+        REDO_NUM_VISITS = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
     globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
@@ -224,7 +227,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
     infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
-                     infoFileName=infoFileName, verbosity=3 if RUN_TESTS else 2)
+                     infoFileName=infoFileName, verbosity=3 if RUN_TESTS else 3)
 
     allSessionsByRat = {}
     for animalName in animalNames:
@@ -308,6 +311,87 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             #                                                              normalize=True)),
             #                      sessions,
             #                      smoothDist=smoothDist, parallelize=False)
+
+        if RUN_PREV_SESSION_PERSEVERATION:
+            def nextSessionCtrlLocation(sesh: BTSession, seshIndex: int, allSessions: List[BTSession]) -> \
+                    Iterable[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]:
+                if seshIndex == len(allSessions) - 1:
+                    return [([], "next session", ("This sesh", "Next sesh", "Session"))]
+                hwx, hwy = getWellPosCoordinates(sesh.homeWell)
+                return [([(seshIndex + 1, hwx, hwy)], "next session", ("This sesh", "Next sesh", "Session"))]
+
+            LocationMeasure("Next sesh curvature", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.avgCurvatureAtPosition(BP(probe=True), pos, radius=0.75)),
+                sessions,
+                sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+            LocationMeasure("Next sesh frac visited", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.fracExcursionsVisited(pos)),
+                sessions,
+                sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+            LocationMeasure("Next sesh dot prod offwall", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.getDotProductScore(BP(probe=True, inclusionFlags=["offWall", "moving"]),
+                                                    pos, distanceWeight=0)),
+                            sessions, smoothDist=1.0,
+                            sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+            LocationMeasure("Next sesh dot prod first min norm", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.getDotProductScore(BP(probe=True, timeInterval=(0, 60), inclusionFlags="moving"),
+                                                    pos, distanceWeight=-1)),
+                            sessions, smoothDist=0,
+                            sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+            LocationMeasure("Next sesh task gravity", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.getGravity(BP(probe=False, inclusionFlags="awayTrial"), pos,
+                                            passRadius=1.5, visitRadius=0.3, passDenoiseFactor=1.2)),
+                            sessions, smoothDist=0.5,
+                            sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+            LocationMeasure("Next sesh probe gravity", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.getGravity(BP(probe=True, timeInterval=BTSession.fillTimeInterval), pos,
+                                            passRadius=1.5, visitRadius=0.3, passDenoiseFactor=1.2)),
+                            sessions, smoothDist=0,
+                            sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+            LocationMeasure("Next sesh avg dwell time", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.avgDwellTimeAtPosition(BP(probe=True, timeInterval=(0, 60)), pos, radius=0.5)),
+                sessions, smoothDist=1,
+                sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+            LocationMeasure("Next sesh num visits", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.numVisitsToPosition(BP(probe=True, timeInterval=BTSession.fillTimeInterval), pos, radius=0.25)),
+                sessions, smoothDist=0.5,
+                sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+            LocationMeasure("Next sesh optimality", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.pathOptimalityToPosition(BP(probe=True, timeInterval=(0, 60)), pos, radius=1.5)),
+                sessions, smoothDist=0.5,
+                sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+
+        if REDO_NUM_VISITS:
+            def nextSessionCtrlLocation(sesh: BTSession, seshIndex: int, allSessions: List[BTSession]) -> \
+                    Iterable[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]:
+                if seshIndex == len(allSessions) - 1:
+                    return [([], "next session", ("This sesh", "Next sesh", "Session"))]
+                hwx, hwy = getWellPosCoordinates(sesh.homeWell)
+                return [([(seshIndex + 1, hwx, hwy)], "next session", ("This sesh", "Next sesh", "Session"))]
+            LocationMeasure("Next sesh num visits", lambda sesh: sesh.getValueMap(
+                lambda pos: sesh.numVisitsToPosition(BP(probe=True, timeInterval=BTSession.fillTimeInterval), pos, radius=0.25)),
+                sessions, smoothDist=0.5,
+                sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+
+            def makeSimpleMeasure(radius, smoothDist, bp: BP):
+                return LocationMeasure(f"simple num visits {radius:.2f} {bp.filenameString()} {smoothDist:.2f}",
+                                       lambda sesh: sesh.getValueMap(
+                                           lambda pos: sesh.numVisitsToPosition(
+                                               bp, pos, radius=radius),
+                                       ),
+                                       sessions,
+                                       smoothDist=smoothDist,
+                                       parallelize=False)
+
+            allParams = {
+                "radius": [0.25, 0.5, 0.75, 1, 1.5],
+                "smoothDist": [0, 0.5, 1.0],
+                "bp": [BP(probe=True), BP(probe=False),
+                       BP(probe=True, timeInterval=(0, 60)),
+                       BP(probe=True, timeInterval=BTSession.fillTimeInterval),]
+            }
+
+            runDMFOnLM(makeSimpleMeasure, allParams, pp, minParamsSequential=1)
 
         if RUN_OCCUPANCY_CORRELATION:
             def occupancyCorrelation(bp: BP, sesh: BTSession) -> float:
@@ -406,6 +490,16 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             }
 
             runDMFOnLM(makeCurvatureMeasure, allParams, pp, minParamsSequential=1)
+
+        if FIND_AVG_DWELL_OUTLIER:
+            lm = LocationMeasure("avgdwell outlier finder",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.avgDwellTimeAtPosition(
+                                         BP(probe=True), pos, radius=0.5),
+                                 ),
+                                 sessions,
+                                 smoothDist=0.5)
+            print("\n".join([str(v) for v in enumerate(lm.sessionValsBySession)]))
 
         if RUN_AVG_DWELL_WITHOUT_OUTLIER:
             outlierIdx = 6
@@ -772,6 +866,14 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             ), sessionsWithProbe).makeFigures(pp, plotFlags="everysession",
                                               everySessionTraceTimeInterval=lambda _: [
                                                   0, 2*SECTION_LEN], everySessionTraceType="probe")
+
+        if PLOT_TASK_TRIAL_PERFORMANCE:
+            TrialMeasure("trial duration", lambda sesh, t0, t1, ttype:
+                         sesh.btPos_secs[t1] - sesh.btPos_secs[t0],
+                         sessions).makeFigures(pp)
+            TrialMeasure("trial pathOptimality", lambda sesh, t0, t1, ttype:
+                         sesh.pathOptimality(False, (t0, t1, "posIdx")),
+                         sessions).makeFigures(pp)
 
         if PLOT_DETAILED_TASK_TRACES:
             for si, sesh in enumerate(sessions):
@@ -1261,8 +1363,9 @@ if __name__ == "__main__":
     #             RUN_SPOTLIGHT_EXPLORATION_PROBE=True, DATAMINE=True, RUN_NEW_GRAVITY=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_GRAVITY_FACTORY=True, DATAMINE=True)
-    makeFigures(RUN_UNSPECIFIED=False, RUN_DOT_PROD_FACTORY=True, DATAMINE=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_DOT_PROD_FACTORY=True, DATAMINE=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_AVG_DWELL_WITHOUT_OUTLIER=True, DATAMINE=True)
+    makeFigures(RUN_UNSPECIFIED=False, REDO_NUM_VISITS=True, DATAMINE=True)
 
     # hacky_RunOldStats("B17_20230210_144854.txt")
     # hacky_RunOldStats("B17_20230210_144854.txt")

@@ -363,8 +363,6 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
             spikeTet = 3
             harsherClFunc = True
 
-
-
         if clFileSuffix_delay is None:
             clFileSuffix_delay = clFileSuffix
 
@@ -497,9 +495,9 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
             clFileSuffix = "_2"
         else:
             runName = "20220816_144045"
-            swrt0 = ConvertTimeToTrodesTS(0, 48, 14 )
+            swrt0 = ConvertTimeToTrodesTS(0, 48, 14)
             swrt1 = ConvertTimeToTrodesTS(1, 17, 45)
-            ctrlt0 = ConvertTimeToTrodesTS(2, 4, 47 )
+            ctrlt0 = ConvertTimeToTrodesTS(2, 4, 47)
             ctrlt1 = ConvertTimeToTrodesTS(2, 30, 0)
             lfpTet = 8
             spikeTet = 8
@@ -773,7 +771,8 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
 
     # If necessary, generate lfp file
     possible_sg_dirs = ["/home/wcroughan/Software/Trodes223/", "/home/wcroughan/Software/Trodes21/",
-                        "/home/wcroughan/Software/Trodes21/linux/", "/home/fosterlab/Software/Trodes223/"]
+                        "/home/wcroughan/Software/Trodes21/linux/", "/home/fosterlab/Software/Trodes223/",
+                        "/home/wcroughan/Software/Trodes_2-2-3_Ubuntu1804"]
     sg_dir = None
     for dd in possible_sg_dirs:
         if os.path.exists(dd):
@@ -831,8 +830,10 @@ def makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False):
     if twoFiles:
         lfpTimestampFileNameSWR = ".".join(lfpFileNameSWR.split(".")[0:-2]) + ".timestamps.dat"
         lfpTimestampFileNameCtrl = ".".join(lfpFileNameCtrl.split(".")[0:-2]) + ".timestamps.dat"
-        swrOutputFileName = os.path.join(outputDir, animal_name + "_" + runNameSWR + "_swr_psth.png")
-        ctrlOutputFileName = os.path.join(outputDir, animal_name + "_" + runNameCtrl + "_ctrl_psth.png")
+        swrOutputFileName = os.path.join(outputDir, animal_name +
+                                         "_" + runNameSWR + "_swr_psth.png")
+        ctrlOutputFileName = os.path.join(
+            outputDir, animal_name + "_" + runNameCtrl + "_ctrl_psth.png")
         comboOutputFileName = os.path.join(
             outputDir, animal_name + "_" + runNameSWR + "_" + runNameCtrl + "_combo_psth.png")
     else:
@@ -908,7 +909,7 @@ if __name__ == "__main__":
     if len(sys.argv) == 2:
         animal_name = sys.argv[1]
     else:
-        animal_name = 'B14'
+        animal_name = 'B13'
     print("Generating MUA PSTH for animal " + animal_name)
 
     makePSTH(animal_name, ALWAYS_REMAKE_SG_EXPORTS=False)

@@ -1019,11 +1019,11 @@ class BTSession:
         displacement = np.sqrt(displacementX * displacementX + displacementY * displacementY)
         distance = np.sum(np.sqrt(np.power(dx, 2) + np.power(dy, 2)))
 
-        if distance / displacement < 1:
-            print(f"{distance =}")
-            print(f"{displacement =}")
-            if timeInterval is not None:
-                print(f"{durIdx = }")
+        # if distance / displacement < 1:
+        #     print(f"{distance =}")
+        #     print(f"{displacement =}")
+        #     if timeInterval is not None:
+        #         print(f"{durIdx = }")
 
         return distance / displacement
 
@@ -1590,11 +1590,11 @@ class BTSession:
         entries = np.where(np.diff(inRadius.astype(int)) == 1)[0]
         exits = np.where(np.diff(inRadius.astype(int)) == -1)[0]
         if len(entries) == 0 or len(exits) == 0:
-            return np.nan
+            return 0
         if exits[0] < entries[0]:
             exits = exits[1:]
         if len(entries) == 0 or len(exits) == 0:
-            return np.nan
+            return 0
         if entries[-1] > exits[-1]:
             entries = entries[:-1]
         if len(entries) != len(exits):
@@ -1641,3 +1641,15 @@ class BTSession:
         # input(ret)
 
         return ret
+
+    def fracExcursionsVisited(self, pos: Tuple[float, float], radius: float = 0.5) -> float:
+        if len(self.probeExcursionStart_posIdx) == 0:
+            return np.nan
+        ret = 0
+        for i0, i1 in zip(self.probeExcursionStart_posIdx, self.probeExcursionEnd_posIdx):
+            x = self.probePosXs[i0:i1]
+            y = self.probePosYs[i0:i1]
+            d = np.sqrt((x - pos[0])**2 + (y - pos[1])**2)
+            if np.any(d < radius):
+                ret += 1
+        return ret / len(self.probeExcursionStart_posIdx)

@@ -10,6 +10,7 @@ from matplotlib.colors import Normalize
 from numpy.typing import ArrayLike
 from multiprocessing import Pool
 import warnings
+import pprint
 
 from UtilFunctions import offWall, getWellPosCoordinates, getRotatedWells
 from PlotUtil import violinPlot, PlotManager, setupBehaviorTracePlot, blankPlot, \
@@ -48,9 +49,9 @@ class TrialMeasure():
     These functions are not necessarily called in the order in which they occur during the task
     """
 
-    def __init__(self, name: str = "",
-                 measureFunc: Callable[[BTSession, int, int, str], float] = lambda _: np.nan,
-                 sessionList: List[BTSession] = [],
+    def __init__(self, name: str,
+                 measureFunc: Callable[[BTSession, int, int, str], float],
+                 sessionList: List[BTSession],
                  trialFilter: None | Callable[[BTSession, str, int, int, int, int], bool] = None,
                  runStats=True):
         self.name = name
@@ -140,7 +141,12 @@ class TrialMeasure():
 
     def makeFigures(self,
                     plotManager: PlotManager,
-                    plotFlags: str | List[str] = "all"):
+                    plotFlags: str | List[str] = "all",
+                    subFolder: bool = True):
+
+        figName = self.name.replace(" ", "_")
+        if subFolder:
+            plotManager.pushOutputSubDir("TM_" + figName)
 
         if isinstance(plotFlags, str):
             if plotFlags == "all":
@@ -151,7 +157,6 @@ class TrialMeasure():
             # So passed in list isn't modified by remove
             plotFlags = [v for v in plotFlags]
 
-        figName = self.name.replace(" ", "_")
         if "measure" in plotFlags:
             plotFlags.remove("measure")
             with plotManager.newFig(figName) as pc:
@@ -194,11 +199,11 @@ class TrialMeasure():
 
             with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[:, ::2], xvalsAll, avgColor="red", label="home")
+                    pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="red", label="home")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[:, 1::2], xvalsAll, avgColor="blue", label="away")
-                pc.ax.set_xlim(1, len(xvalsAll))
-                pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
+                    pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="blue", label="away")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_home") as pc:
                 plotIndividualAndAverage(pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="grey")
@@ -342,6 +347,9 @@ class TrialMeasure():
                         norm=Normalize(self.diffMin, self.diffMax), cmap=cmap), ax=ax)
 
                     pc.axs[2*si, 0].set_title(sesh.name)
+
+        if subFolder:
+            plotManager.popOutputSubDir()
 
         if len(plotFlags) > 0:
             print(f"Warning: unused plot flags: {plotFlags}")
