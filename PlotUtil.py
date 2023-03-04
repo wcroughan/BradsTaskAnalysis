@@ -17,9 +17,8 @@ from UtilFunctions import getWellPosCoordinates
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, Dict, Any, List, Callable
 from numpy.typing import ArrayLike
-from tqdm import tqdm
 import multiprocessing
-from Shuffler import ShuffSpec, Shuffler, ShuffleResult
+from Shuffler import ShuffSpec, Shuffler, ShuffleResult, notNanPvalFilter
 
 
 @dataclass
@@ -217,7 +216,11 @@ class PlotManager:
                 if not self.plotContext.isSinglePlot:
                     raise Exception("Can't have multiple plots and do shuffle")
 
-                self.plotContext.ax.add_artist(AnchoredText(f"p={pval}", "upper center"))
+                if pval > 0:
+                    self.plotContext.ax.add_artist(AnchoredText(f"p={pval}", "upper center"))
+                else:
+                    self.plotContext.ax.add_artist(AnchoredText(
+                        f"p<{1/numShuffles[0]}", "upper center"))
 
         # Finally, save or show the figure
         if (self.plotContext.savePlot is not None and self.plotContext.savePlot) or \
@@ -418,7 +421,7 @@ class PlotManager:
         self.shuffler.summarizeShuffleResults(outFile)
 
     def runShuffles(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
-                    resultsFilter: Callable[[str, ShuffleResult, float], bool] = lambda *_: True) -> None:
+                    resultsFilter: Callable[[str, ShuffleResult, float], bool] = notNanPvalFilter) -> None:
         outFile = self.shuffler.runAllShuffles([self.infoFileFullName], numShuffles,
                                                significantThreshold, resultsFilter)
         self.shuffler.summarizeShuffleResults(outFile)

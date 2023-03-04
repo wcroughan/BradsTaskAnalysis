@@ -10,6 +10,10 @@ import time
 from datetime import datetime
 
 
+def notNanPvalFilter(plotName: str, shuffleResult: ShuffleResult, pval: float, measureName: str) -> bool:
+    return not np.isnan(pval)
+
+
 class ShuffSpec:
     """
     Specifies one shuffle to run
@@ -91,10 +95,19 @@ class ShuffleResult:
         return ret
 
     def getPVals(self) -> np.ndarray:
+        if np.all(np.isnan(self.shuffleDiffs)):
+            return np.full(self.diff.shape, np.nan)
         pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
-                                  axis=0) / self.shuffleDiffs.shape[0]
+                                  axis=0) / np.count_nonzero(~np.isnan(self.shuffleDiffs), axis=0)
         pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
-                                  axis=0) / self.shuffleDiffs.shape[0]
+                                  axis=0) / np.count_nonzero(~np.isnan(self.shuffleDiffs), axis=0)
+        # oldpvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
+        #                              axis=0) / self.shuffleDiffs.shape[0]
+        # oldpvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
+        #                              axis=0) / self.shuffleDiffs.shape[0]
+        # if np.any(np.isnan(self.shuffleDiffs)):
+        #     print("nans in shuffle diff: ", np.count_nonzero(np.isnan(self.shuffleDiffs),
+        #           axis=0) / self.shuffleDiffs.shape[0], oldpvals1, pvals1, sep="\t")
         return (pvals1 + pvals2) / 2
 
     def getFullInfoString(self, linePfx="") -> str:
@@ -109,16 +122,24 @@ class ShuffleResult:
         return "\n".join(ret)
 
     def __str__(self) -> str:
-        if self.shuffleDiffs is None:
-            return "{}: {}".format(self.specs, self.diff)
+        if isinstance(self.diff, np.ndarray):
+            diffStr = ", ".join([f"{d:.3f}" for d in self.diff.flat])
         else:
-            return "{}: {} ({}, {})".format(self.specs, self.diff, np.min(self.shuffleDiffs), np.max(self.shuffleDiffs))
+            diffStr = f"{self.diff:.3f}"
+        if self.shuffleDiffs is None:
+            return f"{self.specs}: {diffStr}"
+        else:
+            return f"{self.specs}: {diffStr} ({np.min(self.shuffleDiffs):.3f}, {np.max(self.shuffleDiffs):.3f})"
 
     def __repr__(self) -> str:
-        if self.shuffleDiffs is None:
-            return "{}: {}".format(self.specs, self.diff)
+        if isinstance(self.diff, np.ndarray):
+            diffStr = ", ".join([f"{d:.3f}" for d in self.diff.flat])
         else:
-            return "{}: {} ({}-{})".format(self.specs, self.diff, np.min(self.shuffleDiffs), np.max(self.shuffleDiffs))
+            diffStr = f"{self.diff:.3f}"
+        if self.shuffleDiffs is None:
+            return f"{self.specs}: {diffStr}"
+        else:
+            return f"{self.specs}: {diffStr} ({np.min(self.shuffleDiffs):.3f}, {np.max(self.shuffleDiffs):.3f})"
 
 
 class Shuffler:
@@ -296,7 +317,7 @@ class Shuffler:
 
     def runAllShuffles(self, infoFileNames: List[str], numShuffles: int,
                        significantThreshold: Optional[float] = 0.15,
-                       resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = lambda *_: True) -> str:
+                       resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = notNanPvalFilter) -> str:
         self.numShuffles = numShuffles
 
         savedStatsFiles = []
@@ -340,7 +361,7 @@ class Shuffler:
         if significantThreshold is None:
             significantThreshold = 1.0
 
-        significantResults: List[Tuple[str, ShuffleResult, float, str, str, bool, bool]] = []
+        significantResults: List[Tuple[str, str, float, str, str, bool, bool]] = []
         for plotName, sr, measureName in shuffResults:
             for s in sr:
                 for s2 in s:
@@ -352,12 +373,16 @@ class Shuffler:
                                 "diff") or plotSuffix.endswith("cond")
                             isCtrlShuf = plotSuffix.endswith("cond") or (
                                 "ctrl_" in plotSuffix and "diff" not in plotSuffix)
+                            isDiffShuf = plotSuffix.endswith("diff")
+                            isNextSeshDiffShuf = plotSuffix.endswith("nextsession_diff")
                             significantResults.append(
                                 (plotName, str(s2), pval if pval < 0.5 else 1 - pval,
-                                 measureName, plotSuffix, isCondShuf, isCtrlShuf))
+                                 measureName, plotSuffix, isCondShuf, isCtrlShuf, isDiffShuf,
+                                 isNextSeshDiffShuf))
 
         sdf = pd.DataFrame(significantResults,
-                           columns=["plot", "shuffle", "pval", "measure", "plotSuffix", "isCondShuf", "isCtrlShuf"])
+                           columns=["plot", "shuffle", "pval", "measure", "plotSuffix", "isCondShuf",
+                                    "isCtrlShuf", "isDiffShuf", "isNextSeshDiffShuf"])
         sdf.sort_values(by="pval", inplace=True)
         # print("all shuffles")
         # print(sdf.to_string(index=False))
@@ -372,19 +397,45 @@ class Shuffler:
         # print("summarizeShuffleResults")
         # print(df.to_string(index=False))
 
+        dfWithoutShuffle = df.drop(columns=["shuffle"])
+        dfWithoutShuffle = dfWithoutShuffle[dfWithoutShuffle["isDiffShuf"]]
+        # print(dfWithoutShuffle.to_string(index=False))
+
+        minNextSeshPvals = df[df["isNextSeshDiffShuf"]].sort_values(
+            by="pval", ascending=True).drop_duplicates(subset=["measure"])
+        # print("minNextSeshPvals")
+        # print(minNextSeshPvals.to_string(index=False))
+
+        minNonNextSeshPvals = df[df["isDiffShuf"] & ~df["isNextSeshDiffShuf"]].sort_values(
+            by="pval", ascending=True).drop_duplicates(subset=["measure"])
+        # print("minNonNextSeshPvals")
+        # print(minNonNextSeshPvals.to_string(index=False))
+
         # print("summarizeShuffleResults")
-        condCounts = df.groupby(["isCondShuf", "measure"])["pval"].count().xs(
-            True, level="isCondShuf").sort_values(ascending=False).rename("CondShufCount").reset_index()
-        ctrlCounts = df.groupby(["isCtrlShuf", "measure"])["pval"].count().xs(
-            True, level="isCtrlShuf").sort_values(ascending=False).rename("CtrlShufCount").reset_index()
-        df = pd.merge(condCounts, ctrlCounts, on="measure")
-        df.sort_values(by="CondShufCount", inplace=True, ascending=False)
-        print(df.to_string(index=False))
+        # condCounts = df.groupby(["isCondShuf", "measure"])["pval"].count().xs(
+        #     True, level="isCondShuf").sort_values(ascending=False).rename("CondShufCount").reset_index()
+        # ctrlCounts = df.groupby(["isCtrlShuf", "measure"])["pval"].count().xs(
+        #     True, level="isCtrlShuf").sort_values(ascending=False).rename("CtrlShufCount").reset_index()
+        # df = pd.merge(condCounts, ctrlCounts, on="measure")
+        # df.sort_values(by="CondShufCount", inplace=True, ascending=False)
+        # print(df.to_string(index=False))
 
         outputFileName = os.path.join(os.path.dirname(
             hdfFile), datetime.now().strftime("%Y%m%d_%H%M%S_summary.txt"))
         with open(outputFileName, "w") as f:
-            f.write(df.to_string(index=False))
+            # f.write(df.to_string(index=False))
+            f.write("Non next session shuffle results")
+            f.write(minNonNextSeshPvals.to_string(index=False))
+            f.write("Next session shuffle results")
+            f.write(minNextSeshPvals.to_string(index=False))
+
+        outputFileNameCSV_nextSesh = os.path.join(os.path.dirname(
+            hdfFile), datetime.now().strftime("%Y%m%d_%H%M%S_summary_nextSesh.csv"))
+        minNextSeshPvals.to_csv(outputFileNameCSV_nextSesh, index=False)
+
+        outputFileNameCSV_nonNextSesh = os.path.join(os.path.dirname(
+            hdfFile), datetime.now().strftime("%Y%m%d_%H%M%S_summary_nonNextSesh.csv"))
+        minNonNextSeshPvals.to_csv(outputFileNameCSV_nonNextSesh, index=False)
 
     def _doShuffles(self, df: pd.DataFrame, specs: List[List[ShuffSpec]],
                     dataNames: List[str], numShuffles: List[int] = None) -> List[List[ShuffleResult]]:

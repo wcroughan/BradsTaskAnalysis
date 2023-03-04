@@ -156,7 +156,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_DOT_PROD_FACTORY=None, FIND_AVG_DWELL_OUTLIER=None,
                 RUN_NEW_GRAVITY=None, RUN_GRAVITY_FACTORY=None, RUN_SIMPLE_MEASURES=None,
                 PLOT_TASK_TRIAL_PERFORMANCE=None, RUN_PREV_SESSION_PERSEVERATION=None,
-                REDO_NUM_VISITS=None,
+                REDO_NUM_VISITS=None, RUN_THE_FINAL_DATAMINE=None, TEST_DATA=False,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
@@ -210,9 +210,17 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         RUN_PREV_SESSION_PERSEVERATION = RUN_UNSPECIFIED
     if REDO_NUM_VISITS is None:
         REDO_NUM_VISITS = RUN_UNSPECIFIED
+    if RUN_THE_FINAL_DATAMINE is None:
+        RUN_THE_FINAL_DATAMINE = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
-    globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
+    if RUN_THE_FINAL_DATAMINE:
+        if TEST_DATA:
+            globalOutputDir = os.path.join(dataDir, "figures", "final_datamine_test")
+        else:
+            globalOutputDir = os.path.join(dataDir, "figures", "final_datamine")
+    else:
+        globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
 
@@ -227,7 +235,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
     infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
-                     infoFileName=infoFileName, verbosity=3 if RUN_TESTS else 3)
+                     infoFileName=infoFileName, verbosity=3 if RUN_TESTS else 2)
 
     allSessionsByRat = {}
     for animalName in animalNames:
@@ -295,14 +303,17 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             pp.setStatCategory("rat", ratName)
 
         if RUN_TESTS:
-            bp1 = BP(probe=True, inclusionFlags="homeTrial", erode=10)
-            bp2 = BP(probe=True, inclusionFlags="homeTrial")
-            with pp.newFig("test nan", subPlots=(1, 2), showPlot=True, savePlot=False) as pc:
-                sesh = sessions[0]
-                ts, xs, ys = sesh.posDuringBehaviorPeriod(bp1)
-                pc.axs[0].plot(xs, ys)
-                ts, xs, ys = sesh.posDuringBehaviorPeriod(bp2)
-                pc.axs[1].plot(xs, ys)
+            infoFileName = "/media/WDC8/figures/202302_labmeeting/20230302_110034_significantShuffles.h5"
+            pp.shuffler.summarizeShuffleResults(infoFileName)
+
+            # bp1 = BP(probe=True, inclusionFlags="homeTrial", erode=10)
+            # bp2 = BP(probe=True, inclusionFlags="homeTrial")
+            # with pp.newFig("test nan", subPlots=(1, 2), showPlot=True, savePlot=False) as pc:
+            #     sesh = sessions[0]
+            #     ts, xs, ys = sesh.posDuringBehaviorPeriod(bp1)
+            #     pc.axs[0].plot(xs, ys)
+            #     ts, xs, ys = sesh.posDuringBehaviorPeriod(bp2)
+            #     pc.axs[1].plot(xs, ys)
 
             # lm = LocationMeasure("test nan",
             #                      lambda sesh: sesh.getValueMap(
@@ -311,6 +322,155 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             #                                                              normalize=True)),
             #                      sessions,
             #                      smoothDist=smoothDist, parallelize=False)
+
+        if RUN_THE_FINAL_DATAMINE:
+            if TEST_DATA:
+                sessions = sessions[:4]
+
+            def makeSimpleMeasure(func, radius, smoothDist, bp: BP):
+                return LocationMeasure(f"simple {func.__name__} {radius:.2f} {bp.filenameString()} {smoothDist:.2f}",
+                                       lambda sesh: sesh.getValueMap(
+                                           lambda pos: sesh.numVisitsToPosition(
+                                               bp, pos, radius=radius),
+                                       ),
+                                       sessions,
+                                       smoothDist=smoothDist,
+                                       parallelize=False)
+
+            if TEST_DATA:
+                allConsideredBPs = [BP(probe=True, timeInterval=(0, 60)),
+                                    BP(probe=True, timeInterval=(0, 120)),
+                                    BP(probe=False)]
+            else:
+                allConsideredBPs = [BP(probe=True), BP(probe=False),
+                                    BP(probe=True, timeInterval=(0, 60)),
+                                    BP(probe=True, timeInterval=(0, 120)),
+                                    BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+                                    BP(probe=True, inclusionFlags="moving"),
+                                    BP(probe=True, inclusionFlags="offWall"),
+                                    BP(probe=True, inclusionFlags=["offWall", "moving"]),
+                                    BP(probe=True, timeInterval=BTSession.fillTimeInterval,
+                                    inclusionFlags="moving"),
+                                    BP(probe=True, timeInterval=BTSession.fillTimeInterval,
+                                    inclusionFlags="offWall"),
+                                    BP(probe=True, timeInterval=BTSession.fillTimeInterval,
+                                    inclusionFlags=["offWall", "moving"]),
+                                    BP(probe=False, erode=3, inclusionFlags="homeTrial"),
+                                    BP(probe=False, erode=3, inclusionFlags="awayTrial")]
+
+            simpleMeasureParams = {
+                "func": [BTSession.totalTimeAtPosition,
+                         BTSession.avgDwellTimeAtPosition,
+                         BTSession.fracExcursionsVisited,
+                         BTSession.numVisitsToPosition,
+                         BTSession.latencyToPosition,
+                         BTSession.avgCurvatureAtPosition,
+                         BTSession.pathOptimalityToPosition],
+                "radius": [0.25, 0.5, 1, 1.5],
+                "smoothDist": [0, 0.5, 1.0],
+                "bp": allConsideredBPs
+            }
+
+            if not TEST_DATA:
+                print("Running simple measures (1/4)")
+                runDMFOnLM(makeSimpleMeasure, simpleMeasureParams, pp)
+
+            def makeDotProdMeasure(bp: BP, distanceWeight, normalize, smoothDist):
+                return LocationMeasure(f"dotprod {bp.filenameString()} "
+                                       f"distWeight={distanceWeight:.2f} "
+                                       f"normalize={normalize} "
+                                       f"smoothDist={smoothDist:.2f}",
+                                       lambda sesh: sesh.getValueMap(
+                                           lambda pos: sesh.getDotProductScore(bp, pos,
+                                                                               distanceWeight=distanceWeight,
+                                                                               normalize=normalize)),
+                                       sessions,
+                                       smoothDist=smoothDist, parallelize=False)
+
+            if TEST_DATA:
+                allDotProdParams = {
+                    "bp": allConsideredBPs,
+                    "distanceWeight": np.linspace(-1, 1, 3),
+                    "normalize": [True, False],
+                    "smoothDist": [0, 0.5],
+                }
+            else:
+                allDotProdParams = {
+                    "bp": allConsideredBPs,
+                    "distanceWeight": np.linspace(-1, 1, 5),
+                    "normalize": [True, False],
+                    "smoothDist": [0, 0.5, 1.0],
+                }
+
+            if not TEST_DATA:
+                print("Running dot product measures (2/4)")
+                runDMFOnLM(makeDotProdMeasure, allDotProdParams, pp, minParamsSequential=1)
+
+            def makeGravityMeasure(bp: BP, passRadius, visitRadiusFactor, passDenoiseFactor, measureSmoothDist):
+                return LocationMeasure(f"gravity {bp.filenameString()} "
+                                       f"passRadius={passRadius:.2f} "
+                                       f"visitRadiusFactor={visitRadiusFactor:.2f} "
+                                       f"denoiseFactor={passDenoiseFactor:.2f} "
+                                       f"measureSmoothDist={measureSmoothDist:.2f}",
+                                       lambda sesh: sesh.getValueMap(
+                                           lambda pos: sesh.getGravity(bp, pos,
+                                                                       passRadius=passRadius,
+                                                                       visitRadius=passRadius * visitRadiusFactor,
+                                                                       passDenoiseFactor=passDenoiseFactor)),
+                                       sessions,
+                                       smoothDist=measureSmoothDist, parallelize=False)
+            if TEST_DATA:
+                allParams = {
+                    "passRadius": np.linspace(0.5, 1.5, 2),
+                    "visitRadiusFactor": np.linspace(0.2, 0.4, 2),
+                    "passDenoiseFactor": np.linspace(1.25, 2, 2),
+                    "measureSmoothDist": np.linspace(0, 0.5, 2),
+                    "bp": allConsideredBPs,
+                }
+            else:
+                allParams = {
+                    "passRadius": np.linspace(0.5, 1.5, 3),
+                    "visitRadiusFactor": np.linspace(0.2, 0.4, 2),
+                    "passDenoiseFactor": np.linspace(1.25, 2, 3),
+                    "measureSmoothDist": np.linspace(0, 0.5, 3),
+                    "bp": allConsideredBPs,
+                }
+
+            if not TEST_DATA:
+                print("Running gravity measures (3/4)")
+                runDMFOnLM(makeGravityMeasure, allParams, pp, minParamsSequential=2)
+
+            if TEST_DATA:
+                sessionsWithoutOutlier = sessions
+            else:
+                outlierIdx = 6
+                sessionsWithoutOutlier = sessions[:outlierIdx] + sessions[outlierIdx + 1:]
+
+            def makeAvgDwellMeasure(radius, smoothDist, bp: BP):
+                return LocationMeasure(f"avgdwell_nooutlier {radius:.2f} {bp.filenameString()} {smoothDist:.2f}",
+                                       lambda sesh: sesh.getValueMap(
+                                           lambda pos: sesh.avgDwellTimeAtPosition(
+                                               bp, pos, radius=radius),
+                                       ),
+                                       sessionsWithoutOutlier,
+                                       smoothDist=smoothDist,
+                                       parallelize=False)
+
+            if TEST_DATA:
+                allParams = {
+                    "radius": [0.25, 0.5],
+                    "smoothDist": [0, 0.5],
+                    "bp": allConsideredBPs
+                }
+            else:
+                allParams = {
+                    "radius": [0.25, 0.5, 1, 1.5],
+                    "smoothDist": [0, 0.5, 1.0],
+                    "bp": allConsideredBPs
+                }
+
+            print("Running avg dwell measures (4/4)")
+            runDMFOnLM(makeAvgDwellMeasure, allParams, pp, minParamsSequential=1)
 
         if RUN_PREV_SESSION_PERSEVERATION:
             def nextSessionCtrlLocation(sesh: BTSession, seshIndex: int, allSessions: List[BTSession]) -> \
@@ -362,16 +522,16 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
 
         if REDO_NUM_VISITS:
-            def nextSessionCtrlLocation(sesh: BTSession, seshIndex: int, allSessions: List[BTSession]) -> \
-                    Iterable[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]:
-                if seshIndex == len(allSessions) - 1:
-                    return [([], "next session", ("This sesh", "Next sesh", "Session"))]
-                hwx, hwy = getWellPosCoordinates(sesh.homeWell)
-                return [([(seshIndex + 1, hwx, hwy)], "next session", ("This sesh", "Next sesh", "Session"))]
-            LocationMeasure("Next sesh num visits", lambda sesh: sesh.getValueMap(
-                lambda pos: sesh.numVisitsToPosition(BP(probe=True, timeInterval=BTSession.fillTimeInterval), pos, radius=0.25)),
-                sessions, smoothDist=0.5,
-                sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
+            # def nextSessionCtrlLocation(sesh: BTSession, seshIndex: int, allSessions: List[BTSession]) -> \
+            #         Iterable[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]:
+            #     if seshIndex == len(allSessions) - 1:
+            #         return [([], "next session", ("This sesh", "Next sesh", "Session"))]
+            #     hwx, hwy = getWellPosCoordinates(sesh.homeWell)
+            #     return [([(seshIndex + 1, hwx, hwy)], "next session", ("This sesh", "Next sesh", "Session"))]
+            # LocationMeasure("Next sesh num visits", lambda sesh: sesh.getValueMap(
+            #     lambda pos: sesh.numVisitsToPosition(BP(probe=True, timeInterval=BTSession.fillTimeInterval), pos, radius=0.25)),
+            #     sessions, smoothDist=0.5,
+            #     sessionCtrlLocations=nextSessionCtrlLocation).makeFigures(pp)
 
             def makeSimpleMeasure(radius, smoothDist, bp: BP):
                 return LocationMeasure(f"simple num visits {radius:.2f} {bp.filenameString()} {smoothDist:.2f}",
@@ -384,12 +544,18 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                                        parallelize=False)
 
             allParams = {
-                "radius": [0.25, 0.5, 0.75, 1, 1.5],
-                "smoothDist": [0, 0.5, 1.0],
-                "bp": [BP(probe=True), BP(probe=False),
-                       BP(probe=True, timeInterval=(0, 60)),
-                       BP(probe=True, timeInterval=BTSession.fillTimeInterval),]
+                "radius": [0.25, 0.5],
+                "smoothDist": [0, 0.5],
+                "bp": [BP(probe=True), BP(probe=False)]
             }
+
+            # allParams = {
+            #     "radius": [0.25, 0.5, 0.75, 1, 1.5],
+            #     "smoothDist": [0, 0.5, 1.0],
+            #     "bp": [BP(probe=True), BP(probe=False),
+            #            BP(probe=True, timeInterval=(0, 60)),
+            #            BP(probe=True, timeInterval=BTSession.fillTimeInterval),]
+            # }
 
             runDMFOnLM(makeSimpleMeasure, allParams, pp, minParamsSequential=1)
 
@@ -1341,7 +1507,10 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         pp.runImmediateShufflesAcrossPersistentCategories()
 
     if DATAMINE:
-        pp.runShuffles()
+        if TEST_DATA:
+            pp.runShuffles(numShuffles=10)
+        else:
+            pp.runShuffles()
 
 
 if __name__ == "__main__":
@@ -1365,7 +1534,9 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_GRAVITY_FACTORY=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_DOT_PROD_FACTORY=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_AVG_DWELL_WITHOUT_OUTLIER=True, DATAMINE=True)
-    makeFigures(RUN_UNSPECIFIED=False, REDO_NUM_VISITS=True, DATAMINE=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_THE_FINAL_DATAMINE=True, DATAMINE=True, TEST_DATA=True)
+    makeFigures(RUN_UNSPECIFIED=False, RUN_THE_FINAL_DATAMINE=True, DATAMINE=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
 
     # hacky_RunOldStats("B17_20230210_144854.txt")
     # hacky_RunOldStats("B17_20230210_144854.txt")

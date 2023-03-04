@@ -1064,8 +1064,23 @@ class LocationMeasure():
         for i in range(len(otherSessions)):
             if i == seshIdx:
                 continue
+            if otherSessions[i].homeWell == sesh.homeWell:
+                continue
             osret.append((i, *getWellPosCoordinates(sesh.homeWell)))
         ret.append((osret, "othersessions", ("same session", "other sessions", "session type")))
+
+        laterSessionsRet = []
+        for i in range(seshIdx + 1, len(otherSessions)):
+            if otherSessions[i].homeWell == sesh.homeWell:
+                continue
+            laterSessionsRet.append((i, *getWellPosCoordinates(sesh.homeWell)))
+        ret.append((laterSessionsRet, "latersessions",
+                   ("same session", "later sessions", "session type")))
+
+        nextSessionRet = []
+        if seshIdx + 1 < len(otherSessions):
+            nextSessionRet.append((seshIdx + 1, *getWellPosCoordinates(sesh.homeWell)))
+        ret.append((nextSessionRet, "nextsession", ("same session", "next session", "session type")))
 
         return ret
 
