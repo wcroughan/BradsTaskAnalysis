@@ -216,11 +216,12 @@ class PlotManager:
                 if not self.plotContext.isSinglePlot:
                     raise Exception("Can't have multiple plots and do shuffle")
 
-                if pval > 0:
-                    self.plotContext.ax.add_artist(AnchoredText(f"p={pval}", "upper center"))
-                else:
-                    self.plotContext.ax.add_artist(AnchoredText(
-                        f"p<{1/numShuffles[0]}", "upper center"))
+                self.plotContext.ax.add_artist(AnchoredText(f"pseudo-p={pval}", "upper center"))
+                # if pval > 0:
+                #     self.plotContext.ax.add_artist(AnchoredText(f"p={pval}", "upper center"))
+                # else:
+                #     self.plotContext.ax.add_artist(AnchoredText(
+                #         f"p<{1/numShuffles[0]}", "upper center"))
 
         # Finally, save or show the figure
         if (self.plotContext.savePlot is not None and self.plotContext.savePlot) or \

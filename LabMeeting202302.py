@@ -120,6 +120,67 @@ from dataclasses import replace
 # visit stuff
 #
 
+def generateDMFReport(resultsTableFileName: str, skipSimple: bool = False) -> None:
+    df = pd.read_hdf(resultsTableFileName)
+
+    def bpFlagsWereUseful(row):
+        s = row["measure"]
+        if "avgDwellTimeAtPosition" in s or \
+           "numVisitsToPosition" in s or \
+           "latencyToPosition" in s or \
+           "fracExcursionsVisited" in s or \
+           "pathOptimalityToPosition" in s:
+            # These measures ignored flags
+            if "moving" in s or \
+               "offWall" in s or \
+               "homeTrial" in s or \
+               "awayTrial" in s:
+                return False
+        return True
+
+    def isSimpleMeasure(row):
+        s = row["measure"]
+        return "simple" in s
+
+    df["bpFlagsWereUseful"] = df.apply(bpFlagsWereUseful, axis=1)
+    if skipSimple:
+        df = df[~df.apply(isSimpleMeasure, axis=1)]
+    df = df[df["bpFlagsWereUseful"]]
+    nndf = df[df["isDiffShuf"] & ~df["isNextSeshDiffShuf"]]
+    nndf = nndf.drop(columns=["bpFlagsWereUseful", "isNextSeshDiffShuf", "isDiffShuf"])
+
+    def isProbe(row):
+        return "_probe_" in row["measure"]
+
+    nndf["isProbe"] = nndf.apply(isProbe, axis=1)
+
+    def extractMeasureCategory(row):
+        s = row["measure"]
+        assert (isinstance(s, str))
+        if row["isProbe"]:
+            bpIndex = s.find("_probe_")
+        else:
+            bpIndex = s.find("_bt_")
+        s = s[3:bpIndex]
+        if s.startswith("simple"):
+            return s.split("_")[1]
+        return s
+
+    nndf["measureCategory"] = nndf.apply(extractMeasureCategory, axis=1)
+
+    # print(nndf.head())
+
+    pvalThresholds = [0.1, 0.04, 0.01]
+    for pvalThreshold in pvalThresholds:
+        sigDf = nndf[nndf["pval"] <= pvalThreshold]
+        g = sigDf.groupby(["measureCategory", "isProbe"]).agg({"plot": ["count", "unique"]})
+        print(g.head())
+        inFileName = ".".join(os.path.basename(resultsTableFileName).split(".")[:-1])
+        outFileName = f"dmfReport_{inFileName}_pval{pvalThreshold}.csv"
+        outDir = os.path.dirname(resultsTableFileName)
+        g.to_csv(os.path.join(outDir, outFileName))
+
+
 def runDMFOnLM(measureFunc: Callable[..., LocationMeasure], allParams: Dict[str, Iterable], pp: PlotManager, minParamsSequential=2):
     def measureFuncWrapper(params: Dict[str, Iterable]):
         lm = measureFunc(**params)
@@ -157,6 +218,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                 RUN_NEW_GRAVITY=None, RUN_GRAVITY_FACTORY=None, RUN_SIMPLE_MEASURES=None,
                 PLOT_TASK_TRIAL_PERFORMANCE=None, RUN_PREV_SESSION_PERSEVERATION=None,
                 REDO_NUM_VISITS=None, RUN_THE_FINAL_DATAMINE=None, TEST_DATA=False,
+                RERUN_SIMPLE_MEASURES=None, CUMULATIVE_LFP=None, MAKE_CLEAN_LAB_MEETING_FIGURES=None,
                 RUN_TESTS=False, MAKE_COMBINED=True, DATAMINE=False):
     if RUN_SPOTLIGHT is None:
         RUN_SPOTLIGHT = RUN_UNSPECIFIED
@@ -212,15 +274,25 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
         REDO_NUM_VISITS = RUN_UNSPECIFIED
     if RUN_THE_FINAL_DATAMINE is None:
         RUN_THE_FINAL_DATAMINE = RUN_UNSPECIFIED
+    if RERUN_SIMPLE_MEASURES is None:
+        RERUN_SIMPLE_MEASURES = RUN_UNSPECIFIED
+    if CUMULATIVE_LFP is None:
+        CUMULATIVE_LFP = RUN_UNSPECIFIED
+    if MAKE_CLEAN_LAB_MEETING_FIGURES is None:
+        MAKE_CLEAN_LAB_MEETING_FIGURES = RUN_UNSPECIFIED
 
     dataDir = findDataDir()
-    if RUN_THE_FINAL_DATAMINE:
+    outputDir = "202302_labmeeting"
+    if RUN_THE_FINAL_DATAMINE or RERUN_SIMPLE_MEASURES:
         if TEST_DATA:
-            globalOutputDir = os.path.join(dataDir, "figures", "final_datamine_test")
+            outputDir = "final_datamine_test"
         else:
-            globalOutputDir = os.path.join(dataDir, "figures", "final_datamine")
+            outputDir = "final_datamine"
+    elif MAKE_CLEAN_LAB_MEETING_FIGURES:
+        outputDir = "202302_labmeeting_clean"
     else:
-        globalOutputDir = os.path.join(dataDir, "figures", "202302_labmeeting")
+        outputDir = "202302_labmeeting_2"
+    globalOutputDir = os.path.join(dataDir, "figures", outputDir)
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
 
@@ -235,7 +307,7 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
     infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
-                     infoFileName=infoFileName, verbosity=3 if RUN_TESTS else 2)
+                     infoFileName=infoFileName, verbosity=2 if DATAMINE else 3)
 
     allSessionsByRat = {}
     for animalName in animalNames:
@@ -323,11 +395,334 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
             #                      sessions,
             #                      smoothDist=smoothDist, parallelize=False)
 
+        if MAKE_CLEAN_LAB_MEETING_FIGURES:
+            if True:
+                plotsToMake = "everysession"
+                LocationMeasure("frac excursions 0.25 probe 0.00",
+                                lambda sesh: sesh.getValueMap(
+                                    lambda pos: sesh.fracExcursionsVisited(BP(probe=True), pos, 0.25)),
+                                sessions, smoothDist=0).makeFigures(pp, plotFlags=plotsToMake, everySessionBehaviorPeriod=BP(probe=True))
+                LocationMeasure("frac excursions 0.25 probe 0 60 0.00",
+                                lambda sesh: sesh.getValueMap(
+                                    lambda pos: sesh.fracExcursionsVisited(BP(probe=True, timeInterval=(0, 60)), pos, 0.25)),
+                                sessions, smoothDist=0).makeFigures(pp, plotFlags=plotsToMake, everySessionBehaviorPeriod=BP(probe=True, timeInterval=(0, 60)))
+                LocationMeasure("dot prod probe filltime offwall moving dw-1 normFalse smooth 0",
+                                lambda sesh: sesh.getValueMap(
+                                    lambda pos: sesh.getDotProductScore(BP(probe=True, timeInterval=BTSession.fillTimeInterval, inclusionFlags=["offWall", "moving"]),
+                                                                        pos, distanceWeight=-1, normalize=False)),
+                                sessions, smoothDist=0).makeFigures(pp, plotFlags=plotsToMake, everySessionBehaviorPeriod=BP(probe=True, timeInterval=BTSession.fillTimeInterval, inclusionFlags=["offWall", "moving"]))
+                LocationMeasure("curvature 0.5 probe 0.5",
+                                lambda sesh: sesh.getValueMap(
+                                    lambda pos: sesh.avgCurvatureAtPosition(BP(probe=True), pos, 0.5)),
+                                sessions, smoothDist=0.5).makeFigures(pp, plotFlags=plotsToMake, everySessionBehaviorPeriod=BP(probe=True))
+                LocationMeasure("path optimality 1 probe 0 120 0.50",
+                                lambda sesh: sesh.getValueMap(
+                                    lambda pos: sesh.pathOptimalityToPosition(BP(probe=True, timeInterval=(0, 120)), pos, 1)),
+                                sessions, smoothDist=0.5).makeFigures(pp, plotFlags=plotsToMake, everySessionBehaviorPeriod=BP(probe=True, timeInterval=(0, 120)))
+                LocationMeasure("latency 1 probe 0 120 0.5",
+                                lambda sesh: sesh.getValueMap(
+                                    lambda pos: sesh.latencyToPosition(BP(probe=True, timeInterval=(0, 120)), pos, 1)),
+                                sessions, smoothDist=0.5).makeFigures(pp, plotFlags=plotsToMake, everySessionBehaviorPeriod=BP(probe=True, timeInterval=(0, 120)))
+                LocationMeasure("Total Time 1 filltime 0",
+                                lambda sesh: sesh.getValueMap(
+                                    lambda pos: sesh.totalTimeAtPosition(BP(probe=True, timeInterval=BTSession.fillTimeInterval), pos, 1)),
+                                sessions, smoothDist=0).makeFigures(pp, plotFlags=plotsToMake, everySessionBehaviorPeriod=BP(probe=True, timeInterval=BTSession.fillTimeInterval))
+                LocationMeasure("Total Time 0.5 offwall 0",
+                                lambda sesh: sesh.getValueMap(
+                                    lambda pos: sesh.totalTimeAtPosition(BP(probe=True, inclusionFlags="offWall"), pos, 0.5)),
+                                sessions, smoothDist=0).makeFigures(pp, plotFlags=plotsToMake, everySessionBehaviorPeriod=BP(probe=True, inclusionFlags="offWall"))
+                LocationMeasure("Gravity probe pr1.5 vrf.4 df2 smooth .5",
+                                lambda sesh: sesh.getValueMap(
+                                    lambda pos: sesh.getGravity(BP(probe=True), pos,
+                                                                passRadius=1.5,
+                                                                visitRadius=1.5 * 0.4,
+                                                                passDenoiseFactor=2)),
+                                sessions, smoothDist=0.5).makeFigures(pp, plotFlags=plotsToMake, everySessionBehaviorPeriod=BP(probe=True))
+
+            else:
+                # Now make behavior trace plots
+                ncols = np.ceil(np.sqrt(len(sessions))).astype(int)
+                nrows = np.ceil(len(sessions) / ncols).astype(int)
+
+                allConsideredBPs = [BP(probe=True), BP(probe=False),
+                                    BP(probe=True, timeInterval=(0, 60)),
+                                    BP(probe=True, timeInterval=(0, 120)),
+                                    BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+                                    BP(probe=True, inclusionFlags="moving"),
+                                    BP(probe=True, inclusionFlags="offWall"),
+                                    BP(probe=True, inclusionFlags=["offWall", "moving"]),
+                                    BP(probe=True, timeInterval=BTSession.fillTimeInterval,
+                                       inclusionFlags="moving"),
+                                    BP(probe=True, timeInterval=BTSession.fillTimeInterval,
+                                       inclusionFlags="offWall"),
+                                    BP(probe=True, timeInterval=BTSession.fillTimeInterval,
+                                       inclusionFlags=["offWall", "moving"]),
+                                    BP(probe=False, erode=3, inclusionFlags="homeTrial"),
+                                    BP(probe=False, erode=3, inclusionFlags="awayTrial")]
+
+                for bp in allConsideredBPs:
+                    with pp.newFig("behavior traces " + bp.filenameString(), subPlots=(nrows, ncols)) as pc:
+                        for si, sesh in enumerate(sessions):
+                            ax = pc.axs.flat[si]
+                            wellSize = 90
+                            setupBehaviorTracePlot(ax, sesh, showWells="HA", wellSize=wellSize)
+                            _, x, y = sesh.posDuringBehaviorPeriod(bp)
+                            ax.plot(x, y, "k", lw=2, zorder=0.5)
+                            s = "++++"
+                            titleStr = f"{sesh.name} {sesh.probeFillTime} {s[0:sesh.probeFillTime // 60]}"
+                            ax.set_title(titleStr)
+
+        if CUMULATIVE_LFP:
+            windowSize = 5
+            numSessions = len(sessions)
+            bins = np.arange(0, 60*20+1, windowSize)
+            stimCounts = np.empty((numSessions, len(bins)-1))
+            rippleCounts = np.empty((numSessions, len(bins)-1))
+            itiBins = np.arange(0, 60*1.5+1, windowSize)
+            itiStimCounts = np.empty((numSessions, len(itiBins)-1))
+            itiRippleCounts = np.empty((numSessions, len(itiBins)-1))
+            probeBins = np.arange(0, 60*5+1, windowSize)
+            probeStimCounts = np.empty((numSessions, len(probeBins)-1))
+            probeRippleCounts = np.empty((numSessions, len(probeBins)-1))
+            for si, sesh in enumerate(sessions):
+                # Task
+                stimTs = np.array(sesh.lfpBumps_ts)
+                stimTs = stimTs[np.logical_and(stimTs > sesh.btPos_ts[0], stimTs <
+                                               sesh.btPos_ts[-1])] - sesh.btPos_ts[0]
+                stimTs = stimTs.astype(np.float64)
+                stimTs /= TRODES_SAMPLING_RATE
+                stimCounts[si, :], _ = np.histogram(stimTs, bins=bins)
+
+                for i in reversed(range(len(bins)-1)):
+                    if stimCounts[si, i] != 0:
+                        break
+                    stimCounts[si, i] = np.nan
+
+                ripTs = np.array([r.start_ts for r in sesh.btRipsPreStats])
+                ripTs = ripTs[np.logical_and(ripTs > sesh.btPos_ts[0], ripTs <
+                                             sesh.btPos_ts[-1])] - sesh.btPos_ts[0]
+                ripTs = ripTs.astype(np.float64)
+                ripTs /= TRODES_SAMPLING_RATE
+                rippleCounts[si, :], _ = np.histogram(ripTs, bins=bins)
+
+                for i in reversed(range(len(bins)-1)):
+                    if rippleCounts[si, i] != 0:
+                        break
+                    rippleCounts[si, i] = np.nan
+
+                if not sesh.probePerformed:
+                    itiStimCounts[si, :] = np.nan
+                    itiRippleCounts[si, :] = np.nan
+                    probeStimCounts[si, :] = np.nan
+                    probeRippleCounts[si, :] = np.nan
+                else:
+                    # ITI
+                    stimTs = np.array(sesh.lfpBumps_ts)
+                    stimTs = stimTs[np.logical_and(stimTs > sesh.itiLfpStart_ts, stimTs <
+                                                   sesh.itiLfpEnd_ts)] - sesh.itiLfpStart_ts
+                    stimTs = stimTs.astype(np.float64)
+                    stimTs /= TRODES_SAMPLING_RATE
+                    itiStimCounts[si, :], _ = np.histogram(stimTs, bins=itiBins)
+
+                    for i in reversed(range(len(itiBins)-1)):
+                        if itiStimCounts[si, i] != 0:
+                            break
+                        itiStimCounts[si, i] = np.nan
+
+                    ripTs = np.array([r.start_ts for r in sesh.itiRipsPreStats])
+                    ripTs = ripTs[np.logical_and(ripTs > sesh.itiLfpStart_ts, ripTs <
+                                                 sesh.itiLfpEnd_ts)] - sesh.itiLfpStart_ts
+                    ripTs = ripTs.astype(np.float64)
+                    ripTs /= TRODES_SAMPLING_RATE
+                    itiRippleCounts[si, :], _ = np.histogram(ripTs, bins=itiBins)
+
+                    for i in reversed(range(len(itiBins)-1)):
+                        if itiRippleCounts[si, i] != 0:
+                            break
+                        itiRippleCounts[si, i] = np.nan
+
+                    # Probe
+                    stimTs = np.array(sesh.lfpBumps_ts)
+                    stimTs = stimTs[np.logical_and(stimTs > sesh.probePos_ts[0], stimTs <
+                                                   sesh.probePos_ts[-1])] - sesh.probePos_ts[0]
+                    stimTs = stimTs.astype(np.float64)
+                    stimTs /= TRODES_SAMPLING_RATE
+                    probeStimCounts[si, :], _ = np.histogram(stimTs, bins=probeBins)
+
+                    for i in reversed(range(len(probeBins)-1)):
+                        if probeStimCounts[si, i] != 0:
+                            break
+                        probeStimCounts[si, i] = np.nan
+
+                    ripTs = np.array([r.start_ts for r in sesh.probeRipsProbeStats])
+                    ripTs = ripTs[np.logical_and(ripTs > sesh.probePos_ts[0], ripTs <
+                                                 sesh.probePos_ts[-1])] - sesh.probePos_ts[0]
+                    ripTs = ripTs.astype(np.float64)
+                    ripTs /= TRODES_SAMPLING_RATE
+                    probeRippleCounts[si, :], _ = np.histogram(ripTs, bins=probeBins)
+
+                    for i in reversed(range(len(probeBins)-1)):
+                        if probeRippleCounts[si, i] != 0:
+                            break
+                        probeRippleCounts[si, i] = np.nan
+
+            stimCounts = np.cumsum(stimCounts, axis=1)
+            rippleCounts = np.cumsum(rippleCounts, axis=1)
+            itiStimCounts = np.cumsum(itiStimCounts, axis=1)
+            itiRippleCounts = np.cumsum(itiRippleCounts, axis=1)
+            probeStimCounts = np.cumsum(probeStimCounts, axis=1)
+            probeRippleCounts = np.cumsum(probeRippleCounts, axis=1)
+
+            swrIdx = np.array([sesh.isRippleInterruption for sesh in sessions])
+            ctrlIdx = ~swrIdx
+            stimCountsSWR = stimCounts[swrIdx, :]
+            stimCountsCtrl = stimCounts[ctrlIdx, :]
+            rippleCountsSWR = rippleCounts[swrIdx, :]
+            rippleCountsCtrl = rippleCounts[ctrlIdx, :]
+            itiStimCountsSWR = itiStimCounts[swrIdx, :]
+            itiStimCountsCtrl = itiStimCounts[ctrlIdx, :]
+            itiRippleCountsSWR = itiRippleCounts[swrIdx, :]
+            itiRippleCountsCtrl = itiRippleCounts[ctrlIdx, :]
+            probeStimCountsSWR = probeStimCounts[swrIdx, :]
+            probeStimCountsCtrl = probeStimCounts[ctrlIdx, :]
+            probeRippleCountsSWR = probeRippleCounts[swrIdx, :]
+            probeRippleCountsCtrl = probeRippleCounts[ctrlIdx, :]
+
+            with pp.newFig("lfp task stimCounts") as pc:
+                ax = pc.ax
+                ax.plot(bins[1:], stimCounts.T, c="grey", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Stim Count")
+            with pp.newFig("lfp task rippleCounts") as pc:
+                ax = pc.ax
+                ax.plot(bins[1:], rippleCounts.T, c="grey", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Ripple Count")
+            with pp.newFig("lfp task stimCounts by cond") as pc:
+                ax = pc.ax
+                ax.plot(bins[1:], stimCountsSWR.T, c="orange", zorder=1)
+                ax.plot(bins[1:], stimCountsCtrl.T, c="cyan", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Stim Count")
+            with pp.newFig("lfp task rippleCounts by cond") as pc:
+                ax = pc.ax
+                ax.plot(bins[1:], rippleCountsSWR.T, c="orange", zorder=1)
+                ax.plot(bins[1:], rippleCountsCtrl.T, c="cyan", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Ripple Count")
+
+            with pp.newFig("lfp iti stimCounts") as pc:
+                ax = pc.ax
+                ax.plot(itiBins[1:], itiStimCounts.T, c="grey", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Stim Count")
+            with pp.newFig("lfp iti rippleCounts") as pc:
+                ax = pc.ax
+                ax.plot(itiBins[1:], itiRippleCounts.T, c="grey", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Ripple Count")
+            with pp.newFig("lfp iti stimCounts by cond") as pc:
+                ax = pc.ax
+                ax.plot(itiBins[1:], itiStimCountsSWR.T, c="orange", zorder=1)
+                ax.plot(itiBins[1:], itiStimCountsCtrl.T, c="cyan", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Stim Count")
+            with pp.newFig("lfp iti rippleCounts by cond") as pc:
+                ax = pc.ax
+                ax.plot(itiBins[1:], itiRippleCountsSWR.T, c="orange", zorder=1)
+                ax.plot(itiBins[1:], itiRippleCountsCtrl.T, c="cyan", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Ripple Count")
+
+            with pp.newFig("lfp probe stimCounts") as pc:
+                ax = pc.ax
+                ax.plot(probeBins[1:], probeStimCounts.T, c="grey", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Stim Count")
+            with pp.newFig("lfp probe rippleCounts") as pc:
+                ax = pc.ax
+                ax.plot(probeBins[1:], probeRippleCounts.T, c="grey", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Ripple Count")
+            with pp.newFig("lfp probe stimCounts by cond") as pc:
+                ax = pc.ax
+                ax.plot(probeBins[1:], probeStimCountsSWR.T, c="orange", zorder=1)
+                ax.plot(probeBins[1:], probeStimCountsCtrl.T, c="cyan", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Stim Count")
+            with pp.newFig("lfp probe rippleCounts by cond") as pc:
+                ax = pc.ax
+                ax.plot(probeBins[1:], probeRippleCountsSWR.T, c="orange", zorder=1)
+                ax.plot(probeBins[1:], probeRippleCountsCtrl.T, c="cyan", zorder=1)
+                ax.set_xlabel("Time (s)")
+                ax.set_ylabel("Cumulative Ripple Count")
+
+        if RERUN_SIMPLE_MEASURES:
+            if TEST_DATA:
+                sessions = sessions[:4]
+
+            def makeSimpleMeasure(func, radius, smoothDist, bp: BP):
+                return LocationMeasure(f"simple {func.__name__} {radius:.2f} {bp.filenameString()} {smoothDist:.2f}",
+                                       lambda sesh: sesh.getValueMap(
+                                           lambda pos: func(sesh, bp, pos, radius=radius),
+                                       ),
+                                       sessions,
+                                       smoothDist=smoothDist,
+                                       parallelize=False)
+
+            allConsideredBPs = [BP(probe=True), BP(probe=False),
+                                BP(probe=True, timeInterval=(0, 60)),
+                                BP(probe=True, timeInterval=(0, 120)),
+                                BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+                                BP(probe=True, inclusionFlags="moving"),
+                                BP(probe=True, inclusionFlags="offWall"),
+                                BP(probe=True, inclusionFlags=["offWall", "moving"]),
+                                BP(probe=True, timeInterval=BTSession.fillTimeInterval,
+                                   inclusionFlags="moving"),
+                                BP(probe=True, timeInterval=BTSession.fillTimeInterval,
+                                   inclusionFlags="offWall"),
+                                BP(probe=True, timeInterval=BTSession.fillTimeInterval,
+                                   inclusionFlags=["offWall", "moving"]),
+                                BP(probe=False, erode=3, inclusionFlags="homeTrial"),
+                                BP(probe=False, erode=3, inclusionFlags="awayTrial")]
+
+            if TEST_DATA:
+                allConsideredBPs = [BP(probe=True), BP(probe=False),
+                                    BP(probe=True, timeInterval=(0, 60)),
+                                    BP(probe=False, inclusionFlags="moving"),
+                                    BP(probe=True, inclusionFlags="moving")]
+
+            simpleMeasureParams = {
+                "func": [BTSession.totalTimeAtPosition,
+                         BTSession.avgDwellTimeAtPosition,
+                         BTSession.fracExcursionsVisited,
+                         BTSession.numVisitsToPosition,
+                         BTSession.latencyToPosition,
+                         BTSession.avgCurvatureAtPosition,
+                         BTSession.pathOptimalityToPosition],
+                "radius": [0.25, 0.5, 1, 1.5],
+                "smoothDist": [0, 0.5, 1.0],
+                "bp": allConsideredBPs
+            }
+
+            if TEST_DATA:
+                simpleMeasureParams = {
+                    "func": [BTSession.totalTimeAtPosition,
+                             BTSession.fracExcursionsVisited],
+                    "radius": [0.25, 0.5],
+                    "smoothDist": [0, 0.5],
+                    "bp": allConsideredBPs
+                }
+
+            print("Rerunning simple measures")
+            runDMFOnLM(makeSimpleMeasure, simpleMeasureParams, pp)
+
         if RUN_THE_FINAL_DATAMINE:
             if TEST_DATA:
                 sessions = sessions[:4]
 
             def makeSimpleMeasure(func, radius, smoothDist, bp: BP):
+                raise Exception("glitch here ... saving for posterity but func is ignored....")
                 return LocationMeasure(f"simple {func.__name__} {radius:.2f} {bp.filenameString()} {smoothDist:.2f}",
                                        lambda sesh: sesh.getValueMap(
                                            lambda pos: sesh.numVisitsToPosition(
@@ -350,11 +745,11 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
                                     BP(probe=True, inclusionFlags="offWall"),
                                     BP(probe=True, inclusionFlags=["offWall", "moving"]),
                                     BP(probe=True, timeInterval=BTSession.fillTimeInterval,
-                                    inclusionFlags="moving"),
+                                       inclusionFlags="moving"),
                                     BP(probe=True, timeInterval=BTSession.fillTimeInterval,
-                                    inclusionFlags="offWall"),
+                                       inclusionFlags="offWall"),
                                     BP(probe=True, timeInterval=BTSession.fillTimeInterval,
-                                    inclusionFlags=["offWall", "moving"]),
+                                       inclusionFlags=["offWall", "moving"]),
                                     BP(probe=False, erode=3, inclusionFlags="homeTrial"),
                                     BP(probe=False, erode=3, inclusionFlags="awayTrial")]
 
@@ -1514,29 +1909,18 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
 
 if __name__ == "__main__":
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_MANY_DOTPROD=True, RUN_DOT_PROD=True, RUN_SPOTLIGHT=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_SMOOTHING_TEST=True)
-    # makeFigures(RUN_UNSPECIFIED=False)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_OPTIMALITY=True)
-    # makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_PROBE_TRACES=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_LFP_LATENCY=True,
-    #             MAKE_INDIVIDUAL_INTERRUPTION_PLOTS=True)
-
-    # makeFigures(RUN_UNSPECIFIED=True, RUN_LFP_LATENCY=False)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_ENTRY_EXIT_ANGLE=True)
-
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_TASK_GRAVITY=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_SIMPLE_MEASURES=True, DATAMINE=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_NEW_GRAVITY=True, DATAMINE=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True,
-    #             RUN_SPOTLIGHT_EXPLORATION_PROBE=True, DATAMINE=True, RUN_NEW_GRAVITY=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_SPOTLIGHT_EXPLORATION_TASK=True, DATAMINE=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_GRAVITY_FACTORY=True, DATAMINE=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_DOT_PROD_FACTORY=True, DATAMINE=True)
-    # makeFigures(RUN_UNSPECIFIED=False, RUN_AVG_DWELL_WITHOUT_OUTLIER=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_THE_FINAL_DATAMINE=True, DATAMINE=True, TEST_DATA=True)
-    makeFigures(RUN_UNSPECIFIED=False, RUN_THE_FINAL_DATAMINE=True, DATAMINE=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RUN_THE_FINAL_DATAMINE=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
+    # makeFigures(RUN_UNSPECIFIED=False, RERUN_SIMPLE_MEASURES=True, DATAMINE=True)
+    makeFigures(RUN_UNSPECIFIED=False, MAKE_CLEAN_LAB_MEETING_FIGURES=True)
 
     # hacky_RunOldStats("B17_20230210_144854.txt")
     # hacky_RunOldStats("B17_20230210_144854.txt")
+
+    # dataDir = "/media/WDC8/figures/final_datamine/"
+    # # fileName = "20230307_010237_significantShuffles.h5"
+    # fileName = "20230303_194657_significantShuffles.h5"
+
+    # inputFile = os.path.join(dataDir, fileName)
+    # generateDMFReport(inputFile, skipSimple=True)

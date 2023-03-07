@@ -1265,17 +1265,17 @@ def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optiona
     _, zpow, _, _ = getRipplePower(btLFPData, method="standard", meanPower=sesh.rpowmPreBt,
                                    stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.btLFPNoise_lfpIdx)
     sesh.btRipsPreStats = detectRipples(
-        zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.btLfpStart_lfpIdx])
+        zpow, lambda lfpIdx: lfp_ts[lfpIdx + sesh.btLfpStart_lfpIdx])
 
     if sesh.probePerformed:
         _, zpow, _, _ = getRipplePower(itiLFPData, method="standard", meanPower=sesh.rpowmPreBt,
                                        stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.itiLFPNoise_lfpIdx)
         sesh.itiRipsPreStats = detectRipples(
-            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.itiLfpStart_lfpIdx])
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx + sesh.itiLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(probeLFPData, method="standard", meanPower=sesh.rpowmPreBt,
                                        stdPower=sesh.rpowsPreBt, lfpDeflections=sesh.probeLFPNoise_lfpIdx)
         sesh.probeRipsPreStats = detectRipples(
-            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.probeLfpStart_lfpIdx])
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx + sesh.probeLfpStart_lfpIdx])
 
         # probe stats
         _, _, sesh.rpowmProbe, sesh.rpowsProbe = getRipplePower(
@@ -1283,15 +1283,15 @@ def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optiona
         _, zpow, _, _ = getRipplePower(btLFPData, method="standard", meanPower=sesh.rpowmProbe,
                                        stdPower=sesh.rpowsProbe, lfpDeflections=sesh.btLFPNoise_lfpIdx)
         sesh.btRipsProbeStats = detectRipples(
-            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.btLfpStart_lfpIdx])
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx + sesh.btLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(itiLFPData, method="standard", meanPower=sesh.rpowmProbe,
                                        stdPower=sesh.rpowsProbe, lfpDeflections=sesh.itiLFPNoise_lfpIdx)
         sesh.itiRipsProbeStats = detectRipples(
-            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.itiLfpStart_lfpIdx])
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx + sesh.itiLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(probeLFPData, method="standard", meanPower=sesh.rpowmProbe,
                                        stdPower=sesh.rpowsProbe, lfpDeflections=sesh.probeLFPNoise_lfpIdx)
         sesh.probeRipsProbeStats = detectRipples(
-            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.probeLfpStart_lfpIdx])
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx + sesh.probeLfpStart_lfpIdx])
 
     if sesh.hasActivelinkLog:
         if sesh.btLfpBaselineFname is None:
@@ -1301,17 +1301,17 @@ def runLFPAnalyses(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optiona
                                        stdPower=sesh.rpowsLog, lfpDeflections=sesh.btLFPNoise_lfpIdx,
                                        baselineLfpData=baselineLfpV[btLfpStart_lfpIdx:btLfpEnd_lfpIdx])
         sesh.btRipsLogStats = detectRipples(
-            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.btLfpStart_lfpIdx])
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx + sesh.btLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(itiLFPData, method="activelink", meanPower=sesh.rpowmLog,
                                        stdPower=sesh.rpowsLog, lfpDeflections=sesh.itiLFPNoise_lfpIdx,
                                        baselineLfpData=baselineLfpV[itiLfpStart_lfpIdx:itiLfpEnd_lfpIdx])
         sesh.itiRipsLogStats = detectRipples(
-            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.itiLfpStart_lfpIdx])
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx + sesh.itiLfpStart_lfpIdx])
         _, zpow, _, _ = getRipplePower(probeLFPData, method="activelink", meanPower=sesh.rpowmLog,
                                        stdPower=sesh.rpowsLog, lfpDeflections=sesh.probeLFPNoise_lfpIdx,
                                        baselineLfpData=baselineLfpV[probeLfpStart_lfpIdx:probeLfpEnd_lfpIdx])
         sesh.probeRipsLogStats = detectRipples(
-            zpow, lambda lfpIdx: lfp_ts[lfpIdx - sesh.probeLfpStart_lfpIdx])
+            zpow, lambda lfpIdx: lfp_ts[lfpIdx + sesh.probeLfpStart_lfpIdx])
 
 
 def runSanityChecks(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Optional[ArrayLike], showPlots: bool = False, overrideNotes: bool = True) -> None:

@@ -1067,7 +1067,7 @@ class LocationMeasure():
             if otherSessions[i].homeWell == sesh.homeWell:
                 continue
             osret.append((i, *getWellPosCoordinates(sesh.homeWell)))
-        ret.append((osret, "othersessions", ("same session", "other sessions", "session type")))
+        ret.append((osret, "othersessions", ("same", "other", "session type")))
 
         laterSessionsRet = []
         for i in range(seshIdx + 1, len(otherSessions)):
@@ -1075,12 +1075,12 @@ class LocationMeasure():
                 continue
             laterSessionsRet.append((i, *getWellPosCoordinates(sesh.homeWell)))
         ret.append((laterSessionsRet, "latersessions",
-                   ("same session", "later sessions", "session type")))
+                   ("same", "later", "session type")))
 
         nextSessionRet = []
         if seshIdx + 1 < len(otherSessions):
             nextSessionRet.append((seshIdx + 1, *getWellPosCoordinates(sesh.homeWell)))
-        ret.append((nextSessionRet, "nextsession", ("same session", "next session", "session type")))
+        ret.append((nextSessionRet, "nextsession", ("same", "next", "session type")))
 
         return ret
 
@@ -1132,7 +1132,7 @@ class LocationMeasure():
             self.measureValsBySession = [measureFunc(sesh) for sesh in sessionList]
 
         if np.isnan(self.measureValsBySession).all():
-            print(f"WARNING: all values for {name} are NaN. Not plotting.")
+            # print(f"WARNING: all values for {name} are NaN. Not plotting.")
             self.valid = False
             return
 
@@ -1454,10 +1454,12 @@ class LocationMeasure():
 
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
             ncols = int(np.ceil(np.sqrt(len(self.sessionList))))
-            with plotManager.newFig(figName + "_every_session", subPlots=(ncols, ncols),
+            nrows = int(np.ceil(len(self.sessionList) / ncols))
+            with plotManager.newFig(figName + "_every_session", subPlots=(nrows, ncols),
                                     figScale=0.6, excludeFromCombo=excludeFromCombo) as pc:
                 for si, sesh in enumerate(self.sessionList):
-                    ax = pc.axs[si // ncols, si % ncols]
+                    # ax = pc.axs[si // ncols, si % ncols]
+                    ax = pc.axs.flat[si]
                     assert isinstance(ax, Axes)
 
                     if everySessionBehaviorPeriod is not None:
@@ -1467,7 +1469,9 @@ class LocationMeasure():
                             bp = everySessionBehaviorPeriod
 
                         _, xs, ys = sesh.posDuringBehaviorPeriod(bp)
-                        ax.plot(xs, ys, c="#deac7f", lw=0.5)
+                        # ax.plot(xs, ys, c="#deac7f", lw=0.5)
+                        # ax.plot(xs, ys, "k", lw=1, zorder=1.5)
+                        ax.plot(xs, ys, c="#0000007f", lw=1, zorder=1.5)
                         if len(xs) > 0:
                             ax.scatter(xs[-1], ys[-1], marker="*")
 
@@ -1482,142 +1486,121 @@ class LocationMeasure():
                                    interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
                                    origin="lower")
 
-                for si in range(len(self.sessionList), ncols * ncols):
-                    ax = pc.axs[si // ncols, si % ncols]
+                for si in range(len(self.sessionList), nrows * ncols):
+                    # ax = pc.axs[si // ncols, si % ncols]
+                    ax = pc.axs.flat[si]
                     blankPlot(ax)
 
                 plt.colorbar(im, ax=ax)
 
-        if "everysessionoverlayatlocation" in plotFlags:
-            plotFlags.remove("everysessionoverlayatlocation")
-
-            wellSize = mpl.rcParams['lines.markersize']**2 / 4
-            resolution = self.measureValsBySession[0].shape[0]
-            overlayImg = np.empty((2 * resolution - 1, 2 * resolution - 1, len(self.sessionList)))
-            overlayImg[:] = np.nan
-
-            for si, sesh in enumerate(self.sessionList):
-                centerPoint = self.sessionValLocations[si]
-
-                px = np.digitize(centerPoint[0], np.linspace(-0.5, 6.5, resolution))
-                py = np.digitize(centerPoint[1], np.linspace(-0.5, 6.5, resolution))
-                ox = resolution - px - 1
-                oy = resolution - py - 1
-
-                overlayImg[ox:ox + resolution, oy:oy + resolution,
-                           si] = self.measureValsBySession[si]
-
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", r"Mean of empty slice")
-                combinedImg = np.nanmean(overlayImg, axis=2)
-
-            with plotManager.newFig(figName + "_every_session_overlay_at_location", excludeFromCombo=excludeFromCombo) as pc:
-                # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
-
-                im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
-                                  interpolation="nearest", extent=(-7, 7, -7, 7),
-                                  origin="lower")
-
-                pc.ax.set_xlabel("Distance from well (ft)")
-                pc.ax.set_ylabel("Distance from well (ft)")
-
-                plt.colorbar(im, ax=pc.ax)
-
-        if "everysessionoverlayatlocationbycondition" in plotFlags:
-            plotFlags.remove("everysessionoverlayatlocationbycondition")
-
-            wellSize = mpl.rcParams['lines.markersize']**2 / 4
-            resolution = self.measureValsBySession[0].shape[0]
-            overlayImg = np.empty((2 * resolution - 1, 2 * resolution - 1, len(self.sessionList)))
-            overlayImg[:] = np.nan
-
-            for si, sesh in enumerate(self.sessionList):
-                centerPoint = self.sessionValLocations[si]
-
-                px = np.digitize(centerPoint[0], np.linspace(-0.5, 6.5, resolution))
-                py = np.digitize(centerPoint[1], np.linspace(-0.5, 6.5, resolution))
-                ox = resolution - px - 1
-                oy = resolution - py - 1
-
-                overlayImg[ox:ox + resolution, oy:oy + resolution,
-                           si] = self.measureValsBySession[si]
-
-            swrIdx = self.conditionBySession == "SWR"
-            ctrlIdx = ~swrIdx
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", r"Mean of empty slice")
-                combinedImgSWR = np.nanmean(overlayImg[:, :, swrIdx], axis=2)
-                combinedImgCtrl = np.nanmean(overlayImg[:, :, ctrlIdx], axis=2)
-
-            with plotManager.newFig(figName + "_every_session_overlay_at_location_swr", excludeFromCombo=excludeFromCombo) as pc:
-                # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
-
-                im = pc.ax.imshow(combinedImgSWR.T, cmap=mpl.colormaps["coolwarm"],
-                                  interpolation="nearest", extent=(-7, 7, -7, 7),
-                                  origin="lower")
-
-                pc.ax.set_xlabel("Distance from well (ft)")
-                pc.ax.set_ylabel("Distance from well (ft)")
-
-                plt.colorbar(im, ax=pc.ax)
-
-            with plotManager.newFig(figName + "_every_session_overlay_at_location_ctrl", excludeFromCombo=excludeFromCombo) as pc:
-                # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
-
-                im = pc.ax.imshow(combinedImgCtrl.T, cmap=mpl.colormaps["coolwarm"],
-                                  interpolation="nearest", extent=(-7, 7, -7, 7),
-                                  origin="lower")
-
-                pc.ax.set_xlabel("Distance from well (ft)")
-                pc.ax.set_ylabel("Distance from well (ft)")
-
-                plt.colorbar(im, ax=pc.ax)
-
-        if "everysessionoverlayatctrl" in plotFlags:
-            plotFlags.remove("everysessionoverlayatctrl")
-
-            wellSize = mpl.rcParams['lines.markersize']**2 / 4
-            resolution = self.measureValsBySession[0].shape[0]
-
-            for ctrlName in self.controlVals:
-                overlayImg = np.empty((2 * resolution - 1, 2 * resolution - 1,
-                                      len(self.dotColorsByCtrlVal[ctrlName])))
+        if any(["overlay" in pf for pf in plotFlags]):
+            # synchronize the color limits across all overlay plots
+            # So create them all before plotting
+            if "everysessionoverlayatlocation" in plotFlags:
+                wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                resolution = self.measureValsBySession[0].shape[0]
+                overlayImg = np.empty(
+                    (2 * resolution - 1, 2 * resolution - 1, len(self.sessionList)))
                 overlayImg[:] = np.nan
-                overlayWeights = np.empty_like(overlayImg)
-                overlayWeights[:] = np.nan
-                cidx = 0
 
                 for si, sesh in enumerate(self.sessionList):
-                    for ctrlLocs, cname, ctrlLabels in self.controlSpecsBySession[si]:
-                        if cname != ctrlName:
-                            continue
-                        for centerPoint in ctrlLocs:
-                            px = np.digitize(centerPoint[1], np.linspace(-0.5, 6.5, resolution))
-                            py = np.digitize(centerPoint[2], np.linspace(-0.5, 6.5, resolution))
-                            ox = resolution - px - 1
-                            oy = resolution - py - 1
+                    centerPoint = self.sessionValLocations[si]
 
-                            overlayImg[ox:ox + resolution, oy:oy + resolution,
-                                       cidx] = self.measureValsBySession[centerPoint[0]]
-                            overlayWeights[ox:ox + resolution, oy:oy +
-                                           resolution, cidx] = 1 / len(ctrlLocs)
+                    px = np.digitize(centerPoint[0], np.linspace(-0.5, 6.5, resolution))
+                    py = np.digitize(centerPoint[1], np.linspace(-0.5, 6.5, resolution))
+                    ox = resolution - px - 1
+                    oy = resolution - py - 1
 
-                            cidx += 1
+                    overlayImg[ox:ox + resolution, oy:oy + resolution,
+                               si] = self.measureValsBySession[si]
 
-                # print(overlayImg.shape)
-                # print(overlayWeights.shape)
-                # print(np.count_nonzero(np.isnan(overlayImg)))
-                # print(np.count_nonzero(np.isnan(overlayWeights)))
                 with warnings.catch_warnings():
-                    warnings.filterwarnings("ignore", r"invalid value encountered in divide")
-                    combinedImg = np.nansum(overlayImg * overlayWeights, axis=2) / \
-                        np.nansum(overlayWeights, axis=2)
+                    warnings.filterwarnings("ignore", r"Mean of empty slice")
+                    combinedImgAtLocation = np.nanmean(overlayImg, axis=2)
 
-                with plotManager.newFig(figName + "_every_session_overlay_at_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
+            if "everysessionoverlayatlocationbycondition" in plotFlags:
+                wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                resolution = self.measureValsBySession[0].shape[0]
+                overlayImg = np.empty(
+                    (2 * resolution - 1, 2 * resolution - 1, len(self.sessionList)))
+                overlayImg[:] = np.nan
+
+                for si, sesh in enumerate(self.sessionList):
+                    centerPoint = self.sessionValLocations[si]
+
+                    px = np.digitize(centerPoint[0], np.linspace(-0.5, 6.5, resolution))
+                    py = np.digitize(centerPoint[1], np.linspace(-0.5, 6.5, resolution))
+                    ox = resolution - px - 1
+                    oy = resolution - py - 1
+
+                    overlayImg[ox:ox + resolution, oy:oy + resolution,
+                               si] = self.measureValsBySession[si]
+
+                swrIdx = self.conditionBySession == "SWR"
+                ctrlIdx = ~swrIdx
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", r"Mean of empty slice")
+                    combinedImgSWR = np.nanmean(overlayImg[:, :, swrIdx], axis=2)
+                    combinedImgCtrl = np.nanmean(overlayImg[:, :, ctrlIdx], axis=2)
+
+            if "everysessionoverlayatctrl" in plotFlags:
+                wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                resolution = self.measureValsBySession[0].shape[0]
+                combinedImgByCtrlName = {}
+
+                for ctrlName in self.controlVals:
+                    overlayImg = np.empty((2 * resolution - 1, 2 * resolution - 1,
+                                           len(self.dotColorsByCtrlVal[ctrlName])))
+                    overlayImg[:] = np.nan
+                    overlayWeights = np.empty_like(overlayImg)
+                    overlayWeights[:] = np.nan
+                    cidx = 0
+
+                    for si, sesh in enumerate(self.sessionList):
+                        for ctrlLocs, cname, ctrlLabels in self.controlSpecsBySession[si]:
+                            if cname != ctrlName:
+                                continue
+                            for centerPoint in ctrlLocs:
+                                px = np.digitize(centerPoint[1], np.linspace(-0.5, 6.5, resolution))
+                                py = np.digitize(centerPoint[2], np.linspace(-0.5, 6.5, resolution))
+                                ox = resolution - px - 1
+                                oy = resolution - py - 1
+
+                                overlayImg[ox:ox + resolution, oy:oy + resolution,
+                                           cidx] = self.measureValsBySession[centerPoint[0]]
+                                overlayWeights[ox:ox + resolution, oy:oy +
+                                               resolution, cidx] = 1 / len(ctrlLocs)
+
+                                cidx += 1
+
+                    # print(overlayImg.shape)
+                    # print(overlayWeights.shape)
+                    # print(np.count_nonzero(np.isnan(overlayImg)))
+                    # print(np.count_nonzero(np.isnan(overlayWeights)))
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", r"invalid value encountered in divide")
+                        combinedImgByCtrlName[ctrlName] = np.nansum(overlayImg * overlayWeights, axis=2) / \
+                            np.nansum(overlayWeights, axis=2)
+
+            if "everysessionoverlaydirect" in plotFlags:
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", r"Mean of empty slice")
+                    combinedImgDirect = np.nanmean(self.measureValsBySession, axis=0)
+
+            # Now get the minmum and maximum values for the color scale
+            cmin = np.nanmin([np.nanmin(a) for a in [combinedImgAtLocation, combinedImgSWR, combinedImgCtrl,
+                             combinedImgDirect] + list(combinedImgByCtrlName.values())])
+            cmax = np.nanmax([np.nanmax(a) for a in [combinedImgAtLocation, combinedImgSWR, combinedImgCtrl,
+                             combinedImgDirect] + list(combinedImgByCtrlName.values())])
+
+            if "everysessionoverlayatlocation" in plotFlags:
+                plotFlags.remove("everysessionoverlayatlocation")
+                with plotManager.newFig(figName + "_every_session_overlay_at_location", excludeFromCombo=excludeFromCombo) as pc:
                     # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
-                    im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
+                    im = pc.ax.imshow(combinedImgAtLocation.T, cmap=mpl.colormaps["coolwarm"],
                                       interpolation="nearest", extent=(-7, 7, -7, 7),
+                                      vmin=cmin, vmax=cmax,
                                       origin="lower")
 
                     pc.ax.set_xlabel("Distance from well (ft)")
@@ -1625,24 +1608,64 @@ class LocationMeasure():
 
                     plt.colorbar(im, ax=pc.ax)
 
-        if "everysessionoverlaydirect" in plotFlags:
-            plotFlags.remove("everysessionoverlaydirect")
+            if "everysessionoverlayatctrl" in plotFlags:
+                plotFlags.remove("everysessionoverlayatctrl")
+                for ctrlName in self.controlVals:
+                    with plotManager.newFig(figName + "_every_session_overlay_at_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
+                        # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", r"Mean of empty slice")
-                combinedImg = np.nanmean(self.measureValsBySession, axis=0)
+                        im = pc.ax.imshow(combinedImgByCtrlName[ctrlName].T, cmap=mpl.colormaps["coolwarm"],
+                                          interpolation="nearest", extent=(-7, 7, -7, 7),
+                                          vmin=cmin, vmax=cmax,
+                                          origin="lower")
 
-            with plotManager.newFig(figName + "_every_session_overlay_direct", excludeFromCombo=excludeFromCombo) as pc:
-                # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+                        pc.ax.set_xlabel("Distance from well (ft)")
+                        pc.ax.set_ylabel("Distance from well (ft)")
 
-                im = pc.ax.imshow(combinedImg.T, cmap=mpl.colormaps["coolwarm"],
-                                  interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
-                                  origin="lower")
+                        plt.colorbar(im, ax=pc.ax)
 
-                pc.ax.set_xlabel("xpos (ft)")
-                pc.ax.set_ylabel("ypos (ft)")
+            if "everysessionoverlayatlocationbycondition" in plotFlags:
+                plotFlags.remove("everysessionoverlayatlocationbycondition")
+                with plotManager.newFig(figName + "_every_session_overlay_at_location_swr", excludeFromCombo=excludeFromCombo) as pc:
+                    # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
-                plt.colorbar(im, ax=pc.ax)
+                    im = pc.ax.imshow(combinedImgSWR.T, cmap=mpl.colormaps["coolwarm"],
+                                      interpolation="nearest", extent=(-7, 7, -7, 7),
+                                      vmin=cmin, vmax=cmax,
+                                      origin="lower")
+
+                    pc.ax.set_xlabel("Distance from well (ft)")
+                    pc.ax.set_ylabel("Distance from well (ft)")
+
+                    plt.colorbar(im, ax=pc.ax)
+
+                with plotManager.newFig(figName + "_every_session_overlay_at_location_ctrl", excludeFromCombo=excludeFromCombo) as pc:
+                    # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+
+                    im = pc.ax.imshow(combinedImgCtrl.T, cmap=mpl.colormaps["coolwarm"],
+                                      interpolation="nearest", extent=(-7, 7, -7, 7),
+                                      vmin=cmin, vmax=cmax,
+                                      origin="lower")
+
+                    pc.ax.set_xlabel("Distance from well (ft)")
+                    pc.ax.set_ylabel("Distance from well (ft)")
+
+                    plt.colorbar(im, ax=pc.ax)
+
+            if "everysessionoverlaydirect" in plotFlags:
+                plotFlags.remove("everysessionoverlaydirect")
+                with plotManager.newFig(figName + "_every_session_overlay_direct", excludeFromCombo=excludeFromCombo) as pc:
+                    # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
+
+                    im = pc.ax.imshow(combinedImgDirect.T, cmap=mpl.colormaps["coolwarm"],
+                                      interpolation="nearest", extent=(-0.5, 6.5, -0.5, 6.5),
+                                      vmin=cmin, vmax=cmax,
+                                      origin="lower")
+
+                    pc.ax.set_xlabel("xpos (ft)")
+                    pc.ax.set_ylabel("ypos (ft)")
+
+                    plt.colorbar(im, ax=pc.ax)
 
         if len(plotFlags) > 0:
             print(f"Warning: unused plot flags: {plotFlags}")

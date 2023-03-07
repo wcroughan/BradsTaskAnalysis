@@ -397,8 +397,8 @@ class Shuffler:
         # print("summarizeShuffleResults")
         # print(df.to_string(index=False))
 
-        dfWithoutShuffle = df.drop(columns=["shuffle"])
-        dfWithoutShuffle = dfWithoutShuffle[dfWithoutShuffle["isDiffShuf"]]
+        # dfWithoutShuffle = df.drop(columns=["shuffle"])
+        # dfWithoutShuffle = dfWithoutShuffle[dfWithoutShuffle["isDiffShuf"]]
         # print(dfWithoutShuffle.to_string(index=False))
 
         minNextSeshPvals = df[df["isNextSeshDiffShuf"]].sort_values(

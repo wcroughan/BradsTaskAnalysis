@@ -1562,10 +1562,10 @@ class BTSession:
         # If behavior is excluded during a visit, exclude the visit
         for i in range(len(entries)):
             if any(np.isnan(xs[entries[i]:exits[i]])):
-                entries[i] = np.nan
-                exits[i] = np.nan
-        entries = entries[~np.isnan(entries)]
-        exits = exits[~np.isnan(exits)]
+                entries[i] = -1
+                exits[i] = -1
+        entries = entries[entries >= 0]
+        exits = exits[exits >= 0]
 
         if len(entries) == 0 or len(exits) == 0:
             return np.nan
@@ -1642,13 +1642,19 @@ class BTSession:
 
         return ret
 
-    def fracExcursionsVisited(self, pos: Tuple[float, float], radius: float = 0.5) -> float:
+    def fracExcursionsVisited(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+        if not behaviorPeriod.probe:
+            return np.nan
         if len(self.probeExcursionStart_posIdx) == 0:
             return np.nan
+
+        bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
+        _, xs, ys = self.posDuringBehaviorPeriod(bp)
+
         ret = 0
         for i0, i1 in zip(self.probeExcursionStart_posIdx, self.probeExcursionEnd_posIdx):
-            x = self.probePosXs[i0:i1]
-            y = self.probePosYs[i0:i1]
+            x = xs[i0:i1]
+            y = ys[i0:i1]
             d = np.sqrt((x - pos[0])**2 + (y - pos[1])**2)
             if np.any(d < radius):
                 ret += 1
