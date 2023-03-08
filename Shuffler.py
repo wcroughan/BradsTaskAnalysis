@@ -3,7 +3,6 @@ from enum import IntEnum, auto
 from typing import List, Dict, Tuple, Optional, Callable
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import os
 import pickle
 import time
