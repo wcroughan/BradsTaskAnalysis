@@ -79,7 +79,8 @@ class TrialMeasure():
                 trialType.append("home")
                 conditionColumn.append(
                     "SWR" if sesh.isRippleInterruption else "Ctrl")
-                dotColors.append(si)
+                # dotColors.append(si)
+                dotColors.append("orange" if sesh.isRippleInterruption else "cyan")
                 sessionIdxColumn.append(si)
                 trial_posIdx.append((i0, i1))
 
@@ -103,7 +104,8 @@ class TrialMeasure():
                 trialType.append("away")
                 conditionColumn.append(
                     "SWR" if sesh.isRippleInterruption else "Ctrl")
-                dotColors.append(si)
+                # dotColors.append(si)
+                dotColors.append("orange" if sesh.isRippleInterruption else "cyan")
                 sessionIdxColumn.append(si)
                 trial_posIdx.append((i0, i1))
 
@@ -142,27 +144,37 @@ class TrialMeasure():
     def makeFigures(self,
                     plotManager: PlotManager,
                     plotFlags: str | List[str] = "all",
-                    subFolder: bool = True):
+                    subFolder: bool = True,
+                    runStats: bool = True):
 
         figName = self.name.replace(" ", "_")
         if subFolder:
             plotManager.pushOutputSubDir("TM_" + figName)
 
+        allPossibleFlags = ["measure", "diff", "everytrial", "everysession", "averages"]
+
         if isinstance(plotFlags, str):
             if plotFlags == "all":
-                plotFlags = ["measure", "diff", "everytrial", "everysession", "averages"]
+                plotFlags = allPossibleFlags
             else:
                 plotFlags = [plotFlags]
         else:
-            # So passed in list isn't modified by remove
+            # so list passed in isn't modified
             plotFlags = [v for v in plotFlags]
+
+        if len(plotFlags) > 0 and plotFlags[0].startswith("not"):
+            if not all([v.startswith("not") for v in plotFlags]):
+                raise ValueError("if one plot flag starts with 'not', all must")
+            plotFlags = [v[3:] for v in plotFlags]
+            plotFlags = list(set(allPossibleFlags) - set(plotFlags))
 
         if "measure" in plotFlags:
             plotFlags.remove("measure")
             with plotManager.newFig(figName) as pc:
                 violinPlot(pc.ax, self.trialDf["val"], categories2=self.trialDf["trialType"],
                            categories=self.trialDf["condition"], dotColors=self.trialDf["dotColor"],
-                           axesNames=["Condition", self.name, "Trial type"])
+                           axesNames=["Condition", self.name, "Trial type"],
+                           categoryOrder=["SWR", "Ctrl"], category2Order=["home", "away"])
 
                 if self.runStats:
                     pc.yvals[figName] = self.trialDf["val"].to_numpy()
@@ -175,7 +187,14 @@ class TrialMeasure():
                 violinPlot(pc.ax, self.withinSessionDiffs["withinSessionDiff"],
                            categories=self.withinSessionDiffs["condition"],
                            dotColors=self.withinSessionDiffs["dotColor"],
+                           categoryOrder=["SWR", "Ctrl"],
                            axesNames=["Contidion", self.name + " within-session difference"])
+
+                if runStats:
+                    pc.yvals[figName] = self.withinSessionDiffs["withinSessionDiff"].to_numpy()
+                    pc.categories["condition"] = self.withinSessionDiffs["condition"].to_numpy()
+                    pc.immediateShuffles.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
 
         if "averages" in plotFlags:
             plotFlags.remove("averages")
@@ -191,19 +210,48 @@ class TrialMeasure():
 
             with plotManager.newFig(figName + "_byTrialAvgs_all_byCond") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, :], xvalsAll, avgColor="orange", label="SWR")
+                    pc.ax, self.measure2d[swrIdx, :], xvalsAll, avgColor="orange", label="SWR",
+                    spread="sem")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, :], xvalsAll, avgColor="cyan", label="Ctrl")
+                    pc.ax, self.measure2d[ctrlIdx, :], xvalsAll, avgColor="cyan", label="Ctrl",
+                    spread="sem")
                 pc.ax.set_xlim(1, len(xvalsAll))
                 pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
 
+                if runStats:
+                    for xi, x in enumerate(xvalsAll):
+                        pc.yvals[f"{figName}_byTrialAvgs_all_byCond_{x}"] = self.measure2d[:, xi]
+                        # print(xi, x, self.measure2d[:, xi].shape)
+                    pc.categories["condition"] = np.array(
+                        ["SWR" if v else "Ctrl" for v in swrIdx])
+                    pc.immediateShuffles.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                    pc.immediateShufflePvalThreshold = 0.15
+
             with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="red", label="home")
+                    pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="red", label="home",
+                    spread="sem")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="blue", label="away")
+                    pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="blue", label="away",
+                    spread="sem")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+                if runStats:
+                    # print("home vs away")
+                    for xi, x in enumerate(xvalsHalf[:-1]):
+                        yv = np.hstack((self.measure2d[:, xi * 2], self.measure2d[:, xi * 2 + 1]))
+                        # print(xi, x, yv.shape)
+                        pc.yvals[f"{figName}_byTrialAvgs_all_byTrialType_{x}"] = yv
+                    cats = np.array(["home"] * self.measure2d.shape[0] +
+                                    ["away"] * self.measure2d.shape[0])
+                    pc.categories["trialType"] = cats
+                    # print(f"{ cats.shape=  }")
+
+                    pc.immediateShuffles.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="trialType", value="home")], 100))
+                    pc.immediateShufflePvalThreshold = 0.15
 
             with plotManager.newFig(figName + "_byTrialAvgs_home") as pc:
                 plotIndividualAndAverage(pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="grey")
@@ -218,33 +266,41 @@ class TrialMeasure():
 
             with plotManager.newFig(figName + "_byTrialAvgs_home_byCond") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="orange", label="SWR")
+                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="orange", label="SWR",
+                    spread="sem")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="cyan", label="Ctrl")
+                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="cyan", label="Ctrl",
+                    spread="sem")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_away_byCond") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="orange", label="SWR")
+                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="orange", label="SWR",
+                    spread="sem")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="cyan", label="Ctrl")
+                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="cyan", label="Ctrl",
+                    spread="sem")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_ctrl_byTrialType") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="red", label="home")
+                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="red", label="home",
+                    spread="sem")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away")
+                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away",
+                    spread="sem")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_SWR_byTrialType") as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="red", label="home")
+                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="red", label="home",
+                    spread="sem")
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away")
+                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away",
+                    spread="sem")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
@@ -629,7 +685,7 @@ class WellMeasure():
                     pc.yvals[figName + "_othersesh_diff"] = self.acrossSessionMeasureDifference
                     pc.categories["condition"] = self.conditionCategoryBySession
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
 
         if "radial" in plotFlags:
             plotFlags.remove("radial")
@@ -913,7 +969,7 @@ class SessionMeasure:
                     pc.yvals[figName] = self.sessionVals
                     pc.categories["condition"] = self.conditionBySession
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
 
         if "everysession" in plotFlags:
             plotFlags.remove("everysession")
@@ -1324,14 +1380,15 @@ class LocationMeasure():
 
             with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
                 violinPlot(pc.ax, self.sessionValsBySession, self.conditionBySession,
-                           dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
+                           dotColors=self.dotColorsBySession, axesNames=["Condition", self.name],
+                           categoryOrder=["SWR", "Ctrl"])
                 pc.ax.set_title(self.name, fontdict={'fontsize': 6})
 
                 if runStats:
                     pc.yvals[figName] = self.sessionValsBySession
                     pc.categories["condition"] = self.conditionBySession
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
 
         if "measureVsCtrl" in plotFlags:
             plotFlags.remove("measureVsCtrl")
@@ -1344,7 +1401,10 @@ class LocationMeasure():
 
                 with plotManager.newFig(figName + "_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
                     violinPlot(pc.ax, vals, categories=valCtrlCats,
-                               dotColors=dotColors, axesNames=[self.controlValLabels[ctrlName][2], self.name])
+                               dotColors=dotColors, axesNames=[
+                                   self.controlValLabels[ctrlName][2], self.name],
+                               categoryOrder=self.controlValLabels[ctrlName][0:2],
+                               dotColorLabels={"orange": "SWR", "cyan": "Ctrl"})
                     pc.ax.set_title(self.name, fontdict={'fontsize': 6})
 
                     if runStats:
@@ -1367,7 +1427,10 @@ class LocationMeasure():
 
                 with plotManager.newFig(figName + "_ctrl_" + ctrlName + "_cond", excludeFromCombo=excludeFromCombo) as pc:
                     violinPlot(pc.ax, vals, conditionCats, categories2=valCtrlCats,
-                               dotColors=dotColors, axesNames=["Condition", self.name, self.controlValLabels[ctrlName][2]])
+                               dotColors=dotColors, axesNames=[
+                                   "Condition", self.name, self.controlValLabels[ctrlName][2]],
+                               category2Order=self.controlValLabels[ctrlName][0:2],
+                               categoryOrder=["SWR", "Ctrl"])
                     pc.ax.set_title(self.name, fontdict={'fontsize': 6})
 
                     if runStats:
@@ -1386,14 +1449,16 @@ class LocationMeasure():
                     if all(np.isnan(vals)):
                         continue
                     violinPlot(pc.ax, vals, self.conditionBySession,
-                               dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
+                               dotColors=self.dotColorsBySession, axesNames=[
+                                   "Condition", self.name],
+                               categoryOrder=["SWR", "Ctrl"])
                     pc.ax.set_title(self.name + " difference", fontdict={'fontsize': 6})
 
                     if runStats:
                         pc.yvals[figName] = vals
                         pc.categories["condition"] = self.conditionBySession
                         pc.immediateShuffles.append((
-                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
 
         if "measureByDistance" in plotFlags:
             plotFlags.remove("measureByDistance")
@@ -1409,9 +1474,11 @@ class LocationMeasure():
 
             with plotManager.newFig(figName + "_by_distance_by_condition", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(pc.ax, self.measureValsByDistance[swrIdx], self.distancePlotXVals,
-                                         color="orange", label="SWR")
+                                         color="orange", label="SWR",
+                                         spread="sem")
                 plotIndividualAndAverage(pc.ax, self.measureValsByDistance[ctrlIdx], self.distancePlotXVals,
-                                         color="cyan", label="Ctrl")
+                                         color="cyan", label="Ctrl",
+                                         spread="sem")
                 pc.ax.set_title(self.name, fontdict={'fontsize': 6})
                 pc.ax.set_xlabel("Distance from well (ft)")
                 pc.ax.legend()
@@ -1421,9 +1488,11 @@ class LocationMeasure():
             for ctrlName in self.controlVals:
                 with plotManager.newFig(figName + "_vs_ctrl_" + ctrlName + "_by_distance", excludeFromCombo=excludeFromCombo) as pc:
                     plotIndividualAndAverage(pc.ax, self.measureValsByDistance, self.distancePlotXVals,
-                                             color="red", label="vals")
+                                             color="red", label="vals",
+                                             spread="sem")
                     plotIndividualAndAverage(pc.ax, self.controlMeasureValsByDistance[ctrlName], self.distancePlotXVals,
-                                             color="blue", label="ctrl")
+                                             color="blue", label="ctrl",
+                                             spread="sem")
                     pc.ax.set_title(self.name + " vs Ctrl", fontdict={'fontsize': 6})
                     pc.ax.set_xlabel("Distance from well (ft)")
                     pc.ax.legend()
@@ -1438,13 +1507,17 @@ class LocationMeasure():
                 ctrlIdxByCtrlVal = ~swrIdxByCtrlVal
                 with plotManager.newFig(figName + "_vs_ctrl_" + ctrlName + "_by_distance_by_condition", excludeFromCombo=excludeFromCombo) as pc:
                     plotIndividualAndAverage(pc.ax, self.measureValsByDistance[swrIdx], self.distancePlotXVals,
-                                             color="orange", label="SWR")
+                                             color="orange", label="SWR",
+                                             spread="sem")
                     plotIndividualAndAverage(pc.ax, self.measureValsByDistance[ctrlIdx], self.distancePlotXVals,
-                                             color="cyan", label="Ctrl")
+                                             color="cyan", label="Ctrl",
+                                             spread="sem")
                     plotIndividualAndAverage(pc.ax, self.controlMeasureValsByDistance[ctrlName][swrIdxByCtrlVal, :], self.distancePlotXVals,
-                                             color="red", label="SWR ctrl")
+                                             color="red", label="SWR ctrl",
+                                             spread="sem")
                     plotIndividualAndAverage(pc.ax, self.controlMeasureValsByDistance[ctrlName][ctrlIdxByCtrlVal, :], self.distancePlotXVals,
-                                             color="blue", label="Ctrl ctrl")
+                                             color="blue", label="Ctrl ctrl",
+                                             spread="sem")
                     pc.ax.set_title(self.name + " vs Ctrl", fontdict={'fontsize': 6})
                     pc.ax.set_xlabel("Distance from well (ft)")
                     pc.ax.legend()

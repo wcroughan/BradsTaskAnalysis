@@ -19,6 +19,7 @@ from typing import Optional, Tuple, Dict, Any, List, Callable
 from numpy.typing import ArrayLike
 import multiprocessing
 from Shuffler import ShuffSpec, Shuffler, ShuffleResult, notNanPvalFilter
+from itertools import product
 
 
 @dataclass
@@ -32,6 +33,7 @@ class PlotContext:
     showPlot: Optional[bool] = None
     savePlot: Optional[bool] = None
     excludeFromCombo: bool = False
+    immediateShufflePvalThreshold: float = 0.15
 
     @property
     def ax(self) -> Axes:
@@ -190,6 +192,11 @@ class PlotManager:
             # Now if there are any immediate shuffles, do them
 
             if len(self.plotContext.immediateShuffles) > 0:
+                if not self.plotContext.isSinglePlot:
+                    raise Exception("Can't have multiple plots and do shuffle")
+                if len(self.plotContext.immediateShuffles) > 1:
+                    raise Exception("Can't have multiple yvals and do shuffle")
+
                 with open(os.path.join(statsDir, figureName + "_immediateShuffles.pkl"), "wb") as fid:
                     pickle.dump(self.plotContext.immediateShuffles, fid)
 
@@ -200,28 +207,62 @@ class PlotManager:
                 numShuffles = [x for _, x in self.plotContext.immediateShuffles]
                 df.drop(columns=list(self.persistentCategories.keys()) +
                         list(self.persistentInfoValues.keys()), inplace=True)
-                # print("\n".join([str(s) for s in shufSpecs]))
                 immediateRes = self.shuffler._doShuffles(df, shufSpecs, list(
                     self.plotContext.yvals.keys()), numShuffles=numShuffles)
-                # immediateRes = self.shuffler.doShuffles(df, shufSpecs, list(
-                #     self.plotContext.yvals.keys()), numShuffles=numShuffles)
-                # print(immediateRes)
-                pval = None
-                for rr in immediateRes:
-                    for r in rr:
-                        if pval is not None:
-                            raise Exception("Should only be doing one shuffle here!")
-                        pval = r.getPVals().item()
 
-                if not self.plotContext.isSinglePlot:
-                    raise Exception("Can't have multiple plots and do shuffle")
+                # print("Immediate shuffles:")
+                # for rr in immediateRes:
+                #     print("----")
+                #     for r in rr:
+                #         print(r)
 
-                self.plotContext.ax.add_artist(AnchoredText(f"pseudo-p={pval}", "upper center"))
-                # if pval > 0:
-                #     self.plotContext.ax.add_artist(AnchoredText(f"p={pval}", "upper center"))
-                # else:
-                #     self.plotContext.ax.add_artist(AnchoredText(
-                #         f"p<{1/numShuffles[0]}", "upper center"))
+                if len(self.plotContext.yvals) == 1:
+                    pval = None
+                    for rr in immediateRes:
+                        for r in rr:
+                            if pval is not None:
+                                raise Exception("Should only be doing one shuffle here!")
+                            pval = r.getPVals().item()
+                            shufDiffs = r.shuffleDiffs
+                            dataDiff = r.diff
+
+                    shuffledCategories = df[shufSpecs[0][0].categoryName].unique()
+                    cat1 = shufSpecs[0][0].value
+                    cat2 = shuffledCategories[shuffledCategories != cat1].item()
+                    direction = pval > 0.5
+                    if direction:
+                        pval = 1 - pval
+                    if pval > 0:
+                        pvalText = f"p={round(pval, 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                    else:
+                        pvalText = f"p<{round(1/numShuffles[0], 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                    self.plotContext.ax.add_artist(AnchoredText(pvalText, "upper center"))
+
+                    # Now create an inset axis in self.plotContext.ax in the bottom middle that shows the
+                    # histogram of the shuffled differences and a red vertical line at the data difference
+                    insetAx = self.plotContext.ax.inset_axes([0.4, 0.15, 0.2, 0.1])
+                    insetAx.hist(shufDiffs, bins=20, color="black")
+                    insetAx.axvline(dataDiff, color="red")
+                    insetAx.set_xlabel(f"{cat1} - {cat2}")
+                    # turn off y axis
+                    insetAx.get_yaxis().set_visible(False)
+                else:
+                    try:
+                        xvals = [int(v.split("_")[-1]) for v in list(self.plotContext.yvals.keys())]
+                    except:
+                        raise Exception("Can't do multiple shuffles like this. If you want multiple comparisons, "
+                                        "specify yvals as measureName_x, where x is the x value for that measure")
+
+                    xvals = np.array(xvals)
+                    pvals = immediateRes[0][0].getPVals()
+                    pvals = np.array([r if r < 0.5 else 1 - r for r in pvals])
+                    # pvals = np.array([r.getPVals().item() for r in immediateRes[0]])
+                    pValSig = pvals < self.plotContext.immediateShufflePvalThreshold
+                    # Now add an aterisk to self.plotContext.ax 95% up the y axis where the pval is significant
+                    ymin, ymax = self.plotContext.ax.get_ylim()
+                    ycoord = ymax - 0.05 * (ymax - ymin)
+                    self.plotContext.ax.scatter(xvals[pValSig], [ycoord] * len(xvals[pValSig]), marker="*",
+                                                color="black", s=100)
 
         # Finally, save or show the figure
         if (self.plotContext.savePlot is not None and self.plotContext.savePlot) or \
@@ -530,7 +571,12 @@ def pctilePvalSig(val):
     return 4
 
 
-def violinPlot(ax, yvals, categories, categories2=None, dotColors=None, axesNames=None):
+def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | ArrayLike,
+               categories2: Optional[pd.Series | ArrayLike] = None,
+               dotColors: Optional[pd.Series | ArrayLike] = None,
+               axesNames: Optional[pd.Series | ArrayLike] = None,
+               categoryOrder: Optional[List] = None, category2Order: Optional[List] = None,
+               categoryColors: Optional[List] = None, dotColorLabels: Optional[Dict[Any, str]] = None):
     if isinstance(yvals, pd.Series):
         yvals = yvals.to_numpy()
         categories = categories.to_numpy()
@@ -539,31 +585,49 @@ def violinPlot(ax, yvals, categories, categories2=None, dotColors=None, axesName
         if categories2 is not None:
             categories2 = categories2.to_numpy()
 
+    if categoryOrder is None:
+        categoryOrder = sorted(set(categories))
+    sortingCategories = [categoryOrder.index(c) for c in categories]
+
     if categories2 is None:
         categories2 = ["a" for _ in categories]
+        category2Order = ["a"]
         sortingCategories2 = categories2
         cat2IsFake = True
         if axesNames is not None:
             axesNames.append("Z")
     else:
         cat2IsFake = False
-        if len(set(categories2)) == 2 and "home" in categories2 and "away" in categories2:
-            sortingCategories2 = ["aaahome" if c == "home" else "away" for c in categories2]
-        elif len(set(categories2)) == 2 and "same" in categories2 and "other" in categories2:
-            sortingCategories2 = ["aaasame" if c == "same" else "other" for c in categories2]
-        else:
-            sortingCategories2 = categories2
+
+    if category2Order is None:
+        category2Order = sorted(set(categories2))
+    sortingCategories2 = [category2Order.index(c) for c in categories2]
+
+    # Old way of doing this:
+    # elif len(set(categories2)) == 2 and "home" in categories2 and "away" in categories2:
+    #     sortingCategories2 = ["aaahome" if c == "home" else "away" for c in categories2]
+    # elif len(set(categories2)) == 2 and "same" in categories2 and "other" in categories2:
+    #     sortingCategories2 = ["aaasame" if c == "same" else "other" for c in categories2]
 
     if dotColors is None:
         swarmPallete = sns.color_palette(palette=["black"])
         dotColors = np.array([0.0 for _ in yvals])
+    elif dotColorLabels is not None:
+        dotColors = [dotColorLabels[c] for c in dotColors]
+        swarmPallete = sns.color_palette(palette=dotColorLabels.keys())
     else:
-        nColors = len(np.unique(dotColors))
-        swarmPallete = sns.color_palette("coolwarm", n_colors=nColors)
+        uniqueDotColors = list(np.unique(dotColors))
+        nColors = len(uniqueDotColors)
+        if isinstance(dotColors[0], str):
+            dotColors = [uniqueDotColors.index(c) for c in dotColors]
+            swarmPallete = sns.color_palette(palette=uniqueDotColors, n_colors=nColors)
+        else:
+            swarmPallete = sns.color_palette("coolwarm", n_colors=nColors)
 
     # Same sorting here as in perseveration plot function so colors are always the same
-    sortList = ["{}__{}__{}".format(x, y, xi)
-                for xi, (x, y) in enumerate(zip(categories, sortingCategories2))]
+    # sortList = ["{}__{}__{}".format(x, y, xi)
+    #             for xi, (x, y) in enumerate(zip(sortingCategories, sortingCategories2))]
+    sortList = [(x, y, xi) for xi, (x, y) in enumerate(zip(sortingCategories, sortingCategories2))]
     categories = [x for _, x in sorted(zip(sortList, categories))]
     yvals = [x for _, x in sorted(zip(sortList, yvals))]
     categories2 = [x for _, x in sorted(zip(sortList, categories2))]
@@ -581,21 +645,40 @@ def violinPlot(ax, yvals, categories, categories2=None, dotColors=None, axesName
 
     ax.cla()
 
-    pal = sns.color_palette(palette=["cyan", "orange"])
+    if categoryColors is None:
+        if set(categories) == {"Ctrl", "SWR"}:
+            categoryColors = ["orange", "cyan"]
+        else:
+            categoryColors = ["red", "blue"]
+    pal = sns.color_palette(palette=categoryColors)
     sx = np.array(s[axesNamesNoSpaces[2]])
-    sy = np.array(s[axesNamesNoSpaces[1]]).astype(float)
+    # sy = np.array(s[axesNamesNoSpaces[1]]).astype(float)
     sh = np.array(s[axesNamesNoSpaces[0]])
     swarmx = np.array([a + b for a, b in zip(sx, sh)])
 
-    p1 = sns.violinplot(ax=ax, hue=sh,
-                        y=sy, x=swarmx, data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
-    sns.stripplot(ax=ax, x=swarmx, y=sy, hue=dotColors, data=s,
-                  zorder=3, dodge=False, palette=swarmPallete)
+    swarmCategories = [(a, b) for a, b in zip(categories, categories2)]
+    swarmxSortList = [(x, y) for x, y in product(categoryOrder, category2Order)]
+    swarmxValue = np.array([swarmxSortList.index(v) for v in swarmCategories])
+
+    # p1 = sns.violinplot(ax=ax, hue=sh,
+    #                     y=sy, x=swarmx, data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
+    # sns.stripplot(ax=ax, x=swarmx, y=sy, hue=dotColors, data=s,
+    #               zorder=3, dodge=False, palette=swarmPallete)
+    p1 = sns.violinplot(ax=ax, hue=categories,
+                        y=yvals, x=swarmx, data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
+    sns.stripplot(ax=ax, x=swarmxValue, y=yvals, hue="dotcoloraxisname", data=s,
+                  zorder=3, dodge=False, palette=swarmPallete, linewidth=1)
 
     if cat2IsFake:
         p1.set(xticklabels=[])
+    else:
+        # Override the default x-axis labels
+        p1.set(xticklabels=category2Order * len(categoryOrder))
     handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles[:2], labels[:2], fontsize=6).set_zorder(2)
+    if dotColorLabels is not None:
+        ax.legend(handles, labels, fontsize=6).set_zorder(2)
+    else:
+        ax.legend(handles[:2], labels[:2], fontsize=6).set_zorder(2)
 
     if not hideAxes:
         if not cat2IsFake:

@@ -58,6 +58,10 @@ class BehaviorPeriod:
     :param moveThresh: The minimum speed in cm/s for a time point to be considered moving. If None,
         the default value is used that is specified in the ImportOptions. If inclusionFlags does not
         contain "moving" or "still", this parameter is ignored.
+    :param trialInterval: A tuple of (start, end) trial numbers. Start is inclusive, end is exclusive. Ignored if probe is True.
+         Includes home and away trials interleaved, 0-indexed. For instace, (0, 3) would include behavior from the start of the task
+         until he finds the home well for the second time. If either value is None, it is assumed to be the start or end of the task.
+         If he didn't find the last reward, the final time spent looking for it is not included.
     :param erode: The approximate amount of time in seconds to erode the included time points by. This occurs after
         all other inclusion criteria are applied, except for dilate.
     :param dilate: The approximate amount of time in seconds to dilate the included time points by. This occurs after
@@ -68,6 +72,7 @@ class BehaviorPeriod:
     inclusionFlags: Optional[str | Iterable[str]] = None
     inclusionArray: Optional[np.ndarray] = None
     moveThreshold: Optional[float] = None
+    trialInterval: Optional[Tuple[int, int]] = None
     erode: Optional[int] = None
     dilate: Optional[int] = None
 
@@ -100,6 +105,8 @@ class BehaviorPeriod:
             s += f"_erode_{self.erode}"
         if self.dilate is not None:
             s += f"_dilate_{self.dilate}"
+        if self.trialInterval is not None:
+            s += f"_trialInterval_{self.trialInterval[0]}_{self.trialInterval[1]}"
         return s
 
 
@@ -587,6 +594,18 @@ class BTSession:
             ts, behaviorPeriod.timeInterval, noneVal=(0, len(keepFlag)))
         keepFlag[0:durIdx[0]] = False
         keepFlag[durIdx[1]:] = False
+
+        if behaviorPeriod.trialInterval is not None and not behaviorPeriod.probe:
+            startTrial = behaviorPeriod.trialInterval[0]
+            endTrial = behaviorPeriod.trialInterval[1]
+            trialPosIdxs = self.getAllTrialPosIdxs()
+            if startTrial is None:
+                startTrial = 0
+            if endTrial is None:
+                endTrial = trialPosIdxs.shape[0]
+
+            keepFlag[0:trialPosIdxs[startTrial, 0]] = False
+            keepFlag[trialPosIdxs[endTrial - 1, 1]:] = False
 
         # erosion and dilation
         if behaviorPeriod.erode is not None:
@@ -1199,6 +1218,7 @@ class BTSession:
                            excludeRadius: Optional[float] = 0.5, velocityWeight: float = 0.0,
                            distanceWeight: float = 0.0, normalize: bool = False,
                            binarySpotlight: bool = False, spotlightAngle: float = 70,
+                           onlyPositive: bool = False,
                            showPlot=False) -> float:
         """
         :param pos: (x, y) position to calculate dot product score at
@@ -1208,6 +1228,8 @@ class BTSession:
         :param distanceWeight: weight to apply to distance. Range is [-1, 1]. Negative values mean closer is more highly weighted
         :param binarySpotlight: whether to use binary spotlight (only include points within spotlightAngle)
         :param spotlightAngle: angle of spotlight
+        :param normalize: whether to normalize dot product score by number of points considered. Takes the mean instead of the sum if true
+        :param onlyPositive: whether to only consider positive dot product scores, so places behind the rat are not penalized
         :return: dot product score
         """
         x = self.probePosXs if behaviorPeriod.probe else self.btPosXs
@@ -1262,6 +1284,9 @@ class BTSession:
         else:
             velocityFactor = 1 - np.exp(-1 * magp)
         allVals = allVals * velocityFactor * velocityWeight + allVals * (1 - velocityWeight)
+
+        if onlyPositive:
+            allVals = np.clip(allVals, 0, None)
 
         if normalize:
             ret = np.mean(allVals)
@@ -1607,7 +1632,8 @@ class BTSession:
 
         return len(entries)
 
-    def latencyToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+    def latencyToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5,
+                          emptyVal=np.nan) -> float:
         bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
         ts, xs, ys = self.posDuringBehaviorPeriod(bp)
         dx = xs - pos[0]
@@ -1616,10 +1642,26 @@ class BTSession:
         inRadius = dist2 < radius * radius
         entries = np.where(np.diff(inRadius.astype(int)) == 1)[0]
         if len(entries) == 0:
-            return np.nan
+            return emptyVal
         return (ts[entries[0]] - ts[0]) / TRODES_SAMPLING_RATE
 
-    def pathOptimalityToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+    def pathOptimalityToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5,
+                                 startPoint: str = "beginning", emptyVal=np.nan, startAtPosVal=np.nan) -> float:
+        """
+        Computes the path optimality of the trajectory to a position. This is the ratio of the distance traveled
+        to the position to the distance traveled to the position if the animal had traveled in a straight line
+        from the start of the behavior period to the position.
+        :param behaviorPeriod: The behavior period to compute the path optimality for. inclusionFlags, inclusionArray,
+                                and moveThreshold are ignored.
+        :param pos: The position to compute the path optimality to.
+        :param radius: The radius around the position to consider the animal to be at the position.
+        :param startPoint: The point to start the path from. Either "beginning" or "excursion". If "beginning", the path
+                            starts at the beginning of the behavior period. If "excursion", the path starts at the
+                            beginning of the first excursion that visits the position.
+        :param emptyVal: The value to return if the animal does not visit the position during the behavior period.
+        :param startAtPosVal: The value to return if the animal starts at the position.
+
+        """
         bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
         _, xs, ys = self.posDuringBehaviorPeriod(bp)
         dx = xs - pos[0]
@@ -1627,35 +1669,144 @@ class BTSession:
         dist2 = dx * dx + dy * dy
         inRadius = dist2 < radius * radius
         if inRadius[0]:
-            return np.nan
+            return startAtPosVal
 
         entries = np.where(np.diff(inRadius.astype(int)) == 1)[0]
         if len(entries) == 0 or entries[0] == 0:
-            return np.nan
+            return emptyVal
+
+        endPoint = entries[0]
+        if startPoint == "beginning":
+            startPoint = np.argwhere(~np.isnan(xs))[0][0]
+        elif startPoint == "excursion":
+            # Find the start of the last excursion whose start is before endPoint
+            excursionStarts = self.probeExcursionStart_posIdx if behaviorPeriod.probe else self.btExcursionStart_posIdx
+            excursionStarts = excursionStarts[excursionStarts < endPoint]
+            if len(excursionStarts) == 0:
+                return emptyVal
+            startPoint = excursionStarts[-1]
+        else:
+            raise ValueError(f"Invalid startPoint: {startPoint}")
 
         totalDistance = np.nansum(
-            np.sqrt(np.diff(xs[:entries[0]]) ** 2 + np.diff(ys[:entries[0]]) ** 2))
-        totalDisplacement = np.sqrt((xs[entries[0]] - xs[0]) ** 2 + (ys[entries[0]] - ys[0]) ** 2)
+            np.sqrt(np.diff(xs[startPoint:endPoint]) ** 2 + np.diff(ys[startPoint:endPoint]) ** 2))
+        totalDisplacement = np.sqrt((xs[endPoint] - xs[startPoint])
+                                    ** 2 + (ys[endPoint] - ys[startPoint]) ** 2)
+
+        # totalDistance = np.nansum(
+        #     np.sqrt(np.diff(xs[:entries[0]]) ** 2 + np.diff(ys[:entries[0]]) ** 2))
+        # totalDisplacement = np.sqrt((xs[entries[0]] - xs[0]) ** 2 + (ys[entries[0]] - ys[0]) ** 2)
         # print(f"{ totalDistance = }", f"{ totalDisplacement = }")
         ret = totalDistance / totalDisplacement
         # input(ret)
 
         return ret
 
-    def fracExcursionsVisited(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
-        if not behaviorPeriod.probe:
+    def pathLengthInExcursionToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
+                                        radius: float = 0.5, emptyVal=np.nan, noVisitVal=np.nan, mode="first") -> float:
+        """
+        Computes the path length of the trajectory to a position within an excursion.
+        :param behaviorPeriod: The behavior period to compute the path length for. inclusionFlags, inclusionArray,
+                                and moveThreshold are ignored. Note only distance traveled within the behavior period
+                                is considered, so the path length may be less than the total distance traveled if the
+                                behavior period starts partway through an excursion.
+        :param pos: The position to compute the path length to.
+        :param radius: The radius around the position to consider the animal to be at the position.
+        :param emptyVal: The value to return if the animal does not have any excursions during the behavior period.
+        :param noVisitVal: The value to assign as the path length if the animal does not visit the position during the
+                            excursion.
+        :param mode: The mode to use. Either "first", "last", "mean", or "meanIgnoreNoVisit". If "first", the path
+                        length of the first excursion that visits the position is returned. If "last", the path length
+                        of the last excursion that visits the position is returned. If "mean", the mean path length
+                        of all excursions that visit the position is returned, where noVisitVal is used as the value for
+                        excursions that did not visit the position. If "meanIgnoreNoVisit", the mean path
+                        length of all excursions that visit the position is returned, but excursions that do not visit
+                        the position are ignored. Note that "mean" and "meanIgnoreNoVisit" are equivalent if noVisitVal
+                        is np.nan.
+        """
+        bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
+        _, xs, ys = self.posDuringBehaviorPeriod(bp)
+        dx = xs - pos[0]
+        dy = ys - pos[1]
+        dist2 = dx * dx + dy * dy
+        inRadius = dist2 < radius * radius
+
+        starts = self.probeExcursionStart_posIdx if behaviorPeriod.probe else self.btExcursionStart_posIdx
+        ends = self.probeExcursionEnd_posIdx if behaviorPeriod.probe else self.btExcursionEnd_posIdx
+        startOfBehaviorPeriod = np.argwhere(~np.isnan(xs))[0][0]
+        endOfBehaviorPeriod = np.argwhere(~np.isnan(xs))[-1][0]
+        keepExcursions = np.logical_and(ends >= startOfBehaviorPeriod,
+                                        starts <= endOfBehaviorPeriod)
+        starts = starts[keepExcursions]
+        ends = ends[keepExcursions]
+
+        if len(starts) == 0:
+            return emptyVal
+
+        excursionPathLengths = np.array([noVisitVal] * len(starts))
+        visited = np.array([False] * len(starts))
+        for ei, (start, end) in enumerate(zip(starts, ends)):
+            if not np.any(inRadius[start:end]):
+                continue
+
+            visited[ei] = True
+            startPoint = start
+            endPoint = np.where(inRadius[start:end])[0][0] + start
+            excursionPathLengths[ei] = np.nansum(np.sqrt(np.diff(xs[startPoint:endPoint]) **
+                                                         2 + np.diff(ys[startPoint:endPoint]) ** 2))
+
+        if mode == "first":
+            return excursionPathLengths[0]
+        elif mode == "last":
+            return excursionPathLengths[-1]
+        elif mode == "mean":
+            return np.nanmean(excursionPathLengths)
+        elif mode == "meanIgnoreNoVisit":
+            return np.mean(excursionPathLengths[visited])
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
+
+    def fracExcursionsVisited(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5,
+                              normalization: str = "session") -> float:
+        """
+        Returns the fraction of excursions that visit the given position.
+        inclusionFlags, inclusionArray, and moveThreshold are ignored.
+        :param behaviorPeriod: The behavior period to use.
+        :param pos: The position to check.
+        :param radius: The radius around the position that's considered a visit.
+        :param normalization: The normalization to use. Can be "session", "bp", or "none". If "session", the
+            number of visits is divided by the total number of excursions in the session. If "bp", the number of visits is
+            divided by the total number of excursions in the behavior period. If the edge of bp is in the middle
+            of an excursion, that excursion is included in the denominator. If "none", the number of visits is
+            returned as is (and isn't actually a fraction).
+
+        :return: The fraction of excursions that visit the given position.
+        """
+        if behaviorPeriod.probe and len(self.probeExcursionStart_posIdx) == 0:
             return np.nan
-        if len(self.probeExcursionStart_posIdx) == 0:
+        if not behaviorPeriod.probe and len(self.btExcursionStart_posIdx) == 0:
             return np.nan
 
         bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
         _, xs, ys = self.posDuringBehaviorPeriod(bp)
 
+        starts = self.probeExcursionStart_posIdx if behaviorPeriod.probe else self.btExcursionStart_posIdx
+        ends = self.probeExcursionEnd_posIdx if behaviorPeriod.probe else self.btExcursionEnd_posIdx
         ret = 0
-        for i0, i1 in zip(self.probeExcursionStart_posIdx, self.probeExcursionEnd_posIdx):
+        for i0, i1 in zip(starts, ends):
             x = xs[i0:i1]
             y = ys[i0:i1]
             d = np.sqrt((x - pos[0])**2 + (y - pos[1])**2)
             if np.any(d < radius):
                 ret += 1
-        return ret / len(self.probeExcursionStart_posIdx)
+
+        if normalization == "session":
+            return ret / len(starts)
+        elif normalization == "bp":
+            firstNonNan = np.where(~np.isnan(xs))[0][0]
+            lastNonNan = np.where(~np.isnan(xs))[0][-1]
+            return ret / len(starts[(ends >= firstNonNan) & (starts <= lastNonNan)])
+        elif normalization == "none":
+            return ret
+        else:
+            raise ValueError(f"Unknown normalization: { normalization }")

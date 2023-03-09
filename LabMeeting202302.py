@@ -397,7 +397,8 @@ def makeFigures(RUN_SHUFFLES=False, RUN_UNSPECIFIED=True, PRINT_INFO=True,
 
         if MAKE_CLEAN_LAB_MEETING_FIGURES:
             if True:
-                plotsToMake = "everysession"
+                plotsToMake = "all"
+                # plotsToMake = "measureVsCtrl"
                 LocationMeasure("frac excursions 0.25 probe 0.00",
                                 lambda sesh: sesh.getValueMap(
                                     lambda pos: sesh.fracExcursionsVisited(BP(probe=True), pos, 0.25)),

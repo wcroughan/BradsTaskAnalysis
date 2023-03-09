@@ -7,6 +7,7 @@ import os
 import pickle
 import time
 from datetime import datetime
+from tqdm import tqdm
 
 
 def notNanPvalFilter(plotName: str, shuffleResult: ShuffleResult, pval: float, measureName: str) -> bool:
@@ -297,7 +298,7 @@ class Shuffler:
         sdf.to_hdf(outputFileName, key="immediateShuffles")
         return outputFileName
 
-    def getAllShuffleSpecsWithLeaf(self, df: pd.DataFrame, leaf: List[ShuffleResult],
+    def getAllShuffleSpecsWithLeaf(self, df: pd.DataFrame, leaf: List[ShuffSpec],
                                    columnsToShuffle: Optional[List[str]] = None) -> List[List[ShuffSpec]]:
         if columnsToShuffle is None:
             raise Exception("Not implemented. leaf is a list...")
@@ -367,6 +368,8 @@ class Shuffler:
                     pval = s2.getPVals().item()
                     if pval < significantThreshold or pval > 1 - significantThreshold:
                         if resultsFilter(plotName, s2, pval, measureName):
+                            # isCondShuf = any([s.categoryName == "condition" for s in s2.specs])
+
                             plotSuffix = plotName[len(measureName)-3:]
                             isCondShuf = plotSuffix == "" or plotSuffix.endswith(
                                 "diff") or plotSuffix.endswith("cond")
@@ -375,12 +378,12 @@ class Shuffler:
                             isDiffShuf = plotSuffix.endswith("diff")
                             isNextSeshDiffShuf = plotSuffix.endswith("nextsession_diff")
                             significantResults.append(
-                                (plotName, str(s2), pval if pval < 0.5 else 1 - pval,
+                                (plotName, str(s2), pval if pval < 0.5 else 1 - pval, pval < 0.5,
                                  measureName, plotSuffix, isCondShuf, isCtrlShuf, isDiffShuf,
                                  isNextSeshDiffShuf))
 
         sdf = pd.DataFrame(significantResults,
-                           columns=["plot", "shuffle", "pval", "measure", "plotSuffix", "isCondShuf",
+                           columns=["plot", "shuffle", "pval", "direction", "measure", "plotSuffix", "isCondShuf",
                                     "isCtrlShuf", "isDiffShuf", "isNextSeshDiffShuf"])
         sdf.sort_values(by="pval", inplace=True)
         # print("all shuffles")
