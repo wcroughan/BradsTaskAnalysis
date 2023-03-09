@@ -3,7 +3,7 @@ import math
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
-from typing import Callable, List, Tuple, Optional, Iterable, Dict
+from typing import Callable, List, Tuple, Optional, Iterable, Dict, TypeVar, Any
 import pandas as pd
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
@@ -11,12 +11,13 @@ from numpy.typing import ArrayLike
 from multiprocessing import Pool
 import warnings
 import pprint
+from dataclasses import dataclass
 
 from UtilFunctions import offWall, getWellPosCoordinates, getRotatedWells
 from PlotUtil import violinPlot, PlotManager, setupBehaviorTracePlot, blankPlot, \
     plotIndividualAndAverage
 from Shuffler import ShuffSpec
-from consts import allWellNames
+from consts import allWellNames, TRODES_SAMPLING_RATE
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
 
@@ -32,6 +33,409 @@ def poolWorkerFuncWrapper(args):
 def poolWorkerInit(func):
     global _poolWorkerFunc
     _poolWorkerFunc = func
+
+
+class TimeMeasure():
+    """
+    A measure that has a value for some series of time periods. Is supposed to be a generalization
+    of TrialMeasure, although comparing home and away in this class might not be easy to do,
+    so for now will focus on comparing different conditions.
+    """
+
+    @dataclass
+    class TimePeriod:
+        start_posIdx: int
+        end_posIdx: int
+        xval: float
+        category: Optional[str]
+        data: Any
+
+    @staticmethod
+    def sweepingTimePerodsFunction(windowSize: float, stepSize: float, inProbe: bool) -> Callable[[BTSession], List[TimePeriod]]:
+        """
+        Returns a function that takes a session and returns a list of time periods
+        :param windowSize: the size of the window in seconds
+        :param stepSize: the step size in seconds
+        :param inProbe: if True, the time periods span the duration of the probe, otherwise they span the duration of the task
+        """
+        stepSizeTs = int(stepSize * TRODES_SAMPLING_RATE)
+        windowSizeTs = int(windowSize * TRODES_SAMPLING_RATE)
+
+        def timePeriodsFunc(sesh: BTSession) -> List[Tuple[int, int, float, None]]:
+            tseconds = sesh.probePos_secs if inProbe else sesh.btPos_secs
+            t0_secs = np.arange(0, tseconds[-1] - windowSize, stepSize)
+            t1_secs = t0_secs + windowSize
+
+            t0 = np.searchsorted(tseconds, t0_secs)
+            t1 = np.searchsorted(tseconds, t1_secs)
+            xvals = t1_secs
+
+            return [TimeMeasure.TimePeriod(t0, t1, x, None, None) for t0, t1, x in zip(t0, t1, xvals)]
+        return timePeriodsFunc
+
+    @staticmethod
+    def trialTimePeriodsFunction(sesh: BTSession) -> List[TimePeriod]:
+        """
+        Returns a function that takes a session and returns a list of time periods corresponding to the trials
+        The third element of the tuple is a tuple of the trial index and a boolean indicating whether the trial was a home trial
+        :param sesh: the session to get the time periods from
+        """
+        trialPosIdxs = sesh.getAllTrialPosIdxs()
+        return [TimeMeasure.TimePeriod(t0, t1, ii, "early" if ii < 5 else "home" if ii % 2 == 0 else "away", ii) for ii, (t0, t1) in enumerate(trialPosIdxs)]
+
+    T = TypeVar('T')
+
+    def __init__(self, name: str,
+                 measureFunc: Callable[[BTSession, int, int, T], float],
+                 sessionList: List[BTSession],
+                 timePeriodsGenerator: Callable[[BTSession], List[TimePeriod]] |
+                 Tuple[float, float, bool] = (30, 5, False)):
+        """
+        :param name: the name of the measure
+        :param measureFunc: a function that takes a session, a start posIdx, an end posIdx, and a value of type T
+            and returns a float
+        :param sessionList: the list of sessions to measure
+        :param timePeriodsGenerator: a function that takes a session and returns a list of time periods to measure.
+            The data field of each time period can be anything, and is passed to the measureFunc.
+            For example, if TimeMeasure.trialTimePeriodsFunction is used, then the data value is the trial index.
+            Alternatively, a tuple of (windowSize, stepSize, inProbe) can be passed, in which case those arguments are
+            passed to TimeMeasure.sweepingTimePerodsFunction to generate the time periods.
+        """
+        self.name = name
+        self.sessionList = sessionList
+
+        if isinstance(timePeriodsGenerator, tuple):
+            timePeriodsGenerator = TimeMeasure.sweepingTimePerodsFunction(
+                *timePeriodsGenerator)
+
+        allTimePeriods = [timePeriodsGenerator(sesh) for sesh in sessionList]
+        maxNumTimePeriods = max([len(tps) for tps in allTimePeriods])
+
+        measure = []
+        measure2d = np.empty((len(sessionList), maxNumTimePeriods))
+        measure2d[:, :] = np.nan
+        sessionIdx = []
+        sessionCondition = []
+        posIdxRange = []
+        xvals = []
+        timePeriodCategory = []
+
+        for si, sesh in enumerate(sessionList):
+            timePeriods = timePeriodsGenerator(sesh)
+            for ti, tp in enumerate(timePeriods):
+                val = measureFunc(sesh, tp.start_posIdx, tp.end_posIdx, tp.data)
+                measure.append(val)
+                measure2d[si, ti] = val
+                sessionIdx.append(si)
+                sessionCondition.append("SWR" if sesh.isRippleInterruption else "Ctrl")
+                posIdxRange.append((tp.start_posIdx, tp.end_posIdx))
+                xvals.append(tp.xval)
+                timePeriodCategory.append(tp.category)
+
+        self.valMin = np.nanmin(measure)
+        self.valMax = np.nanmax(measure)
+        self.measureDf = pd.DataFrame({"sessionIdx": sessionIdx,
+                                       "val": measure,
+                                       "condition": sessionCondition,
+                                       "posIdxRange": posIdxRange,
+                                       "timePeriodCategory": timePeriodCategory,
+                                       "xval": xvals})
+
+        # self.sessionDf = self.measureDf.groupby("sessionIdx")[["condition"]].nth(0)
+
+        print(self.measureDf)
+        if all([v is None for v in timePeriodCategory]):
+            self.hasCategories = False
+        else:
+            self.hasCategories = True
+            uniqueCategories = set(timePeriodCategory)
+            withinCategoryAvgs = self.measureDf.groupby(["sessionIdx", "timePeriodCategory"]
+                                                        ).agg(withinAvg=("val", "mean"))
+            withinCategoryAvgs["withoutAvg"] = np.nan
+            for cat in uniqueCategories:
+                self.measureDf[f"CAT_IS_{cat}"] = self.measureDf["timePeriodCategory"] == cat
+                withoutCategoryAvgs = self.measureDf.groupby(["sessionIdx", f"CAT_IS_{cat}"]).agg(
+                    withoutAvg=("val", "mean"))
+                withoutCategoryAvgs.rename(index={False: cat}, level=1, inplace=True)
+                withinCategoryAvgs.loc[pd.IndexSlice[:, cat], "withoutAvg"] = withoutCategoryAvgs.xs(
+                    cat, level=1)["withoutAvg"].to_numpy()
+            self.withinSessionDiffs = withinCategoryAvgs["withinAvg"] - \
+                withinCategoryAvgs["withoutAvg"]
+            print(self.withinSessionDiffs)
+            diffs = self.withinSessionDiffs["withinSessionDiff"].to_numpy()
+            self.diffMin = np.nanmin(diffs)
+            self.diffMax = np.nanmax(diffs)
+
+    def makeFigures(self,
+                    plotManager: PlotManager,
+                    plotFlags: str | List[str] = ["noteveryperiod", "noteverysession"],
+                    subFolder: bool = True,
+                    runStats: bool = True):
+
+        figName = self.name.replace(" ", "_")
+        if subFolder:
+            plotManager.pushOutputSubDir("TiM_" + figName)
+
+        allPossibleFlags = ["measure", "diff", "everyperiod", "everysession", "averages"]
+
+        if isinstance(plotFlags, str):
+            if plotFlags == "all":
+                plotFlags = allPossibleFlags
+            else:
+                plotFlags = [plotFlags]
+        else:
+            # so list passed in isn't modified
+            plotFlags = [v for v in plotFlags]
+
+        if len(plotFlags) > 0 and plotFlags[0].startswith("not"):
+            if not all([v.startswith("not") for v in plotFlags]):
+                raise ValueError("if one plot flag starts with 'not', all must")
+            plotFlags = [v[3:] for v in plotFlags]
+            plotFlags = list(set(allPossibleFlags) - set(plotFlags))
+
+        # TODO leaving off here. Started to change measure, not positive I got everything. Need to get all the rest of the plots too
+        if "measure" in plotFlags:
+            plotFlags.remove("measure")
+            with plotManager.newFig(figName) as pc:
+                dotColors = ["orange" if c ==
+                             "SWR" else "cyan" for c in self.measureDf["condition"]]
+                violinPlot(pc.ax, self.measureDf["val"], categories2=self.measureDf["trialType"],
+                           categories=self.measureDf["condition"], dotColors=dotColors,
+                           axesNames=["Condition", self.name, "Trial type"])
+
+                if runStats:
+                    pc.yvals[figName] = self.measureDf["val"].to_numpy()
+                    pc.categories["timePeriodCategory"] = self.measureDf["timePeriodCategory"].to_numpy()
+                    pc.categories["condition"] = self.measureDf["condition"].to_numpy()
+
+        if "diff" in plotFlags:
+            plotFlags.remove("diff")
+            with plotManager.newFig(figName + "_diff") as pc:
+                violinPlot(pc.ax, self.withinSessionDiffs["withinSessionDiff"],
+                           categories=self.withinSessionDiffs["condition"],
+                           dotColors=self.withinSessionDiffs["dotColor"],
+                           categoryOrder=["SWR", "Ctrl"],
+                           axesNames=["Contidion", self.name + " within-session difference"])
+
+                if runStats:
+                    pc.yvals[figName] = self.withinSessionDiffs["withinSessionDiff"].to_numpy()
+                    pc.categories["condition"] = self.withinSessionDiffs["condition"].to_numpy()
+                    pc.immediateShuffles.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+
+        if "averages" in plotFlags:
+            plotFlags.remove("averages")
+            xvalsAll = np.arange(self.measure2d.shape[1]) + 1
+            xvalsHalf = np.arange(math.ceil(self.measure2d.shape[1] / 2)) + 1
+            swrIdx = np.array([sesh.isRippleInterruption for sesh in self.sessionList])
+            ctrlIdx = np.array([not v for v in swrIdx])
+
+            with plotManager.newFig(figName + "_byTrialAvgs_all") as pc:
+                plotIndividualAndAverage(pc.ax, self.measure2d, xvalsAll, avgColor="grey")
+                pc.ax.set_xlim(1, len(xvalsAll))
+                pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_all_byCond") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, :], xvalsAll, avgColor="orange", label="SWR",
+                    spread="sem")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, :], xvalsAll, avgColor="cyan", label="Ctrl",
+                    spread="sem")
+                pc.ax.set_xlim(1, len(xvalsAll))
+                pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
+
+                if runStats:
+                    for xi, x in enumerate(xvalsAll):
+                        pc.yvals[f"{figName}_byTrialAvgs_all_byCond_{x}"] = self.measure2d[:, xi]
+                        # print(xi, x, self.measure2d[:, xi].shape)
+                    pc.categories["condition"] = np.array(
+                        ["SWR" if v else "Ctrl" for v in swrIdx])
+                    pc.immediateShuffles.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                    pc.immediateShufflePvalThreshold = 0.15
+
+            with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="red", label="home",
+                    spread="sem")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="blue", label="away",
+                    spread="sem")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+                if runStats:
+                    # print("home vs away")
+                    for xi, x in enumerate(xvalsHalf[:-1]):
+                        yv = np.hstack((self.measure2d[:, xi * 2], self.measure2d[:, xi * 2 + 1]))
+                        # print(xi, x, yv.shape)
+                        pc.yvals[f"{figName}_byTrialAvgs_all_byTrialType_{x}"] = yv
+                    cats = np.array(["home"] * self.measure2d.shape[0] +
+                                    ["away"] * self.measure2d.shape[0])
+                    pc.categories["trialType"] = cats
+                    # print(f"{ cats.shape=  }")
+
+                    pc.immediateShuffles.append((
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="trialType", value="home")], 100))
+                    pc.immediateShufflePvalThreshold = 0.15
+
+            with plotManager.newFig(figName + "_byTrialAvgs_home") as pc:
+                plotIndividualAndAverage(pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="grey")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_away") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="grey")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_home_byCond") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="orange", label="SWR",
+                    spread="sem")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="cyan", label="Ctrl",
+                    spread="sem")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_away_byCond") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="orange", label="SWR",
+                    spread="sem")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="cyan", label="Ctrl",
+                    spread="sem")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_ctrl_byTrialType") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="red", label="home",
+                    spread="sem")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away",
+                    spread="sem")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+            with plotManager.newFig(figName + "_byTrialAvgs_SWR_byTrialType") as pc:
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="red", label="home",
+                    spread="sem")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away",
+                    spread="sem")
+                pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
+
+        if "everytrial" in plotFlags:
+            plotFlags.remove("everytrial")
+            cmap = mpl.colormaps["coolwarm"]
+            for si, sesh in enumerate(self.sessionList):
+                thisSession = self.trialDf[self.trialDf["sessionIdx"]
+                                           == si].sort_values("trial_posIdx")
+                tpis = np.array([list(v) for v in thisSession["trial_posIdx"]])
+                vals = thisSession["val"].to_numpy()
+                normvals = (vals - self.valMin) / (self.valMax - self.valMin)
+                plotManager.pushOutputSubDir(sesh.name)
+
+                ncols = len(sesh.visitedAwayWells) + 1
+                with plotManager.newFig(figName + "_allTrials", subPlots=(2, ncols)) as pc:
+                    for ti in range(2*ncols):
+                        ai0 = ti % 2
+                        ai1 = ti // 2
+                        ax = pc.axs[ai0, ai1]
+
+                        if ti >= tpis.shape[0]:
+                            blankPlot(ax)
+                            continue
+
+                        assert isinstance(ax, Axes)
+                        c = "orange" if self.withinSessionDiffs.loc[si,
+                                                                    "condition"] == "SWR" else "cyan"
+                        setupBehaviorTracePlot(ax, sesh, outlineColors=c)
+                        t0 = tpis[ti, 0]
+                        t1 = tpis[ti, 1]
+                        ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1], c="black")
+                        ax.set_facecolor(cmap(normvals[ti]))
+                        ax.set_title(str(vals[ti]))
+
+                    pc.figure.colorbar(mappable=ScalarMappable(
+                        norm=Normalize(self.valMin, self.valMax), cmap=cmap), ax=ax)
+
+                    ax = pc.axs[1, -1]
+                    assert isinstance(ax, Axes)
+                    v = self.withinSessionDiffs.loc[si, "withinSessionDiff"]
+                    ax.set_facecolor(cmap((v - self.diffMin) / (self.diffMax - self.diffMin)))
+                    c = "orange" if self.withinSessionDiffs.loc[si,
+                                                                "condition"] == "SWR" else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, showWells="")
+                    ax.set_title(f"avg diff = {v}")
+                    pc.figure.colorbar(mappable=ScalarMappable(
+                        norm=Normalize(self.diffMin, self.diffMax), cmap=cmap), ax=ax)
+
+                plotManager.popOutputSubDir()
+
+        if "everysession" in plotFlags:
+            plotFlags.remove("everysession")
+            cmap = mpl.colormaps["coolwarm"]
+            ncols = 14
+            wellSize = mpl.rcParams['lines.markersize']**2 / 4
+            with plotManager.newFig(figName + "_allTrials_allSessions",
+                                    subPlots=(2*len(self.sessionList), ncols), figScale=0.3) as pc:
+                for si, sesh in enumerate(self.sessionList):
+                    print(si)
+                    thisSession = self.trialDf[self.trialDf["sessionIdx"]
+                                               == si].sort_values("trial_posIdx")
+                    tpis = np.array([list(v) for v in thisSession["trial_posIdx"]])
+                    vals = thisSession["val"].to_numpy()
+                    normvals = (vals - self.valMin) / (self.valMax - self.valMin)
+
+                    blankPlot(pc.axs[2*si, 0])
+                    blankPlot(pc.axs[2*si+1, 0])
+
+                    for ti in range(2 * ncols - 2):
+                        ai0 = (ti % 2) + 2 * si
+                        ai1 = (ti // 2) + 1
+                        ax = pc.axs[ai0, ai1]
+                        if ti >= tpis.shape[0]:
+                            blankPlot(ax)
+                            continue
+
+                        assert isinstance(ax, Axes)
+                        c = "orange" if self.withinSessionDiffs.loc[si,
+                                                                    "condition"] == "SWR" else "cyan"
+                        setupBehaviorTracePlot(ax, sesh, outlineColors=c, wellSize=wellSize)
+                        t0 = tpis[ti, 0]
+                        t1 = tpis[ti, 1]
+                        ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1], c="black")
+                        ax.set_facecolor(cmap(normvals[ti]))
+                        ax.set_title(str(vals[ti]))
+
+                    pc.figure.colorbar(mappable=ScalarMappable(
+                        norm=Normalize(self.valMin, self.valMax), cmap=cmap), ax=pc.axs[2*si+1, -1])
+
+                    ax = pc.axs[2*si+1, 0]
+                    assert isinstance(ax, Axes)
+                    v = self.withinSessionDiffs.loc[si, "withinSessionDiff"]
+                    ax.set_facecolor(cmap((v - self.diffMin) / (self.diffMax - self.diffMin)))
+                    c = "orange" if self.withinSessionDiffs.loc[si,
+                                                                "condition"] == "SWR" else "cyan"
+                    setupBehaviorTracePlot(ax, sesh, outlineColors=c, showWells="")
+                    ax.set_title(f"avg diff = {v}")
+                    pc.figure.colorbar(mappable=ScalarMappable(
+                        norm=Normalize(self.diffMin, self.diffMax), cmap=cmap), ax=ax)
+
+                    pc.axs[2*si, 0].set_title(sesh.name)
+
+        if subFolder:
+            plotManager.popOutputSubDir()
+
+        if len(plotFlags) > 0:
+            print(f"Warning: unused plot flags: {plotFlags}")
 
 
 class TrialMeasure():
@@ -149,7 +553,7 @@ class TrialMeasure():
 
         figName = self.name.replace(" ", "_")
         if subFolder:
-            plotManager.pushOutputSubDir("TM_" + figName)
+            plotManager.pushOutputSubDir("TrM_" + figName)
 
         allPossibleFlags = ["measure", "diff", "everytrial", "everysession", "averages"]
 

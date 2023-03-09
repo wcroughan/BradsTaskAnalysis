@@ -586,7 +586,20 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
             categories2 = categories2.to_numpy()
 
     if categoryOrder is None:
-        categoryOrder = sorted(set(categories))
+        if set(categories) == {"home", "away"}:
+            categoryOrder = ["home", "away"]
+        elif set(categories) == {"home", "symmetric"}:
+            categoryOrder = ["home", "symmetric"]
+        elif set(categories) == {"same", "other"}:
+            categoryOrder = ["same", "other"]
+        elif set(categories) == {"same", "later"}:
+            categoryOrder = ["same", "later"]
+        elif set(categories) == {"same", "next"}:
+            categoryOrder = ["same", "next"]
+        elif set(categories) == {"SWR", "Ctrl"}:
+            categoryOrder = ["SWR", "Ctrl"]
+        else:
+            categoryOrder = sorted(set(categories))
     sortingCategories = [categoryOrder.index(c) for c in categories]
 
     if categories2 is None:

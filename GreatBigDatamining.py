@@ -1,5 +1,5 @@
 from typing import Callable, Iterable, Dict, List
-from MeasureTypes import LocationMeasure, TrialMeasure
+from MeasureTypes import LocationMeasure, TrialMeasure, TimeMeasure
 from PlotUtil import PlotManager
 from DataminingFactory import runEveryCombination
 from UtilFunctions import parseCmdLineAnimalNames, findDataDir, getLoadInfo
@@ -102,22 +102,21 @@ def main(plotFlags: List[str] | str = "tests"):
             pp.setStatCategory("rat", ratName)
 
         if "tests" in plotFlags:
-            def testFunc(sesh: BTSession, trialStart_posIdx: int, trialEnd_posIdx: int, homeAwayFlag: str):
-                ret = trialStart_posIdx
-                if sesh.isRippleInterruption:
-                    ret *= 1.1
-                return ret
+            def f(sesh: BTSession, trialStart_posIdx: int, trialEnd_posIdx: int, d: str):
+                return trialStart_posIdx
+            tm = TimeMeasure("test", f,
+                             sessions, timePeriodsGenerator=TimeMeasure.trialTimePeriodsFunction)
+            # def testFunc(sesh: BTSession, trialStart_posIdx: int, trialEnd_posIdx: int, homeAwayFlag: str):
+            #     ret = trialStart_posIdx
+            #     if sesh.isRippleInterruption:
+            #         ret *= 1.1
+            #     return ret
 
-            def latencyFunc(sesh: BTSession, trialStart_posIdx: int, trialEnd_posIdx: int, homeAwayFlag: str):
-                return sesh.btPos_secs[trialEnd_posIdx] - sesh.btPos_secs[trialStart_posIdx]
-            plotFlags.remove("tests")
-            tm = TrialMeasure("test", latencyFunc, sessions)
-            tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
-            # tm = TrialMeasure(self, name: str,
-            #      measureFunc: Callable[[BTSession, int, int, str], float],
-            #      sessionList: List[BTSession],
-            #      trialFilter: None | Callable[[BTSession, str, int, int, int, int], bool] = None,
-            #      runStats=True)
+            # def latencyFunc(sesh: BTSession, trialStart_posIdx: int, trialEnd_posIdx: int, homeAwayFlag: str):
+            #     return sesh.btPos_secs[trialEnd_posIdx] - sesh.btPos_secs[trialStart_posIdx]
+            # plotFlags.remove("tests")
+            # tm = TrialMeasure("test", latencyFunc, sessions)
+            # tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
 
         if len(plotFlags) != 0:
             print("Warning, unused plot flags:", plotFlags)
