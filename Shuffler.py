@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import IntEnum, auto
-from typing import List, Dict, Tuple, Optional, Callable
+from typing import List, Dict, Tuple, Optional, Callable, Iterable
 import numpy as np
 import pandas as pd
 import os
@@ -8,6 +8,10 @@ import pickle
 import time
 from datetime import datetime
 from tqdm import tqdm
+import warnings
+from UtilFunctions import getPreferredCategoryOrder
+from itertools import product
+from scipy.stats import pearsonr
 
 
 def notNanPvalFilter(plotName: str, shuffleResult: ShuffleResult, pval: float, measureName: str) -> bool:
@@ -97,17 +101,20 @@ class ShuffleResult:
     def getPVals(self) -> np.ndarray:
         if np.all(np.isnan(self.shuffleDiffs)):
             return np.full(self.diff.shape, np.nan)
-        pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
-                                  axis=0) / np.count_nonzero(~np.isnan(self.shuffleDiffs), axis=0)
-        pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
-                                  axis=0) / np.count_nonzero(~np.isnan(self.shuffleDiffs), axis=0)
-        # oldpvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
-        #                              axis=0) / self.shuffleDiffs.shape[0]
-        # oldpvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
-        #                              axis=0) / self.shuffleDiffs.shape[0]
-        # if np.any(np.isnan(self.shuffleDiffs)):
-        #     print("nans in shuffle diff: ", np.count_nonzero(np.isnan(self.shuffleDiffs),
-        #           axis=0) / self.shuffleDiffs.shape[0], oldpvals1, pvals1, sep="\t")
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", r"invalid value encountered in divide")
+            pvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
+                                      axis=0) / np.count_nonzero(~np.isnan(self.shuffleDiffs), axis=0)
+            pvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
+                                      axis=0) / np.count_nonzero(~np.isnan(self.shuffleDiffs), axis=0)
+            # oldpvals1 = np.count_nonzero(self.diff.T < self.shuffleDiffs,
+            #                              axis=0) / self.shuffleDiffs.shape[0]
+            # oldpvals2 = np.count_nonzero(self.diff.T <= self.shuffleDiffs,
+            #                              axis=0) / self.shuffleDiffs.shape[0]
+            # if np.any(np.isnan(self.shuffleDiffs)):
+            #     print("nans in shuffle diff: ", np.count_nonzero(np.isnan(self.shuffleDiffs),
+            #           axis=0) / self.shuffleDiffs.shape[0], oldpvals1, pvals1, sep="\t")
         return (pvals1 + pvals2) / 2
 
     def getFullInfoString(self, linePfx="") -> str:
@@ -315,6 +322,28 @@ class Shuffler:
                                       categoryName=col, value=None)] + r)
         return ret
 
+    def runCorrelations(df: pd.DataFrame, xvar: str, yvar: str, catNames: List[str]):
+        catVals = [getPreferredCategoryOrder(df[cn].values) for cn in catNames]
+        catCombs = list(product(*catVals))
+        ret = []
+
+        for cc in catCombs:
+            dfc = df
+            for cn, cv in zip(catNames, cc):
+                dfc = dfc[dfc[cn] == cv]
+
+            x = dfc[xvar].values
+            y = dfc[yvar].values
+            # print(f"Doing correlation for {catStr}x={xvar} y={yvar} with {len(x)} values")
+            # filter out inf and nan values
+            valid = np.isfinite(x) & np.isfinite(y)
+            x = x[valid]
+            y = y[valid]
+            r, p = pearsonr(x, y)
+            ret.append((cc, r, p))
+
+        return ret
+
     def runAllShuffles(self, infoFileNames: List[str], numShuffles: int,
                        significantThreshold: Optional[float] = 0.15,
                        resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = notNanPvalFilter) -> str:
@@ -330,9 +359,11 @@ class Shuffler:
             filesForEachPlot[plotName].append(statsFile)
 
         shuffResults: List[Tuple[str, List[List[ShuffleResult]], str]] = []
+        correlationResults: List[Tuple[str, List[Tuple[Iterable[str] float, float]], str]] = []
         for plotName in tqdm(filesForEachPlot, desc="Running shuffles", total=len(filesForEachPlot)):
             df = pd.concat([pd.read_hdf(f, key="stats") for f in filesForEachPlot[plotName]])
             yvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="yvalNames")
+            xvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="xvalNames")
             categoryNames = pd.read_hdf(filesForEachPlot[plotName][0], key="categoryNames")
             persistentCategoryNames = pd.read_hdf(
                 filesForEachPlot[plotName][0], key="persistentCategoryNames")
@@ -340,6 +371,7 @@ class Shuffler:
             # persistentInfoNames = pd.read_hdf(filesForEachPlot[plotName][0], key="persistentInfoNames")
             measureName = os.path.dirname(filesForEachPlot[plotName][0]).split(os.path.sep)[-2]
 
+            # Shuffle categories
             catsToShuffle = list(categoryNames) + list(persistentCategoryNames)
             todel = set()
             for cat in catsToShuffle:
@@ -357,6 +389,14 @@ class Shuffler:
             # print("\n".join([str(s) for s in specs]))
             sr = self._doShuffles(df, specs, yvalNames)
             shuffResults.append((plotName, sr, measureName))
+
+            # Look for xval correlations
+            xynamepairs = list(product(xvalNames, yvalNames))
+            cr = []
+            for xname, yname in xynamepairs:
+                cr.append(self.runCorrelations(df, xname, yname, catsToShuffle))
+
+            correlationResults.append((plotName, cr, measureName))
 
         if significantThreshold is None:
             significantThreshold = 1.0
@@ -386,12 +426,32 @@ class Shuffler:
                            columns=["plot", "shuffle", "pval", "direction", "measure", "plotSuffix", "isCondShuf",
                                     "isCtrlShuf", "isDiffShuf", "isNextSeshDiffShuf"])
         sdf.sort_values(by="pval", inplace=True)
-        # print("all shuffles")
-        # print(sdf.to_string(index=False))
 
         outputFileName = os.path.join(os.path.dirname(
             infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_significantShuffles.h5"))
         sdf.to_hdf(outputFileName, key="significantShuffles")
+
+        # TODO leaving off here. Need to do the same thing for correlations
+        # Also need to change how measureName is found, doesn't work for TiM and TrM now
+        # These suffixes are likely wrong, and I'll want other quantities
+        # And remember to save to output file!!!
+        significantCorrelations = []
+        for plotName, cr, measureName in correlationResults:
+            for catNames, corr, pval in cr:
+                if pval < significantThreshold or pval > 1 - significantThreshold:
+                    if resultsFilter(plotName, None, pval, measureName):
+                        plotSuffix = plotName[len(measureName)-3:]
+                        isCondCorr = plotSuffix == "" or plotSuffix.endswith(
+                            "diff") or plotSuffix.endswith("cond")
+                        isCtrlShuf = plotSuffix.endswith("cond") or (
+                            "ctrl_" in plotSuffix and "diff" not in plotSuffix)
+                        isDiffShuf = plotSuffix.endswith("diff")
+                        isNextSeshDiffShuf = plotSuffix.endswith("nextsession_diff")
+                        significantCorrelations.append(
+                            (plotName, str(catNames), pval if pval < 0.5 else 1 - pval, pval < 0.5,
+                             measureName, plotSuffix, isCondShuf, isCtrlShuf, isDiffShuf,
+                             isNextSeshDiffShuf))
+
         return outputFileName
 
     def summarizeShuffleResults(self, hdfFile: str) -> None:

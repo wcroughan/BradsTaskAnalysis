@@ -13,7 +13,7 @@ from matplotlib.offsetbox import AnchoredText
 import pickle
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from UtilFunctions import getWellPosCoordinates
+from UtilFunctions import getWellPosCoordinates, getPreferredCategoryOrder
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, Dict, Any, List, Callable
 from numpy.typing import ArrayLike
@@ -28,6 +28,8 @@ class PlotContext:
     axs: ArrayLike[Axes]
     yvals: Dict[str, ArrayLike] = field(default_factory=dict)
     immediateShuffles: List[Tuple[List[ShuffSpec], int]] = field(default_factory=list)
+    xvals: Dict[str, ArrayLike] = field(default_factory=dict)
+    immediateCorrelations: List[Tuple[str, str]] = field(default_factory=list)
     categories: Dict[str, ArrayLike] = field(default_factory=dict)
     infoVals: Dict[str, ArrayLike] = field(default_factory=dict)
     showPlot: Optional[bool] = None
@@ -160,16 +162,32 @@ class PlotManager:
             figureName = os.path.basename(self.plotContext.figName)
 
             # There needs to be at least one category over which to shuffle
-            assert len(self.persistentCategories) + len(self.plotContext.categories) > 0
+            assert len(self.persistentCategories) + len(self.plotContext.categories) + \
+                len(self.plotContext.xvals) > 0
+
+            # # Check if there's any overlap between the keys of yvals, xvals, categories, infoVals, persistentCategories, and persistentInfoValues
+            # dicts = [self.plotContext.yvals, self.plotContext.xvals, self.plotContext.categories,
+            #          self.plotContext.infoVals, self.persistentCategories, self.persistentInfoValues]
+            # dictPairs = product(dicts, dicts)
+            # for (d1, d2) in dictPairs:
+            #     if d1 is d2:
+            #         continue
+            #     for k1 in d1.keys():
+            #         for k2 in d2.keys():
+            #             if k1 == k2:
+            #                 raise Exception(
+            #                     "Key {} is used in multiple dictionaries!".format(k1))
 
             # Build a pandas dataframe with all the data
             allData = self.plotContext.categories.copy()
             allData.update(self.plotContext.yvals)
+            allData.update(self.plotContext.xvals)
             allData.update(self.plotContext.infoVals)
             allData.update(self.persistentCategories)
             allData.update(self.persistentInfoValues)
             df = pd.DataFrame(data=allData)
             yvalNames = pd.Series(list(self.plotContext.yvals.keys()), dtype=object)
+            xvalNames = pd.Series(list(self.plotContext.xvals.keys()), dtype=object)
             categoryNames = pd.Series(list(self.plotContext.categories.keys()), dtype=object)
             persistentCategoryNames = pd.Series(
                 list(self.persistentCategories.keys()), dtype=object)
@@ -183,6 +201,7 @@ class PlotManager:
             statsFile = os.path.join(statsDir, figureName + ".h5")
             df.to_hdf(statsFile, key="stats", mode="w")
             yvalNames.to_hdf(statsFile, key="yvalNames", mode="a")
+            xvalNames.to_hdf(statsFile, key="xvalNames", mode="a")
             categoryNames.to_hdf(statsFile, key="categoryNames", mode="a")
             persistentCategoryNames.to_hdf(statsFile, key="persistentCategoryNames", mode="a")
             infoNames.to_hdf(statsFile, key="infoNames", mode="a")
@@ -248,7 +267,8 @@ class PlotManager:
                     insetAx.get_yaxis().set_visible(False)
                 else:
                     try:
-                        xvals = [int(v.split("_")[-1]) for v in list(self.plotContext.yvals.keys())]
+                        xvals = [float(v.split("_")[-1])
+                                 for v in list(self.plotContext.yvals.keys())]
                     except:
                         raise Exception("Can't do multiple shuffles like this. If you want multiple comparisons, "
                                         "specify yvals as measureName_x, where x is the x value for that measure")
@@ -263,6 +283,36 @@ class PlotManager:
                     ycoord = ymax - 0.05 * (ymax - ymin)
                     self.plotContext.ax.scatter(xvals[pValSig], [ycoord] * len(xvals[pValSig]), marker="*",
                                                 color="black", s=100)
+
+            elif len(self.plotContext.immediateCorrelations) > 0:
+                # Working with continuous x values here
+                # find the correlation coefficient and pvalue between the x and y values
+                # and indicate it on the plot. If there are multiple categories, do this for each
+                # category separately
+                if not self.plotContext.isSinglePlot:
+                    raise Exception("Can't have multiple plots and do correlation")
+                if len(self.plotContext.immediateCorrelations) > 1:
+                    raise Exception("Can't have multiple immediate correlations")
+
+                ic = self.plotContext.immediateCorrelations[0]
+                xvar = ic[0]
+                yvar = ic[1]
+                if xvar not in df.columns or yvar not in df.columns:
+                    raise Exception(
+                        f"Can't do immediate correlation because {xvar} or {yvar} not in data frame")
+
+                # Now get all combination of categories specified in plotContext.categories
+                # and do the correlation for each
+                catNames = list(self.plotContext.categories.keys())
+                results = self.shuffler.runCorrelations(df, xvar, yvar, catNames)
+                resTest = []
+                for catlist, r, p in results:
+                    if len(catlist) > 0:
+                        catStr = "_".join([str(c) for c in catlist]) + ":  "
+                    else:
+                        catStr = ""
+                    resTest.append(f"{catStr}r={round(r, 3)}, p={round(p, 3)}")
+                self.plotContext.ax.add_artist(AnchoredText("\n".join(resTest), "upper center"))
 
         # Finally, save or show the figure
         if (self.plotContext.savePlot is not None and self.plotContext.savePlot) or \
@@ -522,7 +572,8 @@ def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outl
 
 
 def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std",
-                             individualZOrder=1, averageZOrder=2, label=None, individualAmt=None, color=None):
+                             individualZOrder=1, averageZOrder=2, label=None, individualAmt=None, color=None,
+                             interpolateOverNans=False):
     """
     values of individualAmt on range [0, 1] are interpreted as a fraction. Larger numbers as the count of traces to plot
     """
@@ -530,18 +581,21 @@ def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey"
         avgColor = color
         individualColor = color
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", r"Degrees of freedom <= 0 for slice")
-        warnings.filterwarnings("ignore", r"Mean of empty slice")
-        hm = np.nanmean(dataPoints, axis=0)
-        hs = np.nanstd(dataPoints, axis=0)
-    if spread == "sem":
-        n = dataPoints.shape[0] - np.count_nonzero(np.isnan(dataPoints), axis=0)
-        hs = hs / np.sqrt(n)
-    h1 = hm - hs
-    h2 = hm + hs
+    # if xvals is a vector, make it a matrix where each column is the same vector
+    xvals = np.array(xvals)
+    if xvals.ndim == 1:
+        xvals2d = np.tile(xvals, (dataPoints.shape[0], 1)).T
+        xValsMatch = True
+    else:
+        xvals2d = xvals.T
+        if np.all(np.isclose(xvals, xvals[0, :]) | np.isnan(xvals)):
+            xvals = xvals[0, :]
+            xValsMatch = True
+        else:
+            xValsMatch = False
+
     if individualAmt is None:
-        ax.plot(xvals, dataPoints.T, c=individualColor, lw=0.5, zorder=individualZOrder)
+        yvals = dataPoints.T
     else:
         n = dataPoints.shape[0]
         if individualAmt <= 1:
@@ -551,12 +605,42 @@ def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey"
             if numPlot > n:
                 numPlot = n
         indIdxs = np.random.choice(n, size=numPlot, replace=False)
-        ax.plot(xvals, dataPoints[indIdxs, :].T, c=individualColor, lw=0.5, zorder=individualZOrder)
-    if label is None:
-        ax.plot(xvals, hm, color=avgColor, zorder=averageZOrder)
-    else:
-        ax.plot(xvals, hm, color=avgColor, zorder=averageZOrder, label=label)
-    ax.fill_between(xvals, h1, h2, facecolor=avgColor, alpha=0.3, zorder=averageZOrder)
+        yvals = dataPoints[indIdxs, :].T
+
+    if interpolateOverNans:
+        for col in range(yvals.shape[1]):
+            yvals[:, col] = np.interp(xvals2d[:, col], xvals2d[~np.isnan(
+                yvals[:, col]), col], yvals[~np.isnan(yvals[:, col]), col],
+                left=np.nan, right=np.nan)
+
+    ax.plot(xvals2d, yvals, c=individualColor, lw=0.5, zorder=individualZOrder)
+
+    if xValsMatch:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", r"Degrees of freedom <= 0 for slice")
+            warnings.filterwarnings("ignore", r"Mean of empty slice")
+            hm = np.nanmean(dataPoints, axis=0)
+            hs = np.nanstd(dataPoints, axis=0)
+        if spread == "sem":
+            n = dataPoints.shape[0] - np.count_nonzero(np.isnan(dataPoints), axis=0)
+            hs = hs / np.sqrt(n)
+        h1 = hm - hs
+        h2 = hm + hs
+
+        if interpolateOverNans:
+            hm = np.interp(xvals, xvals[~np.isnan(hm)], hm[~np.isnan(hm)],
+                           left=np.nan, right=np.nan)
+            h1 = np.interp(xvals, xvals[~np.isnan(h1)], h1[~np.isnan(h1)],
+                           left=np.nan, right=np.nan)
+            h2 = np.interp(xvals, xvals[~np.isnan(h2)], h2[~np.isnan(h2)],
+                           left=np.nan, right=np.nan)
+
+        if label is None:
+            labelKwarg = {}
+        else:
+            labelKwarg = {"label": label}
+        ax.plot(xvals, hm, color=avgColor, zorder=averageZOrder, **labelKwarg)
+        ax.fill_between(xvals, h1, h2, facecolor=avgColor, alpha=0.3, zorder=averageZOrder)
 
 
 def pctilePvalSig(val):
@@ -579,27 +663,15 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
                categoryColors: Optional[List] = None, dotColorLabels: Optional[Dict[Any, str]] = None):
     if isinstance(yvals, pd.Series):
         yvals = yvals.to_numpy()
+    if isinstance(categories, pd.Series):
         categories = categories.to_numpy()
-        if dotColors is not None:
-            dotColors = dotColors.to_numpy()
-        if categories2 is not None:
-            categories2 = categories2.to_numpy()
+    if dotColors is not None and isinstance(dotColors, pd.Series):
+        dotColors = dotColors.to_numpy()
+    if categories2 is not None and isinstance(categories2, pd.Series):
+        categories2 = categories2.to_numpy()
 
     if categoryOrder is None:
-        if set(categories) == {"home", "away"}:
-            categoryOrder = ["home", "away"]
-        elif set(categories) == {"home", "symmetric"}:
-            categoryOrder = ["home", "symmetric"]
-        elif set(categories) == {"same", "other"}:
-            categoryOrder = ["same", "other"]
-        elif set(categories) == {"same", "later"}:
-            categoryOrder = ["same", "later"]
-        elif set(categories) == {"same", "next"}:
-            categoryOrder = ["same", "next"]
-        elif set(categories) == {"SWR", "Ctrl"}:
-            categoryOrder = ["SWR", "Ctrl"]
-        else:
-            categoryOrder = sorted(set(categories))
+        categoryOrder = getPreferredCategoryOrder(categories)
     sortingCategories = [categoryOrder.index(c) for c in categories]
 
     if categories2 is None:
@@ -613,14 +685,8 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
         cat2IsFake = False
 
     if category2Order is None:
-        category2Order = sorted(set(categories2))
+        category2Order = getPreferredCategoryOrder(categories2)
     sortingCategories2 = [category2Order.index(c) for c in categories2]
-
-    # Old way of doing this:
-    # elif len(set(categories2)) == 2 and "home" in categories2 and "away" in categories2:
-    #     sortingCategories2 = ["aaahome" if c == "home" else "away" for c in categories2]
-    # elif len(set(categories2)) == 2 and "same" in categories2 and "other" in categories2:
-    #     sortingCategories2 = ["aaasame" if c == "same" else "other" for c in categories2]
 
     if dotColors is None:
         swarmPallete = sns.color_palette(palette=["black"])

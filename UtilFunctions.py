@@ -956,3 +956,21 @@ class TimeThisFunction:
 
     def resetTimer(self):
         self.totalTime = 0
+
+
+def getPreferredCategoryOrder(cats):
+    s = set(cats)
+    if s == {"home", "away"}:
+        return ["home", "away"]
+    elif s == {"home", "symmetric"}:
+        return ["home", "symmetric"]
+    elif s == {"same", "other"}:
+        return ["same", "other"]
+    elif set(cats) == {"same", "later"}:
+        return ["same", "later"]
+    elif set(cats) == {"same", "next"}:
+        return ["same", "next"]
+    elif set(cats) == {"SWR", "Ctrl"}:
+        return ["SWR", "Ctrl"]
+    else:
+        return sorted(set(cats))
