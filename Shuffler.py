@@ -322,7 +322,7 @@ class Shuffler:
                                       categoryName=col, value=None)] + r)
         return ret
 
-    def runCorrelations(df: pd.DataFrame, xvar: str, yvar: str, catNames: List[str]):
+    def runCorrelations(self, df: pd.DataFrame, xvar: str, yvar: str, catNames: List[str]):
         catVals = [getPreferredCategoryOrder(df[cn].values) for cn in catNames]
         catCombs = list(product(*catVals))
         ret = []
@@ -339,14 +339,20 @@ class Shuffler:
             valid = np.isfinite(x) & np.isfinite(y)
             x = x[valid]
             y = y[valid]
-            r, p = pearsonr(x, y)
+            if len(x) < 2:
+                ret.append((cc, np.nan, np.nan))
+                continue
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", r"An input array is constant; the correlation coefficient is not defined.")
+                r, p = pearsonr(x, y)
             ret.append((cc, r, p))
 
         return ret
 
     def runAllShuffles(self, infoFileNames: List[str], numShuffles: int,
                        significantThreshold: Optional[float] = 0.15,
-                       resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = notNanPvalFilter) -> str:
+                       shuffleResultsFilter: Callable[[str, ShuffleResult, float, str], bool] = notNanPvalFilter) -> str:
         self.numShuffles = numShuffles
 
         savedStatsFiles = []
@@ -359,8 +365,8 @@ class Shuffler:
             filesForEachPlot[plotName].append(statsFile)
 
         shuffResults: List[Tuple[str, List[List[ShuffleResult]], str]] = []
-        correlationResults: List[Tuple[str, List[Tuple[Iterable[str] float, float]], str]] = []
-        for plotName in tqdm(filesForEachPlot, desc="Running shuffles", total=len(filesForEachPlot)):
+        correlationResults: List[Tuple[str, List[Tuple[Iterable[str], float, float]], str]] = []
+        for plotName in tqdm(filesForEachPlot, desc="Running shuffles and correlations", total=len(filesForEachPlot)):
             df = pd.concat([pd.read_hdf(f, key="stats") for f in filesForEachPlot[plotName]])
             yvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="yvalNames")
             xvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="xvalNames")
@@ -402,12 +408,12 @@ class Shuffler:
             significantThreshold = 1.0
 
         significantResults: List[Tuple[str, str, float, str, str, bool, bool]] = []
-        for plotName, sr, measureName in shuffResults:
+        for plotName, sr, measureName in tqdm(shuffResults, desc="Filtering shuffles", total=len(shuffResults)):
             for s in sr:
                 for s2 in s:
                     pval = s2.getPVals().item()
                     if pval < significantThreshold or pval > 1 - significantThreshold:
-                        if resultsFilter(plotName, s2, pval, measureName):
+                        if shuffleResultsFilter(plotName, s2, pval, measureName):
                             # isCondShuf = any([s.categoryName == "condition" for s in s2.specs])
 
                             plotSuffix = plotName[len(measureName)-3:]
@@ -431,26 +437,20 @@ class Shuffler:
             infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_significantShuffles.h5"))
         sdf.to_hdf(outputFileName, key="significantShuffles")
 
-        # TODO leaving off here. Need to do the same thing for correlations
-        # Also need to change how measureName is found, doesn't work for TiM and TrM now
-        # These suffixes are likely wrong, and I'll want other quantities
-        # And remember to save to output file!!!
         significantCorrelations = []
-        for plotName, cr, measureName in correlationResults:
+        for plotName, cr, measureName in tqdm(correlationResults, desc="Filtering correlations", total=len(correlationResults)):
             for catNames, corr, pval in cr:
                 if pval < significantThreshold or pval > 1 - significantThreshold:
-                    if resultsFilter(plotName, None, pval, measureName):
+                    if shuffleResultsFilter(plotName, None, pval, measureName):
                         plotSuffix = plotName[len(measureName)-3:]
-                        isCondCorr = plotSuffix == "" or plotSuffix.endswith(
-                            "diff") or plotSuffix.endswith("cond")
-                        isCtrlShuf = plotSuffix.endswith("cond") or (
-                            "ctrl_" in plotSuffix and "diff" not in plotSuffix)
-                        isDiffShuf = plotSuffix.endswith("diff")
-                        isNextSeshDiffShuf = plotSuffix.endswith("nextsession_diff")
                         significantCorrelations.append(
-                            (plotName, str(catNames), pval if pval < 0.5 else 1 - pval, pval < 0.5,
-                             measureName, plotSuffix, isCondShuf, isCtrlShuf, isDiffShuf,
-                             isNextSeshDiffShuf))
+                            (plotName, catNames, corr, pval if pval < 0.5 else 1 - pval, pval < 0.5,
+                                measureName, plotSuffix))
+
+        sdf = pd.DataFrame(significantCorrelations,
+                           columns=["plot", "categories", "correlation", "pval", "direction", "measure", "plotSuffix"])
+        sdf.sort_values(by="pval", inplace=True)
+        sdf.to_hdf(outputFileName, key="significantCorrelations")
 
         return outputFileName
 

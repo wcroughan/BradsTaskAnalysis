@@ -1,3 +1,4 @@
+from __future__ import annotations
 import numpy as np
 import math
 import matplotlib as mpl
@@ -12,6 +13,7 @@ from multiprocessing import Pool
 import warnings
 import pprint
 from dataclasses import dataclass
+from functools import partial
 
 from UtilFunctions import offWall, getWellPosCoordinates, getRotatedWells
 from PlotUtil import violinPlot, PlotManager, setupBehaviorTracePlot, blankPlot, \
@@ -72,24 +74,24 @@ class TimeMeasure():
         return timePeriodsFunc
 
     @staticmethod
-    def trialTimePeriodsFunction(sesh: BTSession) -> List[TimePeriod]:
-        """
-        Returns a function that takes a session and returns a list of time periods corresponding to the trials
-        The third element of the tuple is a tuple of the trial index and a boolean indicating whether the trial was a home trial
-        :param sesh: the session to get the time periods from
-        """
+    def _trialTimePeriodsFunction(trialInterval, sesh: BTSession) -> List[TimeMeasure.TimePeriod]:
         trialPosIdxs = sesh.getAllTrialPosIdxs()
+        trialPosIdxs = trialPosIdxs[trialInterval[0]:trialInterval[1], :]
         return [TimeMeasure.TimePeriod(False, t0, t1, ii, "home" if ii % 2 == 0 else "away", ii) for ii, (t0, t1) in enumerate(trialPosIdxs)]
         # cutoff = np.random.randint(4, len(trialPosIdxs) - 4)
         # return [TimeMeasure.TimePeriod(False, t0, t1, ii, f"{'home' if ii % 2 == 0 else 'away'}{0 if ii < cutoff else 1}", ii) for ii, (t0, t1) in enumerate(trialPosIdxs)]
 
     @staticmethod
-    def earlyVsLateTrials(sesh: BTSession, earlyRange=(1, 4), lateRange=(5, 8)) -> List[TimePeriod]:
+    def trialTimePeriodsFunction(trialInterval=(None, None)) -> List[TimePeriod]:
         """
-        Returns a function that takes a session and returns a list of time periods corresponding to the early and late home trials
-        data field is the trial index (including away trials)
+        Returns a function that takes a session and returns a list of time periods corresponding to the trials
+        The third element of the tuple is a tuple of the trial index and a boolean indicating whether the trial was a home trial
         :param sesh: the session to get the time periods from
         """
+        return partial(TimeMeasure._trialTimePeriodsFunction, trialInterval)
+
+    @staticmethod
+    def _earlyVsLateTrialsFunction(earlyRange, lateRange, sesh: BTSession) -> List[TimeMeasure.TimePeriod]:
         trialPosIdxs = sesh.getAllTrialPosIdxs()
         ret = []
         for ii, (t0, t1) in enumerate(trialPosIdxs):
@@ -105,17 +107,27 @@ class TimeMeasure():
                 pass
         return ret
 
+    @staticmethod
+    def earlyVsLateTrials(earlyRange=(1, 4), lateRange=(5, 8)) -> List[TimePeriod]:
+        """
+        Returns a function that takes a session and returns a list of time periods corresponding to the early and late home trials
+        data field is the trial index (including away trials)
+        :param sesh: the session to get the time periods from
+        """
+        return partial(TimeMeasure._earlyVsLateTrialsFunction, earlyRange, lateRange)
+
     T = TypeVar('T')
 
     def __init__(self, name: str,
-                 measureFunc: Callable[[BTSession, int, int, T], float],
+                 measureFunc: Callable[[BTSession, int, int, bool, T], float],
                  sessionList: List[BTSession],
                  timePeriodsGenerator: Callable[[BTSession], List[TimePeriod]] |
-                 Tuple[float, float, bool] = (30, 5, False)):
+                 Tuple[float, float, bool] = (30, 5, False),
+                 parallelize: bool = False):
         """
         :param name: the name of the measure
-        :param measureFunc: a function that takes a session, a start posIdx, an end posIdx, and a value of type T
-            and returns a float
+        :param measureFunc: a function that takes a session, a start posIdx, an end posIdx, a bool indicating whether posIdxs are in probe,
+            and a value of type T and returns a float
         :param sessionList: the list of sessions to measure
         :param timePeriodsGenerator: a function that takes a session and returns a list of time periods to measure.
             The data field of each time period can be anything, and is passed to the measureFunc.
@@ -123,6 +135,9 @@ class TimeMeasure():
             Alternatively, a tuple of (windowSize, stepSize, inProbe) can be passed, in which case those arguments are
             passed to TimeMeasure.sweepingTimePerodsFunction to generate the time periods.
         """
+        if parallelize:
+            raise NotImplementedError("Parallelization not implemented yet")
+
         self.name = name
         self.sessionList = sessionList
 
@@ -149,7 +164,7 @@ class TimeMeasure():
         for si, sesh in enumerate(sessionList):
             timePeriods = allTimePeriods[si]
             for ti, tp in enumerate(timePeriods):
-                val = measureFunc(sesh, tp.start_posIdx, tp.end_posIdx, tp.data)
+                val = measureFunc(sesh, tp.start_posIdx, tp.end_posIdx, tp.inProbe, tp.data)
                 measure.append(val)
                 self.measure2d[si, ti] = val
                 sessionIdx.append(si)
@@ -205,6 +220,7 @@ class TimeMeasure():
                     excludeFromCombo: bool = False):
 
         figName = self.name.replace(" ", "_")
+        figPrefix = "" if subFolder else figName + "_"
         if subFolder:
             plotManager.pushOutputSubDir("TiM_" + figName)
 
@@ -434,7 +450,7 @@ class TimeMeasure():
                 normvals = (vals - self.valMin) / (self.valMax - self.valMin)
 
                 if subFolder:
-                    thisFigName = f"{figName}_allTimePeriods_{sesh.name}"
+                    thisFigName = f"{figPrefix}allTimePeriods_{sesh.name}"
                 else:
                     thisFigName = figName + "_allTimePeriods"
                     plotManager.pushOutputSubDir(sesh.name)
@@ -1516,6 +1532,77 @@ class SessionMeasure:
         if subFolder:
             plotManager.popOutputSubDir()
 
+    def makeCorrelationFigures(self,
+                               plotManager: PlotManager,
+                               sm: SessionMeasure,
+                               plotFlags: str | List[str] = "all",
+                               runStats: bool = True,
+                               subFolder: bool = True,
+                               excludeFromCombo=False):
+        figName = self.name.replace(" ", "_") + "_X_" + sm.name.replace(" ", "_")
+        figPrefix = "" if subFolder else figName + "_"
+        dataName = self.name.replace(" ", "_")
+
+        if subFolder:
+            plotManager.pushOutputSubDir("SM_" + figName)
+
+        allPossibleFlags = ["measure", "measureByCondition"]
+
+        if isinstance(plotFlags, str):
+            if plotFlags == "all":
+                plotFlags = allPossibleFlags
+            else:
+                plotFlags = [plotFlags]
+        else:
+            # so list passed in isn't modified
+            plotFlags = [v for v in plotFlags]
+
+        if len(plotFlags) > 0 and plotFlags[0].startswith("not"):
+            if not all([v.startswith("not") for v in plotFlags]):
+                raise ValueError("if one plot flag starts with 'not', all must")
+            plotFlags = [v[3:] for v in plotFlags]
+            plotFlags = list(set(allPossibleFlags) - set(plotFlags))
+
+        smVals = np.array(sm.sessionVals)
+        selfVals = np.array(self.sessionVals)
+
+        if "measure" in plotFlags:
+            plotFlags.remove("measure")
+            with plotManager.newFig(f"{figPrefix}measure", excludeFromCombo=excludeFromCombo) as pc:
+                pc.ax.scatter(smVals, selfVals)
+                pc.ax.set_xlabel(sm.name)
+                pc.ax.set_ylabel(self.name)
+
+                if runStats:
+                    pc.yvals[dataName] = selfVals
+                    pc.xvals[sm.name] = smVals
+                    pc.immediateCorrelations.append((sm.name, self.name))
+
+        if "measureByCondition" in plotFlags:
+            plotFlags.remove("measureByCondition")
+            swrIdx = sm.conditionBySession == "SWR"
+            ctrlIdx = sm.conditionBySession == "Ctrl"
+            with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo) as pc:
+                pc.ax.scatter(
+                    smVals[swrIdx], selfVals[swrIdx], label="SWR", color="orange")
+                pc.ax.scatter(
+                    smVals[ctrlIdx], selfVals[ctrlIdx], label="Ctrl", color="cyan")
+                pc.ax.set_xlabel(sm.name)
+                pc.ax.set_ylabel(self.name)
+                pc.ax.legend()
+
+                if runStats:
+                    pc.yvals[dataName] = selfVals
+                    pc.xvals[sm.name] = smVals
+                    pc.categories["condition"] = sm.conditionBySession
+                    pc.immediateCorrelations.append((sm.name, self.name))
+
+        if len(plotFlags) > 0:
+            print(f"Warning: unused plot flags: {plotFlags}")
+
+        if subFolder:
+            plotManager.popOutputSubDir()
+
 
 class LocationMeasure():
     @staticmethod
@@ -1697,8 +1784,10 @@ class LocationMeasure():
                 self.conditionBySession[si] = "Ctrl"
                 self.dotColorsBySession[si] = "cyan"
 
-        self.sessionValMin = np.nanmin(self.sessionValsBySession)
-        self.sessionValMax = np.nanmax(self.sessionValsBySession)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", r"All-NaN (slice|axis) encountered")
+            self.sessionValMin = np.nanmin(self.sessionValsBySession)
+            self.sessionValMax = np.nanmax(self.sessionValsBySession)
 
         self.controlSpecsBySession = [sessionCtrlLocations(
             sesh, si, sessionList) for si, sesh in enumerate(sessionList)]
@@ -1791,7 +1880,7 @@ class LocationMeasure():
                         cidx += 1
 
         self.measureValsBySession = np.array(self.measureValsBySession)
-        self.sessionValsBySession = np.array(self.sessionValsBySession)
+        self.sessionValsBySession = np.array(self.sessionValsBySession).astype(np.float64)
         self.conditionBySession = np.array(self.conditionBySession)
         self.conditionByCtrlVal: Dict[str, np.ndarray] = {}
         for ctrlName in conditionByCtrlVal:
@@ -1800,11 +1889,17 @@ class LocationMeasure():
         self.valMin = np.nanmin(self.measureValsBySession)
         self.valMax = np.nanmax(self.measureValsBySession)
 
+        if np.isnan(self.sessionValsBySession).all():
+            # print(f"WARNING: all values for {name} are NaN. Not plotting.")
+            self.valid = False
+            return
+
     def makeFigures(self,
                     plotManager: PlotManager,
                     plotFlags: str | List[str] = "all",
                     everySessionBehaviorPeriod: Optional[BP | Callable[[BTSession], BP]] = None,
-                    runStats: bool = True, subFolder: bool = True,
+                    runStats: bool = True,
+                    subFolder: bool = True,
                     excludeFromCombo=False) -> None:
         """
         :param plotManager: PlotManager to use to make figures
@@ -1838,6 +1933,7 @@ class LocationMeasure():
             return
 
         figName = self.name.replace(" ", "_")
+        figPrefix = "" if subFolder else figName + "_"
         if subFolder:
             plotManager.pushOutputSubDir("LM_" + figName)
 
@@ -1867,9 +1963,10 @@ class LocationMeasure():
         if "measureByCondition" in plotFlags:
             plotFlags.remove("measureByCondition")
 
-            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo) as pc:
                 violinPlot(pc.ax, self.sessionValsBySession, self.conditionBySession,
-                           dotColors=self.dotColorsBySession, axesNames=["Condition", self.name],
+                           dotColors=self.dotColorsBySession, axesNames=[
+                               "Condition", self.name],
                            categoryOrder=["SWR", "Ctrl"])
                 pc.ax.set_title(self.name, fontdict={'fontsize': 6})
 
@@ -1888,7 +1985,7 @@ class LocationMeasure():
                 valCtrlCats = np.concatenate((np.full_like(self.sessionValsBySession, self.controlValLabels[ctrlName][0], dtype=object),
                                               np.full_like(self.dotColorsByCtrlVal[ctrlName], self.controlValLabels[ctrlName][1], dtype=object)))
 
-                with plotManager.newFig(figName + "_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
                     violinPlot(pc.ax, vals, categories=valCtrlCats,
                                dotColors=dotColors, axesNames=[
                                    self.controlValLabels[ctrlName][2], self.name],
@@ -1914,7 +2011,7 @@ class LocationMeasure():
                 valCtrlCats = np.concatenate((np.full_like(self.sessionValsBySession, self.controlValLabels[ctrlName][0], dtype=object),
                                               np.full_like(self.conditionByCtrlVal[ctrlName], self.controlValLabels[ctrlName][1], dtype=object)))
 
-                with plotManager.newFig(figName + "_ctrl_" + ctrlName + "_cond", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_cond", excludeFromCombo=excludeFromCombo) as pc:
                     violinPlot(pc.ax, vals, conditionCats, categories2=valCtrlCats,
                                dotColors=dotColors, axesNames=[
                                    "Condition", self.name, self.controlValLabels[ctrlName][2]],
@@ -1934,7 +2031,7 @@ class LocationMeasure():
             plotFlags.remove("diff")
             for ctrlName in self.controlValLabels:
                 vals = self.sessionValsBySession - self.controlValMeans[ctrlName]
-                with plotManager.newFig(figName + "_ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
                     if all(np.isnan(vals)):
                         continue
                     violinPlot(pc.ax, vals, self.conditionBySession,
@@ -1951,7 +2048,7 @@ class LocationMeasure():
 
         if "measureByDistance" in plotFlags:
             plotFlags.remove("measureByDistance")
-            with plotManager.newFig(figName + "_by_distance", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(f"{figPrefix}by_distance", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(pc.ax, self.measureValsByDistance, self.distancePlotXVals)
                 pc.ax.set_title(self.name, fontdict={'fontsize': 6})
                 pc.ax.set_xlabel("Distance from well (ft)")
@@ -1961,7 +2058,7 @@ class LocationMeasure():
             swrIdx = self.conditionBySession == "SWR"
             ctrlIdx = ~swrIdx
 
-            with plotManager.newFig(figName + "_by_distance_by_condition", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(f"{figPrefix}by_distance_by_condition", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(pc.ax, self.measureValsByDistance[swrIdx], self.distancePlotXVals,
                                          color="orange", label="SWR",
                                          spread="sem")
@@ -1975,7 +2072,7 @@ class LocationMeasure():
         if "measureVsCtrlByDistance" in plotFlags:
             plotFlags.remove("measureVsCtrlByDistance")
             for ctrlName in self.controlVals:
-                with plotManager.newFig(figName + "_vs_ctrl_" + ctrlName + "_by_distance", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}vs_ctrl_" + ctrlName + "_by_distance", excludeFromCombo=excludeFromCombo) as pc:
                     plotIndividualAndAverage(pc.ax, self.measureValsByDistance, self.distancePlotXVals,
                                              color="red", label="vals",
                                              spread="sem")
@@ -1994,7 +2091,7 @@ class LocationMeasure():
             for ctrlName in self.controlVals:
                 swrIdxByCtrlVal = self.conditionByCtrlVal[ctrlName] == "SWR"
                 ctrlIdxByCtrlVal = ~swrIdxByCtrlVal
-                with plotManager.newFig(figName + "_vs_ctrl_" + ctrlName + "_by_distance_by_condition", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}vs_ctrl_" + ctrlName + "_by_distance_by_condition", excludeFromCombo=excludeFromCombo) as pc:
                     plotIndividualAndAverage(pc.ax, self.measureValsByDistance[swrIdx], self.distancePlotXVals,
                                              color="orange", label="SWR",
                                              spread="sem")
@@ -2017,7 +2114,7 @@ class LocationMeasure():
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
             ncols = int(np.ceil(np.sqrt(len(self.sessionList))))
             nrows = int(np.ceil(len(self.sessionList) / ncols))
-            with plotManager.newFig(figName + "_every_session", subPlots=(nrows, ncols),
+            with plotManager.newFig(f"{figPrefix}every_session", subPlots=(nrows, ncols),
                                     figScale=0.6, excludeFromCombo=excludeFromCombo) as pc:
                 for si, sesh in enumerate(self.sessionList):
                     # ax = pc.axs[si // ncols, si % ncols]
@@ -2157,7 +2254,7 @@ class LocationMeasure():
 
             if "everysessionoverlayatlocation" in plotFlags:
                 plotFlags.remove("everysessionoverlayatlocation")
-                with plotManager.newFig(figName + "_every_session_overlay_at_location", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}every_session_overlay_at_location", excludeFromCombo=excludeFromCombo) as pc:
                     # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                     im = pc.ax.imshow(combinedImgAtLocation.T, cmap=mpl.colormaps["coolwarm"],
@@ -2173,7 +2270,7 @@ class LocationMeasure():
             if "everysessionoverlayatctrl" in plotFlags:
                 plotFlags.remove("everysessionoverlayatctrl")
                 for ctrlName in self.controlVals:
-                    with plotManager.newFig(figName + "_every_session_overlay_at_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
+                    with plotManager.newFig(f"{figPrefix}every_session_overlay_at_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
                         # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                         im = pc.ax.imshow(combinedImgByCtrlName[ctrlName].T, cmap=mpl.colormaps["coolwarm"],
@@ -2188,7 +2285,7 @@ class LocationMeasure():
 
             if "everysessionoverlayatlocationbycondition" in plotFlags:
                 plotFlags.remove("everysessionoverlayatlocationbycondition")
-                with plotManager.newFig(figName + "_every_session_overlay_at_location_swr", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}every_session_overlay_at_location_swr", excludeFromCombo=excludeFromCombo) as pc:
                     # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                     im = pc.ax.imshow(combinedImgSWR.T, cmap=mpl.colormaps["coolwarm"],
@@ -2201,7 +2298,7 @@ class LocationMeasure():
 
                     plt.colorbar(im, ax=pc.ax)
 
-                with plotManager.newFig(figName + "_every_session_overlay_at_location_ctrl", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}every_session_overlay_at_location_ctrl", excludeFromCombo=excludeFromCombo) as pc:
                     # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                     im = pc.ax.imshow(combinedImgCtrl.T, cmap=mpl.colormaps["coolwarm"],
@@ -2216,7 +2313,7 @@ class LocationMeasure():
 
             if "everysessionoverlaydirect" in plotFlags:
                 plotFlags.remove("everysessionoverlaydirect")
-                with plotManager.newFig(figName + "_every_session_overlay_direct", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}every_session_overlay_direct", excludeFromCombo=excludeFromCombo) as pc:
                     # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
                     im = pc.ax.imshow(combinedImgDirect.T, cmap=mpl.colormaps["coolwarm"],
@@ -2283,9 +2380,9 @@ class LocationMeasure():
                 pc.ax.set_ylabel(self.name)
 
                 if runStats:
-                    pc.yvals[self.name] = self.sessionValsBySession
+                    pc.yvals[dataName] = self.sessionValsBySession
                     pc.xvals[sm.name] = smVals
-                    pc.immediateCorrelations.append((sm.name, self.name))
+                    pc.immediateCorrelations.append((sm.name, dataName))
 
         if "measureByCondition" in plotFlags:
             plotFlags.remove("measureByCondition")
@@ -2301,10 +2398,10 @@ class LocationMeasure():
                 pc.ax.legend()
 
                 if runStats:
-                    pc.yvals[self.name] = self.sessionValsBySession
+                    pc.yvals[dataName] = self.sessionValsBySession
                     pc.xvals[sm.name] = smVals
                     pc.categories["condition"] = sm.conditionBySession
-                    pc.immediateCorrelations.append((sm.name, self.name))
+                    pc.immediateCorrelations.append((sm.name, dataName))
 
         if "measureVsCtrl" in plotFlags:
             plotFlags.remove("measureVsCtrl")

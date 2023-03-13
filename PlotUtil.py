@@ -165,18 +165,18 @@ class PlotManager:
             assert len(self.persistentCategories) + len(self.plotContext.categories) + \
                 len(self.plotContext.xvals) > 0
 
-            # # Check if there's any overlap between the keys of yvals, xvals, categories, infoVals, persistentCategories, and persistentInfoValues
-            # dicts = [self.plotContext.yvals, self.plotContext.xvals, self.plotContext.categories,
-            #          self.plotContext.infoVals, self.persistentCategories, self.persistentInfoValues]
-            # dictPairs = product(dicts, dicts)
-            # for (d1, d2) in dictPairs:
-            #     if d1 is d2:
-            #         continue
-            #     for k1 in d1.keys():
-            #         for k2 in d2.keys():
-            #             if k1 == k2:
-            #                 raise Exception(
-            #                     "Key {} is used in multiple dictionaries!".format(k1))
+            # Check if there's any overlap between the keys of yvals, xvals, categories, infoVals, persistentCategories, and persistentInfoValues
+            dicts = [self.plotContext.yvals, self.plotContext.xvals, self.plotContext.categories,
+                     self.plotContext.infoVals, self.persistentCategories, self.persistentInfoValues]
+            dictPairs = product(dicts, dicts)
+            for (d1, d2) in dictPairs:
+                if d1 is d2:
+                    continue
+                for k1 in d1.keys():
+                    for k2 in d2.keys():
+                        if k1 == k2:
+                            raise Exception(
+                                "Key {} is used in multiple dictionaries!".format(k1))
 
             # Build a pandas dataframe with all the data
             allData = self.plotContext.categories.copy()
@@ -209,7 +209,6 @@ class PlotManager:
             self.writeToInfoFile(f"statsFile:__!__{figureName}__!__{statsFile}")
 
             # Now if there are any immediate shuffles, do them
-
             if len(self.plotContext.immediateShuffles) > 0:
                 if not self.plotContext.isSinglePlot:
                     raise Exception("Can't have multiple plots and do shuffle")
@@ -245,26 +244,27 @@ class PlotManager:
                             shufDiffs = r.shuffleDiffs
                             dataDiff = r.diff
 
-                    shuffledCategories = df[shufSpecs[0][0].categoryName].unique()
-                    cat1 = shufSpecs[0][0].value
-                    cat2 = shuffledCategories[shuffledCategories != cat1].item()
-                    direction = pval > 0.5
-                    if direction:
-                        pval = 1 - pval
-                    if pval > 0:
-                        pvalText = f"p={round(pval, 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
-                    else:
-                        pvalText = f"p<{round(1/numShuffles[0], 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
-                    self.plotContext.ax.add_artist(AnchoredText(pvalText, "upper center"))
+                    if not np.isnan(shufDiffs).all():
+                        shuffledCategories = df[shufSpecs[0][0].categoryName].unique()
+                        cat1 = shufSpecs[0][0].value
+                        cat2 = shuffledCategories[shuffledCategories != cat1].item()
+                        direction = pval > 0.5
+                        if direction:
+                            pval = 1 - pval
+                        if pval > 0:
+                            pvalText = f"p={round(pval, 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                        else:
+                            pvalText = f"p<{round(1/numShuffles[0], 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                        self.plotContext.ax.add_artist(AnchoredText(pvalText, "upper center"))
 
-                    # Now create an inset axis in self.plotContext.ax in the bottom middle that shows the
-                    # histogram of the shuffled differences and a red vertical line at the data difference
-                    insetAx = self.plotContext.ax.inset_axes([0.4, 0.15, 0.2, 0.1])
-                    insetAx.hist(shufDiffs, bins=20, color="black")
-                    insetAx.axvline(dataDiff, color="red")
-                    insetAx.set_xlabel(f"{cat1} - {cat2}")
-                    # turn off y axis
-                    insetAx.get_yaxis().set_visible(False)
+                        # Now create an inset axis in self.plotContext.ax in the bottom middle that shows the
+                        # histogram of the shuffled differences and a red vertical line at the data difference
+                        insetAx = self.plotContext.ax.inset_axes([0.4, 0.15, 0.2, 0.1])
+                        insetAx.hist(shufDiffs, bins=20, color="black")
+                        insetAx.axvline(dataDiff, color="red")
+                        insetAx.set_xlabel(f"{cat1} - {cat2}")
+                        # turn off y axis
+                        insetAx.get_yaxis().set_visible(False)
                 else:
                     try:
                         xvals = [float(v.split("_")[-1])
