@@ -9,6 +9,7 @@ from numpy.typing import ArrayLike
 from dataclasses import dataclass, field, replace
 import matplotlib.pyplot as plt
 import warnings
+from matplotlib import patches
 
 from consts import TRODES_SAMPLING_RATE, allWellNames, CM_PER_FT, LFP_SAMPLING_RATE
 from UtilFunctions import LoadInfo, getWellPosCoordinates, Ripple, ImportOptions
@@ -455,6 +456,18 @@ class BTSession:
     @property
     def probePos_secs(self):
         return (self.probePos_ts - self.probePos_ts[0]) / TRODES_SAMPLING_RATE
+
+    @property
+    def numWellsFound(self):
+        return len(self.homeRewardEnter_posIdx) + len(self.awayRewardEnter_posIdx)
+
+    @property
+    def taskDuration(self):
+        return (self.btPos_ts[-1] - self.btPos_ts[0]) / TRODES_SAMPLING_RATE
+
+    @property
+    def probeDuration(self):
+        return (self.probePos_ts[-1] - self.probePos_ts[0]) / TRODES_SAMPLING_RATE
 
     def conditionString(self, splitCtrls=False):
         if self.condition == BTSession.CONDITION_INTERRUPTION:
@@ -1260,6 +1273,9 @@ class BTSession:
 
         keepFlag &= (dx != 0).astype(bool) | (dy != 0).astype(bool)
 
+        if not keepFlag.any():
+            return np.nan
+
         dx = dx[keepFlag]
         dy = dy[keepFlag]
         dwx = dwx[keepFlag]
@@ -1404,7 +1420,8 @@ class BTSession:
         return occMap, occBinsX, occBinsY
 
     def getValueMap(self, func: Callable[[Tuple[float, float]], float],
-                    resolution: int = 36, outlierPctile: Optional[float] = None, fillNanMode: Any = "none") -> np.ndarray:
+                    resolution: int = 36, outlierPctile: Optional[float] = None,
+                    fillNanMode: Any = "none") -> np.ndarray:
         """
         outlier percentile is on the range [0, 100]
         fillNanMode is one of "none", "mean", "min", "max", or a value. If "none", then nan values are left as is.
@@ -1677,7 +1694,7 @@ class BTSession:
         return (ts[entries[0]] - ts[0]) / TRODES_SAMPLING_RATE
 
     def pathLengthToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5,
-                             startPoint: str = "beginning", emptyVal=np.nan, startAtPosVal=np.nan) -> float:
+                             startPoint: str = "beginning", emptyVal=np.nan, startAtPosVal=np.nan, reciprocal: bool = False) -> float:
         """
         Computes the path Length of the trajectory to a position.
         :param behaviorPeriod: The behavior period to compute the path length for. inclusionFlags, inclusionArray,
@@ -1720,10 +1737,12 @@ class BTSession:
         totalDistance = np.nansum(
             np.sqrt(np.diff(xs[startPoint:endPoint]) ** 2 + np.diff(ys[startPoint:endPoint]) ** 2))
 
+        if reciprocal:
+            ret = 1 / totalDistance if totalDistance > 0 else emptyVal
         return totalDistance
 
     def pathOptimalityToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5,
-                                 startPoint: str = "beginning", emptyVal=np.nan, startAtPosVal=np.nan) -> float:
+                                 startPoint: str = "beginning", emptyVal=np.nan, startAtPosVal=np.nan, reciprocal: bool = False) -> float:
         """
         Computes the path optimality of the trajectory to a position. This is the ratio of the distance traveled
         to the position to the distance traveled to the position if the animal had traveled in a straight line
@@ -1785,12 +1804,16 @@ class BTSession:
         ret = totalDistance / totalDisplacement
         # input(ret)
 
+        if reciprocal:
+            ret = 1 / ret if ret > 0 else emptyVal
         return ret
 
     def pathLengthInExcursionToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
                                         radius: float = 0.5, emptyVal=np.nan, noVisitVal=np.nan, mode="first",
                                         startAtPosVal: float = np.nan,
-                                        normalizeByDisplacement: bool = False) -> float:
+                                        normalizeByDisplacement: bool = False,
+                                        reciprocal: bool = False,
+                                        showPlot=False) -> float:
         """
         Computes the path length of the trajectory to a position within an excursion.
         :param behaviorPeriod: The behavior period to compute the path length for. inclusionFlags, inclusionArray,
@@ -1826,12 +1849,36 @@ class BTSession:
 
         starts = self.probeExcursionStart_posIdx if behaviorPeriod.probe else self.btExcursionStart_posIdx
         ends = self.probeExcursionEnd_posIdx if behaviorPeriod.probe else self.btExcursionEnd_posIdx
+
+        # if showPlot:
+        #     margin = 20
+        #     for start, end in zip(starts, ends):
+        #         plt.plot(xs, ys, color="k", alpha=0.5)
+        #         plt.plot(xs[start-margin:end+margin], ys[start-margin:end+margin], color="r")
+        #         plt.plot(xs[start:end], ys[start:end], color="k", zorder=10)
+        #         plt.title(f"all excursions")
+        #         plt.xlim(-0.5, 6.5)
+        #         plt.ylim(-0.5, 6.5)
+        #         # add a rectangle around region in the middle
+        #         rect = patches.Rectangle((1, 1), 4, 4, linewidth=1,
+        #                                  edgecolor='r', facecolor='none')
+        #         plt.gca().add_patch(rect)
+        #         plt.show()
+
         startOfBehaviorPeriod = np.argwhere(~np.isnan(xs))[0][0]
         endOfBehaviorPeriod = np.argwhere(~np.isnan(xs))[-1][0]
         keepExcursions = np.logical_and(ends >= startOfBehaviorPeriod,
                                         starts <= endOfBehaviorPeriod)
         starts = starts[keepExcursions]
         ends = ends[keepExcursions]
+
+        # if showPlot:
+        #     for start, end in zip(starts, ends):
+        #         plt.plot(xs[start:end], ys[start:end], color="k")
+        #         plt.title(f"excursions in behavior period")
+        #         plt.xlim(-0.5, 6.5)
+        #         plt.ylim(-0.5, 6.5)
+        #         plt.show()
 
         if len(starts) == 0:
             return emptyVal
@@ -1877,6 +1924,32 @@ class BTSession:
 
                 excursionPathLengths[ei] /= denom
 
+            if showPlot:
+                margin = 20
+                plt.plot(xs, ys, color="k", alpha=0.5)
+                plt.plot(xs[startPoint-margin:endPoint+margin],
+                         ys[startPoint-margin:endPoint+margin], color="r")
+                plt.plot(xs[startPoint:endPoint], ys[startPoint:endPoint], color="k", zorder=10)
+                plt.title(f"calc for excursion {ei}")
+                plt.xlim(-0.5, 6.5)
+                plt.ylim(-0.5, 6.5)
+                rect = patches.Rectangle((1, 1), 4, 4, linewidth=1,
+                                         edgecolor='r', facecolor='none')
+                plt.gca().add_patch(rect)
+                # Also add some text with the excursionPathLengths value
+                plt.text(0.5, 0.5, f"{excursionPathLengths[ei]}", color="k")
+                plt.show()
+
+        if not np.any(visited) or np.all(np.isnan(excursionPathLengths)):
+            return noVisitVal
+
+        if reciprocal:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", r"invalid value encountered in true_divide")
+                warnings.filterwarnings("ignore", r"divide by zero encountered in divide")
+                excursionPathLengths = 1 / excursionPathLengths
+                excursionPathLengths[np.isinf(excursionPathLengths)] = emptyVal
+
         if not np.any(visited) or np.all(np.isnan(excursionPathLengths)):
             return noVisitVal
 
@@ -1887,7 +1960,7 @@ class BTSession:
         elif mode == "mean":
             return np.nanmean(excursionPathLengths)
         elif mode == "meanIgnoreNoVisit":
-            return np.mean(excursionPathLengths[visited])
+            return np.nanmean(excursionPathLengths[visited])
         elif mode == "firstvisit":
             return excursionPathLengths[visited][0]
         elif mode == "lastvisit":
@@ -1942,3 +2015,15 @@ class BTSession:
             return ret
         else:
             raise ValueError(f"Unknown normalization: { normalization }")
+
+    def numStimsAtLocation(self, pos: Tuple[float, float], radius: float = 0.5) -> int:
+        """
+        Returns the number of stims that occurred at the given position.
+        :param pos: The position to check.
+        :param radius: The radius around the position that's considered a stim.
+        :return: The number of stims that occurred at the given position.
+        """
+        stimX = self.btPosXs[self.btLFPBumps_posIdx]
+        stimY = self.btPosYs[self.btLFPBumps_posIdx]
+        d2 = (stimX - pos[0])**2 + (stimY - pos[1])**2
+        return np.sum(d2 < radius * radius)

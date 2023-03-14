@@ -77,7 +77,8 @@ class TimeMeasure():
     def _trialTimePeriodsFunction(trialInterval, sesh: BTSession) -> List[TimeMeasure.TimePeriod]:
         trialPosIdxs = sesh.getAllTrialPosIdxs()
         trialPosIdxs = trialPosIdxs[trialInterval[0]:trialInterval[1], :]
-        return [TimeMeasure.TimePeriod(False, t0, t1, ii, "home" if ii % 2 == 0 else "away", ii) for ii, (t0, t1) in enumerate(trialPosIdxs)]
+        tidxOffset = trialInterval[0] if trialInterval[0] is not None else 0
+        return [TimeMeasure.TimePeriod(False, t0, t1, ii + tidxOffset, "home" if ii % 2 == 0 else "away", ii + tidxOffset) for ii, (t0, t1) in enumerate(trialPosIdxs)]
         # cutoff = np.random.randint(4, len(trialPosIdxs) - 4)
         # return [TimeMeasure.TimePeriod(False, t0, t1, ii, f"{'home' if ii % 2 == 0 else 'away'}{0 if ii < cutoff else 1}", ii) for ii, (t0, t1) in enumerate(trialPosIdxs)]
 
@@ -85,7 +86,7 @@ class TimeMeasure():
     def trialTimePeriodsFunction(trialInterval=(None, None)) -> List[TimePeriod]:
         """
         Returns a function that takes a session and returns a list of time periods corresponding to the trials
-        The third element of the tuple is a tuple of the trial index and a boolean indicating whether the trial was a home trial
+        The data category is home or away and the data field is the trial index (including away trials)
         :param sesh: the session to get the time periods from
         """
         return partial(TimeMeasure._trialTimePeriodsFunction, trialInterval)
@@ -2031,9 +2032,9 @@ class LocationMeasure():
             plotFlags.remove("diff")
             for ctrlName in self.controlValLabels:
                 vals = self.sessionValsBySession - self.controlValMeans[ctrlName]
+                if all(np.isnan(vals)):
+                    continue
                 with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
-                    if all(np.isnan(vals)):
-                        continue
                     violinPlot(pc.ax, vals, self.conditionBySession,
                                dotColors=self.dotColorsBySession, axesNames=[
                                    "Condition", self.name],

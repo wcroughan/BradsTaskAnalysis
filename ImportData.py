@@ -17,10 +17,10 @@ import dataclasses
 from numpy.typing import ArrayLike
 
 from consts import allWellNames, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, CM_PER_FT
-from UtilFunctions import readWellCoordsFile, readRawPositionData, getListOfVisitedWells, onWall, getRipplePower, \
+from UtilFunctions import readWellCoordsFile, readRawPositionData, getListOfVisitedWells, getRipplePower, \
     detectRipples, getUSBVideoFile, quickPosPlot, parseCmdLineAnimalNames, \
     timeStrForTrodesTimestamp, quadrantOfWell, TimeThisFunction, getDrivePathByLabel, getActivelinkLogFile, \
-    getLoadInfo, LoadInfo, generateFoundWells, ImportOptions, parseCmdLineImportOptions
+    getLoadInfo, LoadInfo, generateFoundWells, ImportOptions, parseCmdLineImportOptions, posOnWall
 from ClipsMaker import AnnotatorWindow
 from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, processUSBVideoData
 
@@ -1732,19 +1732,50 @@ def posCalcExplorationBouts(sesh: BTSession) -> None:
                                      sesh.probeNearestWells, sesh.importOptions)
 
 
-def getExcursions(nearestWells: ArrayLike, ts: ArrayLike) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike]:
-    excursionCategory = np.array([BTSession.EXCURSION_STATE_ON_WALL if onWall(
-        w) else BTSession.EXCURSION_STATE_OFF_WALL for w in nearestWells])
+# def getExcursions(nearestWells: ArrayLike, ts: ArrayLike) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike]:
+#     excursionCategory = np.array([BTSession.EXCURSION_STATE_ON_WALL if onWall(
+#         w) else BTSession.EXCURSION_STATE_OFF_WALL for w in nearestWells])
+#     excursionStarts = np.where(
+#         np.diff((excursionCategory == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == 1)[0] + 1
+#     if excursionCategory[0] == BTSession.EXCURSION_STATE_OFF_WALL:
+#         excursionStarts = np.insert(excursionStarts, 0, 0)
+#     excursionEnds = np.where(
+#         np.diff((excursionCategory == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == -1)[0] + 1
+#     if excursionCategory[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
+#         excursionEnds = np.append(excursionEnds, len(excursionCategory))
+#     t = np.array(ts + [ts[-1]])
+#     excursionLensSecs = (t[excursionEnds - 1] - t[excursionStarts]) / TRODES_SAMPLING_RATE
+
+#     return excursionCategory, excursionStarts, excursionEnds, excursionLensSecs
+
+def getExcursions(xs: ArrayLike, ys: ArrayLike, ts: ArrayLike) -> Tuple[ArrayLike, ArrayLike, ArrayLike, ArrayLike]:
+    excursionStartCategory = np.array([BTSession.EXCURSION_STATE_ON_WALL if posOnWall(
+        (x, y)) else BTSession.EXCURSION_STATE_OFF_WALL for x, y in zip(xs, ys)])
+    excursionStopCategory = np.array([BTSession.EXCURSION_STATE_ON_WALL if posOnWall(
+        (x, y), buffer=-0.25) else BTSession.EXCURSION_STATE_OFF_WALL for x, y in zip(xs, ys)])
     excursionStarts = np.where(
-        np.diff((excursionCategory == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == 1)[0] + 1
-    if excursionCategory[0] == BTSession.EXCURSION_STATE_OFF_WALL:
+        np.diff((excursionStartCategory == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == 1)[0] + 1
+    if excursionStartCategory[0] == BTSession.EXCURSION_STATE_OFF_WALL:
         excursionStarts = np.insert(excursionStarts, 0, 0)
-    excursionEnds = np.where(
-        np.diff((excursionCategory == BTSession.EXCURSION_STATE_OFF_WALL).astype(int)) == -1)[0] + 1
-    if excursionCategory[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
-        excursionEnds = np.append(excursionEnds, len(excursionCategory))
+
+    excursionEnds = np.empty_like(excursionStarts)
+    # for each start, find the first index afterward for which excursionstopcategory is on wall
+    for i, s in enumerate(excursionStarts):
+        excursionEnds[i] = np.where(excursionStopCategory[s:] ==
+                                    BTSession.EXCURSION_STATE_ON_WALL)[0][0] + s
+
+    # Now if two excursion starts have the same end, only keep the first one
+    keepFlag = np.diff(excursionEnds, prepend=-1) != 0
+    excursionStarts = excursionStarts[keepFlag]
+    excursionEnds = excursionEnds[keepFlag]
+
+    # if excursionStopCategory[-1] == BTSession.EXCURSION_STATE_OFF_WALL:
+    # excursionEnds = np.append(excursionEnds, len(excursionStopCategory))
     t = np.array(ts + [ts[-1]])
     excursionLensSecs = (t[excursionEnds - 1] - t[excursionStarts]) / TRODES_SAMPLING_RATE
+    excursionCategory = np.full_like(excursionStarts, BTSession.EXCURSION_STATE_ON_WALL)
+    for s, e in zip(excursionStarts, excursionEnds):
+        excursionCategory[s:e] = BTSession.EXCURSION_STATE_OFF_WALL
 
     return excursionCategory, excursionStarts, excursionEnds, excursionLensSecs
 
@@ -1752,12 +1783,20 @@ def getExcursions(nearestWells: ArrayLike, ts: ArrayLike) -> Tuple[ArrayLike, Ar
 @TimeThisFunction
 def posCalcExcursions(sesh: BTSession) -> None:
     sesh.btExcursionCategory, sesh.btExcursionStart_posIdx, sesh.btExcursionEnd_posIdx, \
-        sesh.btExcursionLensSecs = getExcursions(sesh.btNearestWells, sesh.btPos_ts)
+        sesh.btExcursionLensSecs = getExcursions(sesh.btPosXs, sesh.btPosYs, sesh.btPos_ts)
 
     if sesh.probePerformed:
         sesh.probeExcursionCategory, sesh.probeExcursionStart_posIdx, sesh.probeExcursionEnd_posIdx, \
             sesh.probeExcursionLensSecs = getExcursions(
-                sesh.probeNearestWells, sesh.probePos_ts)
+                sesh.probePosXs, sesh.probePosYs, sesh.probePos_ts)
+
+    # sesh.btExcursionCategory, sesh.btExcursionStart_posIdx, sesh.btExcursionEnd_posIdx, \
+    #     sesh.btExcursionLensSecs = getExcursions(sesh.btNearestWells, sesh.btPos_ts)
+
+    # if sesh.probePerformed:
+    #     sesh.probeExcursionCategory, sesh.probeExcursionStart_posIdx, sesh.probeExcursionEnd_posIdx, \
+    #         sesh.probeExcursionLensSecs = getExcursions(
+    #             sesh.probeNearestWells, sesh.probePos_ts)
 
 
 def runPositionAnalyses(sesh: BTSession) -> None:

@@ -631,6 +631,14 @@ def offWall(well):
     return not onWall(well)
 
 
+def posOnWall(pos, buffer=0):
+    return pos[0] < 1 + buffer or pos[0] > 5 - buffer or pos[1] < 1 + buffer or pos[1] > 5 - buffer
+
+
+def posOffWall(pos, buffer=0):
+    return not posOnWall(pos, buffer=buffer)
+
+
 def getDrivePathByLabel(driveLabel: str):
     if os.name == "posix":
         return f"/media/{driveLabel}"

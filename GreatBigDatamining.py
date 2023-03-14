@@ -2,7 +2,7 @@ from typing import Callable, Iterable, Dict, List, Optional, Tuple
 from MeasureTypes import LocationMeasure, TrialMeasure, TimeMeasure, SessionMeasure
 from PlotUtil import PlotManager
 from DataminingFactory import runEveryCombination
-from UtilFunctions import parseCmdLineAnimalNames, findDataDir, getLoadInfo, numWellsVisited
+from UtilFunctions import parseCmdLineAnimalNames, findDataDir, getLoadInfo, numWellsVisited, posOnWall
 import os
 from datetime import datetime
 import time
@@ -226,29 +226,69 @@ def main(plotFlags: List[str] | str = "tests",
 
             with warnings.catch_warnings():
                 warnings.filterwarnings("error")
+
+                # LocationMeasure("test", lambda sesh: sesh.getValueMap(
+                #     lambda pos: sesh.getDotProductScore(BP(probe=True, timeInterval=(30, 31)), pos,
+                #                                         distanceWeight=-1,
+                #                                         normalize=True, onlyPositive=True)),
+                #                 sessions,
+                #                 smoothDist=0, parallelize=False).makeFigures(pp)
+
+                TimeMeasure("test2", partial(numWellsVisitedFunc, True, offWallWellNames), sessions,
+                            timePeriodsGenerator=TimeMeasure.trialTimePeriodsFunction()).makeFigures(pp)
+
+                # LocationMeasure(f"posOnWallTest",
+                #                 lambda sesh: sesh.getValueMap(
+                #                     lambda pos: posOnWall(pos)
+                #                 ), sessions, smoothDist=0, parallelize=False).makeFigures(pp)
+
+                # pos = (3.5 + 14/36, 0.5 + 1.5 * 7/36)
+                # sessions[4].pathLengthInExcursionToPosition(BP(probe=False), pos, radius=0.25,
+                #                                             noVisitVal=np.nan, mode="firstvisit",
+                #                                             normalizeByDisplacement=True, showPlot=True)
+                # lm = LocationMeasure(f"test",
+                #                      lambda sesh: sesh.getValueMap(
+                #                          lambda pos: sesh.pathLengthInExcursionToPosition(BP(probe=False), pos, radius=0.25,
+                #                                                                           noVisitVal=np.nan, mode="first",
+                #                                                                           normalizeByDisplacement=True),
+                #                          fillNanMode=np.nan
+                #                      ), sessions, smoothDist=0,  parallelize=False)
+
+                # infoFileDir = "/media/WDC8/figures/GreatBigDatamining_test_datamined"
+                # # infoFileName = "B17_20230311_191143.txt"
+                # # infoFileName = "B17_20230313_065529.txt"
+                # # infoFileName = "B17_20230313_072926.txt"
+                # infoFileName = "B17_20230313_074617.txt"
+                # fullInfoFileName = os.path.join(infoFileDir, infoFileName)
+                # numShuffles = 6
+
+                # outFile = pp.shuffler.runAllShuffles([fullInfoFileName], numShuffles)
+                # print(f"{ outFile=  }")
+                # pp.shuffler.summarizeShuffleResults(outFile)
+
                 # tm = TimeMeasure(f"test", lambda sesh, t0, t1, inProbe, _: func(sesh, t0, t1, inProbe),
                 #                  sessions, timePeriodsGenerator=timePeriodsGenerator, parallelize=False)
                 # tm.makeFigures(pp, excludeFromCombo=True)
 
-                lm = LocationMeasure(f"test",
-                                     lambda sesh: sesh.getValueMap(
-                                         lambda pos: sesh.fracExcursionsVisited(
-                                             BP(probe=True, timeInterval=(0, 120)), pos, radius=0.25, normalization="bp"),
-                                     ), sessions, smoothDist=0,  parallelize=False)
+                # lm = LocationMeasure(f"test",
+                #                      lambda sesh: sesh.getValueMap(
+                #                          lambda pos: sesh.fracExcursionsVisited(
+                #                              BP(probe=True, timeInterval=(0, 120)), pos, radius=0.25, normalization="bp"),
+                #                      ), sessions, smoothDist=0,  parallelize=False)
 
-                # lm.makeFigures(pp, excludeFromCombo=True, everySessionBehaviorPeriod=BP(
-                #     probe=True, timeInterval=BTSession.fillTimeInterval))
+                # # lm.makeFigures(pp, excludeFromCombo=True, everySessionBehaviorPeriod=BP(
+                # #     probe=True, timeInterval=BTSession.fillTimeInterval))
 
-                correlationSMs = [
-                    SessionMeasure("numStims", lambda sesh: len(
-                        sesh.btLFPBumps_posIdx), sessions, parallelize=False),
-                    SessionMeasure("rippleRatePreStats", lambda sesh: len(
-                        sesh.btRipsPreStats) / (sesh.btPos_secs[-1] - sesh.btPos_secs[0]), sessions, parallelize=False),
-                ]
+                # correlationSMs = [
+                #     SessionMeasure("numStims", lambda sesh: len(
+                #         sesh.btLFPBumps_posIdx), sessions, parallelize=False),
+                #     SessionMeasure("rippleRatePreStats", lambda sesh: len(
+                #         sesh.btRipsPreStats) / (sesh.btPos_secs[-1] - sesh.btPos_secs[0]), sessions, parallelize=False),
+                # ]
 
-                for sm in correlationSMs:
-                    sm.makeFigures(pp, excludeFromCombo=True)
-                    lm.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
+                # for sm in correlationSMs:
+                #     sm.makeFigures(pp, excludeFromCombo=True)
+                #     lm.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
 
             # lm = LocationMeasure("LMtest", lambda sesh: sesh.getValueMap(
             #     lambda pos: sesh.fracExcursionsVisited(BP(probe=True), pos, 0.25)),
@@ -427,11 +467,11 @@ def main(plotFlags: List[str] | str = "tests",
                 **basicParams
             }))
 
-            def makePathOptimalityMeasure(func: Callable, bp: BP, radius: float, smoothDist: float, fillNanMode: float | str):
-                return LocationMeasure(f"{func.__name__}_{bp.filenameString()}_r{radius:.2f}_s{smoothDist:.2f}__fn{fillNanMode}",
+            def makePathOptimalityMeasure(func: Callable, bp: BP, radius: float, smoothDist: float, fillNanMode: float | str, reciprocal: bool):
+                return LocationMeasure(f"{func.__name__}_{bp.filenameString()}_r{radius:.2f}_s{smoothDist:.2f}_fn{fillNanMode}_rec{reciprocal}",
                                        lambda sesh: sesh.getValueMap(
                                            lambda pos: func(sesh, bp, pos, radius,
-                                                            startPoint="beginning"),
+                                                            startPoint="beginning", reciprocal=reciprocal),
                                            fillNanMode=fillNanMode
                                        ), sessions, smoothDist=smoothDist,  parallelize=False)
             # Actually not gonna use excursion start point because it's the same as pathLengthInExcursion with first flag
@@ -440,14 +480,17 @@ def main(plotFlags: List[str] | str = "tests",
                          BTSession.pathLengthToPosition],
                 "fillNanMode": [np.nan, 6 * np.sqrt(2), "max", "mean"],
                 "radius": allConsideredRadii,
+                "reciprocal": [True, False],
                 **basicParams
             }))
 
-            def makePathLengthInExcursionMeasure(bp: BP, radius: float, smoothDist: float, noVisitVal: float, mode: str, normalizeByDisplacement: bool, fillNanMode: float | str):
-                return LocationMeasure(f"pathLengthInExcursion_{bp.filenameString()}_r{radius:.2f}_s{smoothDist:.2f}__nvv{noVisitVal}_m{mode}_nd{normalizeByDisplacement}__fn{fillNanMode}",
+            def makePathLengthInExcursionMeasure(bp: BP, radius: float, smoothDist: float,
+                                                 noVisitVal: float, mode: str, normalizeByDisplacement: bool,
+                                                 fillNanMode: float | str, reciprocal: bool):
+                return LocationMeasure(f"pathLengthInExcursion_{bp.filenameString()}_r{radius:.2f}_s{smoothDist:.2f}__nvv{noVisitVal}_m{mode}_nd{normalizeByDisplacement}_fn{fillNanMode}_r{reciprocal}",
                                        lambda sesh: sesh.getValueMap(
                                            lambda pos: sesh.pathLengthInExcursionToPosition(bp, pos, radius,
-                                                                                            noVisitVal=noVisitVal, mode=mode, normalizeByDisplacement=normalizeByDisplacement),
+                                                                                            noVisitVal=noVisitVal, mode=mode, normalizeByDisplacement=normalizeByDisplacement, reciprocal=reciprocal),
                                            fillNanMode=fillNanMode
                                        ), sessions, smoothDist=smoothDist,  parallelize=False)
             allSpecs.append((makePathLengthInExcursionMeasure, {
@@ -456,6 +499,7 @@ def main(plotFlags: List[str] | str = "tests",
                 "normalizeByDisplacement": [True, False],
                 "fillNanMode": [np.nan, 6 * np.sqrt(2), "max", "mean"],
                 "radius": allConsideredRadii,
+                "reciprocal": [True, False],
                 **basicParams
             }))
 
@@ -552,6 +596,17 @@ def main(plotFlags: List[str] | str = "tests",
                 "mode": ["bout", "excursion"]
             }))
 
+            def makeTotalDurationMeasure(inProbe: bool):
+                probeStr = "probe" if inProbe else "bt"
+                return SessionMeasure(f"totalDuration_{probeStr}",
+                                      lambda sesh: sesh.probeDuration if inProbe else sesh.btDuration,
+                                      sessions,
+                                      parallelize=False)
+
+            allSpecs.append((makeTotalDurationMeasure, {
+                "inProbe": [True, False]
+            }))
+
             def makePerPeriodMeasure(func: Callable, mode: str, inProbe: bool):
                 probeStr = "probe" if inProbe else "bt"
                 return SessionMeasure(f"{func.__name__}_{probeStr}_{mode}", partial(func, mode, inProbe), sessions,
@@ -596,7 +651,7 @@ def main(plotFlags: List[str] | str = "tests",
                     SessionMeasure("numStims", lambda sesh: len(
                         sesh.btLFPBumps_posIdx), sessions, parallelize=False),
                     SessionMeasure("rippleRatePreStats", lambda sesh: len(
-                        sesh.btRipsPreStats) / (sesh.btPos_secs[-1] - sesh.btPos_secs[0]), sessions, parallelize=False),
+                        sesh.btRipsPreStats) / sesh.taskDuration, sessions, parallelize=False),
                 ]
             else:
                 correlationSMs = [
@@ -607,11 +662,11 @@ def main(plotFlags: List[str] | str = "tests",
                     SessionMeasure("numRipplesProbeStats", lambda sesh: len(
                         sesh.btRipsProbeStats), sessions, parallelize=False),
                     SessionMeasure("stimRate", lambda sesh: len(sesh.btLFPBumps_posIdx) /
-                                   (sesh.btPos_secs[-1] - sesh.btPos_secs[0]), sessions, parallelize=False),
+                                   sesh.taskDuration, sessions, parallelize=False),
                     SessionMeasure("rippleRatePreStats", lambda sesh: len(
-                        sesh.btRipsPreStats) / (sesh.btPos_secs[-1] - sesh.btPos_secs[0]), sessions, parallelize=False),
+                        sesh.btRipsPreStats) / sesh.taskDuration, sessions, parallelize=False),
                     SessionMeasure("rippleRateProbeStats", lambda sesh: len(
-                        sesh.btRipsProbeStats) / (sesh.btPos_secs[-1] - sesh.btPos_secs[0]), sessions, parallelize=False),
+                        sesh.btRipsProbeStats) / sesh.taskDuration, sessions, parallelize=False),
                 ]
 
             for sm in correlationSMs:
@@ -620,26 +675,42 @@ def main(plotFlags: List[str] | str = "tests",
             for mi, (makeMeasure, paramDict) in enumerate(allSpecs):
                 # For debugging, removing stuff that's already been run
                 if testData:
-                    if makeMeasure.__name__ in ["measureFromFunc",
-                                                "makePathOptimalityMeasure",
-                                                "makePathLengthInExcursionMeasure",
-                                                "makeLatencyMeasure",
-                                                "makeFracExcursionsMeasure",
-                                                "makeDotProdMeasure",
-                                                "makeGravityMeasure",
-                                                "makeCoarseTimeMeasure",
-                                                "makeNumWellsVisitedMeasure",
-                                                "makePerPeriodMeasure",
-                                                "makeTimePeriodsMeasure"
-                                                ]:
+                    if makeMeasure.__name__ in [
+                        "measureFromFunc",
+                        "makeGravityMeasure",
+                        "makePathLengthInExcursionMeasure"
+                        "makePathOptimalityMeasure",
+                        "makeFracExcursionsMeasure",
+                        "makeNumWellsVisitedMeasure",
+                    ]:
                         continue
+                    # if makeMeasure.__name__ not in [
+                    #     "makePathLengthInExcursionMeasure"
+                    # ]:
+                    #     continue
 
+                    hadABool = False
                     for k, v in paramDict.items():
-                        # if all items in v are numeric, shorten it to just the first two elements
                         if k == "fillNanMode":
                             paramDict[k] = [np.nan]
-                        elif all(isinstance(x, (int, float)) for x in v):
-                            paramDict[k] = v[:2]
+                        elif all(isinstance(x, (int, float)) for x in v) and not all(isinstance(x, bool) for x in v):
+                            paramDict[k] = v[:1]
+                        elif k == "bp":
+                            if makeMeasure.__name__ == "makeFracExcursionsMeasure":
+                                paramDict[k] = [v[2], v[7]]
+                            elif makeMeasure.__name__ == "makeDotProdMeasure":
+                                paramDict[k] = [BP(probe=True, timeInterval=(30, 31))]
+                            else:
+                                paramDict[k] = v[:2]
+                        elif k == "onlyPositive":
+                            paramDict[k] = [True]
+                        elif k == "inProbe":
+                            paramDict[k] = [True]
+                        elif all(isinstance(x, bool) for x in v):
+                            hadABool = True
+
+                    if not hadABool and makeMeasure.__name__ != "makeFracExcursionsMeasure":
+                        continue
 
                 print("Running", makeMeasure.__name__, f"({mi+1}/{len(allSpecs)})")
 
@@ -653,7 +724,7 @@ def main(plotFlags: List[str] | str = "tests",
                 pp.popOutputSubDir()
 
             if testData:
-                pp.runShuffles(numShuffles=6)
+                pp.runShuffles(numShuffles=6, significantThreshold=0.5)
             else:
                 pp.runShuffles()
 
@@ -662,9 +733,8 @@ def main(plotFlags: List[str] | str = "tests",
 
 
 if __name__ == "__main__":
-    main("fullDatamine", dataMine=True, testData=True)
+    main("fullDatamine", dataMine=True, testData=False)
     # main(testData=True)
-
 
 # Note from lab meeting 2023-3-7
 # In paper, possible effect in first few trials
@@ -684,9 +754,6 @@ if __name__ == "__main__":
 # Run stats on cumulative amt of stims
 
 # To finish datamining B17 and apply those measures to all animals, should complete the following steps:
-# - Instead of ctrl vs stim, correlate with ripple count. Stim count too? might as well
-# - test out new measures and new flag arguments
-# - remember to add in all new measures and parameters to the datamining factory. Can also remove results that get filtered out later based on BP
 # And while that's running, figure these out:
 # - look at outlier sessions according to cum stim rates. Compare to behavior measures
 # - Why are ripple counts so low?
@@ -711,3 +778,6 @@ if __name__ == "__main__":
 # - Think about each measure during task, what possible caveats are there?
 #   - Is erode 3 enough?
 # - in testing found that avg home minus avg away trial duration difference b/w conditions is significant. Should run stats on this
+# - Instead of ctrl vs stim, correlate with ripple count. Stim count too? might as well
+# - test out new measures and new flag arguments
+# - remember to add in all new measures and parameters to the datamining factory. Can also remove results that get filtered out later based on BP

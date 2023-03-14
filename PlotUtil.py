@@ -36,6 +36,7 @@ class PlotContext:
     savePlot: Optional[bool] = None
     excludeFromCombo: bool = False
     immediateShufflePvalThreshold: float = 0.15
+    transparent: bool = False
 
     @property
     def ax(self) -> Axes:
@@ -104,7 +105,8 @@ class PlotManager:
 
     def newFig(self, figName: str, subPlots: Optional[Tuple[int, int] | List[int, int]] = None,
                figScale: float = 1.0, excludeFromCombo: bool = False,
-               showPlot: bool = None, savePlot: bool = None, enableOverwriteSameName: bool = False) -> PlotManager:
+               showPlot: bool = None, savePlot: bool = None, enableOverwriteSameName: bool = False,
+               transparent=False) -> PlotManager:
         fname = os.path.join(self.outputDir, self.outputSubDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
@@ -126,16 +128,19 @@ class PlotManager:
             self.fig.set_figwidth(self.figSizeX * figScale)
 
         self.plotContext = PlotContext(fname, self.axs, showPlot=showPlot,
-                                       savePlot=savePlot, excludeFromCombo=excludeFromCombo)
+                                       savePlot=savePlot, excludeFromCombo=excludeFromCombo,
+                                       transparent=transparent)
 
         return self
 
-    def continueFig(self, figName, showPlot=None, savePlot=None, excludeFromCombo=False, enableOverwriteSameName=False):
+    def continueFig(self, figName, showPlot=None, savePlot=None, excludeFromCombo=False,
+                    enableOverwriteSameName=False, transparent=False):
         if self.showedLastFig:
             raise Exception("currently unable to show a figure and then continue it")
 
         self.plotContext.showPlot = showPlot
         self.plotContext.savePlot = savePlot
+        self.plotContext.transparent = transparent
         self.plotContext.excludeFromCombo = excludeFromCombo
         fname = os.path.join(self.outputDir, self.outputSubDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
@@ -196,6 +201,7 @@ class PlotManager:
 
             # Save the stats to a file
             statsDir = os.path.join(self.outputDir, self.outputSubDir, "stats")
+            uniqueID = f"{self.outputSubDirStack[-1]}_{figureName}"
             if not os.path.exists(statsDir):
                 os.makedirs(statsDir)
             statsFile = os.path.join(statsDir, figureName + ".h5")
@@ -206,7 +212,7 @@ class PlotManager:
             persistentCategoryNames.to_hdf(statsFile, key="persistentCategoryNames", mode="a")
             infoNames.to_hdf(statsFile, key="infoNames", mode="a")
             persistentInfoNames.to_hdf(statsFile, key="persistentInfoNames", mode="a")
-            self.writeToInfoFile(f"statsFile:__!__{figureName}__!__{statsFile}")
+            self.writeToInfoFile(f"statsFile:__!__{uniqueID}__!__{statsFile}")
 
             # Now if there are any immediate shuffles, do them
             if len(self.plotContext.immediateShuffles) > 0:
@@ -341,7 +347,7 @@ class PlotManager:
                 except RuntimeError:
                     pass
 
-        plt.savefig(fname, bbox_inches="tight", dpi=100)
+        plt.savefig(fname, bbox_inches="tight", dpi=100, transparent=self.plotContext.transparent)
         self.writeToInfoFile("wrote file {}".format(fname))
         if self.verbosity >= 3:
             print("wrote file {}".format(fname))
@@ -619,8 +625,17 @@ def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey"
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", r"Degrees of freedom <= 0 for slice")
             warnings.filterwarnings("ignore", r"Mean of empty slice")
+            warnings.filterwarnings("ignore", r"invalid value encountered in subtract")
             hm = np.nanmean(dataPoints, axis=0)
-            hs = np.nanstd(dataPoints, axis=0)
+            try:
+                hs = np.nanstd(dataPoints, axis=0)
+                hs[np.isinf(hs)] = np.nan
+            except RuntimeWarning as re:
+                print(f"{ dataPoints.shape=  }")
+                print(f"{ np.isnan(dataPoints).sum(axis=0)=  }")
+                print(f"{ np.isfinite(dataPoints).sum(axis=0)=  }")
+                print(f"{ np.isinf(dataPoints).sum(axis=0)=  }")
+                raise re
         if spread == "sem":
             n = dataPoints.shape[0] - np.count_nonzero(np.isnan(dataPoints), axis=0)
             hs = hs / np.sqrt(n)
@@ -634,6 +649,8 @@ def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey"
                            left=np.nan, right=np.nan)
             h2 = np.interp(xvals, xvals[~np.isnan(h2)], h2[~np.isnan(h2)],
                            left=np.nan, right=np.nan)
+
+        # hasSpread = ~np.isnan(h1) & ~np.isnan(h2)
 
         if label is None:
             labelKwarg = {}
