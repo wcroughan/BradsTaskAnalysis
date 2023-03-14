@@ -1773,7 +1773,7 @@ def getExcursions(xs: ArrayLike, ys: ArrayLike, ts: ArrayLike) -> Tuple[ArrayLik
     # excursionEnds = np.append(excursionEnds, len(excursionStopCategory))
     t = np.array(ts + [ts[-1]])
     excursionLensSecs = (t[excursionEnds - 1] - t[excursionStarts]) / TRODES_SAMPLING_RATE
-    excursionCategory = np.full_like(excursionStarts, BTSession.EXCURSION_STATE_ON_WALL)
+    excursionCategory = np.full_like(xs, BTSession.EXCURSION_STATE_ON_WALL)
     for s, e in zip(excursionStarts, excursionEnds):
         excursionCategory[s:e] = BTSession.EXCURSION_STATE_OFF_WALL
 

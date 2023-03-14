@@ -14,6 +14,7 @@ import warnings
 import pprint
 from dataclasses import dataclass
 from functools import partial
+import os
 
 from UtilFunctions import offWall, getWellPosCoordinates, getRotatedWells
 from PlotUtil import violinPlot, PlotManager, setupBehaviorTracePlot, blankPlot, \
@@ -124,7 +125,8 @@ class TimeMeasure():
                  sessionList: List[BTSession],
                  timePeriodsGenerator: Callable[[BTSession], List[TimePeriod]] |
                  Tuple[float, float, bool] = (30, 5, False),
-                 parallelize: bool = False):
+                 parallelize: bool = False,
+                 runImmediately: bool = True):
         """
         :param name: the name of the measure
         :param measureFunc: a function that takes a session, a start posIdx, an end posIdx, a bool indicating whether posIdxs are in probe,
@@ -140,32 +142,43 @@ class TimeMeasure():
             raise NotImplementedError("Parallelization not implemented yet")
 
         self.name = name
+        self.measureFunc = measureFunc
         self.sessionList = sessionList
+        self.timePeriodsGenerator = timePeriodsGenerator
+        self.parallelize = parallelize
 
-        if isinstance(timePeriodsGenerator, tuple):
-            timePeriodsGenerator = TimeMeasure.sweepingTimePerodsFunction(
-                *timePeriodsGenerator)
+        if runImmediately:
+            self.runMeasureFunc()
+        else:
+            self.valid = False
 
-        allTimePeriods = [timePeriodsGenerator(sesh) for sesh in sessionList]
+    def runMeasureFunc(self):
+        self.valid = True
+
+        if isinstance(self.timePeriodsGenerator, tuple):
+            self.timePeriodsGenerator = TimeMeasure.sweepingTimePerodsFunction(
+                *self.timePeriodsGenerator)
+
+        allTimePeriods = [self.timePeriodsGenerator(sesh) for sesh in self.sessionList]
         maxNumTimePeriods = max([len(tps) for tps in allTimePeriods])
 
         measure = []
-        self.measure2d = np.empty((len(sessionList), maxNumTimePeriods))
+        self.measure2d = np.empty((len(self.sessionList), maxNumTimePeriods))
         self.measure2d[:, :] = np.nan
         sessionIdx = []
         sessionCondition = []
         posIdxRange = []
         xvals = []
-        self.xvals2d = np.empty((len(sessionList), maxNumTimePeriods))
+        self.xvals2d = np.empty((len(self.sessionList), maxNumTimePeriods))
         self.xvals2d[:, :] = np.nan
         timePeriodCategory = []
-        self.category2d = np.empty((len(sessionList), maxNumTimePeriods), dtype=object)
+        self.category2d = np.empty((len(self.sessionList), maxNumTimePeriods), dtype=object)
         self.category2d[:, :] = "UNASSIGNED"
 
-        for si, sesh in enumerate(sessionList):
+        for si, sesh in enumerate(self.sessionList):
             timePeriods = allTimePeriods[si]
             for ti, tp in enumerate(timePeriods):
-                val = measureFunc(sesh, tp.start_posIdx, tp.end_posIdx, tp.inProbe, tp.data)
+                val = self.measureFunc(sesh, tp.start_posIdx, tp.end_posIdx, tp.inProbe, tp.data)
                 measure.append(val)
                 self.measure2d[si, ti] = val
                 sessionIdx.append(si)
@@ -531,6 +544,9 @@ class TimeMeasure():
 
                     pc.axs[si, 0].set_title(sesh.name)
 
+        with open(os.path.join(plotManager.fullOutputDir, "processed.txt"), "w") as f:
+            f.write(plotManager.infoFileFullName)
+
         if subFolder:
             plotManager.popOutputSubDir()
 
@@ -557,12 +573,21 @@ class TrialMeasure():
                  measureFunc: Callable[[BTSession, int, int, str], float],
                  sessionList: List[BTSession],
                  trialFilter: None | Callable[[BTSession, str, int, int, int, int], bool] = None,
-                 runStats=True):
+                 runImmediately=True):
         self.name = name
-        self.runStats = runStats
+        self.measureFunc = measureFunc
+        self.sessionList = sessionList
+        self.trialFilter = trialFilter
 
+        if runImmediately:
+            self.runMeasureFunc()
+        else:
+            self.valid = False
+
+    def runMeasureFunc(self):
+        self.valid = True
         measure = []
-        self.measure2d = np.empty((len(sessionList), 25))
+        self.measure2d = np.empty((len(self.sessionList), 25))
         self.measure2d[:, :] = np.nan
         trialType = []
         conditionColumn = []
@@ -570,9 +595,8 @@ class TrialMeasure():
         sessionIdxColumn = []
         wasExcluded = []
         trial_posIdx = []
-        self.sessionList = sessionList
 
-        for si, sesh in enumerate(sessionList):
+        for si, sesh in enumerate(self.sessionList):
             t1 = np.array(sesh.homeRewardEnter_posIdx)
             t0 = np.array(np.hstack(([0], sesh.awayRewardExit_posIdx)))
             if not sesh.endedOnHome:
@@ -588,11 +612,11 @@ class TrialMeasure():
                 sessionIdxColumn.append(si)
                 trial_posIdx.append((i0, i1))
 
-                if trialFilter is not None and not trialFilter(sesh, "home", ii, i0, i1, sesh.homeWell):
+                if self.trialFilter is not None and not self.trialFilter(sesh, "home", ii, i0, i1, sesh.homeWell):
                     wasExcluded.append(1)
                     measure.append(np.nan)
                 else:
-                    val = measureFunc(sesh, i0, i1, "home")
+                    val = self.measureFunc(sesh, i0, i1, "home")
                     measure.append(val)
                     self.measure2d[si, ii*2] = val
                     wasExcluded.append(0)
@@ -613,11 +637,11 @@ class TrialMeasure():
                 sessionIdxColumn.append(si)
                 trial_posIdx.append((i0, i1))
 
-                if trialFilter is not None and not trialFilter(sesh, "away", ii, i0, i1, sesh.visitedAwayWells[ii]):
+                if self.trialFilter is not None and not self.trialFilter(sesh, "away", ii, i0, i1, sesh.visitedAwayWells[ii]):
                     wasExcluded.append(1)
                     measure.append(np.nan)
                 else:
-                    val = measureFunc(sesh, i0, i1, "away")
+                    val = self.measureFunc(sesh, i0, i1, "away")
                     measure.append(val)
                     self.measure2d[si, ii*2+1] = val
                     wasExcluded.append(0)
@@ -680,7 +704,7 @@ class TrialMeasure():
                            axesNames=["Condition", self.name, "Trial type"],
                            categoryOrder=["SWR", "Ctrl"], category2Order=["home", "away"])
 
-                if self.runStats:
+                if runStats:
                     pc.yvals[figName] = self.trialDf["val"].to_numpy()
                     pc.categories["trial"] = self.trialDf["trialType"].to_numpy()
                     pc.categories["condition"] = self.trialDf["condition"].to_numpy()
@@ -908,6 +932,9 @@ class TrialMeasure():
 
                     pc.axs[2*si, 0].set_title(sesh.name)
 
+        with open(os.path.join(plotManager.fullOutputDir, "processed.txt"), "w") as f:
+            f.write(plotManager.infoFileFullName)
+
         if subFolder:
             plotManager.popOutputSubDir()
 
@@ -937,7 +964,8 @@ class WellMeasure():
                  sessionList: List[BTSession] = [],
                  wellFilter: Callable[[int, int], bool] = lambda ai, aw: offWall(aw),
                  displayFunc: Optional[Callable[[BTSession, int], ArrayLike]] = None,
-                 runStats: bool = True):
+                 runImmediately=True):
+        raise NotImplementedError
         self.measure = []
         self.wellCategory = []
         self.conditionCategoryByWell = []
@@ -947,7 +975,6 @@ class WellMeasure():
         self.acrossSessionMeasureDifference = []
         self.dotColors = []
         self.dotColorsBySession = []
-        self.runStats = runStats
         self.numSessions = len(sessionList)
 
         self.allMeasureValsBySession = []
@@ -1111,7 +1138,8 @@ class WellMeasure():
                     radialTraceType: None | str | Iterable[str] = None,
                     radialTraceTimeInterval: None |
                     Callable[[BTSession, int], tuple | list] |
-                    Iterable[Callable[[BTSession], tuple | list]] = None):
+                    Iterable[Callable[[BTSession], tuple | list]] = None,
+                    runStats: bool = True):
         figName = self.name.replace(" ", "_")
 
         if isinstance(plotFlags, str):
@@ -1139,7 +1167,7 @@ class WellMeasure():
                            axesNames=["Condition", self.name, "Well type"],
                            dotColors=fdotColors)
 
-                if self.runStats:
+                if runStats:
                     pc.yvals[figName] = fmeasure
                     pc.categories["well"] = fwellCat
                     pc.categories["condition"] = fcondCat
@@ -1152,7 +1180,7 @@ class WellMeasure():
                            axesNames=["Contidion", self.name + " within-session difference"],
                            dotColors=self.dotColorsBySession)
 
-                if self.runStats:
+                if runStats:
                     pc.yvals[figName + "_diff"] = self.withinSessionMeasureDifference
                     pc.categories["condition"] = self.conditionCategoryBySession
                     pc.immediateShuffles.append((
@@ -1173,7 +1201,7 @@ class WellMeasure():
                            axesNames=["Condition", self.name, "Session"],
                            dotColors=fdotColors)
 
-                if self.runStats:
+                if runStats:
                     pc.yvals[figName] = fmeasure
                     pc.categories["session"] = fwellCat
                     pc.categories["condition"] = fcondCat
@@ -1185,7 +1213,7 @@ class WellMeasure():
                            axesNames=["Contidion", self.name + " across-session difference"],
                            dotColors=self.dotColorsBySession)
 
-                if self.runStats:
+                if runStats:
                     pc.yvals[figName + "_othersesh_diff"] = self.acrossSessionMeasureDifference
                     pc.categories["condition"] = self.conditionCategoryBySession
                     pc.immediateShuffles.append((
@@ -1401,7 +1429,8 @@ class SessionMeasure:
     def __init__(self, name: str,
                  measureFunc: Callable[[BTSession], float],
                  sessionList: List[BTSession],
-                 parallelize: bool = True) -> None:
+                 parallelize: bool = True,
+                 runImmediately=True) -> None:
         """
         A measurement that summarizes an entire session with a float.
         Comparison is done between control and SWR sessions
@@ -1411,17 +1440,27 @@ class SessionMeasure:
         :param parallelize: whether to parallelize the measure computation across sessions
         """
         self.name = name
+        self.measureFunc = measureFunc
         self.sessionList = sessionList
-        self.dotColors = ["orange" if s.isRippleInterruption else "cyan" for s in sessionList]
-        self.conditionBySession = np.array(
-            ["SWR" if s.isRippleInterruption else "Ctrl" for s in sessionList])
+        self.parallelize = parallelize
 
-        if parallelize:
-            with Pool(None, initializer=poolWorkerInit, initargs=(measureFunc, )) as p:
-                self.sessionVals: np.ndarray = p.map(
-                    poolWorkerFuncWrapper, sessionList)
+        if runImmediately:
+            self.runMeasureFunc()
         else:
-            self.sessionVals = np.array([measureFunc(sesh) for sesh in sessionList])
+            self.valid = False
+
+    def runMeasureFunc(self):
+        self.valid = True
+        self.dotColors = ["orange" if s.isRippleInterruption else "cyan" for s in self.sessionList]
+        self.conditionBySession = np.array(
+            ["SWR" if s.isRippleInterruption else "Ctrl" for s in self.sessionList])
+
+        if self.parallelize:
+            with Pool(None, initializer=poolWorkerInit, initargs=(self.measureFunc, )) as p:
+                self.sessionVals: np.ndarray = p.map(
+                    poolWorkerFuncWrapper, self.sessionList)
+        else:
+            self.sessionVals = np.array([self.measureFunc(sesh) for sesh in self.sessionList])
 
     def makeFigures(self,
                     plotManager: PlotManager,
@@ -1530,6 +1569,9 @@ class SessionMeasure:
         if len(plotFlags) > 0:
             print(f"Warning: unused plot flags: {plotFlags}")
 
+        with open(os.path.join(plotManager.fullOutputDir, "processed.txt"), "w") as f:
+            f.write(plotManager.infoFileFullName)
+
         if subFolder:
             plotManager.popOutputSubDir()
 
@@ -1600,6 +1642,9 @@ class SessionMeasure:
 
         if len(plotFlags) > 0:
             print(f"Warning: unused plot flags: {plotFlags}")
+
+        with open(os.path.join(plotManager.fullOutputDir, "corr_processed.txt"), "w") as f:
+            f.write(plotManager.infoFileFullName)
 
         if subFolder:
             plotManager.popOutputSubDir()
@@ -1724,7 +1769,8 @@ class LocationMeasure():
                                                 Iterable[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]] = defaultCtrlLocations,
                  smoothDist: Optional[float] = 0.5,
                  distancePlotResolution: Tuple[int, int, int] = (15, 8, 15),
-                 parallelize=True) -> None:
+                 parallelize=True,
+                 runImmediately=True) -> None:
         """
         :param name: name of the measure
         :param measureFunc: function that takes a session and returns a 2D array of values
@@ -1743,12 +1789,25 @@ class LocationMeasure():
         :param parallelize: whether to parallelize the processing of the sessions
         """
         self.name = name
-        self.valid = True
+        self.measureFunc = measureFunc
         self.sessionList = sessionList
-        self.sessionValsBySession = [None] * len(sessionList)
-        self.dotColorsBySession = [None] * len(sessionList)
-        self.conditionBySession = [None] * len(sessionList)
-        self.sessionValLocations = [None] * len(sessionList)
+        self.sessionValLocation = sessionValLocation
+        self.sessionCtrlLocations = sessionCtrlLocations
+        self.smoothDist = smoothDist
+        self.distancePlotResolution = distancePlotResolution
+        self.parallelize = parallelize
+
+        if runImmediately:
+            self.runMeasureFunc()
+        else:
+            self.valid = False
+
+    def runMeasureFunc(self):
+        self.valid = True
+        self.sessionValsBySession = [None] * len(self.sessionList)
+        self.dotColorsBySession = [None] * len(self.sessionList)
+        self.conditionBySession = [None] * len(self.sessionList)
+        self.sessionValLocations = [None] * len(self.sessionList)
 
         # self.controlVals[ctrlName][sessionIdx][ctrlIdx] = control value
         self.controlVals: Dict[str, List[List[float]]] = {}
@@ -1757,26 +1816,26 @@ class LocationMeasure():
         self.dotColorsByCtrlVal: Dict[str, List[str]] = {}
         conditionByCtrlVal: Dict[str, List[str]] = {}
 
-        if parallelize:
-            with Pool(None, initializer=poolWorkerInit, initargs=(measureFunc, )) as p:
+        if self.parallelize:
+            with Pool(None, initializer=poolWorkerInit, initargs=(self.measureFunc, )) as p:
                 self.measureValsBySession: List[np.ndarray] = p.map(
-                    poolWorkerFuncWrapper, sessionList)
+                    poolWorkerFuncWrapper, self.sessionList)
         else:
-            self.measureValsBySession = [measureFunc(sesh) for sesh in sessionList]
+            self.measureValsBySession = [self.measureFunc(sesh) for sesh in self.sessionList]
 
         if np.isnan(self.measureValsBySession).all():
-            # print(f"WARNING: all values for {name} are NaN. Not plotting.")
+            # print(f"WARNING: all values for {self.name} are NaN. Not plotting.")
             self.valid = False
             return
 
-        for si, sesh in enumerate(sessionList):
+        for si, sesh in enumerate(self.sessionList):
             self.measureValsBySession[si] = np.array(self.measureValsBySession[si])
             v = self.measureValsBySession[si]
             if v.shape[0] != v.shape[1]:
                 raise ValueError("measureFunc must return a square array")
-            self.sessionValLocations[si] = sessionValLocation(sesh)
+            self.sessionValLocations[si] = self.sessionValLocation(sesh)
             self.sessionValsBySession[si] = LocationMeasure.measureAtLocation(
-                v, self.sessionValLocations[si], smoothDist=smoothDist)
+                v, self.sessionValLocations[si], smoothDist=self.smoothDist)
 
             if sesh.isRippleInterruption:
                 self.conditionBySession[si] = "SWR"
@@ -1790,10 +1849,10 @@ class LocationMeasure():
             self.sessionValMin = np.nanmin(self.sessionValsBySession)
             self.sessionValMax = np.nanmax(self.sessionValsBySession)
 
-        self.controlSpecsBySession = [sessionCtrlLocations(
-            sesh, si, sessionList) for si, sesh in enumerate(sessionList)]
+        self.controlSpecsBySession = [self.sessionCtrlLocations(
+            sesh, si, self.sessionList) for si, sesh in enumerate(self.sessionList)]
 
-        for si, sesh in enumerate(sessionList):
+        for si, sesh in enumerate(self.sessionList):
             for ctrlLocs, ctrlName, ctrlLabels in self.controlSpecsBySession[si]:
                 if ctrlName not in self.controlVals:
                     self.controlVals[ctrlName] = []
@@ -1807,7 +1866,7 @@ class LocationMeasure():
                 ctrlVals = []
                 for ctrlLoc in ctrlLocs:
                     ctrlVals.append(LocationMeasure.measureAtLocation(
-                        self.measureValsBySession[ctrlLoc[0]], (ctrlLoc[1], ctrlLoc[2]), smoothDist=smoothDist))
+                        self.measureValsBySession[ctrlLoc[0]], (ctrlLoc[1], ctrlLoc[2]), smoothDist=self.smoothDist))
 
                 self.controlVals[ctrlName].append(ctrlVals)
                 with warnings.catch_warnings():
@@ -1824,14 +1883,14 @@ class LocationMeasure():
                 if cvalMean < self.sessionValMin:
                     self.sessionValMin = cvalMean
 
-        self.distancePlotXVals = np.linspace(0, 7*np.sqrt(2), distancePlotResolution[0])
+        self.distancePlotXVals = np.linspace(0, 7*np.sqrt(2), self.distancePlotResolution[0])
         self.numSamples = np.round(np.linspace(
-            distancePlotResolution[1], distancePlotResolution[2], distancePlotResolution[0])).astype(int)
+            self.distancePlotResolution[1], self.distancePlotResolution[2], self.distancePlotResolution[0])).astype(int)
         self.measureValsByDistance = np.empty((len(self.sessionList), len(self.distancePlotXVals)))
         self.measureValsByDistance[:] = np.nan
         self.controlMeasureValsByDistance: Dict[str, np.ndarray] = {}
 
-        for si, sesh in enumerate(sessionList):
+        for si, sesh in enumerate(self.sessionList):
             for di, d in enumerate(self.distancePlotXVals):
                 if d == 0:
                     self.measureValsByDistance[si, di] = self.sessionValsBySession[si]
@@ -1844,7 +1903,7 @@ class LocationMeasure():
                     x = d * np.cos(theta) + self.sessionValLocations[si][0]
                     y = d * np.sin(theta) + self.sessionValLocations[si][1]
                     vals.append(LocationMeasure.measureAtLocation(
-                        self.measureValsBySession[si], (x, y), smoothDist=smoothDist))
+                        self.measureValsBySession[si], (x, y), smoothDist=self.smoothDist))
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", r"Mean of empty slice")
                     self.measureValsByDistance[si, di] = np.nanmean(vals)
@@ -1854,7 +1913,7 @@ class LocationMeasure():
                 (len(self.dotColorsByCtrlVal[ctrlName]), len(self.distancePlotXVals)))
             self.controlMeasureValsByDistance[ctrlName][:] = np.nan
             cidx = 0
-            for si, sesh in enumerate(sessionList):
+            for si, sesh in enumerate(self.sessionList):
                 for ctrlLocs, cname, ctrlLabels in self.controlSpecsBySession[si]:
                     if cname != ctrlName:
                         continue
@@ -1873,7 +1932,7 @@ class LocationMeasure():
                                 x = d * np.cos(theta) + loc[1]
                                 y = d * np.sin(theta) + loc[2]
                                 vals.append(LocationMeasure.measureAtLocation(
-                                    self.measureValsBySession[loc[0]], (x, y), smoothDist=smoothDist))
+                                    self.measureValsBySession[loc[0]], (x, y), smoothDist=self.smoothDist))
                             with warnings.catch_warnings():
                                 warnings.filterwarnings("ignore", r"Mean of empty slice")
                                 self.controlMeasureValsByDistance[ctrlName][cidx, di] = np.nanmean(
@@ -1891,7 +1950,7 @@ class LocationMeasure():
         self.valMax = np.nanmax(self.measureValsBySession)
 
         if np.isnan(self.sessionValsBySession).all():
-            # print(f"WARNING: all values for {name} are NaN. Not plotting.")
+            # print(f"WARNING: all values for {self.name} are NaN. Not plotting.")
             self.valid = False
             return
 
@@ -2330,6 +2389,9 @@ class LocationMeasure():
         if len(plotFlags) > 0:
             print(f"Warning: unused plot flags: {plotFlags}")
 
+        with open(os.path.join(plotManager.fullOutputDir, "processed.txt"), "w") as f:
+            f.write(plotManager.infoFileFullName)
+
         if subFolder:
             plotManager.popOutputSubDir()
 
@@ -2513,6 +2575,10 @@ class LocationMeasure():
 
         if len(plotFlags) > 0:
             print(f"Warning: unused plot flags: {plotFlags}")
+
+        # Finally, in the output folder, create a blank file to indicate that this session has been processed
+        with open(os.path.join(plotManager.fullOutputDir, "corr_processed.txt"), "w") as f:
+            f.write(plotManager.infoFileFullName)
 
         if subFolder:
             plotManager.popOutputSubDir()

@@ -105,14 +105,61 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
               allParams: Dict[str, Iterable],
               pp: PlotManager,
               correlationSMs: Optional[List[SessionMeasure]] = None,
-              minParamsSequential=2, verbose=False):
+              minParamsSequential=2, verbose=False, overwriteOldResults=False):
     def measureFuncWrapper(params: Dict[str, Iterable]):
+        classPrefixes = {
+            TimeMeasure: "TiM",
+            SessionMeasure: "SM",
+            LocationMeasure: "LM",
+            TrialMeasure: "TrM",
+            # WellMeasure: "WM"
+        }
+
         if verbose:
             print(f"running {measureFunc.__name__} with params {params}")
         try:
             meas = measureFunc(**params)
+
+            makeFigsInfoFileName = "None"
+            corrInfoFileNames = []
+            if not overwriteOldResults:
+                pfx = classPrefixes[type(meas)]
+                checkFileName = os.path.join(
+                    pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}", "processed.txt")
+                if os.path.exists(checkFileName):
+                    with open(checkFileName, "r") as f:
+                        makeFigsInfoFileName = f.read()
+
+                    if isinstance(meas, (LocationMeasure, SessionMeasure)):
+                        for sm in correlationSMs:
+                            figName = pfx + "_" + meas.name.replace(
+                                " ", "_") + "_X_" + sm.name.replace(" ", "_")
+                            corrCheckFileName = os.path.join(
+                                pp.fullOutputDir, figName, "corr_processed.txt")
+                            if os.path.exists(corrCheckFileName):
+                                with open(corrCheckFileName, "r") as f:
+                                    corrInfoFileNames.append(f.read())
+                            else:
+                                corrInfoFileNames += ["None"]
+                    else:
+                        pass
+
+                if makeFigsInfoFileName != "None" and (len(corrInfoFileNames) == 0 or all([c != "None" for c in corrInfoFileNames])):
+                    # We have done this one entirely already, skip running the measure func
+                    if verbose:
+                        print(
+                            f"skipping {measureFunc.__name__} with params {params} because it has already been run")
+
+                    pp.writeToInfoFile(
+                        f"already run:{checkFileName}__!__{makeFigsInfoFileName}__!__{'__!__'.join(corrInfoFileNames)}\n")
+                    return
+
+            meas.runMeasureFunc()
+
+            # For now, just remake all the figs if any need to be remade
             if "bp" in params and not isinstance(meas, TimeMeasure):
-                meas.makeFigures(pp, excludeFromCombo=True, everySessionBehaviorPeriod=params["bp"])
+                meas.makeFigures(pp, excludeFromCombo=True,
+                                 everySessionBehaviorPeriod=params["bp"])
             else:
                 meas.makeFigures(pp, excludeFromCombo=True)
             if correlationSMs is not None and not isinstance(meas, TimeMeasure):
@@ -226,7 +273,14 @@ def main(plotFlags: List[str] | str = "tests",
 
             with warnings.catch_warnings():
                 warnings.filterwarnings("error")
+                lm = LocationMeasure("test",
+                                     lambda sesh: sesh.getValueMap(
+                                         lambda pos:
+                                         sesh.totalTimeAtPosition(
+                                             BP(probe=False, trialInterval=(10, 15)), pos, radius=0.25),
+                                     ), sessions, smoothDist=0, parallelize=False)
 
+                lm.makeFigures(pp)
                 # LocationMeasure("test", lambda sesh: sesh.getValueMap(
                 #     lambda pos: sesh.getDotProductScore(BP(probe=True, timeInterval=(30, 31)), pos,
                 #                                         distanceWeight=-1,
@@ -234,8 +288,8 @@ def main(plotFlags: List[str] | str = "tests",
                 #                 sessions,
                 #                 smoothDist=0, parallelize=False).makeFigures(pp)
 
-                TimeMeasure("test2", partial(numWellsVisitedFunc, True, offWallWellNames), sessions,
-                            timePeriodsGenerator=TimeMeasure.trialTimePeriodsFunction()).makeFigures(pp)
+                # TimeMeasure("test2", partial(numWellsVisitedFunc, True, offWallWellNames), sessions,
+                #             timePeriodsGenerator=TimeMeasure.trialTimePeriodsFunction()).makeFigures(pp)
 
                 # LocationMeasure(f"posOnWallTest",
                 #                 lambda sesh: sesh.getValueMap(
@@ -457,7 +511,7 @@ def main(plotFlags: List[str] | str = "tests",
                 return LocationMeasure(f"{func.__name__}_{bp.filenameString()}_r{radius:.2f}_s{smoothDist:.2f}",
                                        lambda sesh: sesh.getValueMap(
                                            lambda pos: func(sesh, bp, pos, radius),
-                                       ), sessions, smoothDist=smoothDist, parallelize=False)
+                                       ), sessions, smoothDist=smoothDist, parallelize=False, runImmediately=False)
             allSpecs.append((measureFromFunc, {
                 "func": [BTSession.totalTimeAtPosition,
                             BTSession.numVisitsToPosition,
@@ -473,7 +527,7 @@ def main(plotFlags: List[str] | str = "tests",
                                            lambda pos: func(sesh, bp, pos, radius,
                                                             startPoint="beginning", reciprocal=reciprocal),
                                            fillNanMode=fillNanMode
-                                       ), sessions, smoothDist=smoothDist,  parallelize=False)
+                                       ), sessions, smoothDist=smoothDist,  parallelize=False, runImmediately=False)
             # Actually not gonna use excursion start point because it's the same as pathLengthInExcursion with first flag
             allSpecs.append((makePathOptimalityMeasure, {
                 "func": [BTSession.pathOptimalityToPosition,
@@ -492,7 +546,7 @@ def main(plotFlags: List[str] | str = "tests",
                                            lambda pos: sesh.pathLengthInExcursionToPosition(bp, pos, radius,
                                                                                             noVisitVal=noVisitVal, mode=mode, normalizeByDisplacement=normalizeByDisplacement, reciprocal=reciprocal),
                                            fillNanMode=fillNanMode
-                                       ), sessions, smoothDist=smoothDist,  parallelize=False)
+                                       ), sessions, smoothDist=smoothDist,  parallelize=False, runImmediately=False)
             allSpecs.append((makePathLengthInExcursionMeasure, {
                 "noVisitVal": [np.nan, 6 * np.sqrt(2), 1000],
                 "mode": ["first", "last", "firstvisit", "lastvisit", "mean", "meanIgnoreNoVisit"],
@@ -513,7 +567,7 @@ def main(plotFlags: List[str] | str = "tests",
                                            lambda pos: sesh.latencyToPosition(bp, pos, radius),
                                            fillNanMode=emptyVal(sesh, bp) if callable(
                                                emptyVal) else emptyVal
-                                       ), sessions, smoothDist=smoothDist,  parallelize=False)
+                                       ), sessions, smoothDist=smoothDist,  parallelize=False, runImmediately=False)
 
             allSpecs.append((makeLatencyMeasure, {
                 "emptyVal": [np.nan, maxDuration, doubleDuration, "max", "mean"],
@@ -526,7 +580,7 @@ def main(plotFlags: List[str] | str = "tests",
                                        lambda sesh: sesh.getValueMap(
                                            lambda pos: sesh.fracExcursionsVisited(
                                                bp, pos, radius, normalization),
-                                       ), sessions, smoothDist=smoothDist,  parallelize=False)
+                                       ), sessions, smoothDist=smoothDist,  parallelize=False, runImmediately=False)
             allSpecs.append((makeFracExcursionsMeasure, {
                 "normalization": ["session", "bp", "none"],
                 "radius": allConsideredRadii,
@@ -544,7 +598,7 @@ def main(plotFlags: List[str] | str = "tests",
                                                                                distanceWeight=distanceWeight,
                                                                                normalize=normalize, onlyPositive=onlyPositive)),
                                        sessions,
-                                       smoothDist=smoothDist, parallelize=False)
+                                       smoothDist=smoothDist, parallelize=False, runImmediately=False)
             allSpecs.append((makeDotProdMeasure, {
                 "distanceWeight": np.linspace(-1, 1, 5),
                 "normalize": [True, False],
@@ -564,7 +618,7 @@ def main(plotFlags: List[str] | str = "tests",
                                                                        visitRadius=passRadius * visitRadiusFactor,
                                                                        passDenoiseFactor=passDenoiseFactor)),
                                        sessions,
-                                       smoothDist=smoothDist, parallelize=False)
+                                       smoothDist=smoothDist, parallelize=False, runImmediately=False)
             allSpecs.append((makeGravityMeasure, {
                 "passRadius": np.linspace(0.5, 1.5, 3),
                 "visitRadiusFactor": np.linspace(0.2, 0.4, 2),
@@ -575,7 +629,7 @@ def main(plotFlags: List[str] | str = "tests",
             def makeCoarseTimeMeasure(func: Callable, inProbe: bool):
                 probeStr = "probe" if inProbe else "bt"
                 return TimeMeasure(f"{func.__name__}_{probeStr}", lambda sesh, t0, t1, ip, _: func(sesh, t0, t1, ip),
-                                   sessions, timePeriodsGenerator=(30, 15, inProbe))
+                                   sessions, timePeriodsGenerator=(30, 15, inProbe), runImmediately=False)
 
             allSpecs.append((makeCoarseTimeMeasure, {
                 "func": [speedFunc, fracExploreFunc, fracOffWallFunc],
@@ -587,7 +641,7 @@ def main(plotFlags: List[str] | str = "tests",
                 return SessionMeasure(f"numWellsVisitedPer{mode.capitalize()}_{probeStr}_cr{countRepeats}_ow{offWallOnly}",
                                       partial(avgNumWellsVisitedPerPeriod, countRepeats,
                                               offWallOnly, mode, inProbe), sessions,
-                                      parallelize=False)
+                                      parallelize=False, runImmediately=False)
 
             allSpecs.append((makeNumWellsVisitedMeasure, {
                 "countRepeats": [True, False],
@@ -601,7 +655,7 @@ def main(plotFlags: List[str] | str = "tests",
                 return SessionMeasure(f"totalDuration_{probeStr}",
                                       lambda sesh: sesh.probeDuration if inProbe else sesh.btDuration,
                                       sessions,
-                                      parallelize=False)
+                                      parallelize=False, runImmediately=False)
 
             allSpecs.append((makeTotalDurationMeasure, {
                 "inProbe": [True, False]
@@ -610,7 +664,7 @@ def main(plotFlags: List[str] | str = "tests",
             def makePerPeriodMeasure(func: Callable, mode: str, inProbe: bool):
                 probeStr = "probe" if inProbe else "bt"
                 return SessionMeasure(f"{func.__name__}_{probeStr}_{mode}", partial(func, mode, inProbe), sessions,
-                                      parallelize=False)
+                                      parallelize=False, runImmediately=False)
 
             allSpecs.append((makePerPeriodMeasure, {
                 "func": [avgDurationPerPeriod, avgPathLengthPerPeriod],
@@ -620,7 +674,7 @@ def main(plotFlags: List[str] | str = "tests",
 
             def makeTimePeriodsMeasure(func: Callable, timePeriodsGenerator):
                 return TimeMeasure(f"{func.__name__}_{timePeriodsGenerator[1]}", lambda sesh, t0, t1, inProbe, _: func(sesh, t0, t1, inProbe),
-                                   sessions, timePeriodsGenerator=timePeriodsGenerator[0], parallelize=False)
+                                   sessions, timePeriodsGenerator=timePeriodsGenerator[0], parallelize=False, runImmediately=False)
 
             allConsideredTimePeriods = {"timePeriodsGenerator":
                                         [(TimeMeasure.trialTimePeriodsFunction(), "trial"),
@@ -638,7 +692,7 @@ def main(plotFlags: List[str] | str = "tests",
                 wells = offWallWellNames if offWallWells else allWellNames
                 return TimeMeasure(f"numWellsVisited_cr{countReturns}_ow{offWallWells}_{timePeriodsGenerator[1]}",
                                    partial(numWellsVisitedFunc, countReturns, wells), sessions,
-                                   timePeriodsGenerator=timePeriodsGenerator[0])
+                                   timePeriodsGenerator=timePeriodsGenerator[0], runImmediately=False)
 
             allSpecs.append((makeNumWellsVisitedTimeMeasure, {
                 "countReturns": [True, False],
@@ -716,9 +770,9 @@ def main(plotFlags: List[str] | str = "tests",
 
                 pp.pushOutputSubDir(makeMeasure.__name__)
                 if testData:
-                    # runDMFOnM(makeMeasure, paramDict, pp, correlationSMs,
-                    #           verbose=True, minParamsSequential=-1)
-                    runDMFOnM(makeMeasure, paramDict, pp, correlationSMs)
+                    runDMFOnM(makeMeasure, paramDict, pp, correlationSMs,
+                              verbose=True, minParamsSequential=-1)
+                    # runDMFOnM(makeMeasure, paramDict, pp, correlationSMs)
                 else:
                     runDMFOnM(makeMeasure, paramDict, pp, correlationSMs)
                 pp.popOutputSubDir()
@@ -734,7 +788,7 @@ def main(plotFlags: List[str] | str = "tests",
 
 if __name__ == "__main__":
     main("fullDatamine", dataMine=True, testData=False)
-    # main(testData=True)
+    # main()
 
 # Note from lab meeting 2023-3-7
 # In paper, possible effect in first few trials

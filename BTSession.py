@@ -602,7 +602,13 @@ class BTSession:
 
                 if invert:
                     flagBools = ~flagBools
-                keepFlag = keepFlag & flagBools
+                try:
+                    keepFlag = keepFlag & flagBools
+                except ValueError as ve:
+                    print(ve)
+                    print(keepFlag.shape, flagBools.shape)
+                    print(flag)
+                    raise ve
 
         durIdx = self.timeIntervalToPosIdx(
             ts, behaviorPeriod.timeInterval, noneVal=(0, len(keepFlag)))
@@ -618,8 +624,12 @@ class BTSession:
             if endTrial is None:
                 endTrial = trialPosIdxs.shape[0]
 
-            keepFlag[0:trialPosIdxs[startTrial, 0]] = False
-            keepFlag[trialPosIdxs[endTrial - 1, 1]:] = False
+            if startTrial > trialPosIdxs.shape[0]:
+                keepFlag[:] = False
+            else:
+                keepFlag[0:trialPosIdxs[startTrial, 0]] = False
+                if endTrial <= trialPosIdxs.shape[0]:
+                    keepFlag[trialPosIdxs[endTrial - 1, 1]:] = False
 
         # erosion and dilation
         if behaviorPeriod.erode is not None:

@@ -162,6 +162,18 @@ class PlotManager:
         self.shuffler.setCustomShuffleFunction(category, func)
 
     def __exit__(self, *args):
+
+        if (self.plotContext.savePlot is not None and self.plotContext.savePlot) or \
+                (self.plotContext.savePlot is None and self.defaultSavePlot):
+            willSaveFig = True
+        else:
+            willSaveFig = False
+        if (self.plotContext.showPlot is not None and self.plotContext.showPlot) or \
+                (self.plotContext.showPlot is None and self.defaultShowPlot):
+            willShowFig = True
+        else:
+            willShowFig = False
+
         if len(self.plotContext.yvals) > 0:
             # Everything is referenced according to this name
             figureName = os.path.basename(self.plotContext.figName)
@@ -214,8 +226,15 @@ class PlotManager:
             persistentInfoNames.to_hdf(statsFile, key="persistentInfoNames", mode="a")
             self.writeToInfoFile(f"statsFile:__!__{uniqueID}__!__{statsFile}")
 
+            # If neither showing nor saving the figure, can safely skip this part since
+            # the only output is a graphic on the figure itself
+            # NOTE: this isn't actually true if I ever call continueFig after this,
+            # and ideally I'd also pickle the immediateshuffles and immediatecorrelations,
+            # but for now just running the big screen I don't need either of those
+            runImmediate = willSaveFig or willShowFig
+
             # Now if there are any immediate shuffles, do them
-            if len(self.plotContext.immediateShuffles) > 0:
+            if len(self.plotContext.immediateShuffles) > 0 and runImmediate:
                 if not self.plotContext.isSinglePlot:
                     raise Exception("Can't have multiple plots and do shuffle")
                 if len(self.plotContext.immediateShuffles) > 1:
@@ -290,7 +309,7 @@ class PlotManager:
                     self.plotContext.ax.scatter(xvals[pValSig], [ycoord] * len(xvals[pValSig]), marker="*",
                                                 color="black", s=100)
 
-            elif len(self.plotContext.immediateCorrelations) > 0:
+            elif len(self.plotContext.immediateCorrelations) > 0 and runImmediate:
                 # Working with continuous x values here
                 # find the correlation coefficient and pvalue between the x and y values
                 # and indicate it on the plot. If there are multiple categories, do this for each
@@ -321,16 +340,18 @@ class PlotManager:
                 self.plotContext.ax.add_artist(AnchoredText("\n".join(resTest), "upper center"))
 
         # Finally, save or show the figure
-        if (self.plotContext.savePlot is not None and self.plotContext.savePlot) or \
-                (self.plotContext.savePlot is None and self.defaultSavePlot):
+        if willSaveFig:
             self.saveFig()
-        if (self.plotContext.showPlot is not None and self.plotContext.showPlot) or \
-                (self.plotContext.showPlot is None and self.defaultShowPlot):
+        if willShowFig:
             self.showedLastFig = True
             plt.show()
             self.fig = plt.figure(figsize=(self.figSizeX, self.figSizeY))
         else:
             self.showedLastFig = False
+
+    @property
+    def fullOutputDir(self):
+        return os.path.join(self.outputDir, self.outputSubDir)
 
     def saveFig(self):
         fname = os.path.join(self.outputDir, self.outputSubDir, self.plotContext.figName)
