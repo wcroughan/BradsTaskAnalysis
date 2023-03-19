@@ -236,8 +236,8 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
             if os.stat(stdErrFileName).st_size == 0:
                 os.remove(stdErrFileName)
         except Exception as e:
-            print(f"\n\nerror in {measureFunc.__name__} with params {params}\n\n")
-            print(e)
+            # print(f"\n\nerror in {measureFunc.__name__} with params {params}\n\n")
+            # print(e)
             # make a blank error file
             pp.restoreOutputSubDirSavepoint(savePoint)
             errFileName = os.path.join(
