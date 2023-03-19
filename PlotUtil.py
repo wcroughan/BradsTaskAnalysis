@@ -417,6 +417,15 @@ class PlotManager:
         if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
             os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
 
+    def getOutputSubDirSavepoint(self) -> List[str]:
+        return self.outputSubDirStack.copy()
+
+    def restoreOutputSubDirSavepoint(self, savepoint: List[str]) -> None:
+        self.outputSubDirStack = savepoint
+        self.outputSubDir = os.path.join(*self.outputSubDirStack)
+        if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
+            os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
+
     def writeToInfoFile(self, txt: str, suffix="\n") -> None:
         with self.infoFileLock:
             with open(self.infoFileFullName, "a") as f:

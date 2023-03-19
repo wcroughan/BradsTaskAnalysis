@@ -116,9 +116,12 @@ def checkIfMeasureAlreadyDone(pp: PlotManager,
     pfx = classPrefixes[type(measure)]
     if corrMeasure is None:
         doneFile = os.path.join(f"{pfx}_{measure.name.replace(' ', '_')}", "processed.txt")
+        errFile = os.path.join(f"{pfx}_{measure.name.replace(' ', '_')}", "error.txt")
     else:
         doneFile = os.path.join(
             f"{pfx}_{measure.name.replace(' ', '_')}_X_{corrMeasure.name.replace(' ', '_')}", "corr_processed.txt")
+        errFile = os.path.join(
+            f"{pfx}_{measure.name.replace(' ', '_')}_X_{corrMeasure.name.replace(' ', '_')}", "corr_error.txt")
 
     possibleDrives = [
         "/media/WDC10/",
@@ -135,6 +138,9 @@ def checkIfMeasureAlreadyDone(pp: PlotManager,
             with open(checkFileName, "r") as f:
                 makeFigsInfoFileName = f.read()
             return makeFigsInfoFileName, checkFileName
+        errFileName = os.path.join(pl, errFile)
+        if os.path.exists(errFileName):
+            return "Error", errFileName
     if verbose:
         print(f"could not find {doneFile} in any of {possibleLocations}")
     return "None", None
@@ -149,19 +155,50 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
 
         if verbose:
             print(f"running {measureFunc.__name__} with params {params}")
+
         try:
             meas = measureFunc(**params)
+            classPrefixes = {
+                TimeMeasure: "TiM",
+                SessionMeasure: "SM",
+                LocationMeasure: "LM",
+                TrialMeasure: "TrM",
+                # WellMeasure: "WM"
+            }
+            pfx = classPrefixes[type(meas)]
+            savePoint = pp.getOutputSubDirSavepoint()
+        except Exception as e:
+            print(f"Error just making the measure ... this shouldn't happen")
+            return
 
+        try:
             makeFigsInfoFileName = "None"
             corrInfoFileNames = []
             if not overwriteOldResults:
                 makeFigsInfoFileName, checkFileName = checkIfMeasureAlreadyDone(
                     pp, meas, corrMeasure=None, verbose=verbose)
 
+                if makeFigsInfoFileName == "Error":
+                    # Ran into an error last time, skip
+                    if verbose:
+                        print(
+                            f"skipping {measureFunc.__name__} with params {params} because it errored last time")
+                    return
+
                 if isinstance(meas, (LocationMeasure, SessionMeasure)) and makeFigsInfoFileName != "None":
                     for sm in correlationSMs:
-                        corrInfoFileNames.append(
-                            checkIfMeasureAlreadyDone(pp, meas, corrMeasure=sm, verbose=verbose)[0])
+                        infoFileName, _ = checkIfMeasureAlreadyDone(
+                            pp, meas, corrMeasure=sm, verbose=verbose)
+                        if infoFileName == "Error":
+                            # Ran into an error last time, skip
+                            if verbose:
+                                print(
+                                    f"skipping {measureFunc.__name__} with params {params} because it errored last time")
+                            return
+
+                        corrInfoFileNames.append(infoFileName)
+                        # corrInfoFileNames.append(
+                        #     checkIfMeasureAlreadyDone(pp, meas, corrMeasure=sm, verbose=verbose)[0])
 
                 if makeFigsInfoFileName != "None" and (len(corrInfoFileNames) == 0 or all([c != "None" for c in corrInfoFileNames])):
                     # We have done this one entirely already, skip running the measure func
@@ -173,14 +210,6 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
                         f"already run:{checkFileName}__!__{makeFigsInfoFileName}__!__{'__!__'.join(corrInfoFileNames)}\n")
                     return
 
-            classPrefixes = {
-                TimeMeasure: "TiM",
-                SessionMeasure: "SM",
-                LocationMeasure: "LM",
-                TrialMeasure: "TrM",
-                # WellMeasure: "WM"
-            }
-            pfx = classPrefixes[type(meas)]
             os.makedirs(os.path.join(pp.fullOutputDir,
                         f"{pfx}_{meas.name.replace(' ', '_')}"), exist_ok=True)
             stdOutFileName = os.path.join(
@@ -199,13 +228,7 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
                         meas.makeFigures(pp, excludeFromCombo=True)
                     if correlationSMs is not None and not isinstance(meas, TimeMeasure):
                         for sm in correlationSMs:
-                            try:
-                                meas.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
-                            except Exception as e:
-                                print(
-                                    f"\n\nerror in {measureFunc.__name__}, correlations with {sm.name} with params {params}\n\n")
-                                print(e)
-                                exit()
+                            meas.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
 
             # if stderr and stdout files are empty, delete them
             if os.stat(stdOutFileName).st_size == 0:
@@ -215,7 +238,12 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
         except Exception as e:
             print(f"\n\nerror in {measureFunc.__name__} with params {params}\n\n")
             print(e)
-            # exit()
+            # make a blank error file
+            pp.restoreOutputSubDirSavepoint(savePoint)
+            errFileName = os.path.join(
+                pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}", "error.txt")
+            with open(errFileName, "w") as f:
+                f.write("error")
 
     if minParamsSequential == -1:
         minParamsSequential = len(allParams) - 1
