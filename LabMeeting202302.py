@@ -1914,7 +1914,7 @@ if __name__ == "__main__":
     # makeFigures(RUN_UNSPECIFIED=False, RUN_THE_FINAL_DATAMINE=True, DATAMINE=True)
     # makeFigures(RUN_UNSPECIFIED=False, RUN_TESTS=True)
     # makeFigures(RUN_UNSPECIFIED=False, RERUN_SIMPLE_MEASURES=True, DATAMINE=True)
-    makeFigures(RUN_UNSPECIFIED=False, MAKE_CLEAN_LAB_MEETING_FIGURES=True)
+    makeFigures(RUN_UNSPECIFIED=False, PLOT_DETAILED_TASK_TRACES=True)
 
     # hacky_RunOldStats("B17_20230210_144854.txt")
     # hacky_RunOldStats("B17_20230210_144854.txt")

@@ -952,11 +952,12 @@ def loadPositionData(sesh: BTSession) -> None:
                 print("\ttrodesLightFunc says trodes light Time {}, {} (/{})".format(
                     sesh.trodesLightOffTime, sesh.trodesLightOnTime, len(ts)))
 
-        possibleRoots = ["/home/wcroughan/data/"]
+        # possibleRoots = ["/home/wcroughan/data/"]
         possibleRoots = [s for s in [
             getDrivePathByLabel(ss) for ss in [f"WDC{i}" for i in range(4, 9)]
         ] if s is not None]
         possibleSubDirs = [
+            os.path.join("Backup", "labVideos", "labvideos", "trimmed", sesh.animalName),
             "videos",
             "lab_videos",
             sesh.animalName,
@@ -1072,13 +1073,14 @@ def loadPositionData(sesh: BTSession) -> None:
         sesh.awayRewardEnter_ts = wellVisitTimes[1::2, 0]
         sesh.awayRewardExit_ts = wellVisitTimes[1::2, 1]
 
-    centerLoggedDetection_ts = (sesh.loggedDetections_ts[0] + sesh.loggedDetections_ts[-1]) / 2
-    if sesh.probePerformed:
-        lastTime = sesh.probePos_ts[-1]
-    else:
-        lastTime = sesh.btPos_ts[-1]
-    if centerLoggedDetection_ts < sesh.btPos_ts[0] or centerLoggedDetection_ts > lastTime:
-        raise Exception("Looks like we might have the wrong activelink log file.")
+    if sesh.hasActivelinkLog:
+        centerLoggedDetection_ts = (sesh.loggedDetections_ts[0] + sesh.loggedDetections_ts[-1]) / 2
+        if sesh.probePerformed:
+            lastTime = sesh.probePos_ts[-1]
+        else:
+            lastTime = sesh.btPos_ts[-1]
+        if centerLoggedDetection_ts < sesh.btPos_ts[0] or centerLoggedDetection_ts > lastTime:
+            raise Exception("Looks like we might have the wrong activelink log file.")
 
 
 def loadLFPData(sesh: BTSession) -> Tuple[ArrayLike, Optional[ArrayLike]]:
@@ -2018,7 +2020,7 @@ def main():
 
     for animalName in animalNames:
         importOptions.skipUSB = animalName == "Martin"
-        importOptions.skipActivelinkLog = animalName == "Martin"
+        importOptions.skipActivelinkLog = animalName == "Martin" or True
         extractAndSave(animalName, importOptions)
 
 

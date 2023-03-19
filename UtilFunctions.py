@@ -127,10 +127,15 @@ class LoadInfo:
 
 def findDataDir(possibleDataDirs=None) -> str:
     if possibleDataDirs is None:
-        possibleDataDirs = [getDrivePathByLabel("WDC8"),
-                            getDrivePathByLabel("WDC6"),
-                            "/media/fosterlab/WDC6/",
-                            "/home/wcroughan/data/"]
+        possibleDataDirs = [
+            getDrivePathByLabel("WDC10"),
+            getDrivePathByLabel("WDC9"),
+            getDrivePathByLabel("WDC4"),
+            getDrivePathByLabel("WDC8"),
+            getDrivePathByLabel("WDC6"),
+            "/media/fosterlab/WDC6/",
+            "/home/wcroughan/data/",
+        ]
     for dd in possibleDataDirs:
         if os.path.exists(dd):
             return dd
@@ -734,7 +739,9 @@ def getLoadInfo(config: str) -> LoadInfo:
 
         return LoadInfo(configName=config, animalName="B17",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
-                        dataDirPath=["WDC8", "B17", "bradtasksessions"], outputDirPath=["WDC8", "B17", "processed_data"],
+                        # dataDirPath=["WDC8", "B17", "bradtasksessions"], outputDirPath=["WDC8", "B17", "processed_data"],
+                        dataDirPath=["WDC4", "Backup", "media", "WDC8", "B17", "bradtasksessions"],
+                        outputDirPath=["WDC4", "Backup", "media", "WDC8", "B17", "processed_data"],
                         out_filename="B17_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
                         DEFAULT_RIP_DET_TET=6, DEFAULT_RIP_BAS_TET=5)

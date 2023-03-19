@@ -14,6 +14,7 @@ from BTSession import BehaviorPeriod as BP
 from functools import partial
 from consts import allWellNames, offWallWellNames, TRODES_SAMPLING_RATE
 import warnings
+from contextlib import redirect_stderr, redirect_stdout
 
 
 def maxDuration(sesh: BTSession, bp: BP):
@@ -101,19 +102,50 @@ def numWellsVisitedFunc(countReturns, wells, sesh, t0, t1, inProbe, _) -> float:
     return numWellsVisited(nw[t0:t1], countReturns, wells)
 
 
+def checkIfMeasureAlreadyDone(pp: PlotManager,
+                              measure: LocationMeasure | SessionMeasure | TimeMeasure,
+                              corrMeasure: Optional[SessionMeasure] = None,
+                              verbose=False):
+    classPrefixes = {
+        TimeMeasure: "TiM",
+        SessionMeasure: "SM",
+        LocationMeasure: "LM",
+        TrialMeasure: "TrM",
+        # WellMeasure: "WM"
+    }
+    pfx = classPrefixes[type(measure)]
+    if corrMeasure is None:
+        doneFile = os.path.join(f"{pfx}_{measure.name.replace(' ', '_')}", "processed.txt")
+    else:
+        doneFile = os.path.join(
+            f"{pfx}_{measure.name.replace(' ', '_')}_X_{corrMeasure.name.replace(' ', '_')}", "corr_processed.txt")
+
+    possibleDrives = [
+        "/media/WDC10/",
+        "/media/WDC9/",
+        "/media/WDC4/",
+    ]
+
+    ppOutputDirInDrive = os.path.sep.join(pp.fullOutputDir.split(os.path.sep)[3:])
+    possibleLocations = [f"{pd}{os.path.sep}{ppOutputDirInDrive}" for pd in possibleDrives]
+
+    for pl in possibleLocations:
+        checkFileName = os.path.join(pl, doneFile)
+        if os.path.exists(checkFileName):
+            with open(checkFileName, "r") as f:
+                makeFigsInfoFileName = f.read()
+            return makeFigsInfoFileName, checkFileName
+    if verbose:
+        print(f"could not find {doneFile} in any of {possibleLocations}")
+    return "None", None
+
+
 def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | TimeMeasure],
               allParams: Dict[str, Iterable],
               pp: PlotManager,
               correlationSMs: Optional[List[SessionMeasure]] = None,
               minParamsSequential=2, verbose=False, overwriteOldResults=False):
     def measureFuncWrapper(params: Dict[str, Iterable]):
-        classPrefixes = {
-            TimeMeasure: "TiM",
-            SessionMeasure: "SM",
-            LocationMeasure: "LM",
-            TrialMeasure: "TrM",
-            # WellMeasure: "WM"
-        }
 
         if verbose:
             print(f"running {measureFunc.__name__} with params {params}")
@@ -123,26 +155,13 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
             makeFigsInfoFileName = "None"
             corrInfoFileNames = []
             if not overwriteOldResults:
-                pfx = classPrefixes[type(meas)]
-                checkFileName = os.path.join(
-                    pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}", "processed.txt")
-                if os.path.exists(checkFileName):
-                    with open(checkFileName, "r") as f:
-                        makeFigsInfoFileName = f.read()
+                makeFigsInfoFileName, checkFileName = checkIfMeasureAlreadyDone(
+                    pp, meas, corrMeasure=None, verbose=verbose)
 
-                    if isinstance(meas, (LocationMeasure, SessionMeasure)):
-                        for sm in correlationSMs:
-                            figName = pfx + "_" + meas.name.replace(
-                                " ", "_") + "_X_" + sm.name.replace(" ", "_")
-                            corrCheckFileName = os.path.join(
-                                pp.fullOutputDir, figName, "corr_processed.txt")
-                            if os.path.exists(corrCheckFileName):
-                                with open(corrCheckFileName, "r") as f:
-                                    corrInfoFileNames.append(f.read())
-                            else:
-                                corrInfoFileNames += ["None"]
-                    else:
-                        pass
+                if isinstance(meas, (LocationMeasure, SessionMeasure)) and makeFigsInfoFileName != "None":
+                    for sm in correlationSMs:
+                        corrInfoFileNames.append(
+                            checkIfMeasureAlreadyDone(pp, meas, corrMeasure=sm, verbose=verbose)[0])
 
                 if makeFigsInfoFileName != "None" and (len(corrInfoFileNames) == 0 or all([c != "None" for c in corrInfoFileNames])):
                     # We have done this one entirely already, skip running the measure func
@@ -154,27 +173,49 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
                         f"already run:{checkFileName}__!__{makeFigsInfoFileName}__!__{'__!__'.join(corrInfoFileNames)}\n")
                     return
 
-            meas.runMeasureFunc()
+            classPrefixes = {
+                TimeMeasure: "TiM",
+                SessionMeasure: "SM",
+                LocationMeasure: "LM",
+                TrialMeasure: "TrM",
+                # WellMeasure: "WM"
+            }
+            pfx = classPrefixes[type(meas)]
+            os.makedirs(os.path.join(pp.fullOutputDir,
+                        f"{pfx}_{meas.name.replace(' ', '_')}"), exist_ok=True)
+            stdOutFileName = os.path.join(
+                pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}", "stdout.txt")
+            stdErrFileName = os.path.join(
+                pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}", "stderr.txt")
+            with open(stdOutFileName, "w") as stdout, open(stdErrFileName, "w") as stderr:
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    meas.runMeasureFunc()
 
-            # For now, just remake all the figs if any need to be remade
-            if "bp" in params and not isinstance(meas, TimeMeasure):
-                meas.makeFigures(pp, excludeFromCombo=True,
-                                 everySessionBehaviorPeriod=params["bp"])
-            else:
-                meas.makeFigures(pp, excludeFromCombo=True)
-            if correlationSMs is not None and not isinstance(meas, TimeMeasure):
-                for sm in correlationSMs:
-                    try:
-                        meas.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
-                    except Exception as e:
-                        print(
-                            f"\n\nerror in {measureFunc.__name__}, correlations with {sm.name} with params {params}\n\n")
-                        print(e)
-                        exit()
+                    # For now, just remake all the figs if any need to be remade
+                    if "bp" in params and not isinstance(meas, TimeMeasure):
+                        meas.makeFigures(pp, excludeFromCombo=True,
+                                         everySessionBehaviorPeriod=params["bp"])
+                    else:
+                        meas.makeFigures(pp, excludeFromCombo=True)
+                    if correlationSMs is not None and not isinstance(meas, TimeMeasure):
+                        for sm in correlationSMs:
+                            try:
+                                meas.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
+                            except Exception as e:
+                                print(
+                                    f"\n\nerror in {measureFunc.__name__}, correlations with {sm.name} with params {params}\n\n")
+                                print(e)
+                                exit()
+
+            # if stderr and stdout files are empty, delete them
+            if os.stat(stdOutFileName).st_size == 0:
+                os.remove(stdOutFileName)
+            if os.stat(stdErrFileName).st_size == 0:
+                os.remove(stdErrFileName)
         except Exception as e:
             print(f"\n\nerror in {measureFunc.__name__} with params {params}\n\n")
             print(e)
-            exit()
+            # exit()
 
     if minParamsSequential == -1:
         minParamsSequential = len(allParams) - 1
@@ -533,9 +574,12 @@ def main(plotFlags: List[str] | str = "tests",
                 "func": [BTSession.pathOptimalityToPosition,
                          BTSession.pathLengthToPosition],
                 "fillNanMode": [np.nan, 6 * np.sqrt(2), "max", "mean"],
-                "radius": allConsideredRadii,
+                # "radius": allConsideredRadii,
+                "radius": [0.25, 0.5, 1],
                 "reciprocal": [True, False],
-                **basicParams
+                # **basicParams
+                "bp": allConsideredBPs,
+                "smoothDist": [0.5, 1]
             }))
 
             def makePathLengthInExcursionMeasure(bp: BP, radius: float, smoothDist: float,

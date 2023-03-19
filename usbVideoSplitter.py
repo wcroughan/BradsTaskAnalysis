@@ -64,5 +64,6 @@ def splitAllVideos(cutTimesFile, videoDirectory):
 
 if __name__ == "__main__":
     cutTimesFile = "../labnotes/videocuttimes.txt"
-    videoDirectory = "/media/WDC8/videos/labvideos"
+    # videoDirectory = "/media/WDC8/videos/labvideos"
+    videoDirectory = "/media/WDC4/Backup/labVideos/labvideos/"
     splitAllVideos(cutTimesFile, videoDirectory)
