@@ -1,5 +1,5 @@
 from multiprocessing import Pool, Manager
-from typing import Callable, Iterable, Dict, List, Any
+from typing import Callable, Iterable, Dict, List, Any, Optional
 from itertools import product, repeat
 from tqdm import tqdm
 
@@ -17,7 +17,8 @@ def _runParFunc(arg) -> None:
 
 
 def runEveryCombination(function: Callable, parameters: Dict[str, Iterable],
-                        numParametersSequential: int = 2) -> None:
+                        numParametersSequential: int = 2,
+                        eachSeqIterFunc: Optional[Callable[[int], None]] = None) -> None:
     seqParams = {}
     parParams = {}
     for ki, (key, value) in enumerate(parameters.items()):
@@ -45,7 +46,7 @@ def runEveryCombination(function: Callable, parameters: Dict[str, Iterable],
     seqCombos = recursiveProduct(seqParams)
     parCombos = recursiveProduct(parParams)
 
-    for seqParam in tqdm(seqCombos, total=len(seqCombos)):
+    for seqI, seqParam in tqdm(enumerate(seqCombos), total=len(seqCombos)):
         if len(parParams) > 0:
             args = []
             for parParam in parCombos:
@@ -54,11 +55,14 @@ def runEveryCombination(function: Callable, parameters: Dict[str, Iterable],
             # args = zip(args, repeat(sharedDict, len(args)))
             # args = [seqParam + parParam for parParam in product(*parParams)]
             # print(f"{ args = }")
-            with Pool(None, initializer=_setDMFFunction, initargs=(function, )) as pool:
+            with Pool(processes=None, initializer=_setDMFFunction, initargs=(function, )) as pool:
                 pool.map(_runParFunc, args)
             # sharedDictCallback(sharedDict)
         else:
             function(*seqParam)
+
+        if eachSeqIterFunc is not None:
+            eachSeqIterFunc(seqI)
 
 
 if __name__ == "__main__":

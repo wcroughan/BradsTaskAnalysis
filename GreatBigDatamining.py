@@ -15,6 +15,8 @@ from functools import partial
 from consts import allWellNames, offWallWellNames, TRODES_SAMPLING_RATE
 import warnings
 from contextlib import redirect_stderr, redirect_stdout
+import multiprocessing
+from glob import glob
 
 
 def maxDuration(sesh: BTSession, bp: BP):
@@ -124,12 +126,22 @@ def checkIfMeasureAlreadyDone(pp: PlotManager,
             f"{pfx}_{measure.name.replace(' ', '_')}_X_{corrMeasure.name.replace(' ', '_')}", "corr_error.txt")
 
     possibleDrives = [
+        "/media/WDC11/",
         "/media/WDC10/",
         "/media/WDC9/",
         "/media/WDC4/",
     ]
 
-    ppOutputDirInDrive = os.path.sep.join(pp.fullOutputDir.split(os.path.sep)[3:])
+    drivesToAppend = []
+    for pd in possibleDrives:
+        if os.path.exists(os.path.join(pd, "BY_PID")):
+            gl = glob(os.path.join(pd, "BY_PID", "*"))
+            drivesToAppend.extend(gl)
+    possibleDrives.extend(drivesToAppend)
+    if verbose:
+        print(f"possibleDrives: {possibleDrives}")
+
+    ppOutputDirInDrive = os.path.sep.join([*(pp.outputDir.split(os.path.sep)[3:]), pp.outputSubDir])
     possibleLocations = [f"{pd}{os.path.sep}{ppOutputDirInDrive}" for pd in possibleDrives]
 
     for pl in possibleLocations:
@@ -154,9 +166,15 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
     def measureFuncWrapper(params: Dict[str, Iterable]):
 
         if verbose:
-            print(f"running {measureFunc.__name__} with params {params}")
+            print(
+                f"running {measureFunc.__name__} with params {params} in process {multiprocessing.current_process()} (pid {multiprocessing.current_process().pid})")
 
         try:
+            pid = multiprocessing.current_process().pid
+            pp.setDriveOutputDir(f"BY_PID{os.path.sep}{str(pid)[-2:]}")
+            if verbose:
+                print(f"pp output dir is {pp.fullOutputDir} (pid {pid})")
+
             meas = measureFunc(**params)
             classPrefixes = {
                 TimeMeasure: "TiM",
@@ -176,7 +194,7 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
             corrInfoFileNames = []
             if not overwriteOldResults:
                 makeFigsInfoFileName, checkFileName = checkIfMeasureAlreadyDone(
-                    pp, meas, corrMeasure=None, verbose=verbose)
+                    pp, meas, corrMeasure=None, verbose=False)
 
                 if makeFigsInfoFileName == "Error":
                     # Ran into an error last time, skip
@@ -188,7 +206,7 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
                 if isinstance(meas, (LocationMeasure, SessionMeasure)) and makeFigsInfoFileName != "None":
                     for sm in correlationSMs:
                         infoFileName, _ = checkIfMeasureAlreadyDone(
-                            pp, meas, corrMeasure=sm, verbose=verbose)
+                            pp, meas, corrMeasure=sm, verbose=False)
                         if infoFileName == "Error":
                             # Ran into an error last time, skip
                             if verbose:
@@ -240,10 +258,14 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
             # print(e)
             # make a blank error file
             pp.restoreOutputSubDirSavepoint(savePoint)
+            pp.setDriveOutputDir("")
             errFileName = os.path.join(
                 pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}", "error.txt")
             with open(errFileName, "w") as f:
                 f.write("error")
+
+        # Now wait a few milliseconds to make sure the file is written, and hopefully drive won't get corrupted
+        time.sleep(0.1)
 
     if minParamsSequential == -1:
         minParamsSequential = len(allParams) - 1
@@ -342,90 +364,106 @@ def main(plotFlags: List[str] | str = "tests",
 
             with warnings.catch_warnings():
                 warnings.filterwarnings("error")
-                lm = LocationMeasure("test",
-                                     lambda sesh: sesh.getValueMap(
-                                         lambda pos:
-                                         sesh.totalTimeAtPosition(
-                                             BP(probe=False, trialInterval=(10, 15)), pos, radius=0.25),
-                                     ), sessions, smoothDist=0, parallelize=False)
 
-                lm.makeFigures(pp)
-                # LocationMeasure("test", lambda sesh: sesh.getValueMap(
-                #     lambda pos: sesh.getDotProductScore(BP(probe=True, timeInterval=(30, 31)), pos,
-                #                                         distanceWeight=-1,
-                #                                         normalize=True, onlyPositive=True)),
-                #                 sessions,
-                #                 smoothDist=0, parallelize=False).makeFigures(pp)
+                # "noVisitVal": [np.nan, 6 * np.sqrt(2), 1000],
+                # "mode": ["first", "last", "firstvisit", "lastvisit", "mean", "meanIgnoreNoVisit"],
+                # "normalizeByDisplacement": [True, False],
+                # "fillNanMode": [np.nan, 6 * np.sqrt(2), "max", "mean"],
+                # # "radius": allConsideredRadii,
+                # "radius": [0.25, 0.5, 1],
+                # "reciprocal": [True, False],
+                # # **basicParams
+                # "bp": allConsideredBPs,
+                # "smoothDist": [0.5, 1]
 
-                # TimeMeasure("test2", partial(numWellsVisitedFunc, True, offWallWellNames), sessions,
-                #             timePeriodsGenerator=TimeMeasure.trialTimePeriodsFunction()).makeFigures(pp)
+                totalReplaceTime = 0
+                totalBpEvalTime = 0
+                totalInRadiusTime = 0
+                totalFilterTime = 0
+                totalRemakeTime = 0
+                totalTotalDistTime = 0
+                totalTotalDivTime = 0
+                totalEndOfDistTime = 0
+                totalReciprocalTime = 0
+                totalRetTime = 0
+                totalEvalTime = 0
+                totalCopyTime = 0
 
-                # LocationMeasure(f"posOnWallTest",
-                #                 lambda sesh: sesh.getValueMap(
-                #                     lambda pos: posOnWall(pos)
-                #                 ), sessions, smoothDist=0, parallelize=False).makeFigures(pp)
+                for bp in [
+                    # BP(probe=True, timeInterval=(0, 60)),
+                    BP(probe=False, trialInterval=(2, 7)),
+                ]:
+                    for radius in [0.25, 1]:
+                        print("bp =", bp, "radius =", radius)
+                        noVisitVal = np.nan
+                        mode = "mean"
+                        normalizeByDisplacement = True
+                        # fillNanMode = np.nan
+                        reciprocal = True
+                        # smoothDist = 0.5
 
-                # pos = (3.5 + 14/36, 0.5 + 1.5 * 7/36)
-                # sessions[4].pathLengthInExcursionToPosition(BP(probe=False), pos, radius=0.25,
-                #                                             noVisitVal=np.nan, mode="firstvisit",
-                #                                             normalizeByDisplacement=True, showPlot=True)
-                # lm = LocationMeasure(f"test",
-                #                      lambda sesh: sesh.getValueMap(
-                #                          lambda pos: sesh.pathLengthInExcursionToPosition(BP(probe=False), pos, radius=0.25,
-                #                                                                           noVisitVal=np.nan, mode="first",
-                #                                                                           normalizeByDisplacement=True),
-                #                          fillNanMode=np.nan
-                #                      ), sessions, smoothDist=0,  parallelize=False)
+                        resolution = 36
+                        pxls = np.linspace(-0.5, 6.5, resolution, endpoint=False)
+                        pxls += (pxls[1] - pxls[0]) / 2
+                        for x in pxls:
+                            for y in pxls:
+                                for sesh in sessions:
+                                    pos = (x, y)
+                                    ret = sesh.pathLengthInExcursionToPosition(bp, pos, radius,
+                                                                               noVisitVal=noVisitVal, mode=mode,
+                                                                               normalizeByDisplacement=normalizeByDisplacement,
+                                                                               reciprocal=reciprocal,
+                                                                               timeFunction=True,
+                                                                               showPlot=False)
 
-                # infoFileDir = "/media/WDC8/figures/GreatBigDatamining_test_datamined"
-                # # infoFileName = "B17_20230311_191143.txt"
-                # # infoFileName = "B17_20230313_065529.txt"
-                # # infoFileName = "B17_20230313_072926.txt"
-                # infoFileName = "B17_20230313_074617.txt"
-                # fullInfoFileName = os.path.join(infoFileDir, infoFileName)
-                # numShuffles = 6
+                                    totalReplaceTime += ret[2] - ret[1]
+                                    totalBpEvalTime += ret[3] - ret[2]
+                                    totalInRadiusTime += ret[4] - ret[3]
+                                    if ret[5] != 0:
+                                        totalFilterTime += ret[5] - ret[4]
+                                    if ret[6] != 0:
+                                        totalRemakeTime += ret[6] - ret[5]
+                                    if ret[7] != 0:
+                                        totalTotalDistTime += ret[7]
+                                    if ret[8] != 0:
+                                        totalTotalDivTime += ret[8]
+                                    if ret[9] != 0:
+                                        totalEndOfDistTime += ret[9] - ret[6]
+                                    if ret[10] != 0:
+                                        totalReciprocalTime += ret[10] - ret[9]
+                                    if ret[11] != 0:
+                                        totalRetTime += ret[11] - ret[10]
+                                    totalEvalTime += ret[12]
+                                    totalCopyTime += ret[13]
 
-                # outFile = pp.shuffler.runAllShuffles([fullInfoFileName], numShuffles)
-                # print(f"{ outFile=  }")
-                # pp.shuffler.summarizeShuffleResults(outFile)
+                allTimesTotal = totalReplaceTime + totalBpEvalTime + totalInRadiusTime + totalFilterTime + totalRemakeTime + \
+                    totalTotalDistTime + totalTotalDivTime + totalEndOfDistTime + totalReciprocalTime + totalRetTime
 
-                # tm = TimeMeasure(f"test", lambda sesh, t0, t1, inProbe, _: func(sesh, t0, t1, inProbe),
-                #                  sessions, timePeriodsGenerator=timePeriodsGenerator, parallelize=False)
-                # tm.makeFigures(pp, excludeFromCombo=True)
-
-                # lm = LocationMeasure(f"test",
-                #                      lambda sesh: sesh.getValueMap(
-                #                          lambda pos: sesh.fracExcursionsVisited(
-                #                              BP(probe=True, timeInterval=(0, 120)), pos, radius=0.25, normalization="bp"),
-                #                      ), sessions, smoothDist=0,  parallelize=False)
-
-                # # lm.makeFigures(pp, excludeFromCombo=True, everySessionBehaviorPeriod=BP(
-                # #     probe=True, timeInterval=BTSession.fillTimeInterval))
-
-                # correlationSMs = [
-                #     SessionMeasure("numStims", lambda sesh: len(
-                #         sesh.btLFPBumps_posIdx), sessions, parallelize=False),
-                #     SessionMeasure("rippleRatePreStats", lambda sesh: len(
-                #         sesh.btRipsPreStats) / (sesh.btPos_secs[-1] - sesh.btPos_secs[0]), sessions, parallelize=False),
-                # ]
-
-                # for sm in correlationSMs:
-                #     sm.makeFigures(pp, excludeFromCombo=True)
-                #     lm.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
-
-            # lm = LocationMeasure("LMtest", lambda sesh: sesh.getValueMap(
-            #     lambda pos: sesh.fracExcursionsVisited(BP(probe=True), pos, 0.25)),
-            #     sessions, smoothDist=0)
-            # # lm.makeFigures(pp, everySessionBehaviorPeriod=BP(probe=True))
-            # sm = SessionMeasure("SMtest", lambda sesh: np.remainder(
-            #     np.sqrt(float(sesh.name[-1])), 1), sessions)
-            # # sm.makeFigures(pp)
-            # sm2 = SessionMeasure("SMtest2", lambda sesh: np.remainder(
-            #     np.sqrt(float(sesh.name[-3])), 1), sessions)
-            # # sm2.makeFigures(pp)
-
-            # lm.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
-            # sm2.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
+                print(f"allTimesTotal: {allTimesTotal / 1e9:.2f}s")
+                print(
+                    f"totalReplaceTime:\t{totalReplaceTime / 1e9:.2f}s\t{totalReplaceTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalBpEvalTime:\t{totalBpEvalTime / 1e9:.2f}s\t{totalBpEvalTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalInRadiusTime:\t{totalInRadiusTime / 1e9:.2f}s\t{totalInRadiusTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalFilterTime:\t{totalFilterTime / 1e9:.2f}s\t{totalFilterTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalRemakeTime:\t{totalRemakeTime / 1e9:.2f}s\t{totalRemakeTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalTotalDistTime:\t{totalTotalDistTime / 1e9:.2f}s\t{totalTotalDistTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalTotalDivTime:\t{totalTotalDivTime / 1e9:.2f}s\t{totalTotalDivTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalEndOfDistTime:\t{totalEndOfDistTime / 1e9:.2f}s\t{totalEndOfDistTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalReciprocalTime:\t{totalReciprocalTime / 1e9:.2f}s\t{totalReciprocalTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalRetTime:\t{totalRetTime / 1e9:.2f}s\t{totalRetTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalEvalTime:\t{totalEvalTime / 1e9:.2f}s\t{totalEvalTime / allTimesTotal * 100:.2f}%")
+                print(
+                    f"totalCopyTime:\t{totalCopyTime / 1e9:.2f}s\t{totalCopyTime / allTimesTotal * 100:.2f}%")
 
         if "earlyVsLate" in plotFlags:
             plotFlags.remove("earlyVsLate")
@@ -571,6 +609,11 @@ def main(plotFlags: List[str] | str = "tests",
                 allConsideredSmoothDists = [0, 0.5, 1]
                 allConsideredRadii = [0.25, 0.5, 1, 1.5]
 
+            def isConvex(bp: BP):
+                return bp.inclusionArray is None and bp.inclusionFlags is None and bp.moveThreshold is None
+            allConvexBPs = [bp for bp in allConsideredBPs if isConvex(bp)]
+            # nonConvexBPs = [bp for bp in allConsideredBPs if not isConvex(bp)]
+
             basicParams = {
                 "bp": allConsideredBPs,
                 "smoothDist": allConsideredSmoothDists,
@@ -624,9 +667,12 @@ def main(plotFlags: List[str] | str = "tests",
                 "mode": ["first", "last", "firstvisit", "lastvisit", "mean", "meanIgnoreNoVisit"],
                 "normalizeByDisplacement": [True, False],
                 "fillNanMode": [np.nan, 6 * np.sqrt(2), "max", "mean"],
-                "radius": allConsideredRadii,
+                # "radius": allConsideredRadii,
+                "radius": [0.25, 0.5, 1],
                 "reciprocal": [True, False],
-                **basicParams
+                # **basicParams
+                "bp": allConvexBPs,
+                "smoothDist": [0.5, 1]
             }))
 
             def makeLatencyMeasure(bp: BP, radius: float, smoothDist: float, emptyVal: str | float | Callable[[BTSession, BP], float]):
@@ -644,7 +690,9 @@ def main(plotFlags: List[str] | str = "tests",
             allSpecs.append((makeLatencyMeasure, {
                 "emptyVal": [np.nan, maxDuration, doubleDuration, "max", "mean"],
                 "radius": allConsideredRadii,
-                **basicParams
+                # **basicParams
+                "bp": allConvexBPs,
+                "smoothDist": [0, 0.5, 1]
             }))
 
             def makeFracExcursionsMeasure(bp: BP, radius: float, smoothDist: float, normalization: str):
@@ -656,7 +704,9 @@ def main(plotFlags: List[str] | str = "tests",
             allSpecs.append((makeFracExcursionsMeasure, {
                 "normalization": ["session", "bp", "none"],
                 "radius": allConsideredRadii,
-                **basicParams
+                # **basicParams
+                "bp": allConvexBPs,
+                "smoothDist": [0, 0.5, 1]
             }))
 
             def makeDotProdMeasure(bp: BP, distanceWeight, normalize, smoothDist, onlyPositive):
@@ -694,8 +744,11 @@ def main(plotFlags: List[str] | str = "tests",
             allSpecs.append((makeGravityMeasure, {
                 "passRadius": np.linspace(0.5, 1.5, 3),
                 "visitRadiusFactor": np.linspace(0.2, 0.4, 2),
-                "passDenoiseFactor": np.linspace(1.25, 2, 3),
-                **basicParams
+                "passDenoiseFactor": [1.25],
+                # "passDenoiseFactor": np.linspace(1.25, 2, 3),
+                # **basicParams
+                "bp": allConsideredBPs,
+                "smoothDist": [0, 0.5]
             }))
 
             def makeCoarseTimeMeasure(func: Callable, inProbe: bool):
@@ -846,6 +899,7 @@ def main(plotFlags: List[str] | str = "tests",
                               verbose=True, minParamsSequential=-1)
                     # runDMFOnM(makeMeasure, paramDict, pp, correlationSMs)
                 else:
+                    # runDMFOnM(makeMeasure, paramDict, pp, correlationSMs, verbose=True)
                     runDMFOnM(makeMeasure, paramDict, pp, correlationSMs)
                 pp.popOutputSubDir()
 

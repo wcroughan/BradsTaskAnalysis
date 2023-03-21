@@ -84,6 +84,8 @@ class PlotManager:
         self.outputSubDirStack: List[str] = []
         if outputDir is None:
             outputDir = os.curdir
+        self.outputDriveDir = ""  # This is an optional path to go between /media/WDCX/ and the rest of the output
+        # I know it's a bad way to organize it but I can't have folders that are too big apparently so here we go...
         self.setOutputDir(outputDir)
         self.createdPlots = set()
         self.savedFigsByName: Dict[str, List[str]] = {}
@@ -107,7 +109,7 @@ class PlotManager:
                figScale: float = 1.0, excludeFromCombo: bool = False,
                showPlot: bool = None, savePlot: bool = None, enableOverwriteSameName: bool = False,
                transparent=False) -> PlotManager:
-        fname = os.path.join(self.outputDir, self.outputSubDir, figName)
+        fname = os.path.join(self.fullOutputDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
 
@@ -142,7 +144,7 @@ class PlotManager:
         self.plotContext.savePlot = savePlot
         self.plotContext.transparent = transparent
         self.plotContext.excludeFromCombo = excludeFromCombo
-        fname = os.path.join(self.outputDir, self.outputSubDir, figName)
+        fname = os.path.join(self.fullOutputDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
         self.plotContext.figName = fname
@@ -212,7 +214,7 @@ class PlotManager:
             persistentInfoNames = pd.Series(list(self.persistentInfoValues.keys()), dtype=object)
 
             # Save the stats to a file
-            statsDir = os.path.join(self.outputDir, self.outputSubDir, "stats")
+            statsDir = os.path.join(self.fullOutputDir, "stats")
             uniqueID = f"{self.outputSubDirStack[-1]}_{figureName}"
             if not os.path.exists(statsDir):
                 os.makedirs(statsDir)
@@ -351,10 +353,16 @@ class PlotManager:
 
     @property
     def fullOutputDir(self):
+        if self.outputDriveDir != "" and self.outputDir.startswith("/media/WDC"):
+            outSplit = self.outputDir.split(os.sep)
+            out1 = os.sep.join(outSplit[:3])
+            out2 = os.sep.join(outSplit[3:])
+            return os.path.join(out1, self.outputDriveDir, out2, self.outputSubDir)
+
         return os.path.join(self.outputDir, self.outputSubDir)
 
     def saveFig(self):
-        fname = os.path.join(self.outputDir, self.outputSubDir, self.plotContext.figName)
+        fname = os.path.join(self.fullOutputDir, self.plotContext.figName)
 
         if fname[-4:] != ".png" and fname[-4:] != ".pdf":
             fname += ".png"
@@ -389,24 +397,29 @@ class PlotManager:
         self.axs = np.array([self.fig.subplots(1, 1)])
         self.axs[0].cla()
 
+    def setDriveOutputDir(self, driveOutputDir: str) -> None:
+        self.outputDriveDir = driveOutputDir
+        if not os.path.exists(self.fullOutputDir):
+            os.makedirs(self.fullOutputDir)
+
     def setOutputDir(self, outputDir: str) -> None:
         self.outputDir = outputDir
-        if not os.path.exists(os.path.join(outputDir, self.outputSubDir)):
-            os.makedirs(os.path.join(outputDir, self.outputSubDir))
+        if not os.path.exists(self.fullOutputDir):
+            os.makedirs(self.fullOutputDir)
         self.infoFileFullName = os.path.join(
             outputDir, self.infoFileName)
 
     def setOutputSubDir(self, outputSubDir: str) -> None:
         self.outputSubDirStack = [outputSubDir]
         self.outputSubDir = outputSubDir
-        if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
-            os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
+        if not os.path.exists(self.fullOutputDir):
+            os.makedirs(self.fullOutputDir)
 
     def pushOutputSubDir(self, outputSubDir: str) -> None:
         self.outputSubDirStack.append(outputSubDir)
         self.outputSubDir = os.path.join(*self.outputSubDirStack)
-        if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
-            os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
+        if not os.path.exists(self.fullOutputDir):
+            os.makedirs(self.fullOutputDir)
 
     def popOutputSubDir(self) -> None:
         self.outputSubDirStack.pop()
@@ -414,8 +427,8 @@ class PlotManager:
             self.outputSubDir = ""
         else:
             self.outputSubDir = os.path.join(*self.outputSubDirStack)
-        if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
-            os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
+        if not os.path.exists(self.fullOutputDir):
+            os.makedirs(self.fullOutputDir)
 
     def getOutputSubDirSavepoint(self) -> List[str]:
         return self.outputSubDirStack.copy()
@@ -423,8 +436,8 @@ class PlotManager:
     def restoreOutputSubDirSavepoint(self, savepoint: List[str]) -> None:
         self.outputSubDirStack = savepoint
         self.outputSubDir = os.path.join(*self.outputSubDirStack)
-        if not os.path.exists(os.path.join(self.outputDir, self.outputSubDir)):
-            os.makedirs(os.path.join(self.outputDir, self.outputSubDir))
+        if not os.path.exists(self.fullOutputDir):
+            os.makedirs(self.fullOutputDir)
 
     def writeToInfoFile(self, txt: str, suffix="\n") -> None:
         with self.infoFileLock:
