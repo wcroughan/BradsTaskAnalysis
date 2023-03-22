@@ -551,12 +551,12 @@ class BTSession:
 
         if behaviorPeriod.erode is not None:
             startS = (ts[start] - ts[0]) / TRODES_SAMPLING_RATE + behaviorPeriod.erode
-            endS = (ts[end] - ts[0]) / TRODES_SAMPLING_RATE - behaviorPeriod.erode
+            endS = (ts[end-1] - ts[0]) / TRODES_SAMPLING_RATE - behaviorPeriod.erode
             start, end = self.timeIntervalToPosIdx(ts, (startS, endS, "secs"))
 
         if behaviorPeriod.dilate is not None:
             startS = (ts[start] - ts[0]) / TRODES_SAMPLING_RATE - behaviorPeriod.dilate
-            endS = (ts[end] - ts[0]) / TRODES_SAMPLING_RATE + behaviorPeriod.dilate
+            endS = (ts[end-1] - ts[0]) / TRODES_SAMPLING_RATE + behaviorPeriod.dilate
             start, end = self.timeIntervalToPosIdx(ts, (startS, endS, "secs"))
 
         return start, end
@@ -1798,8 +1798,8 @@ class BTSession:
 
         endPoint = entries[0]
         if startPoint == "beginning":
-            # startPoint = np.argwhere(~np.isnan(xs))[0][0]
-            startPoint = self.behaviorPeriodStartEndPosIdx(behaviorPeriod=bp, assumeConvex=True)[0]
+            startPoint = np.argwhere(~np.isnan(xs))[0][0]
+            # startPoint = self.behaviorPeriodStartEndPosIdx(behaviorPeriod=bp, assumeConvex=True)[0]
         elif startPoint == "excursion":
             # Find the start of the last excursion whose start is before endPoint
             excursionStarts = self.probeExcursionStart_posIdx if behaviorPeriod.probe else self.btExcursionStart_posIdx
@@ -1849,8 +1849,8 @@ class BTSession:
 
         endIdx = entries[0]
         if startPoint == "beginning":
-            # startIdx = np.argwhere(~np.isnan(xs))[0][0]
-            startPoint = self.behaviorPeriodStartEndPosIdx(behaviorPeriod=bp, assumeConvex=True)[0]
+            startIdx = np.argwhere(~np.isnan(xs))[0][0]
+            # startPoint = self.behaviorPeriodStartEndPosIdx(behaviorPeriod=bp, assumeConvex=True)[0]
             if startIdx == endIdx:
                 return startAtPosVal
         elif startPoint == "excursion":
@@ -1916,29 +1916,30 @@ class BTSession:
                         returned.
         :param normalizeByDisplacement: If True, the path length is divided by the displacement 
         """
-        if timeFunction:
-            # setup timer to time different parts of the function
-            startTime = time.perf_counter_ns()
+        # if timeFunction:
+        #     # setup timer to time different parts of the function
+        #     startTime = time.perf_counter_ns()
 
         bp = replace(behaviorPeriod, inclusionFlags=None, inclusionArray=None, moveThreshold=None)
-        if timeFunction:
-            replaceTime = time.perf_counter_ns()
+        # if timeFunction:
+        #     replaceTime = time.perf_counter_ns()
 
-        if timeFunction:
-            _, xs, ys, evalTime, copyTime = self.posDuringBehaviorPeriod(bp, returnPerfTimes=True)
-        else:
-            _, xs, ys = self.posDuringBehaviorPeriod(bp)
-        if timeFunction:
-            bpEvalTime = time.perf_counter_ns()
+        _, xs, ys = self.posDuringBehaviorPeriod(bp)
+        # if timeFunction:
+        #     _, xs, ys, evalTime, copyTime = self.posDuringBehaviorPeriod(bp, returnPerfTimes=True)
+        # else:
+        #     _, xs, ys = self.posDuringBehaviorPeriod(bp)
+        # if timeFunction:
+        #     bpEvalTime = time.perf_counter_ns()
         dx = xs - pos[0]
         dy = ys - pos[1]
         dist2 = dx * dx + dy * dy
         inRadius = dist2 < radius * radius
-        if timeFunction:
-            inRadiusTime = time.perf_counter_ns()
+        # if timeFunction:
+        #     inRadiusTime = time.perf_counter_ns()
         if inRadius[0]:
-            if timeFunction:
-                return startAtPosVal, startTime, replaceTime, bpEvalTime, inRadiusTime, 0, 0, 0, 0, 0, 0, 0, evalTime, copyTime
+            # if timeFunction:
+            #     return startAtPosVal, startTime, replaceTime, bpEvalTime, inRadiusTime, 0, 0, 0, 0, 0, 0, 0, evalTime, copyTime
             return startAtPosVal
 
         starts = self.probeExcursionStart_posIdx if behaviorPeriod.probe else self.btExcursionStart_posIdx
@@ -1959,12 +1960,15 @@ class BTSession:
         #         plt.gca().add_patch(rect)
         #         plt.show()
 
-        startOfBehaviorPeriod, endOfBehaviorPeriod = self.behaviorPeriodStartEndPosIdx(
-            behaviorPeriod, assumeConvex=True)
-        # startOfBehaviorPeriod = np.argwhere(~np.isnan(xs))[0][0]
-        # endOfBehaviorPeriod = np.argwhere(~np.isnan(xs))[-1][0]
+        # This version is faster on single thread but doesn't parallelize well
+        # startOfBehaviorPeriod, endOfBehaviorPeriod = self.behaviorPeriodStartEndPosIdx(
+        #     behaviorPeriod, assumeConvex=True)
+        # This version parallelizes well but is slower on single thread
+        startOfBehaviorPeriod = np.argwhere(~np.isnan(xs))[0][0]
+        endOfBehaviorPeriod = np.argwhere(~np.isnan(xs))[-1][0]
+
         keepExcursions = np.logical_and(ends >= startOfBehaviorPeriod,
-                                        starts <= endOfBehaviorPeriod)
+                                        starts < endOfBehaviorPeriod)
         starts = starts[keepExcursions]
         ends = ends[keepExcursions]
 
@@ -1975,32 +1979,32 @@ class BTSession:
         #         plt.xlim(-0.5, 6.5)
         #         plt.ylim(-0.5, 6.5)
         #         plt.show()
-        if timeFunction:
-            filterTime = time.perf_counter_ns()
+        # if timeFunction:
+        #     filterTime = time.perf_counter_ns()
 
         if len(starts) == 0:
-            if timeFunction:
-                return emptyVal, startTime, replaceTime, bpEvalTime, inRadiusTime, filterTime, 0, 0, 0, 0, 0, 0, evalTime, copyTime
+            # if timeFunction:
+            #     return emptyVal, startTime, replaceTime, bpEvalTime, inRadiusTime, filterTime, 0, 0, 0, 0, 0, 0, evalTime, copyTime
             return emptyVal
 
         # remake xs and ys because if start of behavior period is middle of an excursion we still count behavior in that excursion
         # _, xs, ys = self.posDuringBehaviorPeriod(BehaviorPeriod(probe=behaviorPeriod.probe))
         xs = self.probePosXs if behaviorPeriod.probe else self.btPosXs
         ys = self.probePosYs if behaviorPeriod.probe else self.btPosYs
-        if timeFunction:
-            remakeTime = time.perf_counter_ns()
-            totalDistTime = 0
-            totalDivTime = 0
+        # if timeFunction:
+        #     remakeTime = time.perf_counter_ns()
+        #     totalDistTime = 0
+        #     totalDivTime = 0
 
         excursionPathLengths = np.array([noVisitVal] * len(starts))
         visited = np.array([False] * len(starts))
         for ei, (start, end) in enumerate(zip(starts, ends)):
-            if timeFunction:
-                distTime1 = time.perf_counter_ns()
+            # if timeFunction:
+            #     distTime1 = time.perf_counter_ns()
             if not np.any(inRadius[start:end]):
-                if timeFunction:
-                    distTime2 = time.perf_counter_ns()
-                    totalDistTime += distTime2 - distTime1
+                # if timeFunction:
+                #     distTime2 = time.perf_counter_ns()
+                #     totalDistTime += distTime2 - distTime1
                 continue
 
             visited[ei] = True
@@ -2008,18 +2012,18 @@ class BTSession:
             endPoint = np.where(inRadius[start:end])[0][0] + start
             if endPoint == start:
                 excursionPathLengths[ei] = startAtPosVal
-                if timeFunction:
-                    distTime2 = time.perf_counter_ns()
-                    totalDistTime += distTime2 - distTime1
+                # if timeFunction:
+                #     distTime2 = time.perf_counter_ns()
+                #     totalDistTime += distTime2 - distTime1
                 continue
 
             excursionPathLengths[ei] = np.nansum(np.sqrt(np.diff(xs[startPoint:endPoint]) **
                                                          2 + np.diff(ys[startPoint:endPoint]) ** 2))
 
-            if timeFunction:
-                distTime2 = time.perf_counter_ns()
-                totalDistTime += distTime2 - distTime1
-                divTime1 = time.perf_counter_ns()
+            # if timeFunction:
+            #     distTime2 = time.perf_counter_ns()
+            #     totalDistTime += distTime2 - distTime1
+            #     divTime1 = time.perf_counter_ns()
 
             # with warnings.catch_warnings():
             #     warnings.simplefilter("ignore", r"invalid value encountered in scalar divide")
@@ -2043,9 +2047,9 @@ class BTSession:
 
                 excursionPathLengths[ei] /= denom
 
-            if timeFunction:
-                divTime2 = time.perf_counter_ns()
-                totalDivTime += divTime2 - divTime1
+            # if timeFunction:
+            #     divTime2 = time.perf_counter_ns()
+            #     totalDivTime += divTime2 - divTime1
 
             if showPlot:
                 margin = 20
@@ -2067,12 +2071,12 @@ class BTSession:
                 plt.gca().add_patch(circle)
                 plt.show()
 
-        if timeFunction:
-            endOfDistTime = time.perf_counter_ns()
+        # if timeFunction:
+        #     endOfDistTime = time.perf_counter_ns()
 
         if not np.any(visited) or np.all(np.isnan(excursionPathLengths)):
-            if timeFunction:
-                return noVisitVal, startTime, replaceTime, bpEvalTime, inRadiusTime, filterTime, remakeTime, totalDistTime, totalDivTime, endOfDistTime, 0, 0, evalTime, copyTime
+            # if timeFunction:
+            #     return noVisitVal, startTime, replaceTime, bpEvalTime, inRadiusTime, filterTime, remakeTime, totalDistTime, totalDivTime, endOfDistTime, 0, 0, evalTime, copyTime
             return noVisitVal
 
         if reciprocal:
@@ -2082,8 +2086,8 @@ class BTSession:
                 excursionPathLengths = 1 / excursionPathLengths
                 excursionPathLengths[np.isinf(excursionPathLengths)] = emptyVal
 
-        if timeFunction:
-            reciprocalTime = time.perf_counter_ns()
+        # if timeFunction:
+        #     reciprocalTime = time.perf_counter_ns()
 
         if not np.any(visited) or np.all(np.isnan(excursionPathLengths)):
             ret = noVisitVal
@@ -2102,9 +2106,9 @@ class BTSession:
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
-        if timeFunction:
-            retTime = time.perf_counter_ns()
-            return ret, startTime, replaceTime, bpEvalTime, inRadiusTime, filterTime, remakeTime, totalDistTime, totalDivTime, endOfDistTime, reciprocalTime, retTime, evalTime, copyTime
+        # if timeFunction:
+        #     retTime = time.perf_counter_ns()
+        #     return ret, startTime, replaceTime, bpEvalTime, inRadiusTime, filterTime, remakeTime, totalDistTime, totalDivTime, endOfDistTime, reciprocalTime, retTime, evalTime, copyTime
 
         return ret
 
