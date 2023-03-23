@@ -350,14 +350,23 @@ class Shuffler:
 
         return ret
 
-    def runAllShuffles(self, infoFileNames: List[str], numShuffles: int,
+    def runAllShuffles(self,
+                       infoFileNames: Optional[List[str]],
+                       numShuffles: int,
                        significantThreshold: Optional[float] = 0.15,
-                       shuffleResultsFilter: Callable[[str, ShuffleResult, float, str], bool] = notNanPvalFilter) -> str:
+                       shuffleResultsFilter: Callable[[
+                           str, ShuffleResult, float, str], bool] = notNanPvalFilter,
+                       savedStatsFiles: Optional[List[Tuple[str, str]]] = None,
+                       outputFileName: Optional[str] = None) -> str:
         self.numShuffles = numShuffles
 
-        savedStatsFiles = []
-        for infoFileName in infoFileNames:
-            savedStatsFiles += self.getListOfStatsFiles(infoFileName)
+        if infoFileName is None and savedStatsFiles is None:
+            raise Exception("Either infoFileName or savedStatsFiles must be specified")
+
+        if savedStatsFiles is None:
+            savedStatsFiles = []
+            for infoFileName in infoFileNames:
+                savedStatsFiles += self.getListOfStatsFiles(infoFileName)
         filesForEachPlot = {}
         for plotName, statsFile in savedStatsFiles:
             if plotName not in filesForEachPlot:
@@ -440,8 +449,9 @@ class Shuffler:
                                     "isCtrlShuf", "isDiffShuf", "isNextSeshDiffShuf", "pvalIndex"])
         sdf.sort_values(by="pval", inplace=True)
 
-        outputFileName = os.path.join(os.path.dirname(
-            infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_significantShuffles.h5"))
+        if outputFileName is None:
+            outputFileName = os.path.join(os.path.dirname(
+                infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_significantShuffles.h5"))
         sdf.to_hdf(outputFileName, key="significantShuffles")
 
         print(sdf)
