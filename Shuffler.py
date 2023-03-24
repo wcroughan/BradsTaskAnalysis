@@ -360,8 +360,8 @@ class Shuffler:
                        outputFileName: Optional[str] = None) -> str:
         self.numShuffles = numShuffles
 
-        if infoFileName is None and savedStatsFiles is None:
-            raise Exception("Either infoFileName or savedStatsFiles must be specified")
+        if infoFileNames is None and savedStatsFiles is None:
+            raise Exception("Either infoFileNames or savedStatsFiles must be specified")
 
         if savedStatsFiles is None:
             savedStatsFiles = []

@@ -1,27 +1,58 @@
 from glob import glob
 import os
 from itertools import product
+from pprint import pprint
+import random
 
 from Shuffler import Shuffler
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
+from UtilFunctions import findDataDir
+from tqdm import tqdm
 
 
-def getNameFromParams(name, params, func):
+def getNameFromParams(name, params, func, correlationName):
     if name == "measureFromFunc":
         bp = params["bp"]
         radius = params["radius"]
         smoothDist = params["smoothDist"]
-        return f"{func.__name__}_{bp.filenameString()}_r{radius:.2f}_sd{smoothDist:.2f}"
+        ret = f"LM_{func.__name__}_{bp.filenameString()}_r{radius:.2f}_s{smoothDist:.2f}"
+        if correlationName is not None:
+            ret += f"_X_{correlationName}"
+        return ret
     else:
         raise ValueError(f"Unrecognized name: {name}")
 
 
+def findStatsDir(subDir: str, name: str):
+    possibleDrives = [
+        "/media/WDC11/",
+        "/media/WDC10/",
+        "/media/WDC9/",
+        "/media/WDC4/",
+    ]
+    drivesToAppend = []
+    for pd in possibleDrives:
+        if os.path.exists(os.path.join(pd, "BY_PID")):
+            gl = glob(os.path.join(pd, "BY_PID", "*"))
+            drivesToAppend.extend(gl)
+    possibleDrives.extend(drivesToAppend)
+    possibleLocations = [f"{pd}{os.path.sep}{subDir}" for pd in possibleDrives]
+    for pl in possibleLocations:
+        checkFileName = os.path.join(pl, name, "processed.txt")
+        if os.path.exists(checkFileName):
+            return os.path.join(pl, name, "stats")
+        checkFileName = os.path.join(pl, name, "corr_processed.txt")
+        if os.path.exists(checkFileName):
+            return os.path.join(pl, name, "stats")
+    print(f"Could not find stats dir for {name}")
+    print(f"Checked {len(possibleLocations)} possible locations")
+    print(f"Possible locations:")
+    pprint(possibleLocations)
+    return None
+
+
 def main():
-    basicParams = {
-        "bp": allConsideredBPs,
-        "smoothDist": allConsideredSmoothDists,
-    }
     allConsideredBPs = [BP(probe=False),
                         BP(probe=False, inclusionFlags="explore"),
                         BP(probe=False, inclusionFlags="offWall"),
@@ -73,6 +104,10 @@ def main():
                         ]
     allConsideredSmoothDists = [0, 0.5, 1]
     allConsideredRadii = [0.25, 0.5, 1, 1.5]
+    basicParams = {
+        "bp": allConsideredBPs,
+        "smoothDist": allConsideredSmoothDists,
+    }
 
     def isConvex(bp: BP):
         return bp.inclusionArray is None and bp.inclusionFlags is None and bp.moveThreshold is None
@@ -89,32 +124,67 @@ def main():
         **basicParams
     }
 
-    allFigNames = [
-        "",
-    ]
-
     # get all combinations of parameters in specParams
     paramValues = list(specParams.values())
     paramValueCombos = list(product(*paramValues))
     print(f"Running {len(paramValueCombos)} shuffles")
-    # print the first 5 combos
-    print(paramValueCombos[:5])
+
+    correlationNames = [
+        "numStims",
+        "numRipplesPreStats",
+        "numRipplesProbeStats",
+        "stimRate",
+        "rippleRatePreStats",
+        "rippleRateProbeStats",
+    ]
 
     savedStatsNames = []
 
-    for combo in paramValueCombos:
+    testData = True
+
+    for ci, combo in tqdm(enumerate(paramValueCombos)):
+        if testData and ci > 10:
+            break
         params = dict(zip(specParams.keys(), combo))
-        name = getNameFromParams(specName, params, func)
-        print(f"Running {name}")
-        for figName in allFigNames:
-            savedStatsNames.append((name, figName))
-            # TODO actually save the right thing here...
-            # Look in an existing info file
+        # pprint(params)
+        name = getNameFromParams(specName, params, func, None)
+        noCorrStatsDir = findStatsDir(os.path.join(
+            "figures", "GreatBigDatamining_datamined", "B17", specName), name)
+        # print(f"Found stats dir: {noCorrStatsDir}")
+        statsFiles = glob(os.path.join(noCorrStatsDir, "*.h5"))
+        for sf in statsFiles:
+            savedStatsNames.append((f"{name}_{os.path.basename(sf)}", os.path.abspath(sf)))
+        assert noCorrStatsDir.endswith("/stats")
+
+        for correlationName in correlationNames:
+            name = getNameFromParams(specName, params, func, correlationName)
+            # print(f"Running {name}")
+            likelyStatsDir = noCorrStatsDir[:-6] + f"_X_{correlationName}/stats"
+            if not os.path.exists(likelyStatsDir):
+                statsDir = findStatsDir(os.path.join(
+                    "figures", "GreatBigDatamining_datamined", "B17", specName), name)
+                # print(f"Found stats dir: {statsDir}")
+            else:
+                statsDir = likelyStatsDir
+                # print(f"Found expected stats dir: {likelyStatsDir}")
+            statsFiles = glob(os.path.join(statsDir, "*.h5"))
+            for sf in statsFiles:
+                savedStatsNames.append((f"{name}_{os.path.basename(sf)}", os.path.abspath(sf)))
+
+    # print a random sample of the saved stats names
+    print("Sample of saved stats names:")
+    for i in range(10):
+        print(random.choice(savedStatsNames))
 
     shuffler = Shuffler()
-    outputFileName = f"{specName}{'' if func is None else '_' + func.__name__}.h5"
-    shuffler.runAllShuffles(None, numShuffles=100,
-                            savedStatsNames=savedStatsNames, outputFileName=outputFileName)
+    dataDir = findDataDir()
+    outputFileName = os.path.join(
+        dataDir, f"{specName}{'' if func is None else '_' + func.__name__}.h5")
+    input("Press enter to start shuffling (output file: {})".format(outputFileName))
+
+    numShuffles = 9 if testData else 100
+    shuffler.runAllShuffles(None, numShuffles=numShuffles,
+                            savedStatsFiles=savedStatsNames, outputFileName=outputFileName)
 
 
 if __name__ == "__main__":

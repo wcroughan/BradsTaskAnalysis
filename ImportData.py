@@ -954,9 +954,10 @@ def loadPositionData(sesh: BTSession) -> None:
 
         # possibleRoots = ["/home/wcroughan/data/"]
         possibleRoots = [s for s in [
-            getDrivePathByLabel(ss) for ss in [f"WDC{i}" for i in range(4, 9)]
+            getDrivePathByLabel(ss) for ss in [f"WDC{i}" for i in range(4, 13)]
         ] if s is not None]
         possibleSubDirs = [
+            os.path.join("Data", "labvideos", "labvideos", "trimmed", sesh.animalName),
             os.path.join("Backup", "labVideos", "labvideos", "trimmed", sesh.animalName),
             "videos",
             "lab_videos",
