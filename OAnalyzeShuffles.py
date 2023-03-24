@@ -140,7 +140,7 @@ def main():
 
     savedStatsNames = []
 
-    testData = True
+    testData = False
 
     for ci, combo in tqdm(enumerate(paramValueCombos)):
         if testData and ci > 10:
