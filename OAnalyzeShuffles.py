@@ -127,7 +127,7 @@ def main():
     # get all combinations of parameters in specParams
     paramValues = list(specParams.values())
     paramValueCombos = list(product(*paramValues))
-    print(f"Running {len(paramValueCombos)} shuffles")
+    print(f"Gathering files for {len(paramValueCombos)} param combos")
 
     correlationNames = [
         "numStims",
@@ -142,7 +142,8 @@ def main():
 
     testData = False
 
-    for ci, combo in tqdm(enumerate(paramValueCombos)):
+    epvc = enumerate(paramValueCombos)
+    for ci, combo in tqdm(epvc, total=len(paramValueCombos)):
         if testData and ci > 10:
             break
         params = dict(zip(specParams.keys(), combo))
@@ -172,9 +173,9 @@ def main():
                 savedStatsNames.append((f"{name}_{os.path.basename(sf)}", os.path.abspath(sf)))
 
     # print a random sample of the saved stats names
-    print("Sample of saved stats names:")
-    for i in range(10):
-        print(random.choice(savedStatsNames))
+    # print("Sample of saved stats names:")
+    # for i in range(10):
+    #     print(random.choice(savedStatsNames))
 
     shuffler = Shuffler()
     dataDir = findDataDir()
