@@ -415,6 +415,10 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
                 params = dict(zip(specParams.keys(), combo))
                 name = getNameFromParams(specName, params, func, sm)
                 params["bp"] = params["bp"].conciseString()
+
+                paramsByPlotData.append([(name + "_measure.h5", * params.values(), "", "", sm)])
+                paramsByPlotData.append(
+                    [(name + "_measureByCondition.h5", * params.values(), "", "", sm)])
                 # TODO fill this in
                 # Just copied from above
                 # .....
@@ -424,7 +428,7 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
                                         params.values(), "symmetric", "diff"))
 
         paramsByPlot = pd.DataFrame(paramsByPlotData, columns=[
-                                    "plot", *specParams.keys(), "ctrlName", "suffix"])
+                                    "plot", *specParams.keys(), "ctrlName", "suffix", "correlationName"])
 
 
 def getChosenParams(specName, func) -> List[Dict[str, Any]]:
