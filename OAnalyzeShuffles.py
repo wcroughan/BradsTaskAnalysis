@@ -4,12 +4,21 @@ from itertools import product
 from pprint import pprint
 import random
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import itertools
+from typing import List, Dict, Any, Optional, Callable
+from datetime import datetime
+import time
 
 from Shuffler import Shuffler
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
-from UtilFunctions import findDataDir
+from UtilFunctions import findDataDir, getLoadInfo
 from tqdm import tqdm
+from MeasureTypes import LocationMeasure
+from BTData import BTData
+from PlotUtil import PlotManager
 
 
 def getNameFromParams(name, params, func, correlationName):
@@ -53,7 +62,7 @@ def findStatsDir(subDir: str, name: str):
     return None
 
 
-def main():
+def getParamsForName(specName, func):
     allConsideredBPs = [BP(probe=False),
                         BP(probe=False, inclusionFlags="explore"),
                         BP(probe=False, inclusionFlags="offWall"),
@@ -114,28 +123,28 @@ def main():
         return bp.inclusionArray is None and bp.inclusionFlags is None and bp.moveThreshold is None
     allConvexBPs = [bp for bp in allConsideredBPs if isConvex(bp)]
 
-    specName = "measureFromFunc"
-    func = BTSession.totalTimeAtPosition
-    specParams = {
-        # "func": [BTSession.totalTimeAtPosition,
-        #          BTSession.numVisitsToPosition,
-        #          BTSession.avgDwellTimeAtPosition,
-        #          BTSession.avgCurvatureAtPosition],
-        "radius": allConsideredRadii,
-        **basicParams
-    }
+    if specName == "measureFromFunc":
+        return {
+            "radius": allConsideredRadii,
+            **basicParams
+        }
+    else:
+        raise ValueError(f"Unrecognized specName: {specName}")
 
-    testData = False
+
+def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[Dict], bool]] = None):
+    specParams = getParamsForName(specName, func)
     dataDir = findDataDir()
     outputFileName = os.path.join(
         dataDir, f"{specName}{'' if func is None else '_' + func.__name__}{'_test' if testData else ''}.h5")
 
+    # get all combinations of parameters in specParams
+    paramValues = list(specParams.values())
+    paramValueCombos = list(product(*paramValues))
+
     if os.path.exists(outputFileName):
         print(f"Output file {outputFileName} already exists!")
     else:
-        # get all combinations of parameters in specParams
-        paramValues = list(specParams.values())
-        paramValueCombos = list(product(*paramValues))
         print(f"Gathering files for {len(paramValueCombos)} param combos")
 
         correlationNames = [
@@ -150,7 +159,7 @@ def main():
         savedStatsNames = []
 
         epvc = enumerate(paramValueCombos)
-        for ci, combo in tqdm(epvc, total=len(paramValueCombos)):
+        for ci, combo in tqdm(epvc, total=len(paramValueCombos), smoothing=0):
             if testData and ci > 10:
                 break
             params = dict(zip(specParams.keys(), combo))
@@ -189,28 +198,302 @@ def main():
 
         numShuffles = 9 if testData else 100
         shuffler.runAllShuffles(None, numShuffles=numShuffles,
-                                savedStatsFiles=savedStatsNames, outputFileName=outputFileName)
+                                savedStatsFiles=savedStatsNames, outputFileName=outputFileName,
+                                justGlobal=True, skipCorrelations=True)
 
     print("Here's the output")
-    # sdf.to_hdf(outputFileName, key="significantShuffles")
     significantShuffles = pd.read_hdf(outputFileName, key="significantShuffles")
-    print(significantShuffles.head().to_string())
-    print(significantShuffles.shape)
-    # sdf.to_hdf(outputFileName, key="significantCorrelations")
-    significantCorrelations = pd.read_hdf(outputFileName, key="significantCorrelations")
-    print(significantCorrelations.head().to_string())
-    print(significantCorrelations.shape)
+    significantShuffles = significantShuffles[["plot", "shuffle", "pval", "direction"]]
+    significantShuffles = significantShuffles[significantShuffles["shuffle"].str.startswith(
+        "[GLO") & ~ significantShuffles["plot"].str.contains("_X_")]
+    # significantShuffles = significantShuffles[significantShuffles["plot"].str.endswith("diff.h5")]
 
-    # Next steps:
-    #
-    # Choose a set of parameters to make figures for
-    # chosen set should be "robust" in that modifying any parameter somewhat should not change the conclusions
-    # For probe stats BP, can prefer BPs that include more behavior over less, and ones that don't have inclusion flags
-    # For numerical parameters, plot the effect of changing them on the pvalues over a sampling of the other parameters.
-    # For categorical parameters, plot the effect of changing them on the pvalues over a sampling of the other parameters.
-    # For task measures, I think just have to choose each set of BPs and go through it choosing all the other parameters, and then
-    # select from the BPs at the end
+    paramsByPlotData = []
+    for combo in paramValueCombos:
+        params = dict(zip(specParams.keys(), combo))
+        name = getNameFromParams(specName, params, func, None)
+        params["bp"] = params["bp"].conciseString()
+        paramsByPlotData.append((name + "_measureByCondition.h5", *params.values(), "", ""))
+        # away control
+        paramsByPlotData.append((name + "_ctrl_away.h5", *params.values(), "away", ""))
+        paramsByPlotData.append((name + "_ctrl_away_cond.h5", *params.values(), "away", "cond"))
+        paramsByPlotData.append((name + "_ctrl_away_diff.h5", *params.values(), "away", "diff"))
+        # later sessions control
+        paramsByPlotData.append((name + "_ctrl_latersessions.h5", *params.values(), "later", ""))
+        paramsByPlotData.append((name + "_ctrl_latersessions_cond.h5",
+                                *params.values(), "later", "cond"))
+        paramsByPlotData.append((name + "_ctrl_latersessions_diff.h5",
+                                *params.values(), "later", "diff"))
+        # next session control
+        paramsByPlotData.append((name + "_ctrl_nextsession.h5", *params.values(), "next", ""))
+        paramsByPlotData.append((name + "_ctrl_nextsession_cond.h5",
+                                *params.values(), "next", "cond"))
+        paramsByPlotData.append((name + "_ctrl_nextsession_diff.h5",
+                                *params.values(), "next", "diff"))
+        # other sessions control
+        paramsByPlotData.append((name + "_ctrl_othersessions.h5", *params.values(), "other", ""))
+        paramsByPlotData.append((name + "_ctrl_othersessions_cond.h5",
+                                *params.values(), "other", "cond"))
+        paramsByPlotData.append((name + "_ctrl_othersessions_diff.h5",
+                                *params.values(), "other", "diff"))
+        # symmetric control
+        paramsByPlotData.append((name + "_ctrl_symmetric.h5", *params.values(), "symmetric", ""))
+        paramsByPlotData.append((name + "_ctrl_symmetric_cond.h5", *
+                                params.values(), "symmetric", "cond"))
+        paramsByPlotData.append((name + "_ctrl_symmetric_diff.h5", *
+                                params.values(), "symmetric", "diff"))
+
+    paramsByPlot = pd.DataFrame(paramsByPlotData, columns=[
+                                "plot", *specParams.keys(), "ctrlName", "suffix"])
+
+    # If ctrlName is empty, suffix should be empty too
+    badFlags = (paramsByPlot["ctrlName"] == "") & (paramsByPlot["suffix"] != "")
+    # print(f"Bad flags: {badFlags.sum()}")
+    # print(paramsByPlot[badFlags])
+    assert badFlags.sum() == 0
+    # Now add these columns to the significant shuffles dataframe, merging on the plot name
+    significantShuffles = significantShuffles.merge(paramsByPlot, on="plot")
+    significantShuffles["shuffleCategory"] = significantShuffles["shuffle"].str.split(
+        " ", expand=True)[1]
+    significantShuffles["shuffleCategoryValue"] = significantShuffles["shuffle"].str.split(
+        ")", expand=True)[0].str.split("(", expand=True)[1]
+
+    # possibly interesting things to look for:
+    # effect with no suffix or control with condition shuffle, value SWR
+    significantShuffles["flag"] = (significantShuffles["suffix"] == "") & \
+                                  (significantShuffles["ctrlName"] == "") & \
+                                  (significantShuffles["shuffleCategory"] == "condition") & \
+                                  (significantShuffles["shuffleCategoryValue"] == "SWR")
+
+    # _diff plot shows effect of condition
+    significantShuffles["flag"] = (significantShuffles["flag"]) | \
+                                  (significantShuffles["suffix"] == "diff") & \
+                                  (significantShuffles["shuffleCategory"] == "condition") & \
+                                  (significantShuffles["shuffleCategoryValue"] == "SWR")
+    # _ctrl plot shows effect of val vs ctrl. For consistency, shuffle value should be home or same
+    significantShuffles["flag"] = (significantShuffles["flag"]) | \
+        (significantShuffles["suffix"] == "") & \
+        (significantShuffles["ctrlName"] != "") & \
+        (significantShuffles["shuffleCategoryValue"].isin(
+            ["home", "same"]))
+    # _ctrl_cond plot shows effect of cond  -  Don't need ot look at interaction, already taken care of in diff plot
+    significantShuffles["flag"] = (significantShuffles["flag"]) | \
+        (significantShuffles["suffix"] == "cond") & \
+        (significantShuffles["ctrlName"] != "") & \
+        (significantShuffles["shuffleCategory"] == "condition") & \
+        (significantShuffles["shuffleCategoryValue"] == "SWR")
+
+    significantShuffles = significantShuffles[significantShuffles["flag"]]
+    # can drop the flag column now
+    significantShuffles = significantShuffles.drop(
+        columns=["flag", "shuffleCategoryValue", "shuffleCategory"])
+    print(significantShuffles.head(20))
+    print(significantShuffles.shape)
+
+    # All column names except for plot, shuffle, pval, and direction are parameters
+    allParams = significantShuffles.drop(columns=["plot", "shuffle", "pval", "direction"])
+    # Separate into numerical columns and categorical columns
+    numericalParams = allParams.select_dtypes(include=np.number)
+    categoricalParams = allParams.select_dtypes(exclude=np.number)
+    # print these out to confirm
+    print(numericalParams.columns)
+    print(categoricalParams.columns)
+
+    # For each combination of values for the categorical params, plot the effect of changing the numerical params on the pvalues
+    categoricalCombinations = list(itertools.product(
+        *[categoricalParams[col].unique() for col in categoricalParams.columns]))
+    for combo in categoricalCombinations:
+        if filters is not None:
+            # If none of the filters are met, skip this combination
+            found = False
+            for filter in filters:
+                match = True
+                for k, v in filter.items():
+                    if k == "bp":
+                        v = v.conciseString()
+                    if combo[categoricalParams.columns.get_loc(k)] != v:
+                        match = False
+                        break
+                if match:
+                    found = True
+                    break
+            if not found:
+                continue
+
+        # get a df that's just the rows with this combination of values
+        comboDf = significantShuffles.copy()
+        # If this is empty, skip it
+        for i, col in enumerate(categoricalParams.columns):
+            comboDf = comboDf[comboDf[col] == combo[i]]
+        if comboDf.shape[0] == 0:
+            continue
+
+        fig, axs = plt.subplots(1, len(numericalParams.columns), figsize=(10, 3))
+        for i, col in enumerate(numericalParams.columns):
+            ax = axs[i]
+            assert isinstance(ax, plt.Axes)
+            ax.set_title(col)
+
+            # Set the min and max of the y axis according to the min and max of the pvalues
+            maxPval = significantShuffles["pval"].max()
+            ax.set_ylim(-0.01, maxPval * 1.1)
+            # Set the min and max of the x axis according to the min and max of the numerical param
+            minX = significantShuffles[col].min()
+            if minX > 0:
+                minX = minX * 0.9
+            elif minX < 0:
+                minX = minX * 1.1
+            else:
+                minX = -0.1
+            maxX = significantShuffles[col].max()
+            if maxX > 0:
+                maxX = maxX * 1.1
+            elif maxX < 0:
+                maxX = maxX * 0.9
+            else:
+                maxX = 0.1
+            ax.set_xlim(minX, maxX)
+            # Set the x ticks to be the unique values of the numerical param
+            ax.set_xticks(significantShuffles[col].unique())
+
+            # get all the unique values for all the other numerical params
+            otherNumericalParams = numericalParams.columns.drop(col)
+            otherNumericalParamValues = [numericalParams[col].unique()
+                                         for col in otherNumericalParams]
+            # get all the combinations of values for all the other numerical params
+            otherNumericalParamCombinations = list(itertools.product(*otherNumericalParamValues))
+            # for each combination of values for all the other numerical params, plot the pvalue for this numerical param
+            for onci, otherNumCombo in enumerate(otherNumericalParamCombinations):
+                # get a df that's just the rows with this combination of values
+                otherNumComboDf = comboDf.copy()
+                for j, otherNumCol in enumerate(otherNumericalParams):
+                    otherNumComboDf = otherNumComboDf[otherNumComboDf[otherNumCol]
+                                                      == otherNumCombo[j]]
+                # plot the pvalue for this numerical param, but add some jitter to the x axis
+                # so that the points don't overlap. Depending on the value of the direction column,
+                # the points will be circles or x's
+                # jitter = np.random.uniform(-1, 1, len(otherNumComboDf)) * 0.01
+                jitter = onci * (maxX - minX) * 0.01
+                xvals = (otherNumComboDf[col] + jitter).to_numpy()
+                yvals = (otherNumComboDf["pval"]).to_numpy()
+                direction = otherNumComboDf["direction"].to_numpy()
+
+                # Choose a color here so both plots are the same color
+                color = next(ax._get_lines.prop_cycler)["color"]
+
+                ax.plot(xvals[direction], yvals[direction], "o",
+                        label=str(otherNumCombo), color=color)
+                ax.plot(xvals[~direction], yvals[~direction], "x", color=color)
+
+            ax.legend()
+
+        # Add a title to the whole figure
+        fig.suptitle(
+            "    ".join([f"{col}={val}" for col, val in zip(categoricalParams.columns, combo)]))
+
+        plt.tight_layout()
+        plt.show()
+
+
+def getChosenParams(specName, func) -> List[Dict[str, Any]]:
+    if specName == "measureFromFunc" and func == BTSession.totalTimeAtPosition:
+        chosenParams = [
+            {
+                "bp": BP(probe=False),
+                "radius": 1,
+                "smoothDist": 0
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="homeTrial", erode=3),
+                "radius": 1,
+                "smoothDist": 0
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="awayTrial", erode=3),
+                "radius": 1,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="homeTrial", erode=3, trialInterval=(2, 7)),
+                "radius": 1,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="homeTrial", erode=3, trialInterval=(2, 7)),
+                "radius": 1.5,
+                "smoothDist": 1.0
+            },
+            {
+                "bp": BP(probe=False, erode=3, trialInterval=(0, 1)),
+                "radius": 0.5,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="awayTrial", erode=3, trialInterval=(10, 15)),
+                "radius": 0.5,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="awayTrial", erode=3, trialInterval=(10, 15)),
+                "radius": 0.5,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="homeTrial", erode=3, trialInterval=(10, 15)),
+                "radius": 0.5,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="explore"),
+                "radius": 0.5,
+                "smoothDist": 0.5
+            },
+        ]
+    else:
+        raise Exception("No chosen params for this specName and func")
+
+    return chosenParams
+
+
+def generateChosenPlots(specName, func, chosenParams):
+    ratName = "B17"
+    ratInfo = getLoadInfo(ratName)
+    dataFilename = os.path.join(ratInfo.output_dir, ratInfo.out_filename)
+    print("loading from " + dataFilename)
+    ratData = BTData()
+    ratData.loadFromFile(dataFilename)
+    sessions = ratData.getSessions()
+
+    infoFileName = datetime.now().strftime("chosenB17Plots_%Y%m%d_%H%M%S.txt")
+    dataDir = findDataDir()
+    outputDir = "chosenB17Plots"
+    globalOutputDir = os.path.join(dataDir, "figures", outputDir)
+    rseed = int(time.perf_counter())
+    print("random seed =", rseed)
+    pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
+                     infoFileName=infoFileName, verbosity=3)
+
+    for params in chosenParams:
+        if specName == "measureFromFunc":
+            bp = params["bp"]
+            radius = params["radius"]
+            smoothDist = params["smoothDist"]
+            lm = LocationMeasure(f"{func.__name__}_{bp.filenameString()}_r{radius:.2f}_s{smoothDist:.2f}",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: func(sesh, bp, pos, radius),
+                                 ), sessions, smoothDist=smoothDist)
+            lm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
 
 
 if __name__ == "__main__":
-    main()
+    specName = "measureFromFunc"
+    # func = BTSession.totalTimeAtPosition
+    # filters = [ ]
+    filters = None
+    for func in [BTSession.numVisitsToPosition,
+                 BTSession.avgDwellTimeAtPosition,
+                 BTSession.avgCurvatureAtPosition]:
+        lookAtShuffles(specName, func, filters=filters)
+
+    # chosenParams = getChosenParams(specName, func)
+    # generateChosenPlots(specName, func, chosenParams)

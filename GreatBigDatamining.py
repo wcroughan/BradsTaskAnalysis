@@ -851,7 +851,8 @@ def main(plotFlags: List[str] | str = "tests",
             for sm in correlationSMs:
                 sm.makeFigures(pp, excludeFromCombo=True)
 
-            for mi, (makeMeasure, paramDict) in enumerate(allSpecs):
+            reversedSpecs = reversed(list(enumerate(allSpecs)))
+            for mi, (makeMeasure, paramDict) in reversedSpecs:
                 # For debugging, removing stuff that's already been run
                 if testData:
                     if makeMeasure.__name__ in [

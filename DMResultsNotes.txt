@@ -1,0 +1,32 @@
+total time at location
+
+Task
+    full task raw vals might be different. Shows up also in diff with all but sym
+    hometrial, other, cond - "home wells from X condition are revisited more often during other sessions"? Need to look at plot
+    hometrial, other/next/later, diff - maybe driven by the above? Plot
+    awaytrial, away/sym, cond - off wall wells have more time spent while searching for away. No home-specificity effect though
+    awaytrial, later, diff - old homes from X condition sessions are checked more during following sessions' away trials
+    hometrial t2-7, raw vals - No idea how these aren't just all 0
+    awaytrial t2-7, away/sym diff - tended to hover around the home more in early away trials in condition X
+    explore, other/later, cond - homes from X condition are revisited more in other sessions
+    erode t0-1, later/other diff/cond - on first trial checking out previous home wells according to their condition
+    erode t0-1, raw vals, how is not just zeros?
+    awaytrial t10-15, all, cond/diff - no condition effects at all in later trials
+    hometrial t10-15, sym, cond/diff - path optimality difference for home near end?
+    
+    don't look at
+        explore off wall, complex confounding problems with excluded home well consumption time, and probably better periods to get at potentially interesting sections like away trials specifically
+        hometrial t2-7, away, cond. I think would be getting at how often aways are checked on way to home, better ways of asking that
+        same for diff
+
+Probe
+    filltime - clear home memory regardless of condition
+    filltime, offwall, moving, away cond - in condition X, spends more time exploring in general
+    filltime, offwall, moving, other cond - spends more time revisiting home wells from condition X (holds in later ctrl?)
+
+
+    
+
+Measure might want to add:
+    how often are aways checked on way to home. Specifically t2-7
+    How often are previously rewarded wells checked during away trials? Specifically t2-7

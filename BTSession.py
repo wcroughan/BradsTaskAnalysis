@@ -112,6 +112,39 @@ class BehaviorPeriod:
             s += f"_trialInterval_{self.trialInterval[0]}_{self.trialInterval[1]}"
         return s
 
+    def conciseString(self) -> str:
+        """
+        Returns a short human readable string that describes this behavior period
+        """
+        s = "Probe" if self.probe else "BT"
+        if self.timeInterval is not None:
+            if isinstance(self.timeInterval, (tuple, list)):
+                s += f" {self.timeInterval[0]}-{self.timeInterval[1]}"
+                if len(self.timeInterval) == 3:
+                    s += f" {self.timeInterval[2]}"
+            else:
+                if "<lambda>" in self.timeInterval.__name__:
+                    s += " lambda"
+                else:
+                    s += f" {self.timeInterval.__name__}"
+        if self.inclusionFlags is not None:
+            if isinstance(self.inclusionFlags, str):
+                s += f" {self.inclusionFlags}"
+            else:
+                for flag in self.inclusionFlags:
+                    s += f" {flag}"
+        if self.inclusionArray is not None:
+            s += " inclusionArray"
+        if self.moveThreshold is not None:
+            s += f" moveThresh {self.moveThreshold}"
+        if self.erode is not None:
+            s += f" erode {self.erode}"
+        if self.dilate is not None:
+            s += f" dilate {self.dilate}"
+        if self.trialInterval is not None:
+            s += f" trialInterval {self.trialInterval[0]}-{self.trialInterval[1]}"
+        return s
+
 
 @dataclass
 class BTSession:

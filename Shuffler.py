@@ -357,7 +357,9 @@ class Shuffler:
                        shuffleResultsFilter: Callable[[
                            str, ShuffleResult, float, str], bool] = notNanPvalFilter,
                        savedStatsFiles: Optional[List[Tuple[str, str]]] = None,
-                       outputFileName: Optional[str] = None) -> str:
+                       outputFileName: Optional[str] = None,
+                       justGlobal=False,
+                       skipCorrelations=False) -> str:
         self.numShuffles = numShuffles
 
         if infoFileNames is None and savedStatsFiles is None:
@@ -375,7 +377,7 @@ class Shuffler:
 
         shuffResults: List[Tuple[str, List[List[ShuffleResult]], str]] = []
         correlationResults: List[Tuple[str, List[Tuple[Iterable[str], float, float]], str]] = []
-        for plotName in tqdm(filesForEachPlot, desc="Running shuffles and correlations", total=len(filesForEachPlot)):
+        for plotName in tqdm(filesForEachPlot, desc="Running shuffles and correlations", total=len(filesForEachPlot), smoothing=0):
             df = pd.concat([pd.read_hdf(f, key="stats") for f in filesForEachPlot[plotName]])
             yvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="yvalNames")
             xvalNames = pd.read_hdf(filesForEachPlot[plotName][0], key="xvalNames")
@@ -399,7 +401,8 @@ class Shuffler:
                 catsToShuffle.remove(td)
 
             try:
-                specs = self.getAllShuffleSpecs(df, columnsToShuffle=catsToShuffle)
+                specs = self.getAllShuffleSpecs(
+                    df, columnsToShuffle=catsToShuffle, justGlobal=justGlobal)
             except Exception as e:
                 print("Error getting shuffle specs for plot {} of measure {}".format(plotName, measureName))
                 print(e)
@@ -410,13 +413,14 @@ class Shuffler:
             sr = self._doShuffles(df, specs, yvalNames)
             shuffResults.append((plotName, sr, measureName))
 
-            # Look for xval correlations
-            xynamepairs = list(product(xvalNames, yvalNames))
-            cr = []
-            for xname, yname in xynamepairs:
-                cr.append(self.runCorrelations(df, xname, yname, catsToShuffle))
+            if not skipCorrelations:
+                # Look for xval correlations
+                xynamepairs = list(product(xvalNames, yvalNames))
+                cr = []
+                for xname, yname in xynamepairs:
+                    cr.append(self.runCorrelations(df, xname, yname, catsToShuffle))
 
-            correlationResults.append((plotName, cr, measureName))
+                correlationResults.append((plotName, cr, measureName))
 
         if significantThreshold is None:
             significantThreshold = 1.0
@@ -457,21 +461,22 @@ class Shuffler:
         print(sdf)
         print(f"{ len(shuffResults)=  }")
 
-        significantCorrelations = []
-        for plotName, cr, measureName in tqdm(correlationResults, desc="Filtering correlations", total=len(correlationResults)):
-            for catCombRes in cr:
-                for catNames, corr, pval in catCombRes:
-                    if pval < significantThreshold or pval > 1 - significantThreshold:
-                        if shuffleResultsFilter(plotName, None, pval, measureName):
-                            plotSuffix = plotName[len(measureName)-3:]
-                            significantCorrelations.append(
-                                (plotName, "_".join(catNames), corr, pval if pval < 0.5 else 1 - pval, pval < 0.5,
-                                    measureName, plotSuffix))
+        if not skipCorrelations:
+            significantCorrelations = []
+            for plotName, cr, measureName in tqdm(correlationResults, desc="Filtering correlations", total=len(correlationResults)):
+                for catCombRes in cr:
+                    for catNames, corr, pval in catCombRes:
+                        if pval < significantThreshold or pval > 1 - significantThreshold:
+                            if shuffleResultsFilter(plotName, None, pval, measureName):
+                                plotSuffix = plotName[len(measureName)-3:]
+                                significantCorrelations.append(
+                                    (plotName, "_".join(catNames), corr, pval if pval < 0.5 else 1 - pval, pval < 0.5,
+                                        measureName, plotSuffix))
 
-        sdf = pd.DataFrame(significantCorrelations,
-                           columns=["plot", "categories", "correlation", "pval", "direction", "measure", "plotSuffix"])
-        sdf.sort_values(by="pval", inplace=True)
-        sdf.to_hdf(outputFileName, key="significantCorrelations")
+            sdf = pd.DataFrame(significantCorrelations,
+                               columns=["plot", "categories", "correlation", "pval", "direction", "measure", "plotSuffix"])
+            sdf.sort_values(by="pval", inplace=True)
+            sdf.to_hdf(outputFileName, key="significantCorrelations")
 
         return outputFileName
 
@@ -549,7 +554,7 @@ class Shuffler:
 
         return ret
 
-    def getAllShuffleSpecs(self, df, columnsToShuffle=None):
+    def getAllShuffleSpecs(self, df, columnsToShuffle=None, justGlobal=False):
         if columnsToShuffle is None:
             columnsToShuffle = list(df.columns)
 
@@ -568,11 +573,12 @@ class Shuffler:
             for val in valSet[col]:
                 ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName=col, value=val)])
 
-            otherCols = [c for c in columnsToShuffle if c != col]
-            rec = self.getAllShuffleSpecs(df, otherCols)
-            for r in rec:
-                ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL,
-                           categoryName=col, value=None)] + r)
+            if not justGlobal:
+                otherCols = [c for c in columnsToShuffle if c != col]
+                rec = self.getAllShuffleSpecs(df, otherCols)
+                for r in rec:
+                    ret.append([ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL,
+                                          categoryName=col, value=None)] + r)
 
         return ret
 
