@@ -132,7 +132,8 @@ def getParamsForName(specName, func):
         raise ValueError(f"Unrecognized specName: {specName}")
 
 
-def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[Dict], bool]] = None):
+def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[Dict], bool]] = None,
+                   plotShuffles=True, plotCorrelations=True):
     specParams = getParamsForName(specName, func)
     dataDir = findDataDir()
     outputFileName = os.path.join(
@@ -141,20 +142,19 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
     # get all combinations of parameters in specParams
     paramValues = list(specParams.values())
     paramValueCombos = list(product(*paramValues))
+    correlationNames = [
+        "numStims",
+        "numRipplesPreStats",
+        "numRipplesProbeStats",
+        "stimRate",
+        "rippleRatePreStats",
+        "rippleRateProbeStats",
+    ]
 
     if os.path.exists(outputFileName):
         print(f"Output file {outputFileName} already exists!")
     else:
         print(f"Gathering files for {len(paramValueCombos)} param combos")
-
-        correlationNames = [
-            "numStims",
-            "numRipplesPreStats",
-            "numRipplesProbeStats",
-            "stimRate",
-            "rippleRatePreStats",
-            "rippleRateProbeStats",
-        ]
 
         savedStatsNames = []
 
@@ -199,200 +199,232 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         numShuffles = 9 if testData else 100
         shuffler.runAllShuffles(None, numShuffles=numShuffles,
                                 savedStatsFiles=savedStatsNames, outputFileName=outputFileName,
-                                justGlobal=True, skipCorrelations=True)
+                                justGlobal=True)
 
-    print("Here's the output")
-    significantShuffles = pd.read_hdf(outputFileName, key="significantShuffles")
-    significantShuffles = significantShuffles[["plot", "shuffle", "pval", "direction"]]
-    significantShuffles = significantShuffles[significantShuffles["shuffle"].str.startswith(
-        "[GLO") & ~ significantShuffles["plot"].str.contains("_X_")]
-    # significantShuffles = significantShuffles[significantShuffles["plot"].str.endswith("diff.h5")]
+    if plotShuffles:
+        significantShuffles = pd.read_hdf(outputFileName, key="significantShuffles")
+        significantShuffles = significantShuffles[["plot", "shuffle", "pval", "direction"]]
+        significantShuffles = significantShuffles[significantShuffles["shuffle"].str.startswith(
+            "[GLO") & ~ significantShuffles["plot"].str.contains("_X_")]
+        # significantShuffles = significantShuffles[significantShuffles["plot"].str.endswith("diff.h5")]
 
-    paramsByPlotData = []
-    for combo in paramValueCombos:
-        params = dict(zip(specParams.keys(), combo))
-        name = getNameFromParams(specName, params, func, None)
-        params["bp"] = params["bp"].conciseString()
-        paramsByPlotData.append((name + "_measureByCondition.h5", *params.values(), "", ""))
-        # away control
-        paramsByPlotData.append((name + "_ctrl_away.h5", *params.values(), "away", ""))
-        paramsByPlotData.append((name + "_ctrl_away_cond.h5", *params.values(), "away", "cond"))
-        paramsByPlotData.append((name + "_ctrl_away_diff.h5", *params.values(), "away", "diff"))
-        # later sessions control
-        paramsByPlotData.append((name + "_ctrl_latersessions.h5", *params.values(), "later", ""))
-        paramsByPlotData.append((name + "_ctrl_latersessions_cond.h5",
-                                *params.values(), "later", "cond"))
-        paramsByPlotData.append((name + "_ctrl_latersessions_diff.h5",
-                                *params.values(), "later", "diff"))
-        # next session control
-        paramsByPlotData.append((name + "_ctrl_nextsession.h5", *params.values(), "next", ""))
-        paramsByPlotData.append((name + "_ctrl_nextsession_cond.h5",
-                                *params.values(), "next", "cond"))
-        paramsByPlotData.append((name + "_ctrl_nextsession_diff.h5",
-                                *params.values(), "next", "diff"))
-        # other sessions control
-        paramsByPlotData.append((name + "_ctrl_othersessions.h5", *params.values(), "other", ""))
-        paramsByPlotData.append((name + "_ctrl_othersessions_cond.h5",
-                                *params.values(), "other", "cond"))
-        paramsByPlotData.append((name + "_ctrl_othersessions_diff.h5",
-                                *params.values(), "other", "diff"))
-        # symmetric control
-        paramsByPlotData.append((name + "_ctrl_symmetric.h5", *params.values(), "symmetric", ""))
-        paramsByPlotData.append((name + "_ctrl_symmetric_cond.h5", *
-                                params.values(), "symmetric", "cond"))
-        paramsByPlotData.append((name + "_ctrl_symmetric_diff.h5", *
-                                params.values(), "symmetric", "diff"))
+        paramsByPlotData = []
+        for combo in paramValueCombos:
+            params = dict(zip(specParams.keys(), combo))
+            name = getNameFromParams(specName, params, func, None)
+            params["bp"] = params["bp"].conciseString()
+            paramsByPlotData.append((name + "_measureByCondition.h5", *params.values(), "", ""))
+            # away control
+            paramsByPlotData.append((name + "_ctrl_away.h5", *params.values(), "away", ""))
+            paramsByPlotData.append((name + "_ctrl_away_cond.h5", *params.values(), "away", "cond"))
+            paramsByPlotData.append((name + "_ctrl_away_diff.h5", *params.values(), "away", "diff"))
+            # later sessions control
+            paramsByPlotData.append((name + "_ctrl_latersessions.h5",
+                                    *params.values(), "later", ""))
+            paramsByPlotData.append((name + "_ctrl_latersessions_cond.h5",
+                                    *params.values(), "later", "cond"))
+            paramsByPlotData.append((name + "_ctrl_latersessions_diff.h5",
+                                    *params.values(), "later", "diff"))
+            # next session control
+            paramsByPlotData.append((name + "_ctrl_nextsession.h5", *params.values(), "next", ""))
+            paramsByPlotData.append((name + "_ctrl_nextsession_cond.h5",
+                                    *params.values(), "next", "cond"))
+            paramsByPlotData.append((name + "_ctrl_nextsession_diff.h5",
+                                    *params.values(), "next", "diff"))
+            # other sessions control
+            paramsByPlotData.append((name + "_ctrl_othersessions.h5",
+                                    *params.values(), "other", ""))
+            paramsByPlotData.append((name + "_ctrl_othersessions_cond.h5",
+                                    *params.values(), "other", "cond"))
+            paramsByPlotData.append((name + "_ctrl_othersessions_diff.h5",
+                                    *params.values(), "other", "diff"))
+            # symmetric control
+            paramsByPlotData.append((name + "_ctrl_symmetric.h5", *
+                                    params.values(), "symmetric", ""))
+            paramsByPlotData.append((name + "_ctrl_symmetric_cond.h5", *
+                                    params.values(), "symmetric", "cond"))
+            paramsByPlotData.append((name + "_ctrl_symmetric_diff.h5", *
+                                    params.values(), "symmetric", "diff"))
 
-    paramsByPlot = pd.DataFrame(paramsByPlotData, columns=[
-                                "plot", *specParams.keys(), "ctrlName", "suffix"])
+        paramsByPlot = pd.DataFrame(paramsByPlotData, columns=[
+                                    "plot", *specParams.keys(), "ctrlName", "suffix"])
 
-    # If ctrlName is empty, suffix should be empty too
-    badFlags = (paramsByPlot["ctrlName"] == "") & (paramsByPlot["suffix"] != "")
-    # print(f"Bad flags: {badFlags.sum()}")
-    # print(paramsByPlot[badFlags])
-    assert badFlags.sum() == 0
-    # Now add these columns to the significant shuffles dataframe, merging on the plot name
-    significantShuffles = significantShuffles.merge(paramsByPlot, on="plot")
-    significantShuffles["shuffleCategory"] = significantShuffles["shuffle"].str.split(
-        " ", expand=True)[1]
-    significantShuffles["shuffleCategoryValue"] = significantShuffles["shuffle"].str.split(
-        ")", expand=True)[0].str.split("(", expand=True)[1]
+        # If ctrlName is empty, suffix should be empty too
+        badFlags = (paramsByPlot["ctrlName"] == "") & (paramsByPlot["suffix"] != "")
+        # print(f"Bad flags: {badFlags.sum()}")
+        # print(paramsByPlot[badFlags])
+        assert badFlags.sum() == 0
+        # Now add these columns to the significant shuffles dataframe, merging on the plot name
+        significantShuffles = significantShuffles.merge(paramsByPlot, on="plot")
+        significantShuffles["shuffleCategory"] = significantShuffles["shuffle"].str.split(
+            " ", expand=True)[1]
+        significantShuffles["shuffleCategoryValue"] = significantShuffles["shuffle"].str.split(
+            ")", expand=True)[0].str.split("(", expand=True)[1]
 
-    # possibly interesting things to look for:
-    # effect with no suffix or control with condition shuffle, value SWR
-    significantShuffles["flag"] = (significantShuffles["suffix"] == "") & \
-                                  (significantShuffles["ctrlName"] == "") & \
-                                  (significantShuffles["shuffleCategory"] == "condition") & \
-                                  (significantShuffles["shuffleCategoryValue"] == "SWR")
+        # possibly interesting things to look for:
+        # effect with no suffix or control with condition shuffle, value SWR
+        significantShuffles["flag"] = (significantShuffles["suffix"] == "") & \
+            (significantShuffles["ctrlName"] == "") & \
+            (significantShuffles["shuffleCategory"] == "condition") & \
+            (significantShuffles["shuffleCategoryValue"] == "SWR")
 
-    # _diff plot shows effect of condition
-    significantShuffles["flag"] = (significantShuffles["flag"]) | \
-                                  (significantShuffles["suffix"] == "diff") & \
-                                  (significantShuffles["shuffleCategory"] == "condition") & \
-                                  (significantShuffles["shuffleCategoryValue"] == "SWR")
-    # _ctrl plot shows effect of val vs ctrl. For consistency, shuffle value should be home or same
-    significantShuffles["flag"] = (significantShuffles["flag"]) | \
-        (significantShuffles["suffix"] == "") & \
-        (significantShuffles["ctrlName"] != "") & \
-        (significantShuffles["shuffleCategoryValue"].isin(
-            ["home", "same"]))
-    # _ctrl_cond plot shows effect of cond  -  Don't need ot look at interaction, already taken care of in diff plot
-    significantShuffles["flag"] = (significantShuffles["flag"]) | \
-        (significantShuffles["suffix"] == "cond") & \
-        (significantShuffles["ctrlName"] != "") & \
-        (significantShuffles["shuffleCategory"] == "condition") & \
-        (significantShuffles["shuffleCategoryValue"] == "SWR")
+        # _diff plot shows effect of condition
+        significantShuffles["flag"] = (significantShuffles["flag"]) | \
+            (significantShuffles["suffix"] == "diff") & \
+            (significantShuffles["shuffleCategory"] == "condition") & \
+            (significantShuffles["shuffleCategoryValue"] == "SWR")
+        # _ctrl plot shows effect of val vs ctrl. For consistency, shuffle value should be home or same
+        significantShuffles["flag"] = (significantShuffles["flag"]) | \
+            (significantShuffles["suffix"] == "") & \
+            (significantShuffles["ctrlName"] != "") & \
+            (significantShuffles["shuffleCategoryValue"].isin(
+                ["home", "same"]))
+        # _ctrl_cond plot shows effect of cond  -  Don't need ot look at interaction, already taken care of in diff plot
+        significantShuffles["flag"] = (significantShuffles["flag"]) | \
+            (significantShuffles["suffix"] == "cond") & \
+            (significantShuffles["ctrlName"] != "") & \
+            (significantShuffles["shuffleCategory"] == "condition") & \
+            (significantShuffles["shuffleCategoryValue"] == "SWR")
 
-    significantShuffles = significantShuffles[significantShuffles["flag"]]
-    # can drop the flag column now
-    significantShuffles = significantShuffles.drop(
-        columns=["flag", "shuffleCategoryValue", "shuffleCategory"])
-    print(significantShuffles.head(20))
-    print(significantShuffles.shape)
+        significantShuffles = significantShuffles[significantShuffles["flag"]]
+        # can drop the flag column now
+        significantShuffles = significantShuffles.drop(
+            columns=["flag", "shuffleCategoryValue", "shuffleCategory"])
+        print(significantShuffles.head(20))
+        print(significantShuffles.shape)
 
-    # All column names except for plot, shuffle, pval, and direction are parameters
-    allParams = significantShuffles.drop(columns=["plot", "shuffle", "pval", "direction"])
-    # Separate into numerical columns and categorical columns
-    numericalParams = allParams.select_dtypes(include=np.number)
-    categoricalParams = allParams.select_dtypes(exclude=np.number)
-    # print these out to confirm
-    print(numericalParams.columns)
-    print(categoricalParams.columns)
+        # All column names except for plot, shuffle, pval, and direction are parameters
+        allParams = significantShuffles.drop(columns=["plot", "shuffle", "pval", "direction"])
+        # Separate into numerical columns and categorical columns
+        numericalParams = allParams.select_dtypes(include=np.number)
+        categoricalParams = allParams.select_dtypes(exclude=np.number)
+        # print these out to confirm
+        print(numericalParams.columns)
+        print(categoricalParams.columns)
 
-    # For each combination of values for the categorical params, plot the effect of changing the numerical params on the pvalues
-    categoricalCombinations = list(itertools.product(
-        *[categoricalParams[col].unique() for col in categoricalParams.columns]))
-    for combo in categoricalCombinations:
-        if filters is not None:
-            # If none of the filters are met, skip this combination
-            found = False
-            for filter in filters:
-                match = True
-                for k, v in filter.items():
-                    if k == "bp":
-                        v = v.conciseString()
-                    if combo[categoricalParams.columns.get_loc(k)] != v:
-                        match = False
+        # For each combination of values for the categorical params, plot the effect of changing the numerical params on the pvalues
+        categoricalCombinations = list(itertools.product(
+            *[categoricalParams[col].unique() for col in categoricalParams.columns]))
+        for combo in categoricalCombinations:
+            if filters is not None:
+                # If none of the filters are met, skip this combination
+                found = False
+                for filter in filters:
+                    match = True
+                    for k, v in filter.items():
+                        if k == "bp":
+                            v = v.conciseString()
+                        if combo[categoricalParams.columns.get_loc(k)] != v:
+                            match = False
+                            break
+                    if match:
+                        found = True
                         break
-                if match:
-                    found = True
-                    break
-            if not found:
+                if not found:
+                    continue
+
+            # get a df that's just the rows with this combination of values
+            comboDf = significantShuffles.copy()
+            # If this is empty, skip it
+            for i, col in enumerate(categoricalParams.columns):
+                comboDf = comboDf[comboDf[col] == combo[i]]
+            if comboDf.shape[0] == 0:
                 continue
 
-        # get a df that's just the rows with this combination of values
-        comboDf = significantShuffles.copy()
-        # If this is empty, skip it
-        for i, col in enumerate(categoricalParams.columns):
-            comboDf = comboDf[comboDf[col] == combo[i]]
-        if comboDf.shape[0] == 0:
-            continue
+            fig, axs = plt.subplots(1, len(numericalParams.columns), figsize=(10, 3))
+            for i, col in enumerate(numericalParams.columns):
+                ax = axs[i]
+                assert isinstance(ax, plt.Axes)
+                ax.set_title(col)
 
-        fig, axs = plt.subplots(1, len(numericalParams.columns), figsize=(10, 3))
-        for i, col in enumerate(numericalParams.columns):
-            ax = axs[i]
-            assert isinstance(ax, plt.Axes)
-            ax.set_title(col)
+                # Set the min and max of the y axis according to the min and max of the pvalues
+                maxPval = significantShuffles["pval"].max()
+                ax.set_ylim(-0.01, maxPval * 1.1)
+                # Set the min and max of the x axis according to the min and max of the numerical param
+                minX = significantShuffles[col].min()
+                if minX > 0:
+                    minX = minX * 0.9
+                elif minX < 0:
+                    minX = minX * 1.1
+                else:
+                    minX = -0.1
+                maxX = significantShuffles[col].max()
+                if maxX > 0:
+                    maxX = maxX * 1.1
+                elif maxX < 0:
+                    maxX = maxX * 0.9
+                else:
+                    maxX = 0.1
+                ax.set_xlim(minX, maxX)
+                # Set the x ticks to be the unique values of the numerical param
+                ax.set_xticks(significantShuffles[col].unique())
 
-            # Set the min and max of the y axis according to the min and max of the pvalues
-            maxPval = significantShuffles["pval"].max()
-            ax.set_ylim(-0.01, maxPval * 1.1)
-            # Set the min and max of the x axis according to the min and max of the numerical param
-            minX = significantShuffles[col].min()
-            if minX > 0:
-                minX = minX * 0.9
-            elif minX < 0:
-                minX = minX * 1.1
-            else:
-                minX = -0.1
-            maxX = significantShuffles[col].max()
-            if maxX > 0:
-                maxX = maxX * 1.1
-            elif maxX < 0:
-                maxX = maxX * 0.9
-            else:
-                maxX = 0.1
-            ax.set_xlim(minX, maxX)
-            # Set the x ticks to be the unique values of the numerical param
-            ax.set_xticks(significantShuffles[col].unique())
+                # get all the unique values for all the other numerical params
+                otherNumericalParams = numericalParams.columns.drop(col)
+                otherNumericalParamValues = [numericalParams[col].unique()
+                                             for col in otherNumericalParams]
+                # get all the combinations of values for all the other numerical params
+                otherNumericalParamCombinations = list(
+                    itertools.product(*otherNumericalParamValues))
+                # for each combination of values for all the other numerical params, plot the pvalue for this numerical param
+                for onci, otherNumCombo in enumerate(otherNumericalParamCombinations):
+                    # get a df that's just the rows with this combination of values
+                    otherNumComboDf = comboDf.copy()
+                    for j, otherNumCol in enumerate(otherNumericalParams):
+                        otherNumComboDf = otherNumComboDf[otherNumComboDf[otherNumCol]
+                                                          == otherNumCombo[j]]
+                    # plot the pvalue for this numerical param, but add some jitter to the x axis
+                    # so that the points don't overlap. Depending on the value of the direction column,
+                    # the points will be circles or x's
+                    # jitter = np.random.uniform(-1, 1, len(otherNumComboDf)) * 0.01
+                    jitter = onci * (maxX - minX) * 0.01
+                    xvals = (otherNumComboDf[col] + jitter).to_numpy()
+                    yvals = (otherNumComboDf["pval"]).to_numpy()
+                    direction = otherNumComboDf["direction"].to_numpy()
 
-            # get all the unique values for all the other numerical params
-            otherNumericalParams = numericalParams.columns.drop(col)
-            otherNumericalParamValues = [numericalParams[col].unique()
-                                         for col in otherNumericalParams]
-            # get all the combinations of values for all the other numerical params
-            otherNumericalParamCombinations = list(itertools.product(*otherNumericalParamValues))
-            # for each combination of values for all the other numerical params, plot the pvalue for this numerical param
-            for onci, otherNumCombo in enumerate(otherNumericalParamCombinations):
-                # get a df that's just the rows with this combination of values
-                otherNumComboDf = comboDf.copy()
-                for j, otherNumCol in enumerate(otherNumericalParams):
-                    otherNumComboDf = otherNumComboDf[otherNumComboDf[otherNumCol]
-                                                      == otherNumCombo[j]]
-                # plot the pvalue for this numerical param, but add some jitter to the x axis
-                # so that the points don't overlap. Depending on the value of the direction column,
-                # the points will be circles or x's
-                # jitter = np.random.uniform(-1, 1, len(otherNumComboDf)) * 0.01
-                jitter = onci * (maxX - minX) * 0.01
-                xvals = (otherNumComboDf[col] + jitter).to_numpy()
-                yvals = (otherNumComboDf["pval"]).to_numpy()
-                direction = otherNumComboDf["direction"].to_numpy()
+                    # Choose a color here so both plots are the same color
+                    color = next(ax._get_lines.prop_cycler)["color"]
 
-                # Choose a color here so both plots are the same color
-                color = next(ax._get_lines.prop_cycler)["color"]
+                    ax.plot(xvals[direction], yvals[direction], "o",
+                            label=str(otherNumCombo), color=color)
+                    ax.plot(xvals[~direction], yvals[~direction], "x", color=color)
 
-                ax.plot(xvals[direction], yvals[direction], "o",
-                        label=str(otherNumCombo), color=color)
-                ax.plot(xvals[~direction], yvals[~direction], "x", color=color)
+                ax.legend()
 
-            ax.legend()
+            # Add a title to the whole figure
+            fig.suptitle(
+                "    ".join([f"{col}={val}" for col, val in zip(categoricalParams.columns, combo)]))
 
-        # Add a title to the whole figure
-        fig.suptitle(
-            "    ".join([f"{col}={val}" for col, val in zip(categoricalParams.columns, combo)]))
+            plt.tight_layout()
+            plt.show()
 
-        plt.tight_layout()
-        plt.show()
+    if plotCorrelations:
+        significantCorrelations = pd.read_hdf(outputFileName, key="significantCorrelations")
+        #    columns=["plot", "categories", "correlation", "pval", "direction", "measure", "plotSuffix"]
+        # Possibly interesting things to see:
+        # - Correlation between measue and any SM: plot ends in "measure"
+        # - Difference in correlation between condition groups: plot ends in "measureByCondition", and one is in table and not other, or both in table but direciton is different
+        # - Same but for measureVsCtrl: plot ends in "ctrl_{ctrlName}"
+        # - Correlation of diff measure and any SM: plot ends in "ctrl_{ctrlName}_diff"
+        # - Correlation of diff measure in one conditoin and not another: plot ends in "ctrl_{ctrlName}_diff_byCond"
+        print(significantCorrelations.head(10).to_string())
+
+        paramsByPlotData = []
+        for combo in paramValueCombos:
+            for sm in correlationNames:
+                params = dict(zip(specParams.keys(), combo))
+                name = getNameFromParams(specName, params, func, sm)
+                params["bp"] = params["bp"].conciseString()
+                # TODO fill this in
+                # Just copied from above
+                # .....
+                # .....
+                # .....
+                paramsByPlotData.append((name + "_ctrl_symmetric_diff.h5", *
+                                        params.values(), "symmetric", "diff"))
+
+        paramsByPlot = pd.DataFrame(paramsByPlotData, columns=[
+                                    "plot", *specParams.keys(), "ctrlName", "suffix"])
 
 
 def getChosenParams(specName, func) -> List[Dict[str, Any]]:
