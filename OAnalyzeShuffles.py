@@ -55,11 +55,16 @@ def findStatsDir(subDir: str, name: str):
         checkFileName = os.path.join(pl, name, "corr_processed.txt")
         if os.path.exists(checkFileName):
             return os.path.join(pl, name, "stats")
+        checkFileName = os.path.join(pl, name, "error.txt")
+        if os.path.exists(checkFileName):
+            print(f"Found error file for {name} at {checkFileName}")
+            return None
     print(f"Could not find stats dir for {name}")
-    print(f"Checked {len(possibleLocations)} possible locations")
-    print(f"Possible locations:")
-    pprint(possibleLocations)
-    return None
+    # print(f"Checked {len(possibleLocations)} possible locations")
+    # print(f"Possible locations:")
+    # pprint(possibleLocations)
+    # return None
+    raise ValueError(f"Could not find stats dir for {name}")
 
 
 def getParamsForName(specName, func):
@@ -154,6 +159,7 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
     if os.path.exists(outputFileName):
         print(f"Output file {outputFileName} already exists!")
     else:
+        print(f"Output file {outputFileName} does not exist, creating it now...")
         print(f"Gathering files for {len(paramValueCombos)} param combos")
 
         savedStatsNames = []
@@ -167,6 +173,9 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
             name = getNameFromParams(specName, params, func, None)
             noCorrStatsDir = findStatsDir(os.path.join(
                 "figures", "GreatBigDatamining_datamined", "B17", specName), name)
+            if noCorrStatsDir is None:
+                continue
+
             # print(f"Found stats dir: {noCorrStatsDir}")
             statsFiles = glob(os.path.join(noCorrStatsDir, "*.h5"))
             for sf in statsFiles:
@@ -435,6 +444,31 @@ def getChosenParams(specName, func) -> List[Dict[str, Any]]:
     if specName == "measureFromFunc" and func == BTSession.totalTimeAtPosition:
         chosenParams = [
             {
+                "bp": BP(probe=False, inclusionFlags="awayTrial", erode=3, trialInterval=(2, 7)),
+                "radius": 1.5,
+                "smoothDist": 0.5,
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="awayTrial", erode=3, trialInterval=(2, 7)),
+                "radius": 1.5,
+                "smoothDist": 0.5,
+            },
+            {
+                "bp": BP(probe=True, timeInterval=BTSession.fillTimeInterval, inclusionFlags=["offWall", "moving"]),
+                "radius": 0.25,
+                "smoothDist": 0,
+            },
+            {
+                "bp": BP(probe=True, timeInterval=BTSession.fillTimeInterval, inclusionFlags=["offWall", "moving"]),
+                "radius": 0.5,
+                "smoothDist": 0,
+            },
+            {
+                "bp": BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+                "radius": 0.5,
+                "smoothDist": 0.5,
+            },
+            {
                 "bp": BP(probe=False),
                 "radius": 1,
                 "smoothDist": 0
@@ -523,13 +557,22 @@ def generateChosenPlots(specName, func, chosenParams):
 
 if __name__ == "__main__":
     specName = "measureFromFunc"
+    filters = [
+        # {
+        #     "bp": BP(probe=False, inclusionFlags="awayTrial", erode=3, trialInterval=(2, 7)),
+        #     "ctrlName": "symmetric",
+        #     "suffix": "diff"
+        # },
+    ]
+    # filters = None
+    # for func in [BTSession.numVisitsToPosition,
+    #  BTSession.avgDwellTimeAtPosition,
+    #  BTSession.avgCurvatureAtPosition]:
     # func = BTSession.totalTimeAtPosition
-    # filters = [ ]
-    filters = None
-    for func in [BTSession.numVisitsToPosition,
-                 BTSession.avgDwellTimeAtPosition,
-                 BTSession.avgCurvatureAtPosition]:
-        lookAtShuffles(specName, func, filters=filters)
+    # func = BTSession.numVisitsToPosition
+    func = BTSession.avgDwellTimeAtPosition
+    # func = BTSession.avgCurvatureAtPosition
+    lookAtShuffles(specName, func, filters=filters, plotCorrelations=False, plotShuffles=False)
 
     # chosenParams = getChosenParams(specName, func)
     # generateChosenPlots(specName, func, chosenParams)

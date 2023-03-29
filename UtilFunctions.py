@@ -128,8 +128,8 @@ class LoadInfo:
 def findDataDir(possibleDataDirs=None) -> str:
     if possibleDataDirs is None:
         possibleDataDirs = [
-            getDrivePathByLabel("WDC9"),
             getDrivePathByLabel("WDC10"),
+            getDrivePathByLabel("WDC9"),
             getDrivePathByLabel("WDC11"),
             getDrivePathByLabel("WDC4"),
             getDrivePathByLabel("WDC8"),

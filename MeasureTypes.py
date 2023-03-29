@@ -1964,7 +1964,8 @@ class LocationMeasure():
                     everySessionBehaviorPeriod: Optional[BP | Callable[[BTSession], BP]] = None,
                     runStats: bool = True,
                     subFolder: bool = True,
-                    excludeFromCombo=False) -> None:
+                    excludeFromCombo=False,
+                    verbose=False) -> None:
         """
         :param plotManager: PlotManager to use to make figures
         :param plotFlags: "all" or list of strings indicating which figures to make. Possible values are:
@@ -1994,6 +1995,8 @@ class LocationMeasure():
         """
 
         if not self.valid:
+            if verbose:
+                print(f"WARNING: {self.name} is not valid. Not plotting.")
             return
 
         figName = self.name.replace(" ", "_")
@@ -2026,6 +2029,8 @@ class LocationMeasure():
 
         if "measureByCondition" in plotFlags:
             plotFlags.remove("measureByCondition")
+            if verbose:
+                print(f"Plotting {self.name} by condition")
 
             with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo) as pc:
                 violinPlot(pc.ax, self.sessionValsBySession, self.conditionBySession,
@@ -2042,6 +2047,9 @@ class LocationMeasure():
 
         if "measureVsCtrl" in plotFlags:
             plotFlags.remove("measureVsCtrl")
+            if verbose:
+                print(f"Plotting {self.name} vs control")
+
             for ctrlName in self.controlValLabels:
                 vals = np.concatenate((self.sessionValsBySession, *self.controlVals[ctrlName]))
                 dotColors = np.concatenate(
@@ -2066,6 +2074,9 @@ class LocationMeasure():
 
         if "measureVsCtrlByCondition" in plotFlags:
             plotFlags.remove("measureVsCtrlByCondition")
+            if verbose:
+                print(f"Plotting {self.name} vs control by condition")
+
             for ctrlName in self.controlValLabels:
                 vals = np.concatenate((self.sessionValsBySession, *self.controlVals[ctrlName]))
                 conditionCats = np.concatenate(
@@ -2093,6 +2104,9 @@ class LocationMeasure():
 
         if "diff" in plotFlags:
             plotFlags.remove("diff")
+            if verbose:
+                print(f"Plotting {self.name} difference")
+
             for ctrlName in self.controlValLabels:
                 vals = self.sessionValsBySession - self.controlValMeans[ctrlName]
                 if all(np.isnan(vals)):
@@ -2112,6 +2126,9 @@ class LocationMeasure():
 
         if "measureByDistance" in plotFlags:
             plotFlags.remove("measureByDistance")
+            if verbose:
+                print(f"Plotting {self.name} by distance")
+
             with plotManager.newFig(f"{figPrefix}by_distance", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(pc.ax, self.measureValsByDistance, self.distancePlotXVals)
                 pc.ax.set_title(self.name, fontdict={'fontsize': 6})
@@ -2119,6 +2136,9 @@ class LocationMeasure():
 
         if "measureByDistanceByCondition" in plotFlags:
             plotFlags.remove("measureByDistanceByCondition")
+            if verbose:
+                print(f"Plotting {self.name} by distance by condition")
+
             swrIdx = self.conditionBySession == "SWR"
             ctrlIdx = ~swrIdx
 
@@ -2135,6 +2155,9 @@ class LocationMeasure():
 
         if "measureVsCtrlByDistance" in plotFlags:
             plotFlags.remove("measureVsCtrlByDistance")
+            if verbose:
+                print(f"Plotting {self.name} vs control by distance")
+
             for ctrlName in self.controlVals:
                 with plotManager.newFig(f"{figPrefix}vs_ctrl_" + ctrlName + "_by_distance", excludeFromCombo=excludeFromCombo) as pc:
                     plotIndividualAndAverage(pc.ax, self.measureValsByDistance, self.distancePlotXVals,
@@ -2149,6 +2172,9 @@ class LocationMeasure():
 
         if "measureVsCtrlByDistanceByCondition" in plotFlags:
             plotFlags.remove("measureVsCtrlByDistanceByCondition")
+            if verbose:
+                print(f"Plotting {self.name} vs control by distance by condition")
+
             swrIdx = self.conditionBySession == "SWR"
             ctrlIdx = ~swrIdx
 
@@ -2174,6 +2200,8 @@ class LocationMeasure():
 
         if "everysession" in plotFlags:
             plotFlags.remove("everysession")
+            if verbose:
+                print(f"Plotting {self.name} every session")
 
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
             ncols = int(np.ceil(np.sqrt(len(self.sessionList))))
@@ -2318,6 +2346,9 @@ class LocationMeasure():
 
             if "everysessionoverlayatlocation" in plotFlags:
                 plotFlags.remove("everysessionoverlayatlocation")
+                if verbose:
+                    print("Plotting overlay at location")
+
                 with plotManager.newFig(f"{figPrefix}every_session_overlay_at_location", excludeFromCombo=excludeFromCombo) as pc:
                     # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
@@ -2333,6 +2364,9 @@ class LocationMeasure():
 
             if "everysessionoverlayatctrl" in plotFlags:
                 plotFlags.remove("everysessionoverlayatctrl")
+                if verbose:
+                    print("Plotting overlay at control")
+
                 for ctrlName in self.controlVals:
                     with plotManager.newFig(f"{figPrefix}every_session_overlay_at_ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
                         # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
@@ -2349,6 +2383,9 @@ class LocationMeasure():
 
             if "everysessionoverlayatlocationbycondition" in plotFlags:
                 plotFlags.remove("everysessionoverlayatlocationbycondition")
+                if verbose:
+                    print("Plotting overlay at location by condition")
+
                 with plotManager.newFig(f"{figPrefix}every_session_overlay_at_location_swr", excludeFromCombo=excludeFromCombo) as pc:
                     # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
@@ -2377,6 +2414,9 @@ class LocationMeasure():
 
             if "everysessionoverlaydirect" in plotFlags:
                 plotFlags.remove("everysessionoverlaydirect")
+                if verbose:
+                    print("Plotting overlay at location")
+
                 with plotManager.newFig(f"{figPrefix}every_session_overlay_direct", excludeFromCombo=excludeFromCombo) as pc:
                     # pc.ax.set_title(f"{sesh.name}", fontdict={'fontsize': 6})
 
@@ -2395,6 +2435,8 @@ class LocationMeasure():
 
         with open(os.path.join(plotManager.fullOutputDir, "processed.txt"), "w") as f:
             f.write(plotManager.infoFileFullName)
+        if verbose:
+            print(f"wrote processed.txt to {plotManager.fullOutputDir}")
 
         if subFolder:
             plotManager.popOutputSubDir()

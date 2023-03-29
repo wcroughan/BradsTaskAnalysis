@@ -165,6 +165,17 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
               minParamsSequential=2, verbose=False, overwriteOldResults=False):
     def measureFuncWrapper(params: Dict[str, Iterable]):
 
+        # if params == {
+        #     "func": BTSession.avgCurvatureAtPosition,
+        #     "bp": BP(probe=False, inclusionFlags="homeTrial", erode=3, trialInterval=(2, 7)),
+        #     "radius": 0.25,
+        #     "smoothDist": 0
+        # }:
+        #     print("Found the problem")
+        #     verbose = True
+        # else:
+        #     verbose = False
+
         if verbose:
             print(
                 f"running {measureFunc.__name__} with params {params} in process {multiprocessing.current_process()} (pid {multiprocessing.current_process().pid})")
@@ -189,6 +200,7 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
             print(f"Error just making the measure ... this shouldn't happen")
             return
 
+        shouldWriteErrFile = False
         try:
             makeFigsInfoFileName = "None"
             corrInfoFileNames = []
@@ -228,8 +240,10 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
                         f"already run:{checkFileName}__!__{makeFigsInfoFileName}__!__{'__!__'.join(corrInfoFileNames)}\n")
                     return
 
-            os.makedirs(os.path.join(pp.fullOutputDir,
-                        f"{pfx}_{meas.name.replace(' ', '_')}"), exist_ok=True)
+            outDir = os.path.join(pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}")
+            os.makedirs(outDir, exist_ok=True)
+            if verbose:
+                print(f"output dir is {outDir} (pid {pid})")
             stdOutFileName = os.path.join(
                 pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}", "stdout.txt")
             stdErrFileName = os.path.join(
@@ -237,34 +251,52 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
             with open(stdOutFileName, "w") as stdout, open(stdErrFileName, "w") as stderr:
                 with redirect_stdout(stdout), redirect_stderr(stderr):
                     meas.runMeasureFunc()
-
-                    # For now, just remake all the figs if any need to be remade
-                    if "bp" in params and not isinstance(meas, TimeMeasure):
-                        meas.makeFigures(pp, excludeFromCombo=True,
-                                         everySessionBehaviorPeriod=params["bp"])
+                    if meas.valid:
+                        # For now, just remake all the figs if any need to be remade
+                        if "bp" in params and not isinstance(meas, TimeMeasure):
+                            meas.makeFigures(pp, excludeFromCombo=True,
+                                             everySessionBehaviorPeriod=params["bp"], verbose=verbose)
+                        else:
+                            meas.makeFigures(pp, excludeFromCombo=True)
+                        if correlationSMs is not None and not isinstance(meas, TimeMeasure):
+                            for sm in correlationSMs:
+                                meas.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
                     else:
-                        meas.makeFigures(pp, excludeFromCombo=True)
-                    if correlationSMs is not None and not isinstance(meas, TimeMeasure):
-                        for sm in correlationSMs:
-                            meas.makeCorrelationFigures(pp, sm, excludeFromCombo=True)
+                        shouldWriteErrFile = True
 
+            if verbose:
+                print(f"finished {measureFunc.__name__} with params {params} (pid {pid})")
             # if stderr and stdout files are empty, delete them
             if os.stat(stdOutFileName).st_size == 0:
+                if verbose:
+                    print("stdout file is empty, deleting")
                 os.remove(stdOutFileName)
             if os.stat(stdErrFileName).st_size == 0:
+                if verbose:
+                    print("stderr file is empty, deleting")
                 os.remove(stdErrFileName)
+            else:
+                shouldWriteErrFile = True
+
         except Exception as e:
             # print(f"\n\nerror in {measureFunc.__name__} with params {params}\n\n")
             # print(e)
             # make a blank error file
-            pp.restoreOutputSubDirSavepoint(savePoint)
-            pp.setDriveOutputDir("")
+            shouldWriteErrFile = True
+
+        if shouldWriteErrFile:
             errFileName = os.path.join(
                 pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}", "error.txt")
             with open(errFileName, "w") as f:
                 f.write("error")
+            if verbose:
+                print(f"\nwrote error file {errFileName}\n")
+            pp.restoreOutputSubDirSavepoint(savePoint)
+            pp.setDriveOutputDir("")
 
         # Now wait a few milliseconds to make sure the file is written, and hopefully drive won't get corrupted
+        if verbose:
+            print(f"sleeping for 0.1 seconds (pid {pid})")
         time.sleep(0.1)
 
     if minParamsSequential == -1:
@@ -851,8 +883,11 @@ def main(plotFlags: List[str] | str = "tests",
             for sm in correlationSMs:
                 sm.makeFigures(pp, excludeFromCombo=True)
 
-            reversedSpecs = reversed(list(enumerate(allSpecs)))
+            reversedSpecs = list(enumerate(allSpecs))
+            # reversedSpecs = reversed(list(enumerate(allSpecs)))
             for mi, (makeMeasure, paramDict) in reversedSpecs:
+                if mi > 0:
+                    break
                 # For debugging, removing stuff that's already been run
                 if testData:
                     if makeMeasure.__name__ in [
@@ -907,7 +942,8 @@ def main(plotFlags: List[str] | str = "tests",
             if testData:
                 pp.runShuffles(numShuffles=6, significantThreshold=0.5)
             else:
-                pp.runShuffles()
+                # pp.runShuffles()
+                pass
 
         if len(plotFlags) != 0:
             print("Warning, unused plot flags:", plotFlags)
