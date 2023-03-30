@@ -359,7 +359,8 @@ class Shuffler:
                        savedStatsFiles: Optional[List[Tuple[str, str]]] = None,
                        outputFileName: Optional[str] = None,
                        justGlobal=False,
-                       skipCorrelations=False) -> str:
+                       skipCorrelations=False,
+                       skipShuffles=False) -> str:
         self.numShuffles = numShuffles
 
         if infoFileNames is None and savedStatsFiles is None:
@@ -400,18 +401,20 @@ class Shuffler:
             for td in todel:
                 catsToShuffle.remove(td)
 
-            try:
-                specs = self.getAllShuffleSpecs(
-                    df, columnsToShuffle=catsToShuffle, justGlobal=justGlobal)
-            except Exception as e:
-                print("Error getting shuffle specs for plot {} of measure {}".format(plotName, measureName))
-                print(e)
-                raise e
-            ss = [len(s) for s in specs]
-            specs = [x for _, x in sorted(zip(ss, specs))]
-            # print("\n".join([str(s) for s in specs]))
-            sr = self._doShuffles(df, specs, yvalNames)
-            shuffResults.append((plotName, sr, measureName))
+            if not skipShuffles:
+                try:
+                    specs = self.getAllShuffleSpecs(
+                        df, columnsToShuffle=catsToShuffle, justGlobal=justGlobal)
+                except Exception as e:
+                    print("Error getting shuffle specs for plot {} of measure {}".format(
+                        plotName, measureName))
+                    print(e)
+                    raise e
+                ss = [len(s) for s in specs]
+                specs = [x for _, x in sorted(zip(ss, specs))]
+                # print("\n".join([str(s) for s in specs]))
+                sr = self._doShuffles(df, specs, yvalNames)
+                shuffResults.append((plotName, sr, measureName))
 
             if not skipCorrelations:
                 # Look for xval correlations
@@ -425,41 +428,41 @@ class Shuffler:
         if significantThreshold is None:
             significantThreshold = 1.0
 
-        significantResults: List[Tuple[str, str, float, str, str, bool, bool]] = []
-        for plotName, sr, measureName in tqdm(shuffResults, desc="Filtering shuffles", total=len(shuffResults)):
-            for s in sr:
-                for s2 in s:
-                    for pi, pval in enumerate(s2.getPVals()):
-                        if pval < significantThreshold or pval > 1 - significantThreshold:
-                            if shuffleResultsFilter(plotName, s2, pval, measureName):
-                                # isCondShuf = any([s.categoryName == "condition" for s in s2.specs])
-
-                                measurenameWithoutPrefix = "_".join(
-                                    measureName.split("_")[1:])
-                                plotSuffix = plotName[len(measurenameWithoutPrefix):]
-                                isCondShuf = plotSuffix == "" or plotSuffix.endswith(
-                                    "diff") or plotSuffix.endswith("cond")
-                                isCtrlShuf = plotSuffix.endswith("cond") or (
-                                    "ctrl_" in plotSuffix and "diff" not in plotSuffix)
-                                isDiffShuf = plotSuffix.endswith("diff")
-                                isNextSeshDiffShuf = plotSuffix.endswith("nextsession_diff")
-                                significantResults.append(
-                                    (plotName, str(s2), pval if pval < 0.5 else 1 - pval, pval < 0.5,
-                                     measureName, plotSuffix, isCondShuf, isCtrlShuf, isDiffShuf,
-                                     isNextSeshDiffShuf, pi))
-
-        sdf = pd.DataFrame(significantResults,
-                           columns=["plot", "shuffle", "pval", "direction", "measure", "plotSuffix", "isCondShuf",
-                                    "isCtrlShuf", "isDiffShuf", "isNextSeshDiffShuf", "pvalIndex"])
-        sdf.sort_values(by="pval", inplace=True)
-
         if outputFileName is None:
             outputFileName = os.path.join(os.path.dirname(
                 infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_significantShuffles.h5"))
-        sdf.to_hdf(outputFileName, key="significantShuffles")
 
-        print(sdf)
-        print(f"{ len(shuffResults)=  }")
+        if not skipShuffles:
+            significantResults: List[Tuple[str, str, float, str, str, bool, bool]] = []
+            for plotName, sr, measureName in tqdm(shuffResults, desc="Filtering shuffles", total=len(shuffResults)):
+                for s in sr:
+                    for s2 in s:
+                        for pi, pval in enumerate(s2.getPVals()):
+                            if pval < significantThreshold or pval > 1 - significantThreshold:
+                                if shuffleResultsFilter(plotName, s2, pval, measureName):
+                                    # isCondShuf = any([s.categoryName == "condition" for s in s2.specs])
+
+                                    measurenameWithoutPrefix = "_".join(
+                                        measureName.split("_")[1:])
+                                    plotSuffix = plotName[len(measurenameWithoutPrefix):]
+                                    isCondShuf = plotSuffix == "" or plotSuffix.endswith(
+                                        "diff") or plotSuffix.endswith("cond")
+                                    isCtrlShuf = plotSuffix.endswith("cond") or (
+                                        "ctrl_" in plotSuffix and "diff" not in plotSuffix)
+                                    isDiffShuf = plotSuffix.endswith("diff")
+                                    isNextSeshDiffShuf = plotSuffix.endswith("nextsession_diff")
+                                    significantResults.append(
+                                        (plotName, str(s2), pval if pval < 0.5 else 1 - pval, pval < 0.5,
+                                         measureName, plotSuffix, isCondShuf, isCtrlShuf, isDiffShuf,
+                                         isNextSeshDiffShuf, pi))
+
+            sdf = pd.DataFrame(significantResults,
+                               columns=["plot", "shuffle", "pval", "direction", "measure", "plotSuffix", "isCondShuf",
+                                        "isCtrlShuf", "isDiffShuf", "isNextSeshDiffShuf", "pvalIndex"])
+            sdf.sort_values(by="pval", inplace=True)
+            sdf.to_hdf(outputFileName, key="significantShuffles")
+            print(sdf)
+            print(f"{ len(shuffResults)=  }")
 
         if not skipCorrelations:
             significantCorrelations = []
@@ -470,13 +473,16 @@ class Shuffler:
                             if shuffleResultsFilter(plotName, None, pval, measureName):
                                 plotSuffix = plotName[len(measureName)-3:]
                                 significantCorrelations.append(
-                                    (plotName, "_".join(catNames), corr, pval if pval < 0.5 else 1 - pval, pval < 0.5,
+                                    # (plotName, "_".join(catNames), corr, pval if pval < 0.5 else 1 - pval, pval < 0.5,
+                                    (plotName, "_".join(catNames), corr, pval, corr > 0,
                                         measureName, plotSuffix))
 
             sdf = pd.DataFrame(significantCorrelations,
                                columns=["plot", "categories", "correlation", "pval", "direction", "measure", "plotSuffix"])
             sdf.sort_values(by="pval", inplace=True)
             sdf.to_hdf(outputFileName, key="significantCorrelations")
+            infoDf = pd.DataFrame({"corrFuncVersion": [0.2]})
+            infoDf.to_hdf(outputFileName, key="corrInfo")
 
         return outputFileName
 

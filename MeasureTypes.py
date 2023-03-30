@@ -2063,7 +2063,7 @@ class LocationMeasure():
                                    self.controlValLabels[ctrlName][2], self.name],
                                categoryOrder=self.controlValLabels[ctrlName][0:2],
                                dotColorLabels={"orange": "SWR", "cyan": "Ctrl"})
-                    pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+                    pc.ax.set_title(self.name + " vs " + ctrlName, fontdict={'fontsize': 6})
 
                     if runStats:
                         catName = self.controlValLabels[ctrlName][2].replace(" ", "_")
@@ -2092,7 +2092,7 @@ class LocationMeasure():
                                    "Condition", self.name, self.controlValLabels[ctrlName][2]],
                                category2Order=self.controlValLabels[ctrlName][0:2],
                                categoryOrder=["SWR", "Ctrl"])
-                    pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+                    pc.ax.set_title(self.name + " vs " + ctrlName, fontdict={'fontsize': 6})
 
                     if runStats:
                         pc.yvals[figName] = vals
@@ -2116,7 +2116,8 @@ class LocationMeasure():
                                dotColors=self.dotColorsBySession, axesNames=[
                                    "Condition", self.name],
                                categoryOrder=["SWR", "Ctrl"])
-                    pc.ax.set_title(self.name + " difference", fontdict={'fontsize': 6})
+                    pc.ax.set_title(self.name + " vs " + ctrlName +
+                                    " difference", fontdict={'fontsize': 6})
 
                     if runStats:
                         pc.yvals[figName] = vals
@@ -2166,7 +2167,7 @@ class LocationMeasure():
                     plotIndividualAndAverage(pc.ax, self.controlMeasureValsByDistance[ctrlName], self.distancePlotXVals,
                                              color="blue", label="ctrl",
                                              spread="sem")
-                    pc.ax.set_title(self.name + " vs Ctrl", fontdict={'fontsize': 6})
+                    pc.ax.set_title(self.name + " vs " + ctrlName, fontdict={'fontsize': 6})
                     pc.ax.set_xlabel("Distance from well (ft)")
                     pc.ax.legend()
 
@@ -2194,7 +2195,7 @@ class LocationMeasure():
                     plotIndividualAndAverage(pc.ax, self.controlMeasureValsByDistance[ctrlName][ctrlIdxByCtrlVal, :], self.distancePlotXVals,
                                              color="blue", label="Ctrl ctrl",
                                              spread="sem")
-                    pc.ax.set_title(self.name + " vs Ctrl", fontdict={'fontsize': 6})
+                    pc.ax.set_title(self.name + " vs " + ctrlName, fontdict={'fontsize': 6})
                     pc.ax.set_xlabel("Distance from well (ft)")
                     pc.ax.legend()
 
@@ -2359,6 +2360,7 @@ class LocationMeasure():
 
                     pc.ax.set_xlabel("Distance from well (ft)")
                     pc.ax.set_ylabel("Distance from well (ft)")
+                    pc.ax.set_title("Average of all sessions")
 
                     plt.colorbar(im, ax=pc.ax)
 
@@ -2378,6 +2380,7 @@ class LocationMeasure():
 
                         pc.ax.set_xlabel("Distance from well (ft)")
                         pc.ax.set_ylabel("Distance from well (ft)")
+                        pc.ax.set_title(ctrlName)
 
                         plt.colorbar(im, ax=pc.ax)
 
@@ -2396,6 +2399,7 @@ class LocationMeasure():
 
                     pc.ax.set_xlabel("Distance from well (ft)")
                     pc.ax.set_ylabel("Distance from well (ft)")
+                    pc.ax.set_title("SWR")
 
                     plt.colorbar(im, ax=pc.ax)
 
@@ -2409,6 +2413,7 @@ class LocationMeasure():
 
                     pc.ax.set_xlabel("Distance from well (ft)")
                     pc.ax.set_ylabel("Distance from well (ft)")
+                    pc.ax.set_title("Control")
 
                     plt.colorbar(im, ax=pc.ax)
 
@@ -2427,6 +2432,7 @@ class LocationMeasure():
 
                     pc.ax.set_xlabel("xpos (ft)")
                     pc.ax.set_ylabel("ypos (ft)")
+                    pc.ax.set_title("Average of all sessions")
 
                     plt.colorbar(im, ax=pc.ax)
 
@@ -2487,6 +2493,7 @@ class LocationMeasure():
                 pc.ax.scatter(smVals, self.sessionValsBySession)
                 pc.ax.set_xlabel(sm.name)
                 pc.ax.set_ylabel(self.name)
+                pc.ax.set_title(f"{self.name} vs {sm.name}")
 
                 if runStats:
                     pc.yvals[dataName] = self.sessionValsBySession
@@ -2504,6 +2511,7 @@ class LocationMeasure():
                     smVals[ctrlIdx], self.sessionValsBySession[ctrlIdx], label="Ctrl", color="cyan")
                 pc.ax.set_xlabel(sm.name)
                 pc.ax.set_ylabel(self.name)
+                pc.ax.set_title(f"{self.name} vs {sm.name}")
                 pc.ax.legend()
 
                 if runStats:
@@ -2532,7 +2540,9 @@ class LocationMeasure():
                                   label=self.controlValLabels[ctrlName][0], color="red", zorder=2)
                     pc.ax.scatter(xvals[ctrlIdx], vals[ctrlIdx],
                                   label=self.controlValLabels[ctrlName][1], color="blue", zorder=1)
-                    pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+                    pc.ax.set_title(self.name + " vs " + ctrlName, fontdict={'fontsize': 6})
+                    pc.ax.set_xlabel(sm.name)
+                    pc.ax.set_ylabel(self.name)
                     pc.ax.legend(loc="lower center")
 
                     if runStats:
@@ -2572,7 +2582,9 @@ class LocationMeasure():
                                   label=self.controlValLabels[ctrlName][1] + " SWR", color="orange", marker="x", zorder=1)
                     pc.ax.scatter(xvals[ctrlCtrlIdx], vals[ctrlCtrlIdx],
                                   label=self.controlValLabels[ctrlName][1] + " Ctrl", color="cyan", marker="x", zorder=1)
-                    pc.ax.set_title(self.name, fontdict={'fontsize': 6})
+                    pc.ax.set_title(self.name + " " + ctrlName, fontdict={'fontsize': 6})
+                    pc.ax.set_xlabel(sm.name)
+                    pc.ax.set_ylabel(self.name)
                     pc.ax.legend(loc="lower center")
 
                     if runStats:
@@ -2591,7 +2603,10 @@ class LocationMeasure():
                     if all(np.isnan(vals)):
                         continue
                     pc.ax.scatter(smVals, vals, color="black")
-                    pc.ax.set_title(self.name + " difference", fontdict={'fontsize': 6})
+                    pc.ax.set_xlabel(sm.name)
+                    pc.ax.set_ylabel(self.name)
+                    pc.ax.set_title(self.name + " difference" + " " +
+                                    ctrlName, fontdict={'fontsize': 6})
 
                     if runStats:
                         pc.yvals[dataName] = vals
@@ -2610,7 +2625,9 @@ class LocationMeasure():
                         continue
                     pc.ax.scatter(smVals[swrIdx], vals[swrIdx], color="orange")
                     pc.ax.scatter(smVals[ctrlIdx], vals[ctrlIdx], color="cyan")
-                    pc.ax.set_title(self.name + " difference by condition",
+                    pc.ax.set_xlabel(sm.name)
+                    pc.ax.set_ylabel(self.name)
+                    pc.ax.set_title(self.name + " difference by condition" + " " + ctrlName,
                                     fontdict={'fontsize': 6})
 
                     if runStats:

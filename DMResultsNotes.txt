@@ -1,5 +1,888 @@
-total time at location
+Measure might want to add:
+    how often are aways checked on way to home. Specifically t2-7
+    How often are previously rewarded wells checked during away trials? Specifically t2-7
+    : does ripple count correlate with first trial duration? same with stim count
+    : more stims = more probe OW/E/M time?
+    :just scatter stim rate vs rip rate
+    :remember with avg time about missing values too!
+    :ripple rate seems more highly correlated with task things, whereas stim rate correlates with probe things ... interpretation?
+    :I think it's really important to see where the ripples/stims are happening. For each correlation explanation, can p easily think of where I think they're happening, need to test that
 
+num visits to location
+    :r.5, s.5 BT 0-1. other/later/next
+    :r1, s.5, BT 2-3. other/later/next/raw cond/diff
+    :r1, s.5, BT 3-4 lots of diff/cond
+    :r1.5, s.5, PFT. away/sym cond
+
+Shuffles
+BT 10-15
+    other           all vvsig except 1.5
+    later           ^
+    next            ^
+    sym     diff    all rev except r.25 and r1/s0
+BT 2-7
+    other           .25/.5 vvsig, r1 sig
+    later           all sig, 1.5 worst
+    later   cond    .5 all rev, some .25/1
+    next            .25/.5 vvsig, r1 sig
+BT 0-1
+    other           all rev, smaller better (not interesting...)
+    other   cond    all rev, .5 best
+    other   diff    .5 sig
+    later           all rev
+    later   cond    all rev, smaller better
+    later   diff    .25/.5 sig
+    next            all rev
+    next    cond    small r rev
+    next    diff    small sig
+    away    cond    1.5 rev
+BT 2-3
+    other           small rev
+    other   diff    large rev
+    later           small rev
+    later   diff    large rev
+    next            small rev
+    next    diff    large rev
+    away    cond    all rev, large better
+    sym     cond    all rev, large better
+    sym     diff    small sig meh
+    raw             large rev (maybe a gravity thing?)
+BT 3-4
+    other   diff    all rev except r1s1
+    later           small sig
+    later   diff    all rev
+    next    cond    all rev, best at 1.5
+    next    diff    .25 rev
+    away    cond    large r rev
+    away    diff    all rev
+    sym     cond    large rev, some .5 rev too
+    sym     diff    all rev except 1.5/s.5
+    raw             all rev
+BT
+    other           all vvsig 1.5 worst
+    other   cond    1.5 rev
+    later           same as other
+    later   cond    ^
+    later   diff    small sig
+    next            same as other
+    next    diff    all sig except 1.5, 1 worse
+    away    cond    r/1.5 sig
+
+P
+    other           all sig, 1.5 worst
+    later           all sig, 1.5 worst
+    next            ^
+P 1min
+    othre           all sig except 1.5
+    other   cond    all rev, 1.5 best
+    later           all sig except 1.5, small r better
+    next            ^
+P 2min
+    other           all sig except 1.5
+    later           ^
+    next            ^
+PFT
+    other           all sig, 1.5 worst
+    later           ^
+    next            ^, 1.5 not sig
+    away    cond    all sig except r1
+    sym     cond    all sig, 1.5 best, not r1/s1
+
+
+Correlations:
+:r1.5, s.5, BT 0-1, fits with increased movement in high rip sessions
+(ctrl, numRips) BT 0-1
+    away all pos, much higher corr at higher r, higher s. sym also pos at 1.5
+(ctrl, ripRate) BT 0-1
+    increasing away pos with increasing r
+(ctrlDiffByCond, numRips) BT 0-1
+    ctrl/swr away both neg at r1.5, ctrl more
+(ctrlDiffByCond, ripRate) BT 0-1
+    ctrl neg away 1.5
+(ctrlDiff, numRips) BT 0-1
+    away neg, increases magnitude with r
+(ctrlDiff, ripRate) BT 0-1
+    away neg, increases magnitude with r
+
+:r1, s.5, BT 2-3, higher rip = more away time
+(ctrl, numRips) BT 2-3
+    away all pos, higher at higher r. sym also at large r
+(ctrl, ripRate) BT 2-3
+    away all pos, higher at higher r
+(ctrlDiffByCond, numRips) BT 2-3
+    swr away/sym r.5 neg, swr/ctrl away neg r1
+(ctrlDiffByCond, ripRate) BT 2-3
+    swr neg small r away, ctrl r1 neg away
+(ctrlDiff, numRips) BT 2-3
+    away neg all except 1.5
+(ctrlDiff, ripRate) BT 2-3
+    away neg middle r
+
+:r.5, s.5. in swr more rips means more session specificity, in ctrl more means less. Also check measureByCondition
+(ctrlDiffByCond, numRips) BT 3-4
+    next/later/other all post swr neg ctrl. corr val decreases some at higher r
+(ctrlDiffByCond, ripRate) BT 3-4
+    swr other/later/next pos, ctrl most neg. away/sym same trend except r1.5
+(measureByCOndition, numRips) BT 3-4
+    swr pos, ctrl neg, all r. swr mag decreases with r
+
+(ctrlDiffByCond, numRips) BT 2-7
+    ctrl away large r neg
+(ctrlDiffByCond, ripRate) BT 2-7
+    ctrl later/next/away neg r1.5
+
+:r1.5, s.5, BT 10-15 higher rips = more moving around. Higher rips = more session specificity
+(ctrl, ripRate) BT 10-15
+    home/away/sym all pos r1.5/1 except r1s.5
+(ctrlDiffByCond, numRips) BT 10-15
+    swr large r other pos
+(ctrlDiffByCond, ripRate) BT 10-15
+    ctrl later/other pos 1.5, swry other pos 1.5. ctrl away/sym pos .25
+(ctrlDiff, numRips) BT 10-15
+    other/later/next all pos
+(ctrlDiff, ripRate) BT 10-15
+    other/later/next all pos. sym/away small r pos
+(measureByCOndition, numRips) BT 10-15
+    swr/ctrl pos at r1.5
+(measureByCondition, numRips) BT 10-15
+    swr/ctrl pos 1.5 and .25
+
+:r1, s.5, BT. In ctrl, more rips means fewer home visits? Also less session specificity
+(ctrlDiffByCond, numRips) BT
+    ctrl later/away neg all except r.25
+(ctrlDiffByCond, ripRate) BT
+    ctrl later neg except r.25
+(ctrlDiff, ripRate) BT
+    later/pos neg middle, meh
+(measureByCOndition, numRips) BT
+    ctrl neg r1
+(measureByCondition, numRips) BT
+    ctrl neg r.5/1
+
+(ctrl, numStims) BT 0-1 
+   away/sym pos large r
+(ctrlDiffByCond, numStims) BT 0-1
+    r1.5, away, neg both
+(ctrlDiffByCond, stimRate) BT 0-1
+    ctrl r1 pos next
+(ctrlDiff, numStims) BT 0-1
+    away neg 1.5
+
+:r1.5, s.5, BT2-3. More stims = more session specificity
+(ctrl, numStims) BT 2-3 
+   away/sym pos large r (bigger than 0-1)
+(ctrl, numStims) BT 2-3
+    away/sym pos large r, meh
+(ctrlDiffByCond, numStims) BT 2-3
+    swr later/other pos r1.5, ctrl next pos r1.5
+(ctrlDiffByCond, stimRate) BT 2-3
+    swr later/other/next pos r1.5, ctrl next pos r1.5
+(ctrlDiff, numStims) BT 2-3
+    away neg except 1.5. later/next/other pos 1.5
+(ctrlDiff, stimRate) BT 2-3
+    next 1.5
+(measureByCondition, stimRate) BT 2-3
+    swr pos 1.5
+
+(ctrlDiffByCond, numStims) BT 3-4
+    swr pos other/later small r
+(measureByCondition, numStims) BT 3-4
+    swr pos small r
+
+(ctrl, numStims) BT 2-7
+    away/sym pos increases with r
+(ctrl, numStims) BT 2-7
+    next neg small r, away/sym pos big r
+(ctrlDiffByCond, stimRate) BT 2-7
+    ctrl next pos small r, sym pos .25
+(ctrlDiff, numStims) BT 2-7
+    away neg 1.5, other pos .25
+
+(ctrl, numStims) BT 10-15
+   away/sym pos large r
+(ctrl, numStims) BT 10-15
+    away/sym pos large r, meh
+(ctrlDiff, numStims) BT 10-15
+    some other/next/later pos at all r
+
+(ctrl, numStims) BT
+    next neg all r except .25
+(ctrl, numStims) BT
+    next neg all except r.25/s0
+(ctrlDiffByCond, numStims) BT
+    swr neg r1.5 away
+(ctrlDiff, numStims) BT
+    away neg 1.5
+
+:r1, s.5, PFT more rips = more revisits next session in ctrl, opposite in swr, more exploration around away/sym
+(ctrl, numRips) PFT
+    next pos at larger r, not r1/s0
+(ctrl, numRips) P 2m
+    away/sym small r pos
+(ctrl, numRips) P
+    Sym all r except 1.5 slightly pos
+(ctrl, ripRate) PFT
+    away/sym pos all r, 1.5 worst
+(ctrl, ripRate) P
+    away/sym pos all r, 1.5 worst
+(ctrlDiffByCond, numRips) PFT
+    later/next swr pos all r, best r.5. away/sym small r
+(ctrlDiffByCond, numRips) P
+    ctrl neg next all except r.5. swr away pos r1.5
+(ctrlDiffByCond, ripRate) PFT
+    most swr pos 
+(ctrlDiffByCond, ripRate) P
+    later/other/away swr most pos except r.25, worse than PFT and 2min
+(measureByCOndition, numRips) PFT
+    swr middle r pos
+(measureByCondition, numRips) PFT
+    swr all r very pos
+(measureByCondition, numRips) P
+    same as P 2min
+
+:r1, s.5, PFT
+(ctrl, numStims) PFT
+    r.25, pos away/sym/home. away all r, but decreases with larger r
+(ctrl, numStims) P
+    same as P 2min, r1 better tho, r.5 best
+(ctrlDiffByCond, numStims) PFT
+    other/later/next ctrl most r pos
+(ctrlDiffByCond, stimRate) PFT
+    ctrl everything pos except away/sym at r1.5
+(ctrlDiffByCond, stimRate) P
+    similar to P 2min but worse
+(ctrlDiff, numStims) PFT
+    later pos except 1.5, next pos small r
+(ctrlDiff, stimRate) PFT
+    next/later except 1.5 pos. away/stim small r
+(ctrlDiff, stimRate) P
+    most things pos eberywhere except 1.5 for next, sym
+(measureByCondition, numStims) PFT
+    ctrl most r/s pos
+(measureByCondition, stimRate) PFT
+    ctrl all pos
+(measureByCondition, stimRate) P
+    same as PFT but worse
+
+
+won't use these, moving them down here
+(ctrl, ripRate) P 2min
+    away/sym pos all r, 1.5 worst
+(ctrl, ripRate) P 1min
+    away/sym pos all r, 1.5 worst
+(ctrlDiffByCond, numRips) P 2min
+    like PFT but worse
+(ctrlDiffByCond, ripRate) P 2min
+    most swr pos
+(ctrlDiff, ripRate) P 2min
+    other/later pos 1.5
+(measureByCondition, numRips) P 2min
+    same as PFT but worse .25
+(ctrl, numStims) P 2min
+    same as PFT except s0 worse
+(ctrlDiffByCond, numStims) P 2min
+    similar to PFT but less good
+(ctrlDiffByCond, stimRate) P 2min
+    similar to PFT
+(ctrlDiffByCond, stimRate) P 1min
+    similar to P 2min but worse
+(ctrlDiff, numStims) P 2min
+    later pos middle r
+(ctrlDiff, stimRate) P 2min
+    similar to PFT but worse .25
+(measureByCondition, numStims) P 2min
+    same as PFT except .25
+(measureByCondition, stimRate) P 2min
+    ctrl all pos
+(measureByCondition, stimRate) P 1min
+    ctrl pos except 1.5 
+
+
+
+
+
+
+avg curvature at location
+    :BT away, r1, s.5. 
+    :BT 0-1, r.25, s0. Wondering how this isn't zeros
+    :BT 2-3 r1, s.5. next cond weird?
+    :BT 3-4 r.5, s.5 next diff
+    :BT away 2-7. r.5, s.5 lots of diffs/conds/raw
+    :BT 2-7. r.5, s.5 other/next/later diff
+    :PFT OW r1, s.5
+
+Shuffles
+Task
+
+    BT
+        sym     cond    rev at 1.5
+        other   cond    rev at small r, best .25
+        other           all very very sig
+        other   diff    rev meh at 1.5
+        away    cond    rev at larger r
+        next            all very very sig
+        later           all very very sig
+    BT E
+        sym     cond    larger r, best at 1.5
+        other           all, bad a r1.5 great at rest
+        other   diff    meh, all rev at 1.5
+        away    cond    large rev
+        next            middle r best, sig everywhere (rev?)
+        next    diff    r.5 rev
+        later   cond    .25/.5/1, 1 best, all rev
+        later           all, 1.5 bad
+    BT OW
+        sym     cond    rev 1.5. Also .25 but less sig
+        raw             rev .25 meh
+        other   cond    rev small r
+        other           all vv sig
+        away    cond    larger sig, 1.5 best
+        next            all vv sig
+        later           all vvs
+    BT E OW
+        sym     cond    rev 1.5
+        sym     diff    1.5 meh
+        other           all v sig except 1.5
+        away    cond    larger rev
+        next            all sig except 1.5, .5 looks best
+        next    diff    small r rev
+        later   cond    small r rev
+        later           all v sig except 1.5
+    BT M
+        other   cond    rev 1.5
+        other           all v sig except 1.5
+        away    cond    large rev
+        next            small r
+        later           small r
+
+    BT away
+        sym     cond    all rev, best at 1.5, don't use .25
+        raw             all rev, middle r
+        other           all sig, 1.5 bad
+        other   diff    all rev except r1s0
+        away    cond    large r rev
+        next            all vv sig except 1.5 bad sig
+        next    diff    all rev, large r better
+        later           all sig, 1.5 worst
+        later   diff    rev, 1.5 best, meh
+    BT home
+        next    cond    middle sig, meh
+
+    BT 0-1
+        other   cond    all rev, .5 best
+        other           small r sig
+        next            small r sig
+        later           small r sig
+    BT 2-3
+        away    cond    r1.5
+        next    cond    all v sig, larger gets slightly better
+    BT 3-4
+        sym     cond    middle rev
+        other           all sig, smaller better
+        away            all rev, smaller better
+        next    cond    middle rev, 1 best
+        next    diff    small r vv sig, large sig with less smoothing
+        later           .25/.5
+    BT home 2-7
+        sym     cond    all rev large best
+        away    cond    all rev large best
+        next    cond    all
+        next    diff    all at large sd
+    BT away 2-7
+        raw             all, best at r.5
+        other           all, best at r.5
+        other   diff    all rev, best at .5
+        away    cond    r.5/1/1.5, best at 1/1.5 rev
+        away    diff    smaller r, best at .5, rev
+        next    cond    rev r1, not too sig
+        next    dif     all rev, best at r1
+        later           r.5/1.5
+        later   diff    all, best at middle r
+    BT 2-7
+        sym     cond    all rev, best at sd1 or r.25 or r1.5
+        raw             all rev, better at smaller r
+        other           all very sig
+        other   diff    all rev, better at small r
+        away    cond    all rev except r.5
+        next            all very sig
+        next    diff    all rev, best not at r1
+        later           all very sig
+        later   diff    all rev
+    BT 10-15
+        other           all very sig
+        away    diff    meh, sig ish at r1
+        next            all very sig, 1.5 worst
+        later           all very sig
+    BT away 10-15
+        sym     cond    1.5 rev
+        other   cond    smaller r rev
+        other           .5
+        away    cond    rev large r
+        next            all sig except 1.5
+        next    diff    rev 1.5
+
+
+    PFT
+        sym     cond    r1.5
+        raw             r1/.5, 1 better
+        other   diff    all except 1.5, 1 is best
+        away    cond    1.5
+        next    cond    all sig, 1/.5 best
+        later   diff    all sig except 1.5
+    PFT OW
+        sym     diff    all sig except r.25
+        raw             all sig, r1 best
+        other   diff    all sig, r1 best
+        away    diff    .5/1/1.5. larger smoothing better
+        next    cond    all sig, .25 worst
+        later   diff    all sig except 1.5
+    PFT OW M
+        sym     diff    all sig except r.25
+        away    diff    r1.5
+        next    cond    large sig, 1.5 best or r1/s0
+    PFT M
+        away    cond    r.5
+        next    cond    large r
+    P
+        raw             .5/1, 1 better
+        other   cond    1.5
+        other           all, middle best
+        away    cond    all, larger sd and/or r.5 best
+        next    cond    large r, 1.5 best
+        next            all sig, cleaner with smaller r
+        later           all sig, 1.5 worst
+    P OW
+        raw             .5/1 sig, 1 better
+        other           all sig, middle best
+        other   diff    r1 sig
+        away    cond    middle r
+        next    cond    larger r sig
+        next            smaller r sig, 1 fine, 1.5 bad
+        later           all vvs
+        later   diff    r1
+    P M
+        raw             r1
+        other   cond    r1 rev
+        next    cond    r1, meh
+        next            1.5 rev, small r sig
+    P 1min
+        away    cond    meh 1.5        
+    P 2min
+        away    cond    meh 1.5
+        next    cond    1.5
+        next    diff    rev 1.5
+
+
+Correlations:
+    :r1, s0.5 BT E. Aversion w/next, longer time at aways with more stim
+    (ctrl, numStims) BT
+        away/sym large r
+    (ctrlDiffByCond, stimRate) BT
+        swr neg away large r, neg sym r1
+    (ctrl, numStims) BT E
+        away all r, less good at r1, sym r1.5. Later/other slightly neg r1/1.5
+    (ctrl, numStims) BT E OW
+        away small r posr
+    (ctrl, stimRate) BT M
+        large r, other/later neg
+    (ctrlDiffByCond, numStims) BT
+        later swr pos large r. large r swr away neg
+    (ctrlDiffByCond, stimRate) BT E
+        middle r swr next pos, r1.5 swr other/later pos. r.5 ctrl away/sym pos
+    (ctrlDiffByCond, stimRate) BT E OW
+        ctrl away/sym pos r.25/.5/1
+    (ctrlDiffByCond, stimRate) BT OW
+        away swr neg large r. next/later pos r1
+
+    :r.5, s.5, BT E. more rips = more time away. Later?
+    (ctrl, numRips) BT
+        1.5 away/sym/home pos
+    (ctrl, ripRate) BT E
+        Away/sym pos all r, less good at r1 (sym just large r). Later slightly pos middle r best s0
+    (ctrl, numRips) BT E
+        away all r, less good at r1, sym r1/1.5
+    (ctrl, numRips) BT E OW
+        away all, less good at r1, sym r1/1.5
+    (ctrlDiffByCond, ripRate) BT E
+        most ctrl things and some swr away neg
+    (ctrlDiffByCond, ripRate) BT E OW
+        most ctrl things and some swr away neg
+    (ctrlDiffByCond, numRips) BT E
+        most ctrl things neg at most r/s
+    (ctrlDiffByCond, numRips) BT E OW
+        most ctrl things neg at most r/s
+    (ctrlDiff, ripRate) BT
+        later pos r1
+    (ctrlDiff, ripRate) BT E
+        later neg r.5, away/sym neg most r
+    (ctrlDiff, ripRate) BT E OW
+        later, away r.5 neg
+    (ctrlDiff, numRips) BT
+        other/later pos r1. away/sym neg r1.5
+    (ctrlDiff, numRips) BT E
+        most neg all r/s. later smaller r, next larger r
+    (ctrlDiff, numRips) BT E OW
+        away/sym most r/s neg. later/other neg r.5
+    (ctrlDiff, numRips) BT OW
+        other pos r1.5. later pos r1
+    (measureByCondition, ripRate) BT E
+        ctrl neg all r/s
+    (measureByCondition, numRips) BT E
+        all ctrl neg, r.25 worst
+    (measureByCondition, numRips) BT OW
+        ctrl all neg
+
+    :r1, s.5. more rips = less session specificity
+    (ctrl, ripRate) BT home
+        away
+    (ctrl, numRips) BT away
+        away all r, best at 1.5
+    (ctrlDiffByCond, ripRate) BT away
+        ctrl small r neg next/later
+    (ctrlDiffByCond, numRips) BT away
+        ctrl later/next/other neg small r
+    (ctrlDiff, numRips) BT away
+        away most r/s neg
+    (measureByCondition, numRips) BT away
+        r.5
+
+
+    (ctrl, numStims) BT 0-1
+        away large r
+    (ctrl, stimRate) BT 0-1
+        larger r, away. sym 1.5. pos
+    (ctrlDiffByCond, stimRate) BT 2-3
+        ctrl next/later neg larger r
+    (ctrlDiff, stimRate) BT 2-3
+        away r1 neg
+    (ctrlDiffByCond, stimRate) BT 0-1
+        ctrl next/later neg .5/1/1.5
+
+    (ctrlDiffByCond, ripRate) BT 2-3
+        swr away/sym neg 1.5
+    (ctrl, ripRate) BT 3-4
+        next very pos r.5/1/1.5 except r1s1
+    (ctrl, numRips) BT 3-4
+        mid/large r, inv related to s, next large pos corr
+
+
+    (ctrlDiffByCond, numStims) BT 2-7
+        ctrl next neg r1
+    (ctrlDiffByCond, stimRate) BT away 2-7
+        swr pos later/other all r
+
+    :r1, s.5, BT2-7 more rips = more away/sym time
+    (ctrl, ripRate) BT away 2-7
+        next r1 pos
+    (ctrl, ripRate) BT home 2-7
+        away/sym pos 1.5
+    (ctrlDiffByCond, ripRate) BT home 2-7
+        swr away neg 1.5, ctrl pos away at s0
+    (ctrl, ripRate) BT 2-7
+        away/sym most r/s pos
+    (ctrl, numRips) BT 2-7
+        away/sym all r, cleaner with large r. Next r1. pos
+    (ctrlDiffByCond, ripRate) BT 2-7
+        ctrl next r1, swr away/sym r.5/1/1.5. All neg
+    (ctrlDiffByCond, numRips) BT 2-7
+        swr away/sym neg most r, clearner large r, ctrl next neg larger r
+    (ctrlDiff, ripRate)
+        sym neg larger r
+    (ctrlDiff, numRips) BT 2-7
+        sym r1 neg, away/sym r1.5 neg
+
+    (ctrl, stimRate) BT away 10-15
+        small r/s, next pos
+    (ctrlDiff, numStims) BT 10-15
+        other neg larger r, away/sym neg larger r
+    (ctrlDiff, stimRate) BT 10-15
+        all ctrls neg most r/s. next r.5 best, later r1.5
+
+    (ctrl, ripRate) BT away 10-15
+        r1.5 away/sym
+    (ctrl, numRips) BT 10-15
+        away 1.5/1. 1.5 best
+    (ctrlDiffByCond, ripRate) BT away 10-15
+        ctrl next negative most r/s. away neg r1.5. sym neg r.5
+    (ctrlDiff, numRips) PFT OW M
+        away/sym neg r1
+
+    :r1, s.5, PFT OW. swr more stims = more time away in probe, less so in ctrl?
+    (ctrl, numStims) PFT
+        sym pos all r    
+    (ctrlDiffByCond, numStims) PFT OW M
+        swr away/sym middle r neg
+    (ctrlDiffByCond, numStims) PFT OW
+        swr away neg r1, ctrl away pos r1.5
+    (ctrlDiffByCond, stimRate) PFT OW M
+        later ctrl pos r1, swr away neg middle r
+    (ctrlDiffByCond, stimRate) PFT
+        ctrl away pos r1.5
+    (ctrlDiff, numStims) PFT OW
+        r1 away/sym neg
+    (ctrlDiff, numStims) PFT OW M
+        r.5 later/next/other neg
+    (ctrlDiffByCond, numStims) P OW
+        ctrl neg most things, especially 1.5
+    (ctrlDiffByCond, numStims) P OW M
+        swr away neg r1, ctrl pos r1 away
+    (ctrlDiffByCond, stimRate) P OW
+        ctrl next neg all except .25. later/other neg 1.5. away/sym neg large r
+    (ctrlDiffByCond, stimRate) P OF W
+        swr neg away/sym most r/s. Some pos ctrl away/sym at r1
+    (ctrlDiffByCond, stimRate) P M
+        ctrl pos large r later/away/sym. swr away/sym neg middle r
+    (ctrlDiffByCond, stimRate) P 2min
+        ctrl pos away/sym/later/other larger sd
+    (ctrlDiff, numStims) P OW
+        away most r/s, r1 best neg, some sym neg r1.5
+    (ctrlDiff, numStims) P
+        most r/s neg away/sym
+    (measureByCondition, numStims) P OW
+        ctrl neg all r/s except .25
+    (measureByCondition, numStims) P
+        ctrl neg all r/s except .25
+    (measureByCondition, stimRate) P M
+        pos ctrl neg swr at large r
+    (ctrlDiffByCond, numStims) P
+        ctrl everything neg except r.25
+    (ctrl, numStims) P OW
+        away all r, sym larger, pos
+    (ctrlDiffByCond, numStims) P M
+        swr away
+
+    :r1, s.5, PFT OW. more rips = more time at aways in probe
+    (ctrlDiffByCond, ripRate) PFT OW M
+        strong neg away/sym both conds, stronger in swr
+    (ctrlDiffByCond, numRips) PFT M
+        swr neg r.5 away, ctrl neg sym r1
+    (ctrlDiffByCond, numRips) PFT OW M
+        swr neg away/sym .25/.5/1
+    (ctrlDiffByCond, numRips) PFT OW
+        away/sym swr neg r1
+    (ctrlDiff, ripRate) PFT OW M
+        r1 away/sym neg
+    (ctrlDiff, ripRate) PFT OW
+        away/sym neg except r1.5
+    (ctrlDiff, numRips) PFT OW
+        away/sym middle r    
+    (ctrlDiffByCond, numRips) P
+        ctrl r1 away/sym/later neg        
+    (ctrlDiffByCond, numRips) P M
+        ctrl r1 sym/next neg
+    (ctrlDiff, ripRate) P OW
+        away r1 neg
+    (ctrlDiff, ripRate) P
+        away/sym neg r1
+    (ctrlDiff, ripRate) P M
+        sym neg r1        
+    (ctrlDiff, numRips) P
+        away/sym larger r neg
+    (ctrl, ripRate) P
+        r1.5 slight neg other, pos away
+    (ctrlDiffByCond, ripRate) P 1min
+        ctrl sym/away strong neg at small r
+
+
+avg time at location
+    :r1, s0.5, BT. Lots of diffs here
+    :r1, s0.5, BT 2-7. Why is other cond rev? away/sym diffs are interesting
+    :r1, s0.5, BT 10-15. raw diff interesting, and away/other diff
+    :r1.5, s0.5, PFT. other/later/next condition fx
+
+Task
+    full task   away    diff    r1/1.5
+                other   cond    r.5/1
+                other   diff    r1
+                later   diff    r1
+                sym     diff    r1/1.5
+    0-1         next    diff    1/1.5
+                other   cond    0.25/.5/1 (rev)
+                other   diff    1
+                later   cond    0.5/1 (rev)
+                later   diff    1
+    2-3         away            1/1.5 rev
+                other           1.5 rev
+                other   cond    .5 rev, sd1/.5
+    3-4         away    cond    1 rev
+                next    diff    .5
+                later   diff    1 rev
+                other   diff    1.5
+                raw             .5 rev
+    2-7         away    diff    1/1.5 (1better)
+                other   cond    .5/1 rev
+                sym     diff    1/1.5
+    10-15       away    diff    r1/1.5 (0.5 also, less sig)
+                next    cond    .5/1
+                other   diff    .5/1
+                raw             .5/1/1.5
+
+Probe
+    full probe  away            .5/1
+                next            all
+                next    cond    1.5
+                other           all
+                other   cond    1.5
+                later           all, vbest at 1
+                later   cond    1.5
+                sym             all (higer p vals than other ctrls)
+                sym     cond    1
+    P 1min      away    diff    1
+                next    cond    1.5
+                next    diff    1.5 rev, .5 normal
+                other           .25
+                later           .25/.5/1
+                sym             1/.5
+    FT          away            .5
+                next            .5/1
+                next    diff    1.5 rev
+                other           .25/.5
+                other   cond    1.5
+                later           .25/.5/1
+                later   cond    1.5
+                sym             .5/1
+    P 2min      away            .5/1
+                next            .25/.5/1
+                next    diff    1.5 rev
+                other           .25/.5/1
+                other   cond    1.5
+                later           all
+                later   cond    1.5
+                sym             all
+                
+
+correlations
+
+    :r1, s.5 BT. Aversive stim with next vs stim. higher exploration with away vs numRip/rate
+    (ctrl, stimRate) BT
+        next neg r1
+    (ctrl, numRips) BT
+        away po r.5/1.5
+    (ctrl, ripRate) BT
+        away pos r1.5
+    (ctrlDiffByCond, stimRate) BT
+        ctrl pos next r.5/1/1.5, away .5/1, sym .5/1
+    (ctrlDiffByCond, numStims) BT
+        ctrl sym, next pos r1
+    (ctrlDiff, stimRate) BT
+        next, later, away pos r.25/.5 sd0/.5
+    (ctrlDiff, numStims) BT
+        other/later/next pos at r.25/.5/1
+    (ctrlDiff, numRips) BT
+        away neg r1.5
+
+    :meh .... r1, s.5, BT 0-1. Exploration correlates opposite with stim and rip rates
+    (ctrl, stimRate) BT 0-1
+        away/sym neg r1
+    (ctrl, numRips) BT 0-1
+        away/sym pos r1
+    (ctrl, ripRate) BT 0-1
+        away pos r.5/1
+    (ctrlDiffByCond, stimRate) BT 0-1
+        swr away neg r1
+    (ctrlDiffByCond, numStims) BT 0-1
+        swr neg away r1
+    (ctrlDiffByCond, numRips) BT 0-1
+        swr away neg r1
+
+    :r1, s0.5, BT 2-3. More rips means more explroation, more so in swr (compensation during learning???)
+    (ctrl, numRips) BT 2-3
+        away/sym pos r1/1.5
+    (ctrl, ripRate) BT 2-3
+        away pos r1, away/sym pos r1/1.5
+    (ctrlDiffByCond, stimRate) BT 2-3
+        swr neg sym/away r1/1.5 sd0/0.5
+    (ctrlDiffByCond, numRips) BT 2-3
+        swr neg away/sym r1/1.5, ctrl neg away/sym r1.5
+
+    :r1, s0.5, BT 3-4. More rips = more revisit next session, but maybe just in ctrl. In swr maybe more rips = more revisit in this session
+    (ctrl, numRips) BT 3-4
+        next pos r1
+    (ctrl, ripRate) BT 3-4
+        next pos r1
+    (ctrlDiffByCond, numRips) BT 3-4
+        swr next/later/other/away pos at r.5, ctrl next neg at r.5/r1
+    (ctrlDiffByCond, ripRate) BT 3-4
+        swr next/later/other/away pos at r.5, ctrl next neg at r.5/r1
+    (measureByCondition, numRips) BT 3-4
+        swr pos r.5/.25
+    (measureByCondition, ripRate) BT 3-4
+        swr pos r.5/.25
+    (ctrlDiff, numRips) BT 3-4
+        next neg r1
+    (ctrlDiff, ripRate) BT 3-4
+        next neg r1
+
+    :r1, sd1, BT 2-7, more rips more away/sym time
+    (ctrl, numRips) BT 2-7
+        away pos r1
+    (ctrlDiffByCond, stimRate) BT 2-7
+        ctrl pos r1.5
+    (ctrlDiffByCond, ripRate) BT 2-7
+        swr sym sd1
+    (measureByCondition, numRips) BT 2-7
+        ctrl pos r1
+    (ctrlDiff, numRips) BT 2-7
+        away/sym neg r1/1.5 more sig at 1.5
+    (ctrlDiff, ripRate) BT 2-7
+        away/sym neg r1/1.5 more sig at 1.5
+
+    :r1, sd0.5, BT 10-15. In swr, stims don't seem aversive. rips attractive. rips mean better performance in late task in swr and ctrl
+    (ctrl, numRips) BT 10-15
+        home next r.5/1, cleaner at 1
+    (ctrl, numStims) BT 10-15
+        next pos r1
+    (ctrl, ripRate) BT 10-15
+        home neg r.5/1
+    (ctrlDiffByCond, numStims) BT 10-15
+        swr next r1 neg
+    (ctrlDiffByCond, numRips) BT 10-15
+        swr next r.25/.5/1 neg, away neg r.5/1, sym neg r1, ctrl next/away/sym neg r1.5
+    (ctrlDiffByCond, ripRate) BT 10-15
+        swr next/later r.25/.5/1 neg, away/sym neg r.5/1, ctrl next/away/sym neg r1.5 (but less ctrl sig than by numRips)
+    (measureByCondition, numRips) BT 10-15
+        swr neg higher sd all r
+    (measureByCondition, ripRate) BT 10-15
+        swr neg higher sd all r
+    (ctrlDiff, numRips) BT 10-15
+        all negative, cleaner at higher r
+    (ctrlDiff, ripRate) BT 10-15
+        all negative, cleaner at higher r
+
+    :r1, s0.5, P 2min
+    (ctrl, numStims) P
+        away/sym pos r1.5
+    (ctrlDiffByCond, stimRate) P
+        ctrl neg basically all r/sd, fewer at r1.5
+    (ctrlDiffByCond, numStims) P
+        ctrl neg basically all r/sd, fewer at r1.5
+    (measureByCOndition, stimRate) P
+        ctrl very neg, r.5/1
+    (measureByCOndition, numStims) P
+        ctrl very neg, r.5/1
+    (ctrlDiff, stimRate) P
+        all neg at r1
+    (ctrlDiff, numStims)
+        all neg at r1
+    (ctrl, numRips) PFT
+        sym pos r.5
+    (ctrl, ripRate) PFT
+        sym pos r.5
+    (ctrlDiffByCond, numStims) P 2min
+        swr neg next r1, ctrl other/sym neg small r
+    (measureByCOndition, numStims) P 2min
+        ctrl neg, r.25/.5 sd0/.5
+
+    
+
+
+
+
+
+
+
+
+total time at location
 Task
     full task raw vals might be different. Shows up also in diff with all but sym
     hometrial, other, cond - "home wells from X condition are revisited more often during other sessions"? Need to look at plot
@@ -25,8 +908,665 @@ Probe
     filltime, offwall, moving, other cond - spends more time revisiting home wells from condition X (holds in later ctrl?)
 
 
+Correlations:
+    :r.5, s.5, PFT more rips = more time spent exploring away/sym areas
+    (rips, ctrl) PFT
+        away/sym pos at all except r1/s0
+    (rips, ctrl) PFT OW
+        away/sym pos except r1.5
+    (rips, ctrl) P 1m
+        sym pos all r
+    (rips, ctrl) P 2m
+        away/sym r.25/.5
+    (rips, ctrlDiff) PFT OW M
+        later/other r1/1.5 pos
+
+    : more stims = more probe OW/E/M time?
+    (stim, ctrl) PFT OW
+        away pos r1/1.5
+    (stim, ctrl) P M
+        away/sym/home all pos r.5/1. also r.25 except s0
+    (stim, ctrl) P OW M
+        away/sym/home all pos all r except r.25 s0
+    (stim, ctrl) PFT OW M
+        away pos at high r
+
+    :r1, s0.5, PFT OW in ctrl (and all), more stims = higher specificity compared to future sessions. Maybe recent reward overrides aversion, but aversion sticks?
+    (stim, ctrlDiffByCondition) PFT OW
+        ctrl later/other/next/sym pos at r1/1.5
+    (stim, ctrlDiffByCondition) P M
+        ctrl pos later/next/other/away/sym r.5/1
+    (stim, ctrlDiffByCondition) P OW M
+        ctrl pos later/next/other/away/sym r.5/1/1.5
+    (stim, ctrlDiffByCondition) PFT M
+        ctrl pos other/next/later/sym/away r1
+    (stim, ctrlDiffByCondition) PFT OW M
+        ctrl very pos all ctrls r1/1.5
+    (stim, ctrlDiffByCondition) P 1m
+        ctrl pos r0.25-1 later/next/other
+    (stim, measureByCondition) PFT
+        ctrl pos r1
+    (stim, measureByCondition) PFT OW
+        ctrl pos r1/1.5
+    (stim, measureByCondition) P M
+        ctrl pos r.5/1
+    (stim, measureByCondition) P OW M
+        ctrl pos all r/s
+    (stim, measureByCondition) PFT OW M
+        ctrl ver pos all r/s, cleaner at higher r
+    (stim, measureByCondition) P wm
+        ctrl pos r0.25-r1
+    (stim, ctrlDiff) P M
+        all ctrls pos at all r (some missing at r.25, maybe r.5)
+    (stim, ctrlDiff) P OW M
+        all ctrls pos at all r except r.25/s0
+    (stim, ctrlDiff) PFT M
+        pos all ctrls at small r, later/next/sym at r1, later/next at r1.5
+    (stim, ctrlDiff) PFT OW M
+        pos all ctrls at small r, later/next/sym at r1, later/next at r1.5
+
+    :r1, s0.5, BT E  more rips = more time spent in future sessions at home
+    (rips, ctrl) BT
+        home neg r1
+    (rips, ctrl) BT E
+        r.5/1/1.5 next/other low pos corr (except other r1)
+    (rips, ctrl) BT E OW
+        r1.5 next/other low pos corr
+    (rips, ctrl) BT M
+        r.5/1/1.5 next/other low pos corr (except other r1)
+    (rips, ctrlDiffByCond) BT OW
+        ctrl later/other/away at r1
+    (rips, ctrlDiffByCond) BT M
+        ctrl later/other neg all r, cleaner at larger
+    (rips, ctrlDiffByCond) BT
+        ctrl neg other/later r1, away 1/1.5
+    (rips, ctrlDiffByCond) BT E
+        ctrl neg other/later/away r1/1.5
+    (rips, measureByCondition) BT M
+        ctrl neg r1.5. swr pos r.5
+    (rips, measureByCondition) BT E
+        ctrl neg r1.5
+    (rips, ctrlDiff) BT E OW
+        later/next r1.5 neg
+    (rips, ctrlDiff) BT OW
+        later/next/other r1 neg
+    (rips, ctrlDiff) BT
+        other/later/next/away all neg at r1
+    (rips, ctrlDiff) BT E
+        next/other/away/later all neg at r1.5, later at r1
+
+    :r1, s0.5, BT more stim = less time spent in future sessions, esp in ctrl
+    (stim, ctrl) BT E OW
+        next neg corr r.5/1, 1 cleaner
+    (stim, ctrl) BT OW
+        next neg r1
+    (stim, ctrl) BT M
+        next neg all except r.25
+    (stim, ctrl) BT E
+        next neg r1/1.5/.5. 1/1.5 cleanest
+    (stim, ctrlDiffByCondition) BT M
+        ctrl pos next all r, cleanest at r1
+    (stim, ctrlDiffByCondition) BT 
+        ctrl pos next all r, cleanest at r1
+    (stim, ctrlDiffByCondition) BT E
+        ctrl pos next all r, cleanest at r1
+    (stim, ctrlDiff) BT OW
+        pos next r1
+    (stim, ctrlDiff) BT
+        pos next r1
+
+    :more rips = more away time during home trials. Again, length of time spent finding correlates with ripple count?
+    (rips, ctrl) BT home
+        away/sym r1.5 pos
+    (rips, ctrlDiffByCond) BT home
+        away/sym swr neg many r's. use r1
+    (rips, ctrlDiff) BT home
+        away neg all r, cleaner at higher r
+    :r.5 ctrl stim aversive?
+    (stim, ctrl) BT home
+        next neg .25-1 except .25/s0
+    (stim, ctrlDiffByCondition) BT home
+        swr away/sym neg r1, ctrl pos next r.25-1, cleaner at small r
+    (stim, ctrlDiff) BT home
+        next r.5
+
+    : does ripple count correlate with first trial duration? same with stim count
+    (rips, ctrl) BT 0-1
+        away/sym pos r1.5
+    (rips, ctrlDiffByCond) BT 0-1
+        away swr all neg, avoid r1.5
+    (rips, ctrlDiff) BT 0-1
+        away all r neg
+    (stim, ctrl) BT 0-1
+        away pos, higher r is better. Also sym at higher r
+    (stim, ctrlDiffByCondition) BT 0-1
+        swr neg away r.5-1.5, r1 best
+    (stim, ctrlDiff) BT 0-1
+        away all r neg
+
+    :r1 more rips in session = more away/sim time in H2 trial
+    (rips, ctrl) BT 2-3
+        away sym r1/1.5
+    (rips, ctrlDiffByCond) BT 2-3
+        away/sym swr all neg, use r1
+    (rips, ctrlDiff) BT 2-3
+        away neg all r
+    (stim, ctrlDiffByCondition) BT 2-3
+        swr neg away/sym r.25/.5
+
+    :r.5, s0.5 opposite dirs
+    (rips, ctrlDiffByCond) BT 3-4
+        swr next/later/other pos at all r, away/sym just at small r. High corr vals. Ctrl very negative later/other/next at all and away at larger rvals
+    (rips, measureByCondition) BT 3-4
+        swr all pos, r.5 best, ctrl all neg, larger r best
+
+    :leave these here for now
+    (rips, ctrl) BT home 2-7
+        away/sym low pos all r, use r1
+    (rips, ctrlDiffByCond) BT home 2-7
+        ctrl neg away r1.5, swr neg sym at r.5/1
+    (stim, ctrl) BT 2-7
+        next neg r1/1.5
+    
+    :r1.5  more rips = more likely to visit next session in early learning (but also less likely to visit in current aways)
+    (rips, ctrlDiffByCond) BT away 2-7
+        ctrl other/next/later all neg all r, cleaner at large r. away neg at r1/1.5
+    (rips, ctrlDiff) BT away 2-7
+        next neg r1/1.5
+    (rips, ctrl) BT away 2-7
+        next low pos r1/1.5
+    (rips, ctrlDiffByCond) BT 2-7
+        ctrl neg next/later/away at r1.5
+    (rips, measureByCondition) BT away 2-7
+        ctrl neg at all, cleaner with higher r
+    
+    :r 0.5/s0.5 Aversive in ctrl? Less likely to visit last home in early learning if was stimmed more
+    (stim, ctrl) BT home 2-7
+        next neg r0.25-1 except r.25/s0
+    (stim, ctrlDiffByCondition) BT home 2-7
+        ctrl pos r.25/.5
+
+
+    :not sure how to interpret these. Maybe large r has to do with corner sitting? Skipping for now
+    (rips, ctrl) BT 10-15
+        away/sym pos r1.5
+    (rips, ctrl) BT away 10-15
+        away/sym/home pos r1.5
+    (rips, ctrl) BT home 10-15
+        sym/home neg r.25/.5
+    (rips, ctrlDiffByCond) BT away 10-15
+        swr later/other/sym all pos at r1.5, ctrl away neg r1.5
+    (rips, ctrlDiffByCond) BT home 10-15
+        ctrl neg away all r 
+    (rips, measureByCondition) BT home 10-15
+        ctrl neg at all except s0. Cleanest at r1
+
+    :r1 more rips = more session specificity in away trials but less in home. Confusion about task phase/encoding when got reward?
+    (rips, ctrlDiff) BT away 10-15
+        later/next/other all r pos, cleanest at smaller r
+    (rips, ctrlDiff) BT home 10-15
+        later/other neg r1
+    
+    : r1/1.5 more stim = more time at sym in late home trials (more confusion/disorientation?)
+    (stim, ctrl) BT home 10-15
+        sym pos r1/1.5
+    (stim, ctrlDiff) BT home 10-15
+        sym neg r1/1.5
+
     
 
-Measure might want to add:
-    how often are aways checked on way to home. Specifically t2-7
-    How often are previously rewarded wells checked during away trials? Specifically t2-7
+
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+WELP the below used flawed code so gotta discard it all....
+Correlations:
+    ctrl stimRate PFT
+                away/sym pos corr all r
+                other maybe at r1.5 pos corr
+    ctrl stimRate BT explore OW
+                Next especially, also other and later smaller
+                    neg corr. Cleaner at high rd
+                ===== Aversive stim? But why not smaller r? If they go there they go there for sure instead of mucking around it
+    ctrl stimRate PFT OW
+                away sym pos corr all r
+    ctrl stimRate BT away 10-15
+                small sd small rd, home pos corr
+    ctrl stimRate BT t2-3
+                away/sym pos corr. larger rd
+    ctrl stimRate P OWM
+                away/home/sym all consistent pos corr across all rd. Highest at rd0.5, sd0
+                ==== home at small rd is diff from rip corr, interesting?
+    ctrl stimRate P 2min
+                away/sym pos corr all r
+                other/later slightly at rd1.5
+    ctrl stimRate PFT M
+                home pos corr rd0.25
+                away/sym pos at all rd. Use rd1, s1
+    ctrl stimRate PFT OW M
+                Same as PFT M
+    ctrl stimRate P M
+                use rd0.5, sd0.5
+                home, away, sym all pos cor for rd0.25,0.5,1
+    ctrl stimRate BT 0-1
+                away/sym at large r pos cor
+    ctrl stimRate BT OW
+                next neg corr at large r
+    ctrl stimRate P
+                away/sym pos corr
+    ctrl stimRate P OW
+                away/sym pos corr
+    ctrl stimRate BT home 2-7
+                next neg corr at rd1
+    ctrl stimRate BT explore
+                next neg corr at rd0.5, 1, 1.5. Cleanest at 1
+    ctrl stimRate BT home 10-15
+                away/sym pos cor increases with r
+    ctrl stimRate BT M
+                same as BT explore
+                rd0.25 home pos corr
+    ctrl stimRate BT
+                same as BT explore
+    ctrl stimRate BT 2-7
+                Same as BT explore
+    ctrlDiffByCond stimRate PFT
+                ctrl pos most things most r, big r better
+    ctrlDiffByCond stimRate PFT OW
+                same as PFT
+    ctrlDiffByCond stimRate BT away 10-15
+                swr most things at r0.5
+    ctrlDiffByCond stimRate BT 2-3
+                swr neg at r .25/.5 away/sym
+    ctrlDiffByCond stimRate P OW M
+                Same as PFT
+    ctrlDiffByCond stimRate P 2min
+                Same as PFT
+    ctrlDiffByCond stimRate PFT M
+                Same as PFT
+    ctrlDiffByCond stimRate PFT OW M
+                Same as PFT
+    ctrlDiffByCond stimRate PFT OW M
+                Same as PFT except no r1.5
+    ctrlDiffByCond stimRate BT t0-1
+                swr away neg corr big r
+    ctrlDiffByCond stimRate BT home
+                swr neg r1 away/sym
+    ctrlDiffByCond stimRate BT t3-4
+                SWR high pos corr r0.25
+    ctrlDiffByCond stimRate BT home 2-7
+                ctrl small r next pos cor
+    ctrlDiffByCond stimRate BT explore
+                ctrl next large r
+    ctrlDiffByCond stimRate BT moving
+                ctrl next large r
+    ctrlDiffByCond stimRate P 1min
+                all ctrl pos corr all r, use r1
+    ctrlDiffByCond stimRate BT
+                ctrl next large r
+    ctrlDiffByCond stimRate BT home trial
+                ctrl next r0.25/0.5/1
+    measureByCondition stimRate PFT
+                ctrl pos at all, cleanest at biggest r
+    measureByCondition stimRate PFT OW
+                same as PFT
+    measureByCondition stimRate P OW M
+                Same as PFT
+    measureByCondition stimRate P 2mins
+                same as PFT
+    measureByCondition stimRate PFT M
+                same as PFT
+    measureByCondition stimRate PFT OW M
+                same as PFT
+    measureByCondition stimRate P 1min
+                same as PFT
+    ctrlDiff stimRate BT away 10-15
+                small r, other and away and sym pos corr
+    ctrlDiff stimRate P OW M
+                r1 next, other, later, sym all pos. Holds across most other r
+    ctrlDiff stimRate PFT M
+                Most sig at small r, pos corr same for next, later, other, away
+    ctrlDiff stimRate PFT OW M
+                same as PFT M
+    ctrlDiff stimRate PM
+                same as PFT M, except need smooth 0.5/1
+    ctrlDiff stimRate BT t0-1
+                away neg corr all r, r1 cleanest
+    ctrlDiff stimRate BT OW
+                small r pos cor for next, later, other, sym. Use r0.25, s0.5
+    ctrlDiff stimRate BT M
+                same as BT OW
+    ctrlDiff stimRate BT
+                Same as BT M
+    ctrlDiff stimRate BT home
+                pos corr next, use r0.5,s0.5
+    ctrlDiff stimRate BT home 10-15
+                later neg corr, use r0.5,s0.5
+    ctrl rippleRateProbeStats PFT
+                sym - more ripples = more sym time, no such corr for home, all rad/sd
+                next - more ripples = more revisiting next probe
+    ctrl rippleRateProbeStats BT explore OW
+                later and other tiny corr at larger radii, corr grows with radii
+    ctrl rippleRateProbeStats PFT OW
+                same as PFT
+    ctrl rippleRateProbeStats BT away 10-15
+                away/sym/home, r1.5 (increases with increasing radius). More ripples = more time exploring
+                no correlation for later/next/other
+    ctrl rippleRateProbeStats BT t2-3
+                away/sym, pos corr - more ripples = more exploration?
+    ctrl rippleRateProbeStats P OWM
+                away/sym pos corr, inc with r, any s
+                    home has same at r1.5
+    ctrl rippleRateProbeStats P 2min
+                Same as POWM except home not corr
+    ctrl rippleRateProbeStats PFT M
+                away/sym pos corr. Tighter r vals at higher ra
+                next high corr's across all r, try r1, sd.5
+    ctrl rippleRateProbeStats PFT OWM
+                Same as P OWM
+    ctrl rippleRateProbeStats BT t10-15
+                larger radius > higher away/sym pos corr
+    ctrl rippleRateProbeStats P M
+                Away/sym. Sym slightly higher corr. TIghter at higher r
+    ctrl rippleRateProbeStats P
+                Away/sym.  TIghter at higher r. Poss corr
+    ctrl rippleRateProbeStats BT away, 2-7
+                Next at r1, 1.5. pos corr
+    ctrl rippleRateProbeStats P 0-60
+                Sym pos corr, r1/1.5
+    ctrl rippleRateProbeStats BT
+                neg corr at home at r1/1.5, sd0/0.5
+                slightly pos corr away/sym at r1.5
+    ctrlDiff rippleRateProbeStats BT explore OW
+                later neg cor at r1, later/next neg cor at r1.5
+    ctrlDiff rippleRateProbeStats BT away t10-15
+                later/neg/other all pos at r1
+    ctrlDiff rippleRateProbeStats BT t2-3
+                away neg corr, r1 is cleanest
+    ctrlDiff rippleRateProbeStats PFT OW M
+                later/other pos corr at high rd, high pvals tho
+    ctrlDiff rippleRateProbeStats BT t0-1
+                away neg corr, r1 is cleanest
+    ctrlDiff rippleRateProbeStats BT home
+                away neg corr, r1 is cleanest
+    ctrlDiff rippleRateProbeStats BT OW
+                r1: away, next, other, later, all neg corr
+    ctrlDiff rippleRateProbeStats BT explore
+                r1.5, other/next/later/away all neg
+    ctrlDiff rippleRateProbeStats BT M
+                similar to BT explore
+    ctrlDiff rippleRateProbeStats BT away 2-7
+                next neg rd1,1.5
+    ctrlDiff rippleRateProbeStats BT
+                r1: away, next, other, later, all neg corr
+    ctrlDiff rippleRateProbeStats BT home
+                other neg corr at r.5/1
+    ctrlDiff rippleRateProbeStats BT t2-7
+                Away neg corr, especially r1.5
+    ctrlDiff rippleRateProbeStats BT home 10-15
+                other neg corr at r1, but not next
+                away neg corr at r1
+    ctrlDiffByCond rippleRateProbeStats PFT
+                maybe large r ctrl sym neg corr. Use r1/s1
+    ctrlDiffByCond rippleRateProbeStats BT explore OW
+                r1.5, ctrl neg corr other/later
+    ctrlDiffByCond rippleRateProbeStats PFT OW
+                ctrl sym neg r1
+    ctrlDiffByCond rippleRateProbeStats BT away t10-15
+                Big pos corr at small rd for ctrl next/other/later
+                Big pos corr for other/later/sym/away in swr at r1.5
+                Big neg cor for away ctrl
+                ===== opposite effect dir across conditions
+    ctrlDiffByCond rippleRateProbeStats BT t2-3
+                Neg corr in ctrl at large r, away
+                Big neg corr in swr away/sym, smaller rds
+    ctrlDiffByCond rippleRateProbeStats P OW M
+                swr pos corr other/later r1/1.5
+                swr pos corr away/sym r1
+    ctrlDiffByCond rippleRateProbeStats PFT M
+                swr all ctrls have big pos corr at all r. More sid at small r
+                =====
+    ctrlDiffByCond rippleRateProbeStats PFT OW M
+                same as PFT M
+    ctrlDiffByCond rippleRateProbeStats BT t10-15
+                ctrl away neg r1.5
+    ctrlDiffByCond rippleRateProbeStats P M
+                Sameas PFT M but cleaner at large r, corr vals lower
+    ctrlDiffByCond rippleRateProbeStats BT t0-1
+                SWR neg corr away all r, cleaner at small r
+                ctrl next pos corr use r.25/s1
+    ctrlDiffByCond rippleRateProbeStats BT home
+                Same as BT t0-1
+    ctrlDiffByCond rippleRateProbeStats BT OW
+                neg corr ctrl next/other/away, r1
+    ctrlDiffByCond rippleRateProbeStats BT t3-4
+                =======
+                Use r0.25 or .5, s0 or .5
+                everything positive for swr, negative for control
+    ctrlDiffByCond rippleRateProbeStats BT explore
+                ctrl later/other/away, neg corr at r1.5
+    ctrlDiffByCond rippleRateProbeStats BT home t10-15
+                ctrl away/sym neg at r1.5
+                swr next neg at r 0.25/.5
+    ctrlDiffByCond rippleRateProbeStats BT moving
+                ctrl later/other/away neg corr at r1.5
+                swr pos corr at r0.25 most ctrls (overlapping can't tell)
+    ctrlDiffByCond rippleRateProbeStats BT away 2-7
+                ctrl neg other/later/next/away at r1/1.5
+    ctrlDiffByCond rippleRateProbeStats BT
+                ctrl neg r1.5 later/away
+    ctrlDiffByCond rippleRateProbeStats BT t2-7
+                ctrl next/later/away neg 1.5
+    measureByCondition rippleRateProbeStats BT away 10-15
+                ctrl pos at all, use r0.5 or 1
+    measureByCondition rippleRateProbeStats P OW M
+                swr pos at all, use r1
+    measureByCondition rippleRateProbeStats PFT M
+                same as P OW M, but use small r
+    measureByCondition rippleRateProbeStats PFT OW M
+                same as PFT M
+    measureByCondition rippleRateProbeStats P M
+                same as P OW M
+    measureByCondition rippleRateProbeStats BT t3-4
+                swr pos at al, use small r
+                ctrl neg at all, small or big r
+    measureByCondition rippleRateProbeStats BT away 2-7
+                ctrl neg at al, just 1.5 or 1
+            
+            
+
+Choosing correlations to run:
+    : r1, sd0.5, PFT
+    ctrl stimRate PFT
+                away/sym pos corr all r. use rd1,s1
+    measureByCondition stimRate PFT
+                ctrl pos at all, cleanest at biggest r
+    ctrlDiffByCond stimRate PFT
+                ctrl pos most things most r, big r better, use r1
+    ctrlDiff stimRate P OW M
+                r1 next, other, later, sym all pos. Holds across most other r
+    ctrlDiff stimRate PM
+                Most sig at small r, pos corr same for next, later, other, away need smooth 0.5/1
+    ctrl stimRate P OWM
+                ==== home at small rd is diff from rip corr, interesting?
+    ctrl rippleRateProbeStats PFT
+                sym - more ripples = more sym time, no such corr for home, all rad/sd
+                home has same at r1.5
+                next - more ripples = more revisiting next probe. rd1, sd.5
+    ctrlDiffByCond rippleRateProbeStats PFT
+                maybe large r ctrl sym neg corr. Use r1/s1
+    ctrlDiffByCond rippleRateProbeStats P OW M
+                swr pos corr other/later r1/1.5
+                swr pos corr away/sym r1
+    ctrlDiffByCond rippleRateProbeStats PFT M
+                swr all ctrls have big pos corr at all r. More sid at small r
+                =====
+    measureByCondition rippleRateProbeStats PFT M
+                swr pos at all, use r0.5
+
+    : r1, s0.5 BT2-3
+    ctrl stimRate BT t2-3
+                away/sym pos corr. larger rd
+    ctrlDiffByCond stimRate BT t2-3
+                swr neg at r .25/.5 away/sym
+                (matches with ctrl)
+                more stim in swr means more time spent exploring other areas b4 returning home
+    ctrl rippleRateProbeStats BT t2-3
+                away/sym, pos corr - more ripples = more exploration?
+    ctrlDiff rippleRateProbeStats BT t2-3
+                away neg corr, r1 is cleanest
+                (matches with ctrl away being higher)
+    ctrlDiffByCond rippleRateProbeStats BT t2-3
+                Neg corr in ctrl at large r, away
+                Big neg corr in swr away/sym, smaller rds
+                (matches, holds in both conditions)
+
+    : r1, s0.5, BT0-1
+    ctrl stimRate BT 0-1
+                away/sym at large r pos cor
+
+    : r0.25, s0.5, BT 3-4
+    ctrlDiffByCond rippleRateProbeStats BT t3-4
+                =======
+                Use r0.25 or .5, s0 or .5
+                everything positive for swr, negative for control
+    measureByCondition rippleRateProbeStats BT t3-4
+                swr pos at al, use small r
+                ctrl neg at all, small or big r
+    ctrlDiffByCond stimRate BT t3-4
+                SWR high pos corr r0.25
+    
+    : r1, s0.5, BT 2-7, next neg, diff pos wrt ripple rate, reverse wrt stim & away neg wrt rip reverse wrt stim
+    ctrl stimRate BT home 2-7
+                next neg corr at rd1
+    ctrl rippleRateProbeStats BT away, 2-7
+                Next at r1, 1.5. pos corr
+    ctrlDiff rippleRateProbeStats BT away 2-7
+                next neg rd1,1.5
+    ctrlDiffByCond rippleRateProbeStats BT away 2-7
+                ctrl neg other/later/next/away at r1/1.5
+    ctrlDiffByCond rippleRateProbeStats BT t2-7
+                ctrl next/later/away neg 1.5
+    measureByCondition rippleRateProbeStats BT away 2-7
+                ctrl neg at al, just 1.5 or 1
+    ctrlDiffByCond stimRate BT home 2-7
+                ctrl small r next pos cor
+    ctrlDiff rippleRateProbeStats BT t2-7
+                Away neg corr, especially r1.5
+
+
+    :r 0.5, s0.5, BT away 10-15   more stim = more home time
+    ctrlDiff stimRate BT away 10-15
+                small r, other and away and sym pos corr
+    ctrl stimRate BT away 10-15
+                small sd small rd, home pos corr
+                matches: more stim = more home visits
+    ctrlDiffByCond stimRate BT away 10-15
+                swr most things at r0.5
+    ctrl rippleRateProbeStats BT away 10-15
+                away/sym/home, r1.5 (increases with increasing radius). More ripples = more time exploring
+                no correlation for later/next/other
+    ctrlDiff rippleRateProbeStats BT away t10-15
+                later/neg/other all pos at r1
+    ctrlDiffByCond rippleRateProbeStats BT away t10-15
+                Big pos corr at small rd for ctrl next/other/later
+                Big pos corr for other/later/sym/away in swr at r1.5
+                Big neg cor for away ctrl
+                ===== opposite effect dir across conditions
+    measureByCondition rippleRateProbeStats BT away 10-15
+                ctrl pos at all, use r0.5 or 1
+
+    : r1.5, s0.5, BT home 10-15, ctrl worse with more stim/rips
+    ctrl stimRate BT home 10-15
+                away/sym pos cor increases with r
+    ctrlDiff stimRate BT home 10-15
+                later neg corr, use r0.5,s0.5
+    ctrlDiff rippleRateProbeStats BT home 10-15
+                other neg corr at r1, but not next
+                away neg corr at r1
+    ctrlDiffByCond rippleRateProbeStats BT home t10-15
+                ctrl away/sym neg at r1.5
+                swr next neg at r 0.25/.5
+    ctrl rippleRateProbeStats BT t10-15
+                larger radius > higher away/sym pos corr
+    ctrlDiffByCond rippleRateProbeStats BT t10-15
+                ctrl away neg r1.5
+
+
+    :r0.5 s0.5, BT home - higher stim rate means more specificity over next sesh, in swr poorer performance
+                 rip corrs show maybe worse performance in ctrl, less consistent rs
+    ctrlDiff stimRate BT home
+                pos corr next, use r0.5,s0.5
+    ctrlDiffByCond stimRate BT home
+                swr neg r1 away/sym
+                ctrl next r0.25/0.5/1
+    ctrlDiff rippleRateProbeStats BT home
+                away neg corr, r1 is cleanest
+    ctrlDiff rippleRateProbeStats BT home
+                other neg corr at r.5/1
+    ctrlDiffByCond rippleRateProbeStats BT home
+                SWR neg corr away all r, cleaner at small r
+                ctrl next pos corr use r.25/s1
+
+    :r1, sd0.5, BT: higer stim rats leads to less visits next sesh
+    ctrl stimRate BT
+                next neg corr at rd0.5, 1, 1.5. Cleanest at 1
+    ctrlDiffByCond stimRate BT
+                ctrl next large r
+    ctrl stimRate BT explore OW
+                Next especially, also other and later smaller
+                    neg corr. Cleaner at high rd
+                ===== Aversive stim? But why not smaller r? If they go there they go there for sure instead of mucking around it
+    ctrlDiff stimRate BT
+                small r pos cor for next, later, other, sym. Use r0.25, s0.5
+
+
+    :r1, sd0.5 BT:  more rips = less time spent at home and more time exploring
+                    more rips = lower specificity for this session, better memory
+                        seems more specific to ctrl
+    ctrl rippleRateProbeStats BT
+                neg corr at home at r1/1.5, sd0/0.5
+                slightly pos corr away/sym at r1.5
+    ctrlDiff rippleRateProbeStats BT explore OW
+                later neg cor at r1, later/next neg cor at r1.5
+    ctrlDiff rippleRateProbeStats BT OW
+                r1: away, next, other, later, all neg corr
+    ctrlDiff rippleRateProbeStats BT explore
+                r1.5, other/next/later/away all neg
+    ctrlDiff rippleRateProbeStats BT
+                r1: away, next, other, later, all neg corr
+    ctrlDiffByCond rippleRateProbeStats BT explore OW
+                r1.5, ctrl neg corr other/later
+    ctrlDiffByCond rippleRateProbeStats BT OW
+                neg corr ctrl next/other/away, r1
+    ctrlDiffByCond rippleRateProbeStats BT explore
+                ctrl later/other/away, neg corr at r1.5
+    ctrlDiffByCond rippleRateProbeStats BT moving
+                ctrl later/other/away neg corr at r1.5
+                swr pos corr at r0.25 most ctrls (overlapping can't tell)
+    ctrlDiffByCond rippleRateProbeStats BT
+                ctrl neg r1.5 later/away
+            
+            
