@@ -353,7 +353,7 @@ class PlotManager:
 
     @property
     def fullOutputDir(self):
-        if self.outputDriveDir != "" and self.outputDir.startswith("/media/WDC"):
+        if self.outputDriveDir != "" and self.outputDir.startswith("/media/"):
             outSplit = self.outputDir.split(os.sep)
             out1 = os.sep.join(outSplit[:3])
             out2 = os.sep.join(outSplit[3:])

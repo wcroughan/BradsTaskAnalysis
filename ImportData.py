@@ -139,6 +139,7 @@ def makeSessionObj(seshDir: str, prevSeshDir: str, sessionNumber: int, prevSessi
         sesh.prevSessionIdx = prevSessionNumber
 
     if not skipActivelinkLog:
+        raise Exception("Need to change this drive path")
         possibleDirectories = [os.path.join(getDrivePathByLabel(
             "WDC8"), "DesktopFiles", loadInfo.animalName)]
         # print(possibleDirectories)
@@ -956,6 +957,10 @@ def loadPositionData(sesh: BTSession) -> None:
         possibleRoots = [s for s in [
             getDrivePathByLabel(ss) for ss in [f"WDC{i}" for i in range(4, 13)]
         ] if s is not None]
+        harold = getDrivePathByLabel("Harold")
+        if harold is not None:
+            possibleRoots.append(harold)
+
         possibleSubDirs = [
             os.path.join("Data", "labvideos", "labvideos", "trimmed", sesh.animalName),
             os.path.join("Backup", "labVideos", "labvideos", "trimmed", sesh.animalName),

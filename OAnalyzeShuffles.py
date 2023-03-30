@@ -40,6 +40,7 @@ def getNameFromParams(name, params, func, correlationName):
 
 def findStatsDir(subDir: str, name: str):
     possibleDrives = [
+        "/media/Harold/",
         "/media/WDC11/",
         "/media/WDC10/",
         "/media/WDC9/",

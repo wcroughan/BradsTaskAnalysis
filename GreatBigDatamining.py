@@ -126,6 +126,7 @@ def checkIfMeasureAlreadyDone(pp: PlotManager,
             f"{pfx}_{measure.name.replace(' ', '_')}_X_{corrMeasure.name.replace(' ', '_')}", "corr_error.txt")
 
     possibleDrives = [
+        "/media/Harold/",
         "/media/WDC11/",
         "/media/WDC10/",
         "/media/WDC9/",
