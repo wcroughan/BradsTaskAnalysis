@@ -154,9 +154,6 @@ class TimeMeasure():
             self.valid = False
 
     def runMeasureFunc(self):
-        print("test print")
-        sys.stderr.write("test stderr")
-
         self.valid = True
 
         if isinstance(self.timePeriodsGenerator, tuple):

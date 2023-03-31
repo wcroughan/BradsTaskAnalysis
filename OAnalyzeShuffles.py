@@ -17,10 +17,12 @@ from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
 from UtilFunctions import findDataDir, getLoadInfo
 from tqdm import tqdm
-from MeasureTypes import LocationMeasure, SessionMeasure
+from MeasureTypes import LocationMeasure, SessionMeasure, TimeMeasure
 from BTData import BTData
 from PlotUtil import PlotManager
-from GreatBigDatamining import avgNumWellsVisitedPerPeriod, speedFunc, fracExploreFunc, fracOffWallFunc
+from GreatBigDatamining import avgNumWellsVisitedPerPeriod, speedFunc, fracExploreFunc, fracOffWallFunc, \
+    durationFunc, pathOptimalityFunc, pathLengthFunc, avgDurationPerPeriod, avgPathLengthPerPeriod, numWellsVisitedFunc
+from consts import allWellNames, offWallWellNames
 
 
 def isConvex(bp: BP):
@@ -46,7 +48,25 @@ def getNameFromParams(name, params, func, correlationName):
     elif name == "makeCoarseTimeMeasure":
         inProbe = params["inProbe"]
         probeStr = "probe" if inProbe else "bt"
-        f"{func.__name__}_{probeStr}"
+        return f"TiM_{func.__name__}_{probeStr}"
+    elif name == "makeTimePeriodsMeasure":
+        timePeriodsGenerator = params["timePeriodsGenerator"]
+        return f"TiM_{func.__name__}_{timePeriodsGenerator[1]}"
+    elif name == "makePerPeriodMeasure":
+        inProbe = params["inProbe"]
+        probeStr = "probe" if inProbe else "bt"
+        mode = params["mode"]
+        return f"SM_{func.__name__}_{probeStr}_{mode}"
+    elif name == "makeTotalDurationMeasure":
+        inProbe = params["inProbe"]
+        probeStr = "probe" if inProbe else "bt"
+        return f"SM_totalDuration_{probeStr}"
+    elif name == "makeNumWellsVisitedTimeMeasure":
+        countReturns = params["countReturns"]
+        offWallWells = params["offWallWells"]
+        timePeriodsGenerator = params["timePeriodsGenerator"]
+        return f"TiM_numWellsVisited_cr{countReturns}_ow{offWallWells}_{timePeriodsGenerator[1]}"
+
     else:
         raise ValueError(f"Unrecognized name: {name}")
 
@@ -108,14 +128,14 @@ def getParamsForName(specName, func):
                         BP(probe=False, inclusionFlags="awayTrial", erode=3),
                         BP(probe=False, trialInterval=(2, 7), erode=3),
                         BP(probe=False, trialInterval=(2, 7),
-                        inclusionFlags="homeTrial", erode=3),
+                           inclusionFlags="homeTrial", erode=3),
                         BP(probe=False, trialInterval=(2, 7),
-                        inclusionFlags="awayTrial", erode=3),
+                           inclusionFlags="awayTrial", erode=3),
                         BP(probe=False, trialInterval=(10, 15), erode=3),
                         BP(probe=False, trialInterval=(10, 15),
-                        inclusionFlags="homeTrial", erode=3),
+                           inclusionFlags="homeTrial", erode=3),
                         BP(probe=False, trialInterval=(10, 15),
-                        inclusionFlags="awayTrial", erode=3),
+                           inclusionFlags="awayTrial", erode=3),
                         BP(probe=False, trialInterval=(0, 1), erode=3),
                         BP(probe=False, trialInterval=(2, 3), erode=3),
                         BP(probe=False, trialInterval=(3, 4), erode=3),
@@ -142,11 +162,11 @@ def getParamsForName(specName, func):
                         BP(probe=True, inclusionFlags="offWall"),
                         BP(probe=True, inclusionFlags=["offWall", "moving"]),
                         BP(probe=True, timeInterval=BTSession.fillTimeInterval,
-                        inclusionFlags="moving"),
+                           inclusionFlags="moving"),
                         BP(probe=True, timeInterval=BTSession.fillTimeInterval,
-                        inclusionFlags="offWall"),
+                           inclusionFlags="offWall"),
                         BP(probe=True, timeInterval=BTSession.fillTimeInterval,
-                        inclusionFlags=["offWall", "moving"]),
+                           inclusionFlags=["offWall", "moving"]),
                         ]
     allConsideredSmoothDists = [0, 0.5, 1]
     allConsideredRadii = [0.25, 0.5, 1, 1.5]
@@ -156,6 +176,12 @@ def getParamsForName(specName, func):
     }
 
     allConvexBPs = [bp for bp in allConsideredBPs if isConvex(bp)]
+    allConsideredTimePeriods = {"timePeriodsGenerator":
+                                [(TimeMeasure.trialTimePeriodsFunction(), "trial"),
+                                 (TimeMeasure.trialTimePeriodsFunction((2, 6)), "trial26"),
+                                 (TimeMeasure.trialTimePeriodsFunction((2, 4)), "trial24"),
+                                 (TimeMeasure.earlyVsLateTrials(), "evl"),
+                                 (TimeMeasure.earlyVsLateTrials((0, 1), (2, 3)), "evl0123")]}
 
     if specName == "measureFromFunc":
         return {
@@ -171,15 +197,34 @@ def getParamsForName(specName, func):
         }
     elif specName == "makeCoarseTimeMeasure":
         return {
-            "func": [speedFunc, fracExploreFunc, fracOffWallFunc],
             "inProbe": [True, False]
         }
+    elif specName == "makeTimePeriodsMeasure":
+        return {
+            **allConsideredTimePeriods
+        }
+    elif specName == "makePerPeriodMeasure":
+        return {
+            "mode": ["bout", "excursion"],
+            "inProbe": [True, False]
+        }
+    elif specName == "makeTotalDurationMeasure":
+        return {
+            "inProbe": [True, False]
+        }
+    elif specName == "makeNumWellsVisitedTimeMeasure":
+        return {
+            "countReturns": [True, False],
+            "offWallWells": [True, False],
+            **allConsideredTimePeriods
+        }
+
     else:
         raise ValueError(f"Unrecognized specName: {specName}")
 
 
 def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[Dict], bool]] = None,
-                   plotShuffles=True, plotCorrelations=True, appendCorrelations=False):
+                   plotShuffles=True, plotCorrelations=True, appendCorrelations=False, forceRecompute=False):
     specParams = getParamsForName(specName, func)
     dataDir = findDataDir()
     outputFileName = os.path.join(
@@ -197,11 +242,14 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         "rippleRateProbeStats",
     ]
 
-    if os.path.exists(outputFileName) and not appendCorrelations:
+    if os.path.exists(outputFileName) and not appendCorrelations and not forceRecompute:
         print(f"Output file {outputFileName} already exists!")
     else:
         if not os.path.exists(outputFileName):
             print(f"Output file {outputFileName} does not exist, creating it now...")
+        elif forceRecompute:
+            print(f"Recomputing {outputFileName}")
+            os.remove(outputFileName)
         else:
             print("appending to existing file")
         print(f"Gathering files for {len(paramValueCombos)} param combos")
@@ -262,7 +310,11 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
 
     if plotShuffles:
         significantShuffles = pd.read_hdf(outputFileName, key="significantShuffles")
-        significantShuffles = significantShuffles[["plot", "shuffle", "pval", "direction"]]
+        if "pvalIndex" in significantShuffles.columns:
+            significantShuffles = significantShuffles[[
+                "plot", "shuffle", "pval", "direction", "pvalIndex"]]
+        else:
+            significantShuffles = significantShuffles[["plot", "shuffle", "pval", "direction"]]
         significantShuffles = significantShuffles[significantShuffles["shuffle"].str.startswith(
             "[GLO") & ~ significantShuffles["plot"].str.contains("_X_")]
         # significantShuffles = significantShuffles[significantShuffles["plot"].str.endswith("diff.h5")]
@@ -315,18 +367,21 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
                 paramsByPlotData.append((name + "_ctrl_symmetric_diff.h5", *
                                         params.values(), "symmetric", "diff", bpIsConvex))
 
-            elif specName in ["makeNumWellsVisitedMeasure"]:
+            elif specName in ["makeNumWellsVisitedMeasure", "makeTotalDurationMeasure", "makePerPeriodMeasure"]:
                 paramsByPlotData.append(
                     (name + "_" + name[3:] + ".h5", *params.values(), "", "", False))
-            elif specName in ["makeCoarseTimeMeasure"]:
-                print(significantShuffles.head().to_string())
-                raise NotImplementedError
+            elif specName in ["makeCoarseTimeMeasure", "makeTimePeriodsMeasure", "makeNumWellsVisitedTimeMeasure"]:
+                paramsByPlotData.append(
+                    (name + "_" + name[4:] + ".h5", *params.values(), "", "", False))
+                paramsByPlotData.append(
+                    (name + "_" + name[4:] + "_avgs_byCond.h5", *params.values(), "", "avgs_byCond", False))
 
         paramsByPlot = pd.DataFrame(paramsByPlotData, columns=[
-                                    "plot", *specParams.keys(), "ctrlName", "suffix", "bpIsConvex"])
+            "plot", *specParams.keys(), "ctrlName", "suffix", "bpIsConvex"])
         # print(significantShuffles.head().to_string())
         # print(paramsByPlot.head().to_string())
         significantShuffles = significantShuffles.merge(paramsByPlot, on="plot")
+        # print(significantShuffles.head().to_string())
 
         if specName in ["measureFromFunc"]:
             # If ctrlName is empty, suffix should be empty too
@@ -580,8 +635,8 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         # - Correlation of diff measure and any SM: plot ends in "ctrl_{ctrlName}_diff"
         significantCorrelations = significantCorrelations[[
             "plot", "categories", "correlation", "pval", "direction"]]
-        print(significantCorrelations.head().to_string())
-        print(significantCorrelations.columns)
+        # print(significantCorrelations.head().to_string())
+        # print(significantCorrelations.columns)
 
         if specName in ["measureFromFunc"]:
             ctrlNames = ["away", "symmetric", "latersessions", "nextsession", "othersessions"]
@@ -613,12 +668,12 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
                         (name + f"_ctrl_{ctrlName}_diff_byCond.h5", * params.values(), ctrlName, "ctrlDiffByCond", sm, name, bpIsConvex))
 
         paramsByPlot = pd.DataFrame(paramsByPlotData, columns=[
-                                    "plot", *specParams.keys(), "ctrlName", "plotType", "correlationName", "measureName", "bpIsConvex"])
+            "plot", *specParams.keys(), "ctrlName", "plotType", "correlationName", "measureName", "bpIsConvex"])
         significantCorrelations = significantCorrelations.merge(
             paramsByPlot, on="plot")
-        print("Significant correlations:")
-        print(significantCorrelations.head().to_string())
-        print(significantCorrelations.columns)
+        # print("Significant correlations:")
+        # print(significantCorrelations.head().to_string())
+        # print(significantCorrelations.columns)
         # print(significantCorrelations[significantCorrelations["plotType"]
         #       == "measureByCondition"].head(100).to_string())
         # print(significantCorrelations.head(3))
@@ -640,7 +695,7 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
             counts["flag"] = (counts["categories"] == 1) | (counts["direction"] == 2)
             significantCorrelations["measureByConditionFlag"] = significantCorrelations["measureName"].map(
                 counts["flag"])
-            print(significantCorrelations.head().to_string())
+            # print(significantCorrelations.head().to_string())
 
             significantCorrelations["flag"] = False
             # These will already by covered by the control plots
@@ -1292,12 +1347,67 @@ def generateChosenPlots(specName, func, chosenParams, withCorrelations=True):
             for sm in correlationSMs:
                 smeas.makeCorrelationFigures(
                     pp, sm, excludeFromCombo=True)
+        elif specName == "makeCoarseTimeMeasure":
+            probeStr = "probe" if inProbe else "bt"
+            tm = TimeMeasure(f"{func.__name__}_{probeStr}", lambda sesh, t0, t1, ip, _: func(sesh, t0, t1, ip),
+                             sessions, timePeriodsGenerator=(30, 15, inProbe))
+            tm.makeFigures(pp, excludeFromCombo=True)
+        elif specName == "makeTimePeriodsMeasure":
+            timePeriodsGenerator = params["timePeriodsGenerator"]
+            tm = TimeMeasure(f"{func.__name__}_{timePeriodsGenerator[1]}", lambda sesh, t0, t1, inProbe, _: func(sesh, t0, t1, inProbe),
+                             sessions, timePeriodsGenerator=timePeriodsGenerator[0])
+            tm.makeFigures(pp, excludeFromCombo=True)
+        elif specName == "makePerPeriodMeasure":
+            probeStr = "probe" if inProbe else "bt"
+            mode = params["mode"]
+            smeas = SessionMeasure(f"{func.__name__}_{probeStr}_{mode}",
+                                   partial(func, mode, inProbe), sessions)
+            smeas.makeFigures(pp, excludeFromCombo=True)
+            for sm in correlationSMs:
+                smeas.makeCorrelationFigures(
+                    pp, sm, excludeFromCombo=True)
+        elif specName == "makeTotalDurationMeasure":
+            probeStr = "probe" if inProbe else "bt"
+            smeas = SessionMeasure(f"totalDuration_{probeStr}",
+                                   lambda sesh: sesh.probeDuration if inProbe else sesh.btDuration,
+                                   sessions)
+            smeas.makeFigures(pp, excludeFromCombo=True)
+            for sm in correlationSMs:
+                smeas.makeCorrelationFigures(
+                    pp, sm, excludeFromCombo=True)
+        elif specName == "makeNumWellsVisitedTimeMeasure":
+            offWallWells = params["offWallWells"]
+            timePeriodsGenerator = params["timePeriodsGenerator"]
+            countReturns = params["countReturns"]
+            wells = offWallWellNames if offWallWells else allWellNames
+            tm = TimeMeasure(f"numWellsVisited_cr{countReturns}_ow{offWallWells}_{timePeriodsGenerator[1]}",
+                             partial(numWellsVisitedFunc, countReturns, wells), sessions,
+                             timePeriodsGenerator=timePeriodsGenerator[0], runImmediately=False)
+        else:
+            raise ValueError(f"unknown specName {specName}")
 
 
 if __name__ == "__main__":
+    func = None
     # specName = "measureFromFunc"
+    # func = BTSession.totalTimeAtPosition
+    # func = BTSession.numVisitsToPosition
+    # func = BTSession.avgDwellTimeAtPosition
+    # func = BTSession.avgCurvatureAtPosition
     # specName = "makeNumWellsVisitedMeasure"
-    specName = "makeCoarseTimeMeasure"
+    # specName = "makeCoarseTimeMeasure"
+    # func = speedFunc
+    # func = fracExploreFunc
+    # func = fracOffWallFunc
+    # specName = "makeTimePeriodsMeasure"
+    # func = durationFunc
+    # func = pathOptimalityFunc
+    # func = pathLengthFunc
+    # specName = "makePerPeriodMeasure" these all have warnings which turn into errors
+    # func = avgDurationPerPeriod
+    # func = avgPathLengthPerPeriod
+    # specName = "makeTotalDurationMeasure" error here cause not enough params
+    specName = "makeNumWellsVisitedTimeMeasure"
 
     filters = None
     # filters = [
@@ -1307,13 +1417,8 @@ if __name__ == "__main__":
     #         "suffix": "diff"
     #     },
     # ]
-    # func = BTSession.totalTimeAtPosition
-    # func = BTSession.numVisitsToPosition
-    # func = BTSession.avgDwellTimeAtPosition
-    # func = BTSession.avgCurvatureAtPosition
-    func = None
     lookAtShuffles(specName, func, filters=filters, appendCorrelations=False,
-                   plotCorrelations=True, plotShuffles=True)
+                   plotCorrelations=False, plotShuffles=False)
 
-    chosenParams = getChosenParams(specName, func)
-    generateChosenPlots(specName, func, chosenParams)
+    # chosenParams = getChosenParams(specName, func)
+    # generateChosenPlots(specName, func, chosenParams)
