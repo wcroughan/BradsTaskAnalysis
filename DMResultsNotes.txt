@@ -7,6 +7,24 @@ Measure might want to add:
     :remember with avg time about missing values too!
     :ripple rate seems more highly correlated with task things, whereas stim rate correlates with probe things ... interpretation?
     :I think it's really important to see where the ripples/stims are happening. For each correlation explanation, can p easily think of where I think they're happening, need to test that
+    :and all these things as a function of session index
+
+num wells visited
+F T T e !
+T F F b !
+T T T e !
+crowipmo
+F F F b
+F F T e
+F T F b
+F T T e !
+T F F b !
+T F T b
+T F T e
+T T F b
+T T T b
+T T T e !
+
 
 num visits to location
     :r.5, s.5 BT 0-1. other/later/next

@@ -10,6 +10,7 @@ import itertools
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 import time
+from functools import partial
 
 from Shuffler import Shuffler
 from BTSession import BTSession
@@ -19,6 +20,7 @@ from tqdm import tqdm
 from MeasureTypes import LocationMeasure, SessionMeasure
 from BTData import BTData
 from PlotUtil import PlotManager
+from GreatBigDatamining import avgNumWellsVisitedPerPeriod, speedFunc, fracExploreFunc, fracOffWallFunc
 
 
 def isConvex(bp: BP):
@@ -34,6 +36,17 @@ def getNameFromParams(name, params, func, correlationName):
         if correlationName is not None:
             ret += f"_X_{correlationName}"
         return ret
+    elif name == "makeNumWellsVisitedMeasure":
+        mode = params["mode"]
+        inProbe = params["inProbe"]
+        countRepeats = params["countRepeats"]
+        offWallOnly = params["offWallOnly"]
+        probeStr = "probe" if inProbe else "bt"
+        return f"SM_numWellsVisitedPer{mode.capitalize()}_{probeStr}_cr{countRepeats}_ow{offWallOnly}"
+    elif name == "makeCoarseTimeMeasure":
+        inProbe = params["inProbe"]
+        probeStr = "probe" if inProbe else "bt"
+        f"{func.__name__}_{probeStr}"
     else:
         raise ValueError(f"Unrecognized name: {name}")
 
@@ -149,6 +162,18 @@ def getParamsForName(specName, func):
             "radius": allConsideredRadii,
             **basicParams
         }
+    elif specName == "makeNumWellsVisitedMeasure":
+        return {
+            "countRepeats": [True, False],
+            "offWallOnly": [True, False],
+            "inProbe": [True, False],
+            "mode": ["bout", "excursion"]
+        }
+    elif specName == "makeCoarseTimeMeasure":
+        return {
+            "func": [speedFunc, fracExploreFunc, fracOffWallFunc],
+            "inProbe": [True, False]
+        }
     else:
         raise ValueError(f"Unrecognized specName: {specName}")
 
@@ -246,125 +271,155 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         for combo in paramValueCombos:
             params = dict(zip(specParams.keys(), combo))
             name = getNameFromParams(specName, params, func, None)
-            bpIsConvex = isConvex(params["bp"])
-            params["bp"] = params["bp"].conciseString()
-            paramsByPlotData.append((name + "_measureByCondition.h5", *
-                                    params.values(), "", "", bpIsConvex))
-            # away control
-            paramsByPlotData.append(
-                (name + "_ctrl_away.h5", *params.values(), "away", "", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_away_cond.h5", *
-                                    params.values(), "away", "cond", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_away_diff.h5", *
-                                    params.values(), "away", "diff", bpIsConvex))
-            # later sessions control
-            paramsByPlotData.append((name + "_ctrl_latersessions.h5",
-                                    *params.values(), "later", "", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_latersessions_cond.h5",
-                                    *params.values(), "later", "cond", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_latersessions_diff.h5",
-                                    *params.values(), "later", "diff", bpIsConvex))
-            # next session control
-            paramsByPlotData.append((name + "_ctrl_nextsession.h5", *
-                                    params.values(), "next", "", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_nextsession_cond.h5",
-                                    *params.values(), "next", "cond", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_nextsession_diff.h5",
-                                    *params.values(), "next", "diff", bpIsConvex))
-            # other sessions control
-            paramsByPlotData.append((name + "_ctrl_othersessions.h5",
-                                    *params.values(), "other", "", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_othersessions_cond.h5",
-                                    *params.values(), "other", "cond", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_othersessions_diff.h5",
-                                    *params.values(), "other", "diff", bpIsConvex))
-            # symmetric control
-            paramsByPlotData.append((name + "_ctrl_symmetric.h5", *
-                                    params.values(), "symmetric", "", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_symmetric_cond.h5", *
-                                    params.values(), "symmetric", "cond", bpIsConvex))
-            paramsByPlotData.append((name + "_ctrl_symmetric_diff.h5", *
-                                    params.values(), "symmetric", "diff", bpIsConvex))
+            if specName in ["measureFromFunc"]:
+                if "bp" in params:
+                    bpIsConvex = isConvex(params["bp"])
+                    params["bp"] = params["bp"].conciseString()
+                else:
+                    bpIsConvex = False
+                paramsByPlotData.append((name + "_measureByCondition.h5", *
+                                        params.values(), "", "", bpIsConvex))
+                # away control
+                paramsByPlotData.append(
+                    (name + "_ctrl_away.h5", *params.values(), "away", "", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_away_cond.h5", *
+                                        params.values(), "away", "cond", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_away_diff.h5", *
+                                        params.values(), "away", "diff", bpIsConvex))
+                # later sessions control
+                paramsByPlotData.append((name + "_ctrl_latersessions.h5",
+                                        *params.values(), "later", "", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_latersessions_cond.h5",
+                                        *params.values(), "later", "cond", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_latersessions_diff.h5",
+                                        *params.values(), "later", "diff", bpIsConvex))
+                # next session control
+                paramsByPlotData.append((name + "_ctrl_nextsession.h5", *
+                                        params.values(), "next", "", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_nextsession_cond.h5",
+                                        *params.values(), "next", "cond", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_nextsession_diff.h5",
+                                        *params.values(), "next", "diff", bpIsConvex))
+                # other sessions control
+                paramsByPlotData.append((name + "_ctrl_othersessions.h5",
+                                        *params.values(), "other", "", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_othersessions_cond.h5",
+                                        *params.values(), "other", "cond", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_othersessions_diff.h5",
+                                        *params.values(), "other", "diff", bpIsConvex))
+                # symmetric control
+                paramsByPlotData.append((name + "_ctrl_symmetric.h5", *
+                                        params.values(), "symmetric", "", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_symmetric_cond.h5", *
+                                        params.values(), "symmetric", "cond", bpIsConvex))
+                paramsByPlotData.append((name + "_ctrl_symmetric_diff.h5", *
+                                        params.values(), "symmetric", "diff", bpIsConvex))
+
+            elif specName in ["makeNumWellsVisitedMeasure"]:
+                paramsByPlotData.append(
+                    (name + "_" + name[3:] + ".h5", *params.values(), "", "", False))
+            elif specName in ["makeCoarseTimeMeasure"]:
+                print(significantShuffles.head().to_string())
+                raise NotImplementedError
 
         paramsByPlot = pd.DataFrame(paramsByPlotData, columns=[
                                     "plot", *specParams.keys(), "ctrlName", "suffix", "bpIsConvex"])
-
-        # If ctrlName is empty, suffix should be empty too
-        badFlags = (paramsByPlot["ctrlName"] == "") & (paramsByPlot["suffix"] != "")
-        # print(f"Bad flags: {badFlags.sum()}")
-        # print(paramsByPlot[badFlags])
-        assert badFlags.sum() == 0
-        # Now add these columns to the significant shuffles dataframe, merging on the plot name
+        # print(significantShuffles.head().to_string())
+        # print(paramsByPlot.head().to_string())
         significantShuffles = significantShuffles.merge(paramsByPlot, on="plot")
-        significantShuffles["shuffleCategory"] = significantShuffles["shuffle"].str.split(
-            " ", expand=True)[1]
-        significantShuffles["shuffleCategoryValue"] = significantShuffles["shuffle"].str.split(
-            ")", expand=True)[0].str.split("(", expand=True)[1]
 
-        # possibly interesting things to look for:
-        # effect with no suffix or control with condition shuffle, value SWR
-        significantShuffles["flag"] = (significantShuffles["suffix"] == "") & \
-            (significantShuffles["ctrlName"] == "") & \
-            (significantShuffles["shuffleCategory"] == "condition") & \
-            (significantShuffles["shuffleCategoryValue"] == "SWR")
+        if specName in ["measureFromFunc"]:
+            # If ctrlName is empty, suffix should be empty too
+            badFlags = (paramsByPlot["ctrlName"] == "") & (paramsByPlot["suffix"] != "")
+            # print(f"Bad flags: {badFlags.sum()}")
+            # print(paramsByPlot[badFlags])
+            assert badFlags.sum() == 0
+            # Now add these columns to the significant shuffles dataframe, merging on the plot name
+            significantShuffles["shuffleCategory"] = significantShuffles["shuffle"].str.split(
+                " ", expand=True)[1]
+            significantShuffles["shuffleCategoryValue"] = significantShuffles["shuffle"].str.split(
+                ")", expand=True)[0].str.split("(", expand=True)[1]
 
-        # _diff plot shows effect of condition
-        significantShuffles["flag"] = (significantShuffles["flag"]) | \
-            (significantShuffles["suffix"] == "diff") & \
-            (significantShuffles["shuffleCategory"] == "condition") & \
-            (significantShuffles["shuffleCategoryValue"] == "SWR")
-        # _ctrl plot shows effect of val vs ctrl. For consistency, shuffle value should be home or same
-        significantShuffles["flag"] = (significantShuffles["flag"]) | \
-            (significantShuffles["suffix"] == "") & \
-            (significantShuffles["ctrlName"] != "") & \
-            (significantShuffles["shuffleCategoryValue"].isin(
-                ["home", "same"]))
-        # Although let's ignore the ones where ctrlName is away or symmetric and isn't during the probe
-        significantShuffles["flag"] = (significantShuffles["flag"]) & \
-            ((significantShuffles["suffix"] != "") |
-             ((significantShuffles["ctrlName"] != "away") &
-             (significantShuffles["ctrlName"] != "symmetric")) |
-             (significantShuffles["bp"].str.contains("probe")))
-        # _ctrl_cond plot shows effect of cond  -  Don't need ot look at interaction, already taken care of in diff plot
-        significantShuffles["flag"] = (significantShuffles["flag"]) | \
-            (significantShuffles["suffix"] == "cond") & \
-            (significantShuffles["ctrlName"] != "") & \
-            (significantShuffles["shuffleCategory"] == "condition") & \
-            (significantShuffles["shuffleCategoryValue"] == "SWR")
+            # possibly interesting things to look for:
+            # effect with no suffix or control with condition shuffle, value SWR
+            significantShuffles["flag"] = (significantShuffles["suffix"] == "") & \
+                (significantShuffles["ctrlName"] == "") & \
+                (significantShuffles["shuffleCategory"] == "condition") & \
+                (significantShuffles["shuffleCategoryValue"] == "SWR")
 
-        # If a plot name has erode in it, that's the one we care about, can get rid of similar plot name without erode
-        hasErode = significantShuffles["bp"].str.contains("erode")
-        # Get list of plot names with erode
-        erodePlots = significantShuffles[hasErode]["bp"].unique()
-        # Now map each of those plot names to the equialent plot name without erode
-        noErodeNames = [plot.replace(" erode 3", "").replace("_erode_3", "") for plot in erodePlots]
-        # Now get rid of rows in significantShuffles that have a plot name that's in noErodeNames
-        significantShuffles["flag"] = significantShuffles["flag"] & ~(significantShuffles["bp"].isin(
-            noErodeNames))
+            # _diff plot shows effect of condition
+            significantShuffles["flag"] = (significantShuffles["flag"]) | \
+                (significantShuffles["suffix"] == "diff") & \
+                (significantShuffles["shuffleCategory"] == "condition") & \
+                (significantShuffles["shuffleCategoryValue"] == "SWR")
+            # _ctrl plot shows effect of val vs ctrl. For consistency, shuffle value should be home or same
+            significantShuffles["flag"] = (significantShuffles["flag"]) | \
+                (significantShuffles["suffix"] == "") & \
+                (significantShuffles["ctrlName"] != "") & \
+                (significantShuffles["shuffleCategoryValue"].isin(
+                    ["home", "same"]))
+            if "bp" in significantShuffles.columns:
+                # Although let's ignore the ones where ctrlName is away or symmetric and isn't during the probe
+                significantShuffles["flag"] = (significantShuffles["flag"]) & \
+                    ((significantShuffles["suffix"] != "") |
+                     ((significantShuffles["ctrlName"] != "away") &
+                     (significantShuffles["ctrlName"] != "symmetric")) |
+                     (significantShuffles["bp"].str.contains("probe")))
+            # _ctrl_cond plot shows effect of cond  -  Don't need ot look at interaction, already taken care of in diff plot
+            significantShuffles["flag"] = (significantShuffles["flag"]) | \
+                (significantShuffles["suffix"] == "cond") & \
+                (significantShuffles["ctrlName"] != "") & \
+                (significantShuffles["shuffleCategory"] == "condition") & \
+                (significantShuffles["shuffleCategoryValue"] == "SWR")
 
-        if func == BTSession.avgDwellTimeAtPosition or func == BTSession.numVisitsToPosition:
-            significantShuffles["flag"] = significantShuffles["flag"] & significantShuffles["bpIsConvex"]
+            if "bp" in significantShuffles.columns:
+                # If a plot name has erode in it, that's the one we care about, can get rid of similar plot name without erode
+                hasErode = significantShuffles["bp"].str.contains("erode")
+                # Get list of plot names with erode
+                erodePlots = significantShuffles[hasErode]["bp"].unique()
+                # Now map each of those plot names to the equialent plot name without erode
+                noErodeNames = [plot.replace(" erode 3", "").replace("_erode_3", "")
+                                for plot in erodePlots]
+                # Now get rid of rows in significantShuffles that have a plot name that's in noErodeNames
+                significantShuffles["flag"] = significantShuffles["flag"] & ~(significantShuffles["bp"].isin(
+                    noErodeNames))
 
-        significantShuffles = significantShuffles[significantShuffles["flag"]]
-        # can drop the flag column now
-        significantShuffles = significantShuffles.drop(
-            columns=["flag", "shuffleCategoryValue", "shuffleCategory", "bpIsConvex"])
-        print(significantShuffles.head(20))
-        print(significantShuffles.shape)
+            if func == BTSession.avgDwellTimeAtPosition or func == BTSession.numVisitsToPosition:
+                significantShuffles["flag"] = significantShuffles["flag"] & significantShuffles["bpIsConvex"]
+
+            significantShuffles = significantShuffles[significantShuffles["flag"]]
+            # can drop the flag column now
+            significantShuffles = significantShuffles.drop(
+                columns=["flag", "shuffleCategoryValue", "shuffleCategory", "bpIsConvex"])
+            # print(significantShuffles.head(20))
+            # print(significantShuffles.shape)
 
         # All column names except for plot, shuffle, pval, and direction are parameters
         allParams = significantShuffles.drop(columns=["plot", "shuffle", "pval", "direction"])
+        # print("All params: ")
+        # print(allParams.head().to_string())
         # Separate into numerical columns and categorical columns
         numericalParams = allParams.select_dtypes(include=np.number)
+        if len(numericalParams.columns) == 0:
+            # add a dummy column of all 1's
+            numericalParams = pd.DataFrame(np.ones(
+                (allParams.shape[0], 1)), columns=["dummy"], index=allParams.index)
+            significantShuffles = significantShuffles.join(numericalParams)
         categoricalParams = allParams.select_dtypes(exclude=np.number)
         # print these out to confirm
-        print(numericalParams.columns)
-        print(categoricalParams.columns)
+        # print(numericalParams.columns)
+        # print(categoricalParams.columns)
 
-        def acceptComboDf(comboDf):
-            if comboDf.shape[0] <= 3:
-                return False
-            return True
+        if specName in ["measureFromFunc"]:
+            def acceptComboDf(comboDf):
+                if comboDf.shape[0] <= 3:
+                    return False
+                return True
+        else:
+            def acceptComboDf(comboDf):
+                if comboDf.shape[0] == 0:
+                    return False
+                return True
 
         # For each combination of values for the categorical params, plot the effect of changing the numerical params on the pvalues
         categoricalCombinations = list(itertools.product(
@@ -377,6 +432,9 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
             # If this is empty, skip it
             for i, col in enumerate(categoricalParams.columns):
                 comboDf = comboDf[comboDf[col] == combo[i]]
+            # print("Combo: ", combo)
+            # print("Combo df shape: ", comboDf.shape)
+            # print(comboDf)
             if not acceptComboDf(comboDf):
                 continue
             numWithData += 1
@@ -433,7 +491,10 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
 
             fig, axs = plt.subplots(1, len(numericalParams.columns), figsize=(10, 3))
             for i, col in enumerate(numericalParams.columns):
-                ax = axs[i]
+                if len(numericalParams.columns) == 1:
+                    ax = axs
+                else:
+                    ax = axs[i]
                 assert isinstance(ax, plt.Axes)
                 ax.set_title(col)
 
@@ -500,6 +561,9 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
 
     if plotCorrelations:
         significantCorrelations = pd.read_hdf(outputFileName, key="significantCorrelations")
+        print("Number of significant correlations: ", len(significantCorrelations))
+        print(significantCorrelations.head().to_string())
+        print(significantCorrelations.columns)
         try:
             info = pd.read_hdf(outputFileName, key="corrInfo")
             corrFuncVersion = info["corrFuncVersion"].iloc[0]
@@ -519,14 +583,20 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         print(significantCorrelations.head().to_string())
         print(significantCorrelations.columns)
 
-        ctrlNames = ["away", "symmetric", "latersessions", "nextsession", "othersessions"]
+        if specName in ["measureFromFunc"]:
+            ctrlNames = ["away", "symmetric", "latersessions", "nextsession", "othersessions"]
+        else:
+            ctrlNames = []
         paramsByPlotData = []
         for combo in paramValueCombos:
             for sm in correlationNames:
                 params = dict(zip(specParams.keys(), combo))
                 name = getNameFromParams(specName, params, func, sm)
-                bpIsConvex = isConvex(params["bp"])
-                params["bp"] = params["bp"].conciseString()
+                if "bp" in params:
+                    bpIsConvex = isConvex(params["bp"])
+                    params["bp"] = params["bp"].conciseString()
+                else:
+                    bpIsConvex = False
 
                 paramsByPlotData.append(
                     (name + "_measure.h5", * params.values(), "", "measure", sm, name, bpIsConvex))
@@ -546,71 +616,77 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
                                     "plot", *specParams.keys(), "ctrlName", "plotType", "correlationName", "measureName", "bpIsConvex"])
         significantCorrelations = significantCorrelations.merge(
             paramsByPlot, on="plot")
+        print("Significant correlations:")
         print(significantCorrelations.head().to_string())
+        print(significantCorrelations.columns)
         # print(significantCorrelations[significantCorrelations["plotType"]
         #       == "measureByCondition"].head(100).to_string())
         # print(significantCorrelations.head(3))
-        print(significantCorrelations.columns)
 
-        # for measurebycondition, only want if there's one category but not the other, or if both categories but direction is different
-        # to do this, group by plot column, and count the number of unique values in categories and direction
-        # if there's only one unique value in categories, or there's two unique values in direction, then keep
         if corrFuncVersion == 0.1:
             # In first version, direction and pval were calculated incorrectly, so if direction is True the pval
             # is fine, but if direction is False, the pval is actually 1-pval, and can be discarded
+            print("Fixing direction and pval for old version of correlation function")
             significantCorrelations = significantCorrelations[significantCorrelations["direction"]]
             significantCorrelations["direction"] = significantCorrelations["correlation"] > 0
 
-        counts = significantCorrelations.groupby("measureName").agg(
-            {"categories": lambda x: len(x.unique()), "direction": lambda x: len(x.unique())})
-        # print(counts.head().to_string())
-        counts["flag"] = (counts["categories"] == 1) | (counts["direction"] == 2)
-        significantCorrelations["measureByConditionFlag"] = significantCorrelations["measureName"].map(
-            counts["flag"])
-        print(significantCorrelations.head().to_string())
+        if specName in ["measureFromFunc"]:
+            # for measurebycondition, only want if there's one category but not the other, or if both categories but direction is different
+            # to do this, group by plot column, and count the number of unique values in categories and direction
+            # if there's only one unique value in categories, or there's two unique values in direction, then keep
+            counts = significantCorrelations.groupby("measureName").agg(
+                {"categories": lambda x: len(x.unique()), "direction": lambda x: len(x.unique())})
+            # print(counts.head().to_string())
+            counts["flag"] = (counts["categories"] == 1) | (counts["direction"] == 2)
+            significantCorrelations["measureByConditionFlag"] = significantCorrelations["measureName"].map(
+                counts["flag"])
+            print(significantCorrelations.head().to_string())
 
-        significantCorrelations["flag"] = False
-        # These will already by covered by the control plots
-        # significantCorrelations["flag"] = significantCorrelations["plotType"] == "measure"
-        significantCorrelations["flag"] = significantCorrelations["flag"] | (
-            significantCorrelations["plotType"] == "ctrlDiff")
-        significantCorrelations["flag"] = significantCorrelations["flag"] | (
-            (significantCorrelations["plotType"] == "measureByCondition") & significantCorrelations["measureByConditionFlag"]) | (
-            (significantCorrelations["plotType"] == "ctrl") & significantCorrelations["measureByConditionFlag"]) | (
-            (significantCorrelations["plotType"] == "ctrlDiffByCond") & significantCorrelations["measureByConditionFlag"])
+            significantCorrelations["flag"] = False
+            # These will already by covered by the control plots
+            # significantCorrelations["flag"] = significantCorrelations["plotType"] == "measure"
+            significantCorrelations["flag"] = significantCorrelations["flag"] | (
+                significantCorrelations["plotType"] == "ctrlDiff")
+            significantCorrelations["flag"] = significantCorrelations["flag"] | (
+                (significantCorrelations["plotType"] == "measureByCondition") & significantCorrelations["measureByConditionFlag"]) | (
+                (significantCorrelations["plotType"] == "ctrl") & significantCorrelations["measureByConditionFlag"]) | (
+                (significantCorrelations["plotType"] == "ctrlDiffByCond") & significantCorrelations["measureByConditionFlag"])
 
-        if func == BTSession.totalTimeAtPosition:
-            # Don't care about correlations with numRipplesProbeStats, numStims, or numRipplesPreStats
+            if func == BTSession.totalTimeAtPosition:
+                # Don't care about correlations with numRipplesProbeStats, numStims, or numRipplesPreStats
+                significantCorrelations["flag"] = significantCorrelations["flag"] & (
+                    significantCorrelations["correlationName"] != "numRipplesProbeStats")
+                significantCorrelations["flag"] = significantCorrelations["flag"] & (
+                    significantCorrelations["correlationName"] != "numStims")
+                # significantCorrelations["flag"] = significantCorrelations["flag"] & (
+                #     significantCorrelations["correlationName"] != "numRipplesPreStats")
+
+            # Just gonna look at probe stats
             significantCorrelations["flag"] = significantCorrelations["flag"] & (
-                significantCorrelations["correlationName"] != "numRipplesProbeStats")
+                significantCorrelations["correlationName"] != "rippleRatePreStats")
             significantCorrelations["flag"] = significantCorrelations["flag"] & (
-                significantCorrelations["correlationName"] != "numStims")
-            # significantCorrelations["flag"] = significantCorrelations["flag"] & (
-            #     significantCorrelations["correlationName"] != "numRipplesPreStats")
+                significantCorrelations["correlationName"] != "numRipplesPreStats")
 
-        # Just gonna look at probe stats
-        significantCorrelations["flag"] = significantCorrelations["flag"] & (
-            significantCorrelations["correlationName"] != "rippleRatePreStats")
-        significantCorrelations["flag"] = significantCorrelations["flag"] & (
-            significantCorrelations["correlationName"] != "numRipplesPreStats")
+            # If a plot name has erode in it, that's the one we care about, can get rid of similar plot name without erode
+            hasErode = significantCorrelations["bp"].str.contains("erode")
+            # Get list of plot names with erode
+            erodePlots = significantCorrelations[hasErode]["bp"].unique()
+            # Now map each of those plot names to the equialent plot name without erode
+            noErodeNames = [plot.replace(" erode 3", "").replace("_erode_3", "")
+                            for plot in erodePlots]
+            # Now get rid of rows in significantCorrelations that have a plot name that's in noErodeNames
+            significantCorrelations["flag"] = significantCorrelations["flag"] & ~(significantCorrelations["bp"].isin(
+                noErodeNames))
 
-        # If a plot name has erode in it, that's the one we care about, can get rid of similar plot name without erode
-        hasErode = significantCorrelations["bp"].str.contains("erode")
-        # Get list of plot names with erode
-        erodePlots = significantCorrelations[hasErode]["bp"].unique()
-        # Now map each of those plot names to the equialent plot name without erode
-        noErodeNames = [plot.replace(" erode 3", "").replace("_erode_3", "") for plot in erodePlots]
-        # Now get rid of rows in significantCorrelations that have a plot name that's in noErodeNames
-        significantCorrelations["flag"] = significantCorrelations["flag"] & ~(significantCorrelations["bp"].isin(
-            noErodeNames))
+            if func == BTSession.avgDwellTimeAtPosition or func == BTSession.numVisitsToPosition:
+                significantCorrelations["flag"] = significantCorrelations["flag"] & significantCorrelations["bpIsConvex"]
 
-        if func == BTSession.avgDwellTimeAtPosition or func == BTSession.numVisitsToPosition:
-            significantCorrelations["flag"] = significantCorrelations["flag"] & significantCorrelations["bpIsConvex"]
+            significantCorrelations = significantCorrelations[significantCorrelations["flag"]]
+            # can drop flag column now
+            significantCorrelations = significantCorrelations.drop(
+                columns=["flag", "measureByConditionFlag", "bpIsConvex"])
 
-        significantCorrelations = significantCorrelations[significantCorrelations["flag"]]
-        # can drop flag column now
-        significantCorrelations = significantCorrelations.drop(
-            columns=["flag", "measureByConditionFlag", "bpIsConvex"])
+        print("Significant correlations:")
         print(significantCorrelations.head().to_string())
         print(significantCorrelations.head())
 
@@ -624,13 +700,19 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         categoricalParams = categoricalParams[[
             categoricalParams.columns[-2], categoricalParams.columns[-1], *categoricalParams.columns[:-2]]]
 
-        def acceptComboDf(comboDf):
-            if comboDf.shape[0] <= 3:
-                return False
-            # If all values in correlation are small, skip it
-            if np.all(np.abs(comboDf["correlation"]) < 0.1):
-                return False
-            return True
+        if specName in ["measureFromFunc"]:
+            def acceptComboDf(comboDf):
+                if comboDf.shape[0] <= 3:
+                    return False
+                # If all values in correlation are small, skip it
+                if np.all(np.abs(comboDf["correlation"]) < 0.1):
+                    return False
+                return True
+        else:
+            def acceptComboDf(comboDf):
+                if comboDf.shape[0] == 0:
+                    return False
+                return True
 
         # For each combination of values for the categorical params, plot the effect of changing the numerical params on the pvalues
         categoricalCombinations = list(itertools.product(
@@ -1120,6 +1202,27 @@ def getChosenParams(specName, func) -> List[Dict[str, Any]]:
                 "smoothDist": 0.5,
             },
         ]
+    elif specName == "makeNumWellsVisitedMeasure":
+        chosenParams = [
+            {
+                "countRepeats": False,
+                "offWallOnly": True,
+                "inProbe": True,
+                "mode": "excursion",
+            },
+            {
+                "countRepeats": True,
+                "offWallOnly": False,
+                "inProbe": False,
+                "mode": "bout",
+            },
+            {
+                "countRepeats": True,
+                "offWallOnly": True,
+                "inProbe": True,
+                "mode": "excursion",
+            },
+        ]
     else:
         raise Exception("No chosen params for this specName and func")
 
@@ -1175,10 +1278,27 @@ def generateChosenPlots(specName, func, chosenParams, withCorrelations=True):
             for sm in correlationSMs:
                 lm.makeCorrelationFigures(
                     pp, sm, excludeFromCombo=True)
+        elif specName == "makeNumWellsVisitedMeasure":
+            mode = params["mode"]
+            inProbe = params["inProbe"]
+            countRepeats = params["countRepeats"]
+            offWallOnly = params["offWallOnly"]
+            probeStr = "probe" if inProbe else "bt"
+            smeas = SessionMeasure(f"numWellsVisitedPer{mode.capitalize()}_{probeStr}_cr{countRepeats}_ow{offWallOnly}",
+                                   partial(avgNumWellsVisitedPerPeriod, countRepeats,
+                                           offWallOnly, mode, inProbe),
+                                   sessions)
+            smeas.makeFigures(pp, excludeFromCombo=True)
+            for sm in correlationSMs:
+                smeas.makeCorrelationFigures(
+                    pp, sm, excludeFromCombo=True)
 
 
 if __name__ == "__main__":
-    specName = "measureFromFunc"
+    # specName = "measureFromFunc"
+    # specName = "makeNumWellsVisitedMeasure"
+    specName = "makeCoarseTimeMeasure"
+
     filters = None
     # filters = [
     #     {
@@ -1188,11 +1308,12 @@ if __name__ == "__main__":
     #     },
     # ]
     # func = BTSession.totalTimeAtPosition
-    func = BTSession.numVisitsToPosition
+    # func = BTSession.numVisitsToPosition
     # func = BTSession.avgDwellTimeAtPosition
     # func = BTSession.avgCurvatureAtPosition
-    # lookAtShuffles(specName, func, filters=filters, appendCorrelations=False,
-    #                plotCorrelations=True, plotShuffles=False)
+    func = None
+    lookAtShuffles(specName, func, filters=filters, appendCorrelations=False,
+                   plotCorrelations=True, plotShuffles=True)
 
     chosenParams = getChosenParams(specName, func)
     generateChosenPlots(specName, func, chosenParams)
