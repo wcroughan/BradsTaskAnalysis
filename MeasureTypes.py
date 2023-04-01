@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from functools import partial
 import os
 import sys
+from itertools import product
 
 from UtilFunctions import offWall, getWellPosCoordinates, getRotatedWells
 from PlotUtil import violinPlot, PlotManager, setupBehaviorTracePlot, blankPlot, \
@@ -2681,6 +2682,69 @@ class LocationMeasure():
         # Finally, in the output folder, create a blank file to indicate that this session has been processed
         with open(os.path.join(plotManager.fullOutputDir, "corr_processed.txt"), "w") as f:
             f.write(plotManager.infoFileFullName)
+
+        if subFolder:
+            plotManager.popOutputSubDir()
+
+    def makeLocationCorrelationFigures(self,
+                                       plotManager: PlotManager,
+                                       lm: LocationMeasure,
+                                       subFolder: bool = True,
+                                       excludeFromCombo: bool = False,
+                                       runStats: bool = True):
+        if not self.valid:
+            return
+        if not lm.valid:
+            return
+
+        figName = self.name.replace(" ", "_") + "_X_" + lm.name.replace(" ", "_")
+        figPrefix = "" if subFolder else figName + "_"
+        dataName = self.name.replace(" ", "_")
+        otherDataName = lm.name.replace(" ", "_")
+
+        if subFolder:
+            plotManager.pushOutputSubDir("LM_" + figName)
+
+        pxlVals = np.arange(-0.5, 6.5, 0.5) + 0.25
+        nPxl = len(pxlVals) * len(pxlVals)
+        thisMeasureVals = np.empty((len(self.sessionList), nPxl))
+        otherMeasureVals = np.empty((len(self.sessionList), nPxl))
+        for si in range(len(self.sessionList)):
+            pxlPairs = np.array(list(itertools.product(pxlVals, pxlVals)))
+            for pi, pxlPairs in enumerate(pxlPairs):
+                thisMeasureVals[si, pi] = LocationMeasure.measureAtLocation(
+                    self.measureValsBySession[si], pxlPairs, smoothDist=self.smoothDist)
+                otherMeasureVals[si, pi] = LocationMeasure.measureAtLocation(
+                    lm.measureValsBySession[si], pxlPairs, smoothDist=lm.smoothDist)
+
+        with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
+            pc.ax.scatter(thisMeasureVals.flatten(), otherMeasureVals.flatten(), color="black")
+            pc.ax.set_xlabel(self.name)
+            pc.ax.set_ylabel(lm.name)
+            pc.ax.set_title(self.name + " X " + lm.name, fontdict={'fontsize': 6})
+
+            if runStats:
+                pc.yvals[otherDataName] = otherMeasureVals.flatten()
+                pc.xvals[dataName] = thisMeasureVals.flatten()
+                pc.immediateCorrelations.append((dataName, otherDataName))
+
+        with plotManager.newFig(figName + "_byCond", excludeFromCombo=excludeFromCombo) as pc:
+            swrIdx = self.conditionBySession == "SWR"
+            ctrlIdx = self.conditionBySession == "Ctrl"
+            pc.ax.scatter(thisMeasureVals[swrIdx, :].flatten(),
+                          otherMeasureVals[swrIdx, :].flatten(), color="orange")
+            pc.ax.scatter(thisMeasureVals[ctrlIdx, :].flatten(),
+                          otherMeasureVals[ctrlIdx, :].flatten(), color="cyan")
+
+            pc.ax.set_xlabel(self.name)
+            pc.ax.set_ylabel(lm.name)
+            pc.ax.set_title(self.name + " X " + lm.name + " by condition", fontdict={'fontsize': 6})
+
+            if runStats:
+                pc.yvals[otherDataName] = otherMeasureVals.flatten()
+                pc.xvals[dataName] = thisMeasureVals.flatten()
+                pc.categories["condition"] = self.conditionBySession
+                pc.immediateCorrelations.append((dataName, otherDataName))
 
         if subFolder:
             plotManager.popOutputSubDir()

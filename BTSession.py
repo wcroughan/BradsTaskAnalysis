@@ -1918,6 +1918,13 @@ class BTSession:
             ret = 1 / ret if ret > 0 else emptyVal
         return ret
 
+    def pathLength(self, inProbe: bool, start_posIdx: int, end_posIdx: int) -> float:
+        xs = self.probePosXs if inProbe else self.btPosXs
+        ys = self.probePosYs if inProbe else self.btPosYs
+        totalDistance = np.nansum(
+            np.sqrt(np.diff(xs[start_posIdx:end_posIdx]) ** 2 + np.diff(ys[start_posIdx:end_posIdx]) ** 2))
+        return totalDistance
+
     def pathLengthInExcursionToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
                                         radius: float = 0.5, emptyVal=np.nan, noVisitVal=np.nan, mode="first",
                                         startAtPosVal: float = np.nan,
