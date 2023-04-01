@@ -22,8 +22,12 @@ from BTSession import BehaviorPeriod as BP
 #   Time spent at home in general higher in SWR. More pronounced in late task
 #   At first, Ctrl runs faster around wall, SWR goes slower out into middle
 #   What is velocity at stim? Maybe more stim b/c artifacts represent more active sessions in general
-#
+#       More rips means more visits, higher total and avg dwell, and higher curvature (swr only) at aways and syms. Early learning for sure, possibly late learning too
+#       In probe, more rips means more visits, more total time at aways and sym, and less curvature specificity for home (swr only)
+#   Aversive stimuli in ctrl: negative correlation b/w num stims in a location an occupancy during probe? And Occupancy during next sesh early trials?
+#       More stim means less curvature off wall in ctrl
 #   In probe before fill, curvature home specificity higher in swr. But also more away visits. Higher curvature because wants to check lots of wells?
+# SHOULD CHECK: raw values for ripple rate are low. Divide by still time instead? Double check detection logic
 
 
 # Some measures from other file I was thinking about:

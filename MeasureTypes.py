@@ -1789,6 +1789,19 @@ class LocationMeasure():
             nextSessionRet.append((seshIdx + 1, *getWellPosCoordinates(sesh.homeWell)))
         ret.append((nextSessionRet, "nextsession", ("same", "next", "session type")))
 
+        prevSessionRet = []
+        if seshIdx > 0:
+            prevSessionRet.append((seshIdx - 1, *getWellPosCoordinates(sesh.homeWell)))
+        ret.append((prevSessionRet, "prevsession", ("same", "prev", "session type")))
+
+        return ret
+
+    def prevSessionCtrlLocations(sesh: BTSession, seshIdx: int, otherSessions: List[BTSession]) -> List[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]:
+        ret = []
+        prevSessionRet = []
+        if seshIdx > 0:
+            prevSessionRet.append((seshIdx - 1, *getWellPosCoordinates(sesh.homeWell)))
+        ret.append((prevSessionRet, "prevsession", ("same", "prev", "session type")))
         return ret
 
     def __init__(self, name: str, measureFunc: Callable[[BTSession], ArrayLike],
