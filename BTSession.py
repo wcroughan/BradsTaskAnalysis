@@ -2226,3 +2226,9 @@ class BTSession:
         ripCount = self.numRipplesAtLocation(bp, pos, radius=radius)
         totalTime = self.totalTimeAtPosition(bp, pos, radius=radius)
         return ripCount / totalTime
+
+    def getTrialDuration(self, trialIdx) -> float:
+        trialPosIdxs = self.getAllTrialPosIdxs()
+        t0 = self.btPos_ts[trialPosIdxs[trialIdx, 0]]
+        t1 = self.btPos_ts[trialPosIdxs[trialIdx, 1]]
+        return (t1 - t0) / TRODES_SAMPLING_RATE

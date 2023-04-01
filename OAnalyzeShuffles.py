@@ -1421,8 +1421,9 @@ def generateChosenPlots(specName, func, chosenParams, withCorrelations=True):
         elif specName == "makeCoarseTimeMeasure":
             inProbe = params["inProbe"]
             probeStr = "probe" if inProbe else "bt"
+            windowSize = 30 if inProbe else 90
             tm = TimeMeasure(f"{func.__name__}_{probeStr}", lambda sesh, t0, t1, ip, _: func(sesh, t0, t1, ip),
-                             sessions, timePeriodsGenerator=(60, 15, inProbe))
+                             sessions, timePeriodsGenerator=(windowSize, 15, inProbe))
             tm.makeFigures(pp, excludeFromCombo=True)
         elif specName == "makeTimePeriodsMeasure":
             timePeriodsGenerator = params["timePeriodsGenerator"]
@@ -1471,8 +1472,8 @@ if __name__ == "__main__":
     # specName = "makeCoarseTimeMeasure"
     # func = speedFunc
     # func = fracExploreFunc
-    # func = fracOffWallFunc
-    # specName = "makeTimePeriodsMeasure"
+    func = fracOffWallFunc
+    specName = "makeTimePeriodsMeasure"
     # func = durationFunc
     # func = pathOptimalityFunc
     # func = pathLengthFunc
@@ -1480,7 +1481,7 @@ if __name__ == "__main__":
     # func = avgDurationPerPeriod
     # func = avgPathLengthPerPeriod
     # specName = "makeTotalDurationMeasure" error here cause not enough params
-    specName = "makeNumWellsVisitedTimeMeasure"
+    # specName = "makeNumWellsVisitedTimeMeasure"
 
     filters = None
     # filters = [
