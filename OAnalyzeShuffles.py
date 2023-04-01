@@ -1278,6 +1278,77 @@ def getChosenParams(specName, func) -> List[Dict[str, Any]]:
                 "mode": "excursion",
             },
         ]
+    elif specName == "makeCoarseTimeMeasure":
+        chosenParams = [
+            {
+                "inProbe": True
+            },
+            {
+                "inProbe": False
+            }
+        ]
+    elif specName == "makeTimePeriodsMeasure":
+        chosenParams = [
+            {
+                "timePeriodsGenerator": (TimeMeasure.trialTimePeriodsFunction(), "trial")
+            },
+            {
+                "timePeriodsGenerator": (TimeMeasure.trialTimePeriodsFunction((2, 6)), "trial26"),
+            },
+            {
+                "timePeriodsGenerator": (TimeMeasure.trialTimePeriodsFunction((2, 4)), "trial24"),
+            },
+            {
+                "timePeriodsGenerator": (TimeMeasure.earlyVsLateTrials(), "evl"),
+            },
+            {
+                "timePeriodsGenerator": (TimeMeasure.earlyVsLateTrials((0, 1), (2, 3)), "evl0123")
+            }
+        ]
+    elif specName == "makeNumWellsVisitedTimeMeasure":
+        chosenParams = [
+            {
+                "countReturns": True,
+                "offWallWells": False,
+                "timePeriodsGenerator": (TimeMeasure.earlyVsLateTrials((0, 1), (2, 3)), "evl0123")
+            },
+            {
+                "countReturns": False,
+                "offWallWells": True,
+                "timePeriodsGenerator": (TimeMeasure.earlyVsLateTrials((0, 1), (2, 3)), "evl0123")
+            },
+            {
+                "countReturns": False,
+                "offWallWells": False,
+                "timePeriodsGenerator": (TimeMeasure.earlyVsLateTrials((0, 1), (2, 3)), "evl0123")
+            },
+            {
+                "countReturns": True,
+                "offWallWells": True,
+                "timePeriodsGenerator": (TimeMeasure.earlyVsLateTrials((0, 1), (2, 3)), "evl0123")
+            },
+            {
+                "countReturns": True,
+                "offWallWells": False,
+                "timePeriodsGenerator": (TimeMeasure.trialTimePeriodsFunction(), "trial")
+            },
+            {
+                "countReturns": False,
+                "offWallWells": True,
+                "timePeriodsGenerator": (TimeMeasure.trialTimePeriodsFunction(), "trial")
+            },
+            {
+                "countReturns": False,
+                "offWallWells": False,
+                "timePeriodsGenerator": (TimeMeasure.trialTimePeriodsFunction(), "trial")
+            },
+            {
+                "countReturns": True,
+                "offWallWells": True,
+                "timePeriodsGenerator": (TimeMeasure.trialTimePeriodsFunction(), "trial")
+            },
+
+        ]
     else:
         raise Exception("No chosen params for this specName and func")
 
@@ -1348,9 +1419,10 @@ def generateChosenPlots(specName, func, chosenParams, withCorrelations=True):
                 smeas.makeCorrelationFigures(
                     pp, sm, excludeFromCombo=True)
         elif specName == "makeCoarseTimeMeasure":
+            inProbe = params["inProbe"]
             probeStr = "probe" if inProbe else "bt"
             tm = TimeMeasure(f"{func.__name__}_{probeStr}", lambda sesh, t0, t1, ip, _: func(sesh, t0, t1, ip),
-                             sessions, timePeriodsGenerator=(30, 15, inProbe))
+                             sessions, timePeriodsGenerator=(60, 15, inProbe))
             tm.makeFigures(pp, excludeFromCombo=True)
         elif specName == "makeTimePeriodsMeasure":
             timePeriodsGenerator = params["timePeriodsGenerator"]
@@ -1382,7 +1454,8 @@ def generateChosenPlots(specName, func, chosenParams, withCorrelations=True):
             wells = offWallWellNames if offWallWells else allWellNames
             tm = TimeMeasure(f"numWellsVisited_cr{countReturns}_ow{offWallWells}_{timePeriodsGenerator[1]}",
                              partial(numWellsVisitedFunc, countReturns, wells), sessions,
-                             timePeriodsGenerator=timePeriodsGenerator[0], runImmediately=False)
+                             timePeriodsGenerator=timePeriodsGenerator[0])
+            tm.makeFigures(pp, excludeFromCombo=True)
         else:
             raise ValueError(f"unknown specName {specName}")
 
@@ -1417,8 +1490,8 @@ if __name__ == "__main__":
     #         "suffix": "diff"
     #     },
     # ]
-    lookAtShuffles(specName, func, filters=filters, appendCorrelations=False,
-                   plotCorrelations=False, plotShuffles=False)
+    # lookAtShuffles(specName, func, filters=filters, appendCorrelations=False,
+    #                plotCorrelations=False, plotShuffles=False)
 
-    # chosenParams = getChosenParams(specName, func)
-    # generateChosenPlots(specName, func, chosenParams)
+    chosenParams = getChosenParams(specName, func)
+    generateChosenPlots(specName, func, chosenParams)

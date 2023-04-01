@@ -1487,7 +1487,7 @@ class SessionMeasure:
         if subFolder:
             plotManager.pushOutputSubDir("SM_" + figName)
 
-        allPossibleFlags = ["violin", "everysession"]
+        allPossibleFlags = ["violin", "everysession", "bySessionIdx", "bySessionIdxByCond"]
 
         if isinstance(plotFlags, str):
             if plotFlags == "all":
@@ -1566,6 +1566,35 @@ class SessionMeasure:
 
                 if everySessionBackground is not None:
                     plt.colorbar(im, ax=ax)
+
+        if "bySessionIdx" in plotFlags:
+            plotFlags.remove("bySessionIdx")
+
+            with plotManager.newFig(figName + "_overTime", excludeFromCombo=excludeFromCombo) as pc:
+                xvals = np.arange(len(self.sessionList))
+                pc.ax.scatter(range(len(self.sessionList)), self.sessionVals, color="black")
+                pc.ax.set_ylabel(self.name)
+                pc.ax.set_xlabel("Session Index")
+
+                if runStats:
+                    pc.yvals[figName] = self.sessionVals
+                    pc.xvals["index"] = xvals
+                    pc.immediateCorrelations.append(("index", figName))
+
+        if "bySessionIdxByCond" in plotFlags:
+            plotFlags.remove("bySessionIdxByCond")
+
+            with plotManager.newFig(figName + "_overTime_byCond", excludeFromCombo=excludeFromCombo) as pc:
+                xvals = np.arange(len(self.sessionList))
+                pc.ax.scatter(range(len(self.sessionList)), self.sessionVals, color=self.dotColors)
+                pc.ax.set_ylabel(self.name)
+                pc.ax.set_xlabel("Session Index")
+
+                if runStats:
+                    pc.yvals[figName] = self.sessionVals
+                    pc.xvals["index"] = xvals
+                    pc.categories["condition"] = self.conditionBySession
+                    pc.immediateCorrelations.append(("index", figName))
 
         if len(plotFlags) > 0:
             print(f"Warning: unused plot flags: {plotFlags}")

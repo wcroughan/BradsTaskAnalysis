@@ -2204,3 +2204,25 @@ class BTSession:
         stimY = self.btPosYs[self.btLFPBumps_posIdx]
         d2 = (stimX - pos[0])**2 + (stimY - pos[1])**2
         return np.sum(d2 < radius * radius)
+
+    def numRipplesAtLocation(self, bp: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> int:
+        inBP = self.evalBehaviorPeriod(bp)
+        inProbe = bp.probe
+        xs = self.probePosXs if inProbe else self.btPosXs
+        ys = self.probePosYs if inProbe else self.btPosYs
+        ts = self.probePos_ts if inProbe else self.btPos_ts
+        rips = self.probeRipsProbeStats if inProbe else self.btRipsProbeStats
+        rip_ts = [rip.start_ts for rip in rips]
+        rip_posIdxs = np.searchsorted(ts, rip_ts)
+
+        rip_posIdxs = rip_posIdxs[inBP[rip_posIdxs]]
+
+        ripX = xs[rip_posIdxs]
+        ripY = ys[rip_posIdxs]
+        d2 = (ripX - pos[0])**2 + (ripY - pos[1])**2
+        return np.sum(d2 < radius * radius)
+
+    def rippleRateAtLocation(self, bp: BehaviorPeriod, pos: Tuple[float, float], radius: float = 0.5) -> float:
+        ripCount = self.numRipplesAtLocation(bp, pos, radius=radius)
+        totalTime = self.totalTimeAtPosition(bp, pos, radius=radius)
+        return ripCount / totalTime
