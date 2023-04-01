@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 import time
 from functools import partial
+from typing import List
 
 from BTData import BTData
 from PlotUtil import PlotManager
@@ -29,6 +30,29 @@ from BTSession import BehaviorPeriod as BP
 #   In probe before fill, curvature home specificity higher in swr. But also more away visits. Higher curvature because wants to check lots of wells?
 # SHOULD CHECK: raw values for ripple rate are low. Divide by still time instead? Double check detection logic
 
+# Plots to make:
+# early and late task away trials. All 4 basic measures. Next/last session difference.
+#   total: r1s.5
+#   avg: r1s.5
+#   num: r.5s.5
+#   curve: r1s.5
+# Late task, avg dwell time at home
+#   r1s.5
+# Total time in corner (Session measure)
+#   first plot total dwell time at rsmall, find boundary to use, then make session measure
+# Total time across all sym during late home trials
+#   r.5s.5
+# Distance travelled on wall before first excursion. Start time of first excursion
+#   no params to worry about
+# Velocity PSTH around stim.
+#   same
+# Cumulative num wells visited in task with repeats, colored by ripple rate. And correlate slope of NWV with ripple rate
+#   same
+# In excursions where home was checked, how many wells checked, and what is total time of excursion? Effect of condition or correlation with ripple rate
+#   with and without repeats
+# Correlation b/w num stims in a location and occupancy in next sesh early trials or this sesh probes, and curvature next and probe.
+#   r1, consider grid at half-well resolution (0.5)
+
 
 # Some measures from other file I was thinking about:
 # how often are aways checked on way to home. Specifically t2-7
@@ -41,6 +65,13 @@ from BTSession import BehaviorPeriod as BP
 
 # :just scatter stim rate vs rip rate
 # :and all these things as a function of session index
+
+def plotFlagCheck(plotFlags: List[str], flag: str) -> bool:
+    try:
+        plotFlags.remove(flag)
+        return True
+    except ValueError:
+        return "all" in plotFlags
 
 
 def makeFigures(plotFlags="all"):
@@ -64,12 +95,10 @@ def makeFigures(plotFlags="all"):
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
                      infoFileName=infoFileName, verbosity=3)
 
-    if "all" in plotFlags or "rippleLocations" in plotFlags:
-        try:
-            plotFlags.remove("rippleLocations")
-        except ValueError:
-            pass
+    if plotFlagCheck(plotFlags, "4basicNextLast"):
+        pass
 
+    if plotFlagCheck(plotFlags, "rippleLocations"):
         LocationMeasure("taskRippleCount", lambda sesh:
                         sesh.getValueMap(
                             partial(BTSession.numRipplesAtLocation, sesh, BP(probe=False))
@@ -87,12 +116,7 @@ def makeFigures(plotFlags="all"):
                             partial(BTSession.rippleRateAtLocation, sesh, BP(probe=True))
                         ), sessions, smoothDist=0.5).makeFigures(pp, everySessionBehaviorPeriod=BP(probe=True), excludeFromCombo=True)
 
-    if "all" in plotFlags or "ripVsStimRate" in plotFlags:
-        try:
-            plotFlags.remove("ripVsStimRate")
-        except ValueError:
-            pass
-
+    if plotFlagCheck(plotFlags, "ripVsStimRate"):
         stimCount = SessionMeasure("stimCount", lambda sesh: len(sesh.btLFPBumps_posIdx), sessions)
         rippleCount = SessionMeasure(
             "rippleCount", lambda sesh: len(sesh.btRipsProbeStats), sessions)
@@ -109,12 +133,7 @@ def makeFigures(plotFlags="all"):
         rippleRate.makeFigures(pp, excludeFromCombo=True)
         stimRate.makeCorrelationFigures(pp, rippleRate, excludeFromCombo=True)
 
-    if "all" in plotFlags or "duration" in plotFlags:
-        try:
-            plotFlags.remove("duration")
-        except ValueError:
-            pass
-
+    if plotFlagCheck(plotFlags, "duration"):
         probeDuration = SessionMeasure(f"totalDuration_probe",
                                        lambda sesh: sesh.probeDuration,
                                        sessions)
@@ -130,7 +149,7 @@ def makeFigures(plotFlags="all"):
 
 
 def main():
-    makeFigures(plotFlags="duration")
+    makeFigures()
 
 
 if __name__ == "__main__":
