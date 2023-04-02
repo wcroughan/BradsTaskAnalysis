@@ -675,6 +675,7 @@ class TrialMeasure():
                     plotManager: PlotManager,
                     plotFlags: str | List[str] = "all",
                     subFolder: bool = True,
+                    excludeFromCombo: bool = False,
                     runStats: bool = True):
 
         figName = self.name.replace(" ", "_")
@@ -698,9 +699,17 @@ class TrialMeasure():
             plotFlags = [v[3:] for v in plotFlags]
             plotFlags = list(set(allPossibleFlags) - set(plotFlags))
 
+        useTitle = True
+        if np.all(np.isnan(self.trialDf["val"])):
+            useTitle = False
+            cantRun = ["measure", "diff", "averages"]
+            for cr in cantRun:
+                if cr in plotFlags:
+                    plotFlags.remove(cr)
+
         if "measure" in plotFlags:
             plotFlags.remove("measure")
-            with plotManager.newFig(figName) as pc:
+            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
                 violinPlot(pc.ax, self.trialDf["val"], categories2=self.trialDf["trialType"],
                            categories=self.trialDf["condition"], dotColors=self.trialDf["dotColor"],
                            axesNames=["Condition", self.name, "Trial type"],
@@ -713,7 +722,7 @@ class TrialMeasure():
 
         if "diff" in plotFlags:
             plotFlags.remove("diff")
-            with plotManager.newFig(figName + "_diff") as pc:
+            with plotManager.newFig(figName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
                 violinPlot(pc.ax, self.withinSessionDiffs["withinSessionDiff"],
                            categories=self.withinSessionDiffs["condition"],
                            dotColors=self.withinSessionDiffs["dotColor"],
@@ -733,12 +742,12 @@ class TrialMeasure():
             swrIdx = np.array([sesh.isRippleInterruption for sesh in self.sessionList])
             ctrlIdx = np.array([not v for v in swrIdx])
 
-            with plotManager.newFig(figName + "_byTrialAvgs_all") as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_all", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(pc.ax, self.measure2d, xvalsAll, avgColor="grey")
                 pc.ax.set_xlim(1, len(xvalsAll))
                 pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
 
-            with plotManager.newFig(figName + "_byTrialAvgs_all_byCond") as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_all_byCond", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, :], xvalsAll, avgColor="orange", label="SWR",
                     spread="sem")
@@ -758,7 +767,7 @@ class TrialMeasure():
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
                     pc.immediateShufflePvalThreshold = 0.15
 
-            with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType") as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="red", label="home",
                     spread="sem")
@@ -783,18 +792,18 @@ class TrialMeasure():
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="trialType", value="home")], 100))
                     pc.immediateShufflePvalThreshold = 0.15
 
-            with plotManager.newFig(figName + "_byTrialAvgs_home") as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_home", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="grey")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
-            with plotManager.newFig(figName + "_byTrialAvgs_away") as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_away", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="grey")
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
-            with plotManager.newFig(figName + "_byTrialAvgs_home_byCond") as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_home_byCond", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="orange", label="SWR",
                     spread="sem")
@@ -804,7 +813,7 @@ class TrialMeasure():
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
-            with plotManager.newFig(figName + "_byTrialAvgs_away_byCond") as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_away_byCond", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="orange", label="SWR",
                     spread="sem")
@@ -814,7 +823,7 @@ class TrialMeasure():
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
-            with plotManager.newFig(figName + "_byTrialAvgs_ctrl_byTrialType") as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_ctrl_byTrialType", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="red", label="home",
                     spread="sem")
@@ -824,7 +833,7 @@ class TrialMeasure():
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
-            with plotManager.newFig(figName + "_byTrialAvgs_SWR_byTrialType") as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_SWR_byTrialType", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="red", label="home",
                     spread="sem")
@@ -846,7 +855,7 @@ class TrialMeasure():
                 plotManager.pushOutputSubDir(sesh.name)
 
                 ncols = len(sesh.visitedAwayWells) + 1
-                with plotManager.newFig(figName + "_allTrials", subPlots=(2, ncols)) as pc:
+                with plotManager.newFig(figName + "_allTrials", subPlots=(2, ncols), excludeFromCombo=excludeFromCombo) as pc:
                     for ti in range(2*ncols):
                         ai0 = ti % 2
                         ai1 = ti // 2
@@ -864,7 +873,8 @@ class TrialMeasure():
                         t1 = tpis[ti, 1]
                         ax.plot(sesh.btPosXs[t0:t1], sesh.btPosYs[t0:t1], c="black")
                         ax.set_facecolor(cmap(normvals[ti]))
-                        ax.set_title(str(vals[ti]))
+                        if useTitle:
+                            ax.set_title(str(vals[ti]))
 
                     pc.figure.colorbar(mappable=ScalarMappable(
                         norm=Normalize(self.valMin, self.valMax), cmap=cmap), ax=ax)
@@ -888,7 +898,7 @@ class TrialMeasure():
             ncols = 14
             wellSize = mpl.rcParams['lines.markersize']**2 / 4
             with plotManager.newFig(figName + "_allTrials_allSessions",
-                                    subPlots=(2*len(self.sessionList), ncols), figScale=0.3) as pc:
+                                    subPlots=(2*len(self.sessionList), ncols), figScale=0.3, excludeFromCombo=excludeFromCombo) as pc:
                 for si, sesh in enumerate(self.sessionList):
                     print(si)
                     thisSession = self.trialDf[self.trialDf["sessionIdx"]

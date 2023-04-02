@@ -29,8 +29,6 @@ from consts import TRODES_SAMPLING_RATE
 #   curve: r1s.5
 # Late task, avg dwell time at home
 #   r1s.5
-# Total time in corner (Session measure)
-#   first plot total dwell time at rsmall, find boundary to use, then make session measure
 # Total time across all sym during late home trials
 #   r.5s.5
 # Distance travelled on wall before first excursion. Start time of first excursion

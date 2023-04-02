@@ -5,11 +5,12 @@ from functools import partial
 from typing import List
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 
 from BTData import BTData
 from PlotUtil import PlotManager, plotIndividualAndAverage
 from UtilFunctions import getLoadInfo, findDataDir, getWellPosCoordinates, plotFlagCheck
-from MeasureTypes import LocationMeasure, SessionMeasure
+from MeasureTypes import LocationMeasure, SessionMeasure, TrialMeasure
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
 from consts import TRODES_SAMPLING_RATE
@@ -481,9 +482,53 @@ def makeFigures(plotFlags="all"):
             tdur = SessionMeasure(f"t{ti+1}Dur", lambda sesh: sesh.getTrialDuration(ti), sessions)
             tdur.makeFigures(pp, excludeFromCombo=True)
 
+    if plotFlagCheck(plotFlags, "trialDuration", excludeFromAll=True):
+        tm = TrialMeasure("duration",
+                          lambda sesh, start, end, ttype: (
+                              sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
+                          sessions)
+        tm.makeFigures(pp, excludeFromCombo=True, plotFlags=["noteverytrial", "noteverysession"])
+        # trialFilter(session, trial type ("home" | "away"), trial index, trialStart_posIdx, trialEnd_posIdx, well number)
+        #     -> True if trial should be included, False if if should be skipped
+
+        def isEarlyTrial(sesh, ttype, tidx, start, end, well):
+            return tidx < 7
+
+        def isLateTrial(sesh, ttype, tidx, start, end, well):
+            return tidx >= 10
+
+        def isFirstTwoTrials(sesh, ttype, tidx, start, end, well):
+            return tidx < 2
+
+        tm = TrialMeasure("firstTwoDuration",
+                          lambda sesh, start, end, ttype: (
+                              sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
+                          sessions, trialFilter=isFirstTwoTrials)
+        tm.makeFigures(pp, excludeFromCombo=True, plotFlags=["noteverytrial", "noteverysession"])
+        tm = TrialMeasure("earlyDuration",
+                          lambda sesh, start, end, ttype: (
+                              sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
+                          sessions, trialFilter=isEarlyTrial)
+        tm.makeFigures(pp, excludeFromCombo=True, plotFlags=["noteverytrial", "noteverysession"])
+        tm = TrialMeasure("lateDuration",
+                          lambda sesh, start, end, ttype: (
+                              sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
+                          sessions, trialFilter=isLateTrial)
+        tm.makeFigures(pp, excludeFromCombo=True, plotFlags=["noteverytrial", "noteverysession"])
+
+    if plotFlagCheck(plotFlags, "trialTraces", excludeFromAll=True):
+        tm = TrialMeasure("trialTraces",
+                          lambda sesh, start, end, ttype: np.nan,
+                          sessions)
+        tm.makeFigures(pp, excludeFromCombo=True, plotFlags=["everytrial"])
+
 
 def main():
-    makeFigures("stimsVsOccupancy")
+    if len(sys.argv) > 1:
+        plotFlags = sys.argv[1:]
+    else:
+        plotFlags = ["all"]
+    makeFigures(plotFlags)
 
 
 if __name__ == "__main__":
