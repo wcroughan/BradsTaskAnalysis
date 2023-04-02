@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from BTData import BTData
 from PlotUtil import PlotManager, plotIndividualAndAverage
-from UtilFunctions import getLoadInfo, findDataDir, getWellPosCoordinates
+from UtilFunctions import getLoadInfo, findDataDir, getWellPosCoordinates, plotFlagCheck
 from MeasureTypes import LocationMeasure, SessionMeasure
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
@@ -77,12 +77,44 @@ from consts import TRODES_SAMPLING_RATE
 # :and all these things as a function of session index
 
 
-def plotFlagCheck(plotFlags: List[str], flag: str) -> bool:
-    try:
-        plotFlags.remove(flag)
-        return True
-    except ValueError:
-        return "all" in plotFlags
+def excursionsWithHome(inProbe: bool, sesh: BTSession, radius: float = 1.0):
+    xs = sesh.probePosXs if inProbe else sesh.btPosXs
+    ys = sesh.probePosYs if inProbe else sesh.btPosYs
+    excursionStart_posIdx = sesh.probeExcursionStart_posIdx if inProbe else sesh.btExcursionStart_posIdx
+    excursionEnd_posIdx = sesh.probeExcursionEnd_posIdx if inProbe else sesh.btExcursionEnd_posIdx
+    for start, end in zip(excursionStart_posIdx, excursionEnd_posIdx):
+        homePosX, homePosY = getWellPosCoordinates(sesh.homeWell)
+        excursionXs = xs[start:end]
+        excursionYs = ys[start:end]
+        distToHome = np.sqrt((excursionXs - homePosX)**2 + (excursionYs - homePosY)**2)
+        if np.any(distToHome < radius):
+            # excursion contains home
+            yield start, end
+
+
+def excursionsWithHomeAvgDuration(inProbe: bool, sesh: BTSession, radius: float = 1.0):
+    ts = sesh.probePos_ts if inProbe else sesh.btPos_ts
+    return np.mean([(ts[end] - ts[start]) / TRODES_SAMPLING_RATE for start, end in excursionsWithHome(inProbe, sesh, radius)])
+
+
+def excursionsWithHomeWellsChecked(inProbe: bool, sesh: BTSession, radius: float = 1.0):
+    nearestWells = sesh.probeNearestWells if inProbe else sesh.btNearestWells
+    return np.mean([np.sum(np.diff(nearestWells[start:end]) != 0) for start, end in excursionsWithHome(inProbe, sesh, radius)])
+
+
+def inCorner(pos: tuple[float, float], boundary: float = 1.5) -> bool:
+    if np.isnan(pos[0]) or np.isnan(pos[1]):
+        return False
+    return (pos[0] < -0.5 + boundary and pos[1] < -0.5 + boundary) or \
+        (pos[0] > 6.5 - boundary and pos[1] < -0.5 + boundary) or \
+        (pos[0] < -0.5 + boundary and pos[1] > 6.5 - boundary) or \
+        (pos[0] > 6.5 - boundary and pos[1] > 6.5 - boundary)
+
+
+def totalInCornerTime(bp: BP, sesh: BTSession, boundary: float = 1.5) -> float:
+    ts, xs, ys = sesh.posDuringBehaviorPeriod(bp)
+    posInCorner = np.array([inCorner((x, y), boundary=boundary) for x, y in zip(xs, ys)])
+    return np.sum(np.diff(ts)[posInCorner[:-1]]) / TRODES_SAMPLING_RATE
 
 
 def makeFigures(plotFlags="all"):
@@ -106,18 +138,18 @@ def makeFigures(plotFlags="all"):
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
                      infoFileName=infoFileName, verbosity=3)
 
-    if plotFlagCheck(plotFlags, "4basicNextLast"):
+    if plotFlagCheck(plotFlags, "4basicNextLast", excludeFromAll=True):
         # early and late task away trials. All 4 basic measures. Next/last session difference.
         #   total: r1s.5
         earlyAwayBP = BP(probe=False, trialInterval=(2, 7), inclusionFlags="awayTrial")
         lateAwayBP = BP(probe=False, trialInterval=(10, 15), inclusionFlags="awayTrial")
         radius = 1
-        lm = LocationMeasure("earlyAway_totalTime", lambda sesh:
+        lm = LocationMeasure("earlyAway_totalTime",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.totalTimeAtPosition(earlyAwayBP, pos, radius)),
                              sessions, smoothDist=0.5)
         lm.makeFigures(pp, everySessionBehaviorPeriod=earlyAwayBP, excludeFromCombo=True)
-        lm = LocationMeasure("lateAway_totalTime", lambda sesh:
+        lm = LocationMeasure("lateAway_totalTime",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.totalTimeAtPosition(lateAwayBP, pos, radius)),
                              sessions, smoothDist=0.5)
@@ -125,12 +157,12 @@ def makeFigures(plotFlags="all"):
 
         #   num: r.5s.5
         radius = .5
-        lm = LocationMeasure("earlyAway_numVisits", lambda sesh:
+        lm = LocationMeasure("earlyAway_numVisits",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.numVisitsToPosition(earlyAwayBP, pos, radius)),
                              sessions, smoothDist=0.5)
         lm.makeFigures(pp, everySessionBehaviorPeriod=earlyAwayBP, excludeFromCombo=True)
-        lm = LocationMeasure("lateAway_numVisits", lambda sesh:
+        lm = LocationMeasure("lateAway_numVisits",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.numVisitsToPosition(lateAwayBP, pos, radius)),
                              sessions, smoothDist=0.5)
@@ -140,12 +172,12 @@ def makeFigures(plotFlags="all"):
         earlyBP = BP(probe=False, trialInterval=(2, 7))
         lateBP = BP(probe=False, trialInterval=(10, 15))
         radius = 1
-        lm = LocationMeasure("early_avgDwell", lambda sesh:
+        lm = LocationMeasure("early_avgDwell",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.avgDwellTimeAtPosition(earlyBP, pos, radius)),
                              sessions, smoothDist=0.5)
         lm.makeFigures(pp, everySessionBehaviorPeriod=earlyBP, excludeFromCombo=True)
-        lm = LocationMeasure("late_avgDwell", lambda sesh:
+        lm = LocationMeasure("late_avgDwell",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.avgDwellTimeAtPosition(lateBP, pos, radius)),
                              sessions, smoothDist=0.5)
@@ -153,23 +185,23 @@ def makeFigures(plotFlags="all"):
 
         #   curve: r1s.5
         radius = 1
-        lm = LocationMeasure("earlyAway_avgCurvature", lambda sesh:
+        lm = LocationMeasure("earlyAway_avgCurvature",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.avgCurvatureAtPosition(earlyAwayBP, pos, radius)),
                              sessions, smoothDist=0.5)
         lm.makeFigures(pp, everySessionBehaviorPeriod=earlyAwayBP, excludeFromCombo=True)
-        lm = LocationMeasure("lateAway_avgCurvature", lambda sesh:
+        lm = LocationMeasure("lateAway_avgCurvature",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.avgCurvatureAtPosition(lateAwayBP, pos, radius)),
                              sessions, smoothDist=0.5)
         lm.makeFigures(pp, everySessionBehaviorPeriod=lateAwayBP, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "lateTaskHomeAvgDwell"):
+    if plotFlagCheck(plotFlags, "lateTaskHomeAvgDwell", excludeFromAll=True):
         # Late task, avg dwell time at home
         #   r1s.5
         lateBP = BP(probe=False, trialInterval=(10, 15))
         radius = 1
-        lm = LocationMeasure("lateTaskHomeAvgDwell", lambda sesh:
+        lm = LocationMeasure("lateTaskHomeAvgDwell",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.avgDwellTimeAtPosition(lateBP, pos, radius)),
                              sessions, smoothDist=0.5)
@@ -178,36 +210,21 @@ def makeFigures(plotFlags="all"):
     if plotFlagCheck(plotFlags, "timeInCorner"):
         # Total time in corner (Session measure)
         #   first plot total dwell time at rsmall, find boundary to use, then make session measure
-        lm = LocationMeasure("totalTimeSmallR", lambda sesh:
+        lm = LocationMeasure("totalTimeSmallR",
                              lambda sesh: sesh.getValueMap(
-                                 lambda pos: sesh.totalTimeAtPosition(BP(probe=False), pos, 0.1)),
+                                 lambda pos: sesh.totalTimeAtPosition(BP(probe=True), pos, 0.3)),
                              sessions, smoothDist=0.0)
         lm.makeFigures(pp, everySessionBehaviorPeriod=BP(probe=False), excludeFromCombo=True)
 
-        boundary = 0.5
-
-        def inCorner(pos: tuple[float, float]) -> bool:
-            if np.isnan(pos[0]) or np.isnan(pos[1]):
-                return False
-            return (pos[0] < -0.5 + boundary and pos[1] < -0.5 + boundary) or \
-                (pos[0] > 6.5 - boundary and pos[1] < -0.5 + boundary) or \
-                (pos[0] < -0.5 + boundary and pos[1] > 6.5 - boundary) or \
-                (pos[0] > 6.5 - boundary and pos[1] > 6.5 - boundary)
-
-        def totalInCornerTime(bp: BP, sesh: BTSession) -> float:
-            ts, xs, ys = sesh.posDuringBehaviorPeriod(bp)
-            posInCorner = np.array([inCorner((x, y)) for x, y in zip(xs, ys)])
-            return np.sum(np.diff(ts)[posInCorner[:-1]]) / TRODES_SAMPLING_RATE
-
         sm = SessionMeasure("totalTimeInCorner", lambda sesh: totalInCornerTime(
-            BP(probe=False), sesh), sessions)
+            BP(probe=False), sesh, boundary=0.5), sessions)
 
     if plotFlagCheck(plotFlags, "totalSymTimeLateHomeTrials"):
         # Total time across all sym during late home trials
         #   r.5s.5
         radius = 0.5
         lateBP = BP(probe=False, trialInterval=(10, 15))
-        lm = LocationMeasure("late_totalTime", lambda sesh:
+        lm = LocationMeasure("late_totalTime",
                              lambda sesh: sesh.getValueMap(
                                  lambda pos: sesh.totalTimeAtPosition(lateBP, pos, radius)),
                              sessions, smoothDist=0.5)
@@ -229,23 +246,45 @@ def makeFigures(plotFlags="all"):
         #   same
         margin = 30
         for si, sesh in enumerate(sessions):
-            psthVals = np.empty((len(sesh.btLFPBumps_posIdx), 2 * margin))
+            pp.pushOutputSubDir(sesh.name)
+
+            stimPSTHVals = np.empty((len(sesh.btLFPBumps_posIdx), 2 * margin))
+            stimPSTHVals[:] = np.nan
             for stimI, stim_posIdx in enumerate(sesh.btLFPBumps_posIdx):
                 if stim_posIdx < margin or stim_posIdx > sesh.btPos_secs[-1] - margin:
-                    psthVals[stimI, :] = np.nan
+                    stimPSTHVals[stimI, :] = np.nan
                     continue
                 startIdx = stim_posIdx - margin
                 endIdx = stim_posIdx + margin
                 ts = sesh.btPos_secs[startIdx:endIdx] - sesh.btPos_secs[stim_posIdx]
                 vs = sesh.btVelCmPerS[startIdx:endIdx]
-                psthVals[stimI, :] = vs
+                stimPSTHVals[stimI, :] = vs
 
-            pp.pushOutputSubDir(sesh.name)
-            with pp.newFig("velocityPSTH") as pc:
-                plotIndividualAndAverage(pc.ax, psthVals, ts)
+            with pp.newFig("velocityPSTH_stim") as pc:
+                plotIndividualAndAverage(pc.ax, stimPSTHVals, ts)
                 pc.ax.set_xlabel("Time from stim (s)")
                 pc.ax.set_ylabel("Velocity (cm/s)")
                 pc.ax.set_title(sesh.name)
+
+            ripPSTHVals = np.empty((len(sesh.btRipsProbeStats), 2 * margin))
+            ripPSTHVals[:] = np.nan
+            for ripI, rip in enumerate(sesh.btRipsProbeStats):
+                rip_posIdx = sesh.btPos_ts.searchsorted(rip.start_ts)
+                if rip_posIdx < margin or rip_posIdx > sesh.btPos_secs[-1] - margin:
+                    ripPSTHVals[ripI, :] = np.nan
+                    continue
+                startIdx = rip_posIdx - margin
+                endIdx = rip_posIdx + margin
+                ts = sesh.btPos_secs[startIdx:endIdx] - sesh.btPos_secs[rip_posIdx]
+                vs = sesh.btVelCmPerS[startIdx:endIdx]
+                ripPSTHVals[ripI, :] = vs
+
+            with pp.newFig("velocityPSTH_ripple") as pc:
+                plotIndividualAndAverage(pc.ax, ripPSTHVals, ts)
+                pc.ax.set_xlabel("Time from ripple (s)")
+                pc.ax.set_ylabel("Velocity (cm/s)")
+                pc.ax.set_title(sesh.name)
+
             pp.popOutputSubDir()
 
     if plotFlagCheck(plotFlags, "wellVisitedVsRippleRate"):
@@ -253,6 +292,7 @@ def makeFigures(plotFlags="all"):
         #   same
         maxPosIdx = np.max([len(sesh.btPos_ts) for sesh in sessions])
         cumWellsVisited = np.empty((len(sessions), maxPosIdx))
+        cumWellsVisited[:] = np.nan
         cumWellsVisitedSlopes = np.empty((len(sessions), ))
         rippleRates = np.empty((len(sessions),))
         rippleRates[:] = np.nan
@@ -263,9 +303,15 @@ def makeFigures(plotFlags="all"):
             cumWellsVisitedSlopes[si] = np.polyfit(np.arange(len(vals)), vals, 1)[0]
             rippleRates[si] = len(sesh.btRipsProbeStats) / sesh.taskDuration
 
-        smRipRates = SessionMeasure("rippleRates", lambda sesh: rippleRates[si], sessions)
+        def cumWellsVisitedSlope(sesh: BTSession):
+            switchedWells = np.diff(sesh.btNearestWells, prepend=-1) != 0
+            vals = np.cumsum(switchedWells)
+            return np.polyfit(np.arange(len(vals)), vals, 1)[0]
+
+        smRipRates = SessionMeasure("rippleRates", lambda sesh: len(sesh.btRipsProbeStats) / sesh.taskDuration,
+                                    sessions)
         smWellsVisitedSlopes = SessionMeasure(
-            "cumWellsVisitedSlopes", lambda sesh: cumWellsVisitedSlopes[si], sessions)
+            "cumWellsVisitedSlopes", cumWellsVisitedSlope, sessions)
         smRipRates.makeFigures(pp, excludeFromCombo=True)
         smWellsVisitedSlopes.makeFigures(pp, excludeFromCombo=True)
         smRipRates.makeCorrelationFigures(pp, smWellsVisitedSlopes, excludeFromCombo=True)
@@ -280,28 +326,6 @@ def makeFigures(plotFlags="all"):
     if plotFlagCheck(plotFlags, "excursionWithHomeStats"):
         # In excursions where home was checked, how many wells checked, and what is total time of excursion? Effect of condition or correlation with ripple rate
         #   with and without repeats
-        def excursionsWithHome(inProbe: bool, sesh: BTSession, radius: float = 1.0):
-            xs = sesh.probePosXs if inProbe else sesh.btPosXs
-            ys = sesh.probePosYs if inProbe else sesh.btPosYs
-            excursionStart_posIdx = sesh.probeExcursionStart_posIdx if inProbe else sesh.btExcursionStart_posIdx
-            excursionEnd_posIdx = sesh.probeExcursionEnd_posIdx if inProbe else sesh.btExcursionEnd_posIdx
-            for start, end in zip(excursionStart_posIdx, excursionEnd_posIdx):
-                homePosX, homePosY = getWellPosCoordinates(sesh.homeWell)
-                excursionXs = xs[start:end]
-                excursionYs = ys[start:end]
-                distToHome = np.sqrt((excursionXs - homePosX)**2 + (excursionYs - homePosY)**2)
-                if np.any(distToHome < radius):
-                    # excursion contains home
-                    yield start, end
-
-        def excursionsWithHomeAvgDuration(inProbe: bool, sesh: BTSession, radius: float = 1.0):
-            ts = sesh.probePos_ts if inProbe else sesh.btPos_ts
-            return np.mean([(ts[end] - ts[start]) / TRODES_SAMPLING_RATE for start, end in excursionsWithHome(inProbe, sesh, radius)])
-
-        def excursionsWithHomeWellsChecked(inProbe: bool, sesh: BTSession, radius: float = 1.0):
-            nearestWells = sesh.probeNearestWells if inProbe else sesh.btNearestWells
-            return np.mean([np.sum(np.diff(nearestWells[start:end]) != 0) for start, end in excursionsWithHome(inProbe, sesh, radius)])
-
         smProbeDur = SessionMeasure("probe_excursionsWithHomeAvgDuration",
                                     lambda sesh: excursionsWithHomeAvgDuration(True, sesh), sessions)
         smTaskDur = SessionMeasure("task_excursionsWithHomeAvgDuration",
@@ -328,43 +352,87 @@ def makeFigures(plotFlags="all"):
         radius = 1
         smoothDist = 0.5
 
-        lmNumStims = LocationMeasure("numStims", lambda sesh: sesh.getValueMap(
-            lambda pos: sesh.numStimsAtLocation(pos, radius=radius)), sessions, smoothDist=smoothDist)
-        lmNumStimsPrevSession = LocationMeasure("numStimsPrevSession", lambda sesh: sesh.getValueMap(
-            lambda pos: sesh.numStimsAtLocation(pos, radius=radius) if sesh.prevSession is not None else np.nan),
+        # lmNumStims = LocationMeasure("numStims", lambda sesh: sesh.getValueMap(
+        #     lambda pos: sesh.numStimsAtLocation(pos, radius=radius)), sessions, smoothDist=smoothDist)
+        # lmNumStims.makeFigures(pp, excludeFromCombo=True)
+        lmStimRate = LocationMeasure("stimRate", lambda sesh: sesh.getValueMap(
+            lambda pos: sesh.numStimsAtLocation(pos, radius=radius) / sesh.totalTimeAtPosition(BP(probe=False), pos, radius=radius)),
             sessions, smoothDist=smoothDist)
+        lmStimRate.makeFigures(pp, excludeFromCombo=True)
+
+        # lmNumStimsPrevSession = LocationMeasure("numStimsPrevSession", lambda sesh: sesh.getValueMap(
+        #     lambda pos: sesh.numStimsAtLocation(pos, radius=radius) if sesh.prevSession is not None else np.nan),
+        #     sessions, smoothDist=smoothDist)
+        # lmNumStimsPrevSession.makeFigures(pp, excludeFromCombo=True)
+        lmStimRatePrevSession = LocationMeasure("stimRatePrevSession", lambda sesh: sesh.getValueMap(
+            lambda pos: sesh.prevSession.numStimsAtLocation(
+                pos, radius=radius) / sesh.prevSession.totalTimeAtPosition(BP(probe=False), pos, radius=radius) if sesh.prevSession is not None else np.nan),
+            sessions, smoothDist=smoothDist)
+        lmStimRatePrevSession.makeFigures(pp, excludeFromCombo=True)
+
         earlyBP = BP(probe=False, trialInterval=(2, 7))
         probeBP = BP(probe=True)
         lmOccupancyEarly = LocationMeasure("occupancy_early", lambda sesh: sesh.getValueMap(
             lambda pos: sesh.totalTimeAtPosition(earlyBP, pos, radius=radius)), sessions, smoothDist=smoothDist)
+        lmOccupancyEarly.makeFigures(pp, excludeFromCombo=True)
+        # lmOccupancyEarly.makeLocationCorrelationFigures(pp, lmStimRate, excludeFromCombo=True)
+        # lmOccupancyEarly.makeLocationCorrelationFigures(
+        #     pp, lmStimRatePrevSession, excludeFromCombo=True)
+        lmStimRate.makeLocationCorrelationFigures(pp, lmOccupancyEarly, excludeFromCombo=True)
+        lmStimRatePrevSession.makeLocationCorrelationFigures(
+            pp, lmOccupancyEarly, excludeFromCombo=True)
+
         lmOccupancyProbe = LocationMeasure("occupancy_probe", lambda sesh: sesh.getValueMap(
             lambda pos: sesh.totalTimeAtPosition(probeBP, pos, radius=radius)), sessions, smoothDist=smoothDist)
+        lmOccupancyProbe.makeFigures(pp, excludeFromCombo=True)
+        # lmOccupancyProbe.makeLocationCorrelationFigures(pp, lmStimRate, excludeFromCombo=True)
+        # lmOccupancyProbe.makeLocationCorrelationFigures(
+        #     pp, lmStimRatePrevSession, excludeFromCombo=True)
+        lmStimRate.makeLocationCorrelationFigures(pp, lmOccupancyProbe, excludeFromCombo=True)
+        lmStimRatePrevSession.makeLocationCorrelationFigures(
+            pp, lmOccupancyProbe, excludeFromCombo=True)
+
         lmAvgDwellEarly = LocationMeasure("avgDwell_early", lambda sesh: sesh.getValueMap(
             lambda pos: sesh.avgDwellTimeAtPosition(earlyBP, pos, radius=radius)), sessions, smoothDist=smoothDist)
+        lmAvgDwellEarly.makeFigures(pp, excludeFromCombo=True)
+        # lmAvgDwellEarly.makeLocationCorrelationFigures(pp, lmStimRate, excludeFromCombo=True)
+        # lmAvgDwellEarly.makeLocationCorrelationFigures(
+        #     pp, lmStimRatePrevSession, excludeFromCombo=True)
+        lmStimRate.makeLocationCorrelationFigures(pp, lmAvgDwellEarly, excludeFromCombo=True)
+        lmStimRatePrevSession.makeLocationCorrelationFigures(
+            pp, lmAvgDwellEarly, excludeFromCombo=True)
+
         lmAvgDwellProbe = LocationMeasure("avgDwell_probe", lambda sesh: sesh.getValueMap(
             lambda pos: sesh.avgDwellTimeAtPosition(probeBP, pos, radius=radius)), sessions, smoothDist=smoothDist)
+        lmAvgDwellProbe.makeFigures(pp, excludeFromCombo=True)
+        # lmAvgDwellProbe.makeLocationCorrelationFigures(pp, lmStimRate, excludeFromCombo=True)
+        # lmAvgDwellProbe.makeLocationCorrelationFigures(
+        #     pp, lmStimRatePrevSession, excludeFromCombo=True)
+        lmStimRate.makeLocationCorrelationFigures(pp, lmAvgDwellProbe, excludeFromCombo=True)
+        lmStimRatePrevSession.makeLocationCorrelationFigures(
+            pp, lmAvgDwellProbe, excludeFromCombo=True)
+
         lmCurvatureEarly = LocationMeasure("curvature_early", lambda sesh: sesh.getValueMap(
             lambda pos: sesh.avgCurvatureAtPosition(earlyBP, pos, radius=radius)), sessions, smoothDist=smoothDist)
+        lmCurvatureEarly.makeFigures(pp, excludeFromCombo=True)
+        # lmCurvatureEarly.makeLocationCorrelationFigures(pp, lmStimRate, excludeFromCombo=True)
+        # lmCurvatureEarly.makeLocationCorrelationFigures(
+        #     pp, lmStimRatePrevSession, excludeFromCombo=True)
+        lmStimRate.makeLocationCorrelationFigures(pp, lmCurvatureEarly, excludeFromCombo=True)
+        lmStimRatePrevSession.makeLocationCorrelationFigures(
+            pp, lmCurvatureEarly, excludeFromCombo=True)
+
         lmCurvatureProbe = LocationMeasure("curvature_probe", lambda sesh: sesh.getValueMap(
             lambda pos: sesh.avgCurvatureAtPosition(probeBP, pos, radius=radius)), sessions, smoothDist=smoothDist)
-
-        lmNumStims.makeFigures(pp, excludeFromCombo=True)
-        lmNumStimsPrevSession.makeFigures(pp, excludeFromCombo=True)
-        lmOccupancyEarly.makeFigures(pp, excludeFromCombo=True)
-        lmOccupancyProbe.makeFigures(pp, excludeFromCombo=True)
-        lmAvgDwellEarly.makeFigures(pp, excludeFromCombo=True)
-        lmAvgDwellProbe.makeFigures(pp, excludeFromCombo=True)
-        lmCurvatureEarly.makeFigures(pp, excludeFromCombo=True)
         lmCurvatureProbe.makeFigures(pp, excludeFromCombo=True)
+        # lmCurvatureProbe.makeLocationCorrelationFigures(pp, lmStimRate, excludeFromCombo=True)
+        # lmCurvatureProbe.makeLocationCorrelationFigures(
+        #     pp, lmStimRatePrevSession, excludeFromCombo=True)
+        lmStimRate.makeLocationCorrelationFigures(pp, lmCurvatureProbe, excludeFromCombo=True)
+        lmStimRatePrevSession.makeLocationCorrelationFigures(
+            pp, lmCurvatureProbe, excludeFromCombo=True)
 
-        lmOccupancyEarly.makeCorrelationFigures(pp, lmNumStims, excludeFromCombo=True)
-        lmOccupancyProbe.makeCorrelationFigures(pp, lmNumStims, excludeFromCombo=True)
-        lmAvgDwellEarly.makeCorrelationFigures(pp, lmNumStims, excludeFromCombo=True)
-        lmAvgDwellProbe.makeCorrelationFigures(pp, lmNumStims, excludeFromCombo=True)
-        lmCurvatureEarly.makeCorrelationFigures(pp, lmNumStims, excludeFromCombo=True)
-        lmCurvatureProbe.makeCorrelationFigures(pp, lmNumStims, excludeFromCombo=True)
-
-    if plotFlagCheck(plotFlags, "rippleLocations"):
+    if plotFlagCheck(plotFlags, "rippleLocations", excludeFromAll=True):
         LocationMeasure("taskRippleCount", lambda sesh:
                         sesh.getValueMap(
                             partial(BTSession.numRipplesAtLocation, sesh, BP(probe=False))
@@ -382,7 +450,7 @@ def makeFigures(plotFlags="all"):
                             partial(BTSession.rippleRateAtLocation, sesh, BP(probe=True))
                         ), sessions, smoothDist=0.5).makeFigures(pp, everySessionBehaviorPeriod=BP(probe=True), excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "ripVsStimRate"):
+    if plotFlagCheck(plotFlags, "ripVsStimRate", excludeFromAll=True):
         stimCount = SessionMeasure("stimCount", lambda sesh: len(sesh.btLFPBumps_posIdx), sessions)
         rippleCount = SessionMeasure(
             "rippleCount", lambda sesh: len(sesh.btRipsProbeStats), sessions)
@@ -399,7 +467,7 @@ def makeFigures(plotFlags="all"):
         rippleRate.makeFigures(pp, excludeFromCombo=True)
         stimRate.makeCorrelationFigures(pp, rippleRate, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "duration"):
+    if plotFlagCheck(plotFlags, "duration", excludeFromAll=True):
         probeDuration = SessionMeasure(f"totalDuration_probe",
                                        lambda sesh: sesh.probeDuration,
                                        sessions)
@@ -415,7 +483,7 @@ def makeFigures(plotFlags="all"):
 
 
 def main():
-    makeFigures()
+    makeFigures("stimsVsOccupancy")
 
 
 if __name__ == "__main__":

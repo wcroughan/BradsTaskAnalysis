@@ -995,3 +995,13 @@ def getPreferredCategoryOrder(cats):
         return ["SWR", "Ctrl"]
     else:
         return sorted(set(cats))
+
+
+def plotFlagCheck(plotFlags: List[str], flag: str, excludeFromAll=False) -> bool:
+    try:
+        plotFlags.remove(flag)
+        return True
+    except ValueError:
+        if excludeFromAll:
+            return False
+        return "all" in plotFlags

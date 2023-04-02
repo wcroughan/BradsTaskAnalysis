@@ -2710,7 +2710,7 @@ class LocationMeasure():
         thisMeasureVals = np.empty((len(self.sessionList), nPxl))
         otherMeasureVals = np.empty((len(self.sessionList), nPxl))
         for si in range(len(self.sessionList)):
-            pxlPairs = np.array(list(itertools.product(pxlVals, pxlVals)))
+            pxlPairs = np.array(list(product(pxlVals, pxlVals)))
             for pi, pxlPairs in enumerate(pxlPairs):
                 thisMeasureVals[si, pi] = LocationMeasure.measureAtLocation(
                     self.measureValsBySession[si], pxlPairs, smoothDist=self.smoothDist)
@@ -2741,9 +2741,11 @@ class LocationMeasure():
             pc.ax.set_title(self.name + " X " + lm.name + " by condition", fontdict={'fontsize': 6})
 
             if runStats:
+                # tile the categories so it's the same size as the data
+                cats = np.tile(self.conditionBySession, (nPxl, 1)).T.flatten()
                 pc.yvals[otherDataName] = otherMeasureVals.flatten()
                 pc.xvals[dataName] = thisMeasureVals.flatten()
-                pc.categories["condition"] = self.conditionBySession
+                pc.categories["condition"] = cats
                 pc.immediateCorrelations.append((dataName, otherDataName))
 
         if subFolder:
