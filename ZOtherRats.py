@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import math
 import matplotlib as mpl
 
-from UtilFunctions import findDataDir, plotFlagCheck, getLoadInfo, getWellPosCoordinates
+from UtilFunctions import findDataDir, plotFlagCheck, getLoadInfo, getWellPosCoordinates, getRotatedWells
 from PlotUtil import PlotManager, setupBehaviorTracePlot
 from BTData import BTData
 from BTSession import BTSession
@@ -109,6 +109,10 @@ def makeFigures(plotFlags="all"):
         sessionsWithLFP = [sesh for sesh in sessions if not sesh.importOptions.skipLFP]
         sessionsWithLFPAndPrevLFP = [sesh for sesh in sessions if not sesh.importOptions.skipLFP and
                                      sesh.prevSession is not None and not sesh.prevSession.importOptions.skipLFP]
+        sessionsWithLFPAndPrevLFPandNotNostim = [
+            sesh for sesh in sessions if not sesh.importOptions.skipLFP and
+            sesh.prevSession is not None and not sesh.prevSession.importOptions.skipLFP and
+            not sesh.condition == BTSession.CONDITION_NO_STIM and not sesh.prevSession.condition == BTSession.CONDITION_NO_STIM]
 
         ctrlSessionsWithProbe = [sesh for sesh in sessions if (
             not sesh.isRippleInterruption) and sesh.probePerformed]
@@ -138,6 +142,85 @@ def makeFigures(plotFlags="all"):
 
         pp.pushOutputSubDir(ratName)
         pp.setStatCategory("rat", ratName)
+
+        if plotFlagCheck(plotFlags, "hyp1", excludeFromAll=True):
+            # num visits, trial 0-1, r0.5, s0.5
+            lm = LocationMeasure("hyp1_numVisits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(BP(probe=False, trialInterval=(0, 1)), pos, radius=0.5)),
+                                 sessions, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags=[
+                "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
+            ])
+
+            # total time spent in whole task, r1, s0
+            lm = LocationMeasure("hyp1_totalTime",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(BP(probe=False), pos, radius=1)),
+                                 sessions, smoothDist=0)
+            lm.makeFigures(pp, plotFlags=[
+                "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
+            ])
+
+            # same but just away trials and s0.5
+            lm = LocationMeasure("hyp1_totalTime_awayTrials",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(BP(probe=False, inclusionFlags="awayTrial"), pos, radius=1)),
+                                 sessions, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags=[
+                "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
+            ])
+
+            # avgdwelltime, r1, s0.5
+            lm = LocationMeasure("hyp1_avgDwellTime",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.avgDwellTimeAtPosition(BP(probe=False), pos, radius=1)),
+                                 sessions, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags=[
+                "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
+            ])
+
+        if plotFlagCheck(plotFlags, "hyp2", excludeFromAll=True):
+            # session measure of total time spent at symmetric wells during home trials from trial 10-15
+            # r.5
+            def totalTimeAtSymmetricWells(sesh: BTSession):
+                symWells = getRotatedWells(sesh.homeWell)
+                ret = 0
+                for well in symWells:
+                    ret += sesh.totalTimeAtPosition(BP(probe=False, trialInterval=(
+                        10, 15), inclusionFlags="homeTrial", erode=3), getWellPosCoordinates(well), radius=0.5)
+                return ret
+            sm = SessionMeasure("hyp2_totalTimeAtSymmetricWells", totalTimeAtSymmetricWells,
+                                sessions)
+            sm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
+
+        if plotFlagCheck(plotFlags, "hyp3", excludeFromAll=True):
+            # total time at home throughout session r1, s0
+            lm = LocationMeasure("hyp3_totalTimeAtHome",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(BP(probe=False), pos, radius=1)),
+                                 sessions, smoothDist=0)
+            lm.makeFigures(pp, plotFlags=[
+                "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
+            ])
+
+            # total time spent drinking at home throughout session r1, s0
+            def totalDrinkingTime(sesh: BTSession):
+                ret = 0
+                for homeEnter, homeExit in zip(sesh.homeRewardEnter_ts, sesh.homeRewardExit_ts):
+                    ret += (homeExit - homeEnter)
+                return ret / TRODES_SAMPLING_RATE
+            sm = SessionMeasure("hyp3_totalDrinkingTime", totalDrinkingTime, sessions)
+            sm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
+
+            def totalOffWallTime(sesh: BTSession):
+                ret = 0
+                ts = sesh.btPos_secs
+                for excursionStart, excursionEnd in zip(sesh.btExcursionStart_posIdx, sesh.btExcursionEnd_posIdx):
+                    ret += ts[excursionEnd-1] - ts[excursionStart]
+                return ret
+            sm = SessionMeasure("hyp3_totalOffWallTime", totalOffWallTime, sessions)
+            sm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
 
         if plotFlagCheck(plotFlags, "4basicNextLast", excludeFromAll=True):
             # early and late task away trials. All 4 basic measures. Next/last session difference.
@@ -337,7 +420,7 @@ def makeFigures(plotFlags="all"):
                         (rippleRates[si] - np.min(rippleRates)) / (np.max(rippleRates) - np.min(rippleRates)))
                     pc.ax.plot(cumWellsVisited[si, :], color=color)
 
-        if plotFlagCheck(plotFlags, "stimsVsOccupancy", excludeFromAll=True):
+        if plotFlagCheck(plotFlags, "stimsVsOccupancy", excludeFromAll=True) and ratName != "Martin":
             # Correlation b/w num stims in a location and occupancy in next sesh early trials or this sesh probes, and curvature next and probe.
             #   r1, consider grid at half-well resolution (0.5)
             radius = 1
@@ -345,7 +428,7 @@ def makeFigures(plotFlags="all"):
 
             lmStimRate = LocationMeasure("stimRate", lambda sesh: sesh.getValueMap(
                 lambda pos: sesh.numStimsAtLocation(pos, radius=radius) / sesh.totalTimeAtPosition(BP(probe=False), pos, radius=radius)),
-                sessionsWithLFPAndPrevLFP, smoothDist=smoothDist)
+                sessionsWithLFPAndPrevLFPandNotNostim, smoothDist=smoothDist)
             lmStimRate.makeFigures(pp, plotFlags=[
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
@@ -353,7 +436,7 @@ def makeFigures(plotFlags="all"):
             lmStimRatePrevSession = LocationMeasure("stimRatePrevSession", lambda sesh: sesh.getValueMap(
                 lambda pos: sesh.prevSession.numStimsAtLocation(
                     pos, radius=radius) / sesh.prevSession.totalTimeAtPosition(BP(probe=False), pos, radius=radius) if sesh.prevSession is not None else np.nan),
-                sessionsWithLFPAndPrevLFP, smoothDist=smoothDist)
+                sessionsWithLFPAndPrevLFPandNotNostim, smoothDist=smoothDist)
             lmStimRatePrevSession.makeFigures(pp, plotFlags=[
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
@@ -361,7 +444,7 @@ def makeFigures(plotFlags="all"):
             earlyBP = BP(probe=False, trialInterval=(2, 7))
             probeBP = BP(probe=True)
             lmOccupancyEarly = LocationMeasure("occupancy_early", lambda sesh: sesh.getValueMap(
-                lambda pos: sesh.totalTimeAtPosition(earlyBP, pos, radius=radius)), sessionsWithLFPAndPrevLFP, smoothDist=smoothDist)
+                lambda pos: sesh.totalTimeAtPosition(earlyBP, pos, radius=radius)), sessionsWithLFPAndPrevLFPandNotNostim, smoothDist=smoothDist)
             lmOccupancyEarly.makeFigures(pp, plotFlags=[
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
@@ -370,7 +453,7 @@ def makeFigures(plotFlags="all"):
                 pp, lmOccupancyEarly)
 
             lmOccupancyProbe = LocationMeasure("occupancy_probe", lambda sesh: sesh.getValueMap(
-                lambda pos: sesh.totalTimeAtPosition(probeBP, pos, radius=radius)), sessionsWithLFPAndPrevLFP, smoothDist=smoothDist)
+                lambda pos: sesh.totalTimeAtPosition(probeBP, pos, radius=radius)), sessionsWithLFPAndPrevLFPandNotNostim, smoothDist=smoothDist)
             lmOccupancyProbe.makeFigures(pp, plotFlags=[
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
@@ -379,7 +462,7 @@ def makeFigures(plotFlags="all"):
             #     pp, lmOccupancyProbe)
 
             lmAvgDwellEarly = LocationMeasure("avgDwell_early", lambda sesh: sesh.getValueMap(
-                lambda pos: sesh.avgDwellTimeAtPosition(earlyBP, pos, radius=radius)), sessionsWithLFPAndPrevLFP, smoothDist=smoothDist)
+                lambda pos: sesh.avgDwellTimeAtPosition(earlyBP, pos, radius=radius)), sessionsWithLFPAndPrevLFPandNotNostim, smoothDist=smoothDist)
             lmAvgDwellEarly.makeFigures(pp, plotFlags=[
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
@@ -391,7 +474,7 @@ def makeFigures(plotFlags="all"):
                 pp, lmAvgDwellEarly)
 
             lmAvgDwellProbe = LocationMeasure("avgDwell_probe", lambda sesh: sesh.getValueMap(
-                lambda pos: sesh.avgDwellTimeAtPosition(probeBP, pos, radius=radius)), sessionsWithLFPAndPrevLFP, smoothDist=smoothDist)
+                lambda pos: sesh.avgDwellTimeAtPosition(probeBP, pos, radius=radius)), sessionsWithLFPAndPrevLFPandNotNostim, smoothDist=smoothDist)
             lmAvgDwellProbe.makeFigures(pp, plotFlags=[
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
@@ -403,7 +486,7 @@ def makeFigures(plotFlags="all"):
                 pp, lmAvgDwellProbe)
 
             lmCurvatureEarly = LocationMeasure("curvature_early", lambda sesh: sesh.getValueMap(
-                lambda pos: sesh.avgCurvatureAtPosition(earlyBP, pos, radius=radius)), sessionsWithLFPAndPrevLFP, smoothDist=smoothDist)
+                lambda pos: sesh.avgCurvatureAtPosition(earlyBP, pos, radius=radius)), sessionsWithLFPAndPrevLFPandNotNostim, smoothDist=smoothDist)
             lmCurvatureEarly.makeFigures(pp, plotFlags=[
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
@@ -415,7 +498,7 @@ def makeFigures(plotFlags="all"):
                 pp, lmCurvatureEarly)
 
             lmCurvatureProbe = LocationMeasure("curvature_probe", lambda sesh: sesh.getValueMap(
-                lambda pos: sesh.avgCurvatureAtPosition(probeBP, pos, radius=radius)), sessionsWithLFPAndPrevLFP, smoothDist=smoothDist)
+                lambda pos: sesh.avgCurvatureAtPosition(probeBP, pos, radius=radius)), sessionsWithLFPAndPrevLFPandNotNostim, smoothDist=smoothDist)
             lmCurvatureProbe.makeFigures(pp, plotFlags=[
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])

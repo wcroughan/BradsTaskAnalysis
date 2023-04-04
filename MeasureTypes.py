@@ -2728,7 +2728,8 @@ class LocationMeasure():
                     lm.measureValsBySession[si], pxlPairs, smoothDist=lm.smoothDist)
 
         with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
-            pc.ax.scatter(thisMeasureVals.flatten(), otherMeasureVals.flatten(), color="black")
+            pc.ax.scatter(thisMeasureVals.flatten(),
+                          otherMeasureVals.flatten(), color="black", s=0.1)
             pc.ax.set_xlabel(self.name)
             pc.ax.set_ylabel(lm.name)
             pc.ax.set_title(self.name + " X " + lm.name, fontdict={'fontsize': 6})
