@@ -99,10 +99,26 @@ class BTData:
         self.filename = filename
         return 0
 
-    def loadFromFile(self, filename: str) -> int:
+    def loadFromFile(self, filename: str, prevSessionCutoff: float = 36) -> int:
+        """
+        prevSessionCutoff: if the time between the end of the last session and the start of the next session is 
+        greater than this in hours, then prevSession is left as None. Otherwise, it is set to the previous session.
+        """
         with open(filename, "r") as f:
             loadDict = json.load(f, object_hook=self.arrayAndDataclassDecodeHook)
             self.allSessions = loadDict["allSessions"]
+            prevStartTime = None
+            for si, s in enumerate(self.allSessions):
+                startTime = datetime.strptime(s.name, "%Y%m%d_%H%M%S")
+                if si == 0:
+                    s.prevSession = None
+                else:
+                    # sesh.name is the date and time, in year-month-day hour-minute-second format
+                    if (startTime - prevStartTime).total_seconds() / 3600 < prevSessionCutoff:
+                        s.prevSession = self.allSessions[si - 1]
+                    else:
+                        s.prevSession = None
+                prevStartTime = startTime
             self.allRestSessions = loadDict["allRestSessions"]
             self.importOptions = loadDict["importOptions"]
         self.filename = filename

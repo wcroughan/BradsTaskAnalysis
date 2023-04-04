@@ -672,7 +672,8 @@ def getLoadInfo(config: str) -> LoadInfo:
 
         return LoadInfo(configName=config, animalName="Martin",
                         X_START=200, X_FINISH=1175, Y_START=20, Y_FINISH=1275, excludeBoxes=None,
-                        dataDirPath=["WDC1", "martindata", "bradtask"], outputDirPath=["WDC6", "Martin", "processed_data"],
+                        # dataDirPath=["WDC1", "martindata", "bradtask"], outputDirPath=["WDC6", "Martin", "processed_data"],
+                        dataDirPath=["WDC1", "martindata", "bradtask"], outputDirPath=["Harold", "processed_data"],
                         out_filename="martin_bradtask.rat",
                         excluded_dates=excluded_dates, excluded_sessions=excluded_sessions, minimum_date=None,
                         DEFAULT_RIP_DET_TET=37, DEFAULT_RIP_BAS_TET=None)
@@ -695,9 +696,23 @@ def getLoadInfo(config: str) -> LoadInfo:
         # Cable got messed up during the task, pulley wasn't rolling horizontally
         excluded_sessions += ["20211217_1"]
 
+        # Tracking isn't good. Can go back and fix and add back in later
+        excluded_sessions += ["20211213_2", "20211215_1",
+                              "20211215_2", "20211217_2",
+                              "20211220_1", "20211221_2",
+                              "20220123_1",
+                              "20220125_2",
+                              "20220131_1",
+                              ]
+
         return LoadInfo(configName=config, animalName="B13",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
-                        dataDirPath=["WDC6", "B13", "bradtasksessions"], outputDirPath=["WDC6", "B13", "processed_data"],
+                        # dataDirPath=["WDC6", "B13", "bradtasksessions"], outputDirPath=["WDC6", "B13", "processed_data"],
+                        # dataDirPath=["WDC6", "B13", "bradtasksessions"],
+                        dataDirPath=["Harold", "labdata", "B13",
+                                     "media", "WDC6", "B13", "bradtasksessions"],
+                        # /media/Harold/labdata/B13/media/WDC6/B13/bradtasksessions/
+                        outputDirPath=["Harold", "processed_data"],
                         out_filename="B13_bradtask.rat",
                         excluded_dates=excluded_dates, excluded_sessions=excluded_sessions, minimum_date=None,
                         DEFAULT_RIP_DET_TET=7, DEFAULT_RIP_BAS_TET=2)
@@ -711,7 +726,11 @@ def getLoadInfo(config: str) -> LoadInfo:
 
         return LoadInfo(configName=config, animalName="B14",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
-                        dataDirPath=["WDC6", "B14", "bradtasksessions"], outputDirPath=["WDC6", "B14", "processed_data"],
+                        # dataDirPath=["WDC6", "B14", "bradtasksessions"], outputDirPath=["WDC6", "B14", "processed_data"],
+                        # dataDirPath=["WDC6", "B14", "bradtasksessions"],
+                        dataDirPath=["Harold", "labdata", "B14",
+                                     "media", "WDC6", "B14", "bradtasksessions"],
+                        outputDirPath=["Harold", "processed_data"],
                         out_filename="B14_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date="20220220",
                         DEFAULT_RIP_DET_TET=3, DEFAULT_RIP_BAS_TET=2)
@@ -730,7 +749,11 @@ def getLoadInfo(config: str) -> LoadInfo:
 
         return LoadInfo(configName=config, animalName="B16",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
-                        dataDirPath=["WDC8", "B16", "bradtasksessions"], outputDirPath=["WDC8", "B16", "processed_data"],
+                        # dataDirPath=["WDC8", "B16", "bradtasksessions"], outputDirPath=["WDC8", "B16", "processed_data"],
+                        # dataDirPath=["WDC8", "B16", "bradtasksessions"],
+                        dataDirPath=["Harold", "labdata", "B16",
+                                     "media", "WDC8", "B16", "bradtasksessions"],
+                        outputDirPath=["Harold", "processed_data"],
                         out_filename="B16_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date="20221101",
                         DEFAULT_RIP_DET_TET=4, DEFAULT_RIP_BAS_TET=7)
@@ -746,8 +769,9 @@ def getLoadInfo(config: str) -> LoadInfo:
                         # outputDirPath=["WDC4", "Backup", "media", "WDC8", "B17", "processed_data"],
                         dataDirPath=["WDC11", "Data", "B17", "media",
                                      "WDC8", "B17", "bradtasksessions"],
-                        outputDirPath=["WDC11", "Data", "B17",
-                                       "media", "WDC8", "B17", "processed_data"],
+                        # outputDirPath=["WDC11", "Data", "B17",
+                        #                "media", "WDC8", "B17", "processed_data"],
+                        outputDirPath=["Harold", "processed_data"],
                         out_filename="B17_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
                         DEFAULT_RIP_DET_TET=6, DEFAULT_RIP_BAS_TET=5)
@@ -779,7 +803,11 @@ def getLoadInfo(config: str) -> LoadInfo:
 
         return LoadInfo(configName=config, animalName="B18",
                         X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=[(0, 0, 130, 60)],
-                        dataDirPath=["WDC8", "B18", "bradtasksessions"], outputDirPath=["WDC8", "B18", "processed_data"],
+                        # dataDirPath=["WDC8", "B18", "bradtasksessions"], outputDirPath=["WDC8", "B18", "processed_data"],
+                        # dataDirPath=["WDC8", "B18", "bradtasksessions"],
+                        dataDirPath=["Harold", "labdata", "B18",
+                                     "media", "WDC8", "B18", "bradtasksessions"],
+                        outputDirPath=["Harold", "processed_data"],
                         out_filename="B18_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
                         DEFAULT_RIP_DET_TET=5, DEFAULT_RIP_BAS_TET=3)

@@ -11,7 +11,7 @@ from tqdm import tqdm
 import warnings
 from UtilFunctions import getPreferredCategoryOrder
 from itertools import product
-from scipy.stats import pearsonr
+from scipy.stats import pearsonr, linregress
 
 
 def notNanPvalFilter(plotName: str, shuffleResult: ShuffleResult, pval: float, measureName: str) -> bool:
@@ -322,7 +322,7 @@ class Shuffler:
                                       categoryName=col, value=None)] + r)
         return ret
 
-    def runCorrelations(self, df: pd.DataFrame, xvar: str, yvar: str, catNames: List[str]):
+    def runCorrelations(self, df: pd.DataFrame, xvar: str, yvar: str, catNames: List[str], returnFitLine=False):
         catVals = [getPreferredCategoryOrder(df[cn].values) for cn in catNames]
         catCombs = list(product(*catVals))
         ret = []
@@ -340,13 +340,20 @@ class Shuffler:
             x = x[valid]
             y = y[valid]
             if len(x) < 2:
-                ret.append((cc, np.nan, np.nan))
+                if returnFitLine:
+                    ret.append((cc, np.nan, np.nan, np.nan, np.nan))
+                else:
+                    ret.append((cc, np.nan, np.nan))
                 continue
             with warnings.catch_warnings():
                 warnings.filterwarnings(
                     "ignore", r"An input array is constant; the correlation coefficient is not defined.")
-                r, p = pearsonr(x, y)
-            ret.append((cc, r, p))
+                if returnFitLine:
+                    slope, intercept, r_value, p_value, std_err = linregress(x, y)
+                    ret.append((cc, r_value, p_value, slope, intercept))
+                else:
+                    r, p = pearsonr(x, y)
+                    ret.append((cc, r, p))
 
         return ret
 

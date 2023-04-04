@@ -31,6 +31,7 @@ class PlotContext:
     xvals: Dict[str, ArrayLike] = field(default_factory=dict)
     immediateCorrelations: List[Tuple[str, str]] = field(default_factory=list)
     categories: Dict[str, ArrayLike] = field(default_factory=dict)
+    categoryColors: Optional[Dict[str, str]] = None
     infoVals: Dict[str, ArrayLike] = field(default_factory=dict)
     showPlot: Optional[bool] = None
     savePlot: Optional[bool] = None
@@ -331,14 +332,27 @@ class PlotManager:
                 # Now get all combination of categories specified in plotContext.categories
                 # and do the correlation for each
                 catNames = list(self.plotContext.categories.keys())
-                results = self.shuffler.runCorrelations(df, xvar, yvar, catNames)
+                results = self.shuffler.runCorrelations(
+                    df, xvar, yvar, catNames, returnFitLine=True)
                 resTest = []
-                for catlist, r, p in results:
+                for catlist, r, p, m, b in results:
                     if len(catlist) > 0:
                         catStr = "_".join([str(c) for c in catlist]) + ":  "
                     else:
                         catStr = ""
                     resTest.append(f"{catStr}r={round(r, 3)}, p={round(p, 3)}")
+                    # plot the fit line given by m and b
+                    xmin, xmax = self.plotContext.ax.get_xlim()
+                    if self.plotContext.categoryColors is not None:
+                        try:
+                            color = self.plotContext.categoryColors[catlist[0]]
+                        except:
+                            color = "black"
+                            print(f"Warning: no color for category {catlist[0]}")
+                    else:
+                        color = "black"
+                    self.plotContext.ax.plot(
+                        [xmin, xmax], [m * xmin + b, m * xmax + b], color=color)
                 self.plotContext.ax.add_artist(AnchoredText("\n".join(resTest), "upper center"))
 
         # Finally, save or show the figure

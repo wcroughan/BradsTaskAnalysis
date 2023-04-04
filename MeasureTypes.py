@@ -2756,6 +2756,7 @@ class LocationMeasure():
                 pc.yvals[otherDataName] = otherMeasureVals.flatten()
                 pc.xvals[dataName] = thisMeasureVals.flatten()
                 pc.categories["condition"] = cats
+                pc.categoryColors = {"SWR": "orange", "Ctrl": "cyan"}
                 pc.immediateCorrelations.append((dataName, otherDataName))
 
         if subFolder:

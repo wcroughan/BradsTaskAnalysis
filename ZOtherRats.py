@@ -3,6 +3,7 @@
 # - choose a set of params for those
 # - Get to work on the slides ya lazy landlubber!
 
+import sys
 from datetime import datetime
 import os
 from typing import List
@@ -266,3 +267,15 @@ def makeFigures(plotFlags="all"):
         pp.popOutputSubDir()
 
     pp.runImmediateShufflesAcrossPersistentCategories()
+
+
+def main():
+    if len(sys.argv) > 1:
+        plotFlags = sys.argv[1:]
+    else:
+        plotFlags = ["all"]
+    makeFigures(plotFlags)
+
+
+if __name__ == "__main__":
+    main()

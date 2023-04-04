@@ -9,7 +9,7 @@ import MountainViewIO
 from datetime import datetime, date
 import sys
 from PyQt5.QtWidgets import QApplication
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from typing import List, Tuple, Dict, Optional
 from scipy.ndimage import gaussian_filter1d
 from scipy.interpolate import griddata
@@ -20,7 +20,8 @@ from consts import allWellNames, TRODES_SAMPLING_RATE, LFP_SAMPLING_RATE, CM_PER
 from UtilFunctions import readWellCoordsFile, readRawPositionData, getListOfVisitedWells, getRipplePower, \
     detectRipples, getUSBVideoFile, quickPosPlot, parseCmdLineAnimalNames, \
     timeStrForTrodesTimestamp, quadrantOfWell, TimeThisFunction, getDrivePathByLabel, getActivelinkLogFile, \
-    getLoadInfo, LoadInfo, generateFoundWells, ImportOptions, parseCmdLineImportOptions, posOnWall
+    getLoadInfo, LoadInfo, generateFoundWells, ImportOptions, parseCmdLineImportOptions, posOnWall, \
+    getWellPosCoordinates
 from ClipsMaker import AnnotatorWindow
 from TrodesCameraExtrator import getTrodesLightTimes, processRawTrodesVideo, processUSBVideoData
 
@@ -918,7 +919,8 @@ def loadPositionData(sesh: BTSession) -> None:
         return
 
     if sesh.importOptions.skipUSB:
-        print("!!!!!!\tWARNING: Skipping USB\t!!!!!!")
+        # print("!!!!!!\tWARNING: Skipping USB\t!!!!!!")
+        pass
     else:
         if "lightonframe" in positionDataMetadata:
             sesh.trodesLightOnFrame = int(
@@ -1347,7 +1349,8 @@ def runSanityChecks(sesh: BTSession, lfpData: ArrayLike, baselineLfpData: Option
                 print("WARNING: IGNORING BEHAVIOR NOTES FILE BECAUSE SEEING "
                       "0 INTERRUPTIONS, CALLING THIS A CONTROL SESSION")
                 if overrideNotes:
-                    sesh.isRippleInterruption = False
+                    # sesh.isRippleInterruption = False
+                    sesh.condition = BTSession.CONDITION_NO_STIM
             else:
                 print(
                     "WARNING: very few interruptions. This was a delay control but is basically a no-stim control")
@@ -1478,9 +1481,34 @@ def posCalcEntryExitTimes(sesh: BTSession) -> None:
         # print(sesh.btWellEntryTimes_ts[sesh.homeWell], sesh.btWellExitTimes_ts[sesh.homeWell])
         nz = np.nonzero((sesh.btWellEntryTimes_ts[sesh.homeWell] < ts) & (
             sesh.btWellExitTimes_ts[sesh.homeWell] > ts))
+        if len(nz) != 1:
+            print(nz)
+            print(sesh.btWellEntryTimes_ts[sesh.homeWell], sesh.btWellExitTimes_ts[sesh.homeWell])
         assert len(nz) == 1
         nz = nz[0]
         # print(f"{nz = }")
+        if len(nz) != 1:
+            # print(f"{ nz=  }")
+            print(sesh.btWellEntryTimes_ts[sesh.homeWell], sesh.btWellExitTimes_ts[sesh.homeWell])
+            print(ts)
+            if len(sesh.btWellEntryTimes_ts[sesh.homeWell]) == 0:
+                t1 = np.searchsorted(sesh.btPos_ts, sesh.homeRewardEnter_ts[ti]) - 20
+                t2 = np.searchsorted(sesh.btPos_ts, sesh.homeRewardExit_ts[ti]) + 20
+                # t3 = np.searchsorted(
+                #     sesh.btPos_ts, sesh.btWellEntryTimes_ts[sesh.homeWell][nearestEntryTimeIdx]) - 20
+                # t4 = np.searchsorted(
+                #     sesh.btPos_ts, sesh.btWellExitTimes_ts[sesh.homeWell][nearestEntryTimeIdx]) + 20
+                homex, homey = getWellPosCoordinates(sesh.homeWell)
+                # plt.plot(sesh.btPosXs, sesh.btPosYs)
+                # plt.plot(sesh.btPosXs[t1:t2], sesh.btPosYs[t1:t2])
+                # # plt.plot(sesh.btPosXs[t3:t4], sesh.btPosYs[t3:t4])
+                # plt.scatter(homex, homey, color='red')
+                # plt.show()
+                raise Exception("No home well visits found")
+            # print(sesh.homeRewardEnter_ts[ti], sesh.homeRewardExit_ts[ti])
+            nearestEntryTimeIdx = np.argmin(abs(sesh.btWellEntryTimes_ts[sesh.homeWell] - ts))
+            print("!!!!!! WARNING: CORRECTING HOME REWARD TIME OUTSIDE OF VISIT !!!!!!!")
+            nz = [nearestEntryTimeIdx]
         assert len(nz) == 1
         encompassingVisitIdx = nz[0]
         if sesh.homeRewardEnter_ts[ti] < \
@@ -1522,6 +1550,13 @@ def posCalcEntryExitTimes(sesh: BTSession) -> None:
                 encompassingVisitIdx = closest
                 numCorrectionsOutofrange += 1
             else:
+                awayx, awayy = getWellPosCoordinates(aw)
+                idx1 = np.searchsorted(sesh.btPos_ts, t1)
+                idx2 = np.searchsorted(sesh.btPos_ts, t2)
+                # plt.plot(sesh.btPosXs, sesh.btPosYs)
+                # plt.plot(sesh.btPosXs[idx1:idx2], sesh.btPosYs[idx1:idx2])
+                # plt.scatter(awayx, awayy, color='red')
+                # plt.show()
                 raise Exception("COuldn't match up with hand-marked visit with the detected visits")
         else:
             assert len(nz) == 1
@@ -1532,6 +1567,7 @@ def posCalcEntryExitTimes(sesh: BTSession) -> None:
                 sesh.awayRewardEnter_ts[ti] - sesh.btWellEntryTimes_ts[aw][encompassingVisitIdx]) / TRODES_SAMPLING_RATE
             if correction > maxCorrection:
                 maxCorrection = correction
+            numCorrections += 1
             sesh.awayRewardEnter_ts[ti] = sesh.btWellEntryTimes_ts[aw][encompassingVisitIdx]
         if sesh.awayRewardExit_ts[ti] > sesh.btWellExitTimes_ts[aw][encompassingVisitIdx]:
             # print(f"Note: Fixing away well Exit time {ti} for session {sesh.name}")
@@ -1539,6 +1575,7 @@ def posCalcEntryExitTimes(sesh: BTSession) -> None:
                 sesh.awayRewardExit_ts[ti] - sesh.btWellExitTimes_ts[aw][encompassingVisitIdx]) / TRODES_SAMPLING_RATE
             if correction > maxCorrection:
                 maxCorrection = correction
+            numCorrections += 1
             sesh.awayRewardExit_ts[ti] = sesh.btWellExitTimes_ts[aw][encompassingVisitIdx]
 
     print(f"\tFixed {numCorrections} well find times, max correction was {maxCorrection} seconds")
@@ -1769,8 +1806,19 @@ def getExcursions(xs: ArrayLike, ys: ArrayLike, ts: ArrayLike) -> Tuple[ArrayLik
     excursionEnds = np.empty_like(excursionStarts)
     # for each start, find the first index afterward for which excursionstopcategory is on wall
     for i, s in enumerate(excursionStarts):
-        excursionEnds[i] = np.where(excursionStopCategory[s:] ==
-                                    BTSession.EXCURSION_STATE_ON_WALL)[0][0] + s
+        try:
+            if len(np.where(excursionStopCategory[s:] == BTSession.EXCURSION_STATE_ON_WALL)[0]) == 0:
+                excursionEnds[i] = len(excursionStopCategory)
+            else:
+                excursionEnds[i] = np.where(excursionStopCategory[s:] ==
+                                            BTSession.EXCURSION_STATE_ON_WALL)[0][0] + s
+        except IndexError as ie:
+            print(ie)
+            print(i, s)
+            print(excursionStarts)
+            print(np.where(excursionStopCategory[s:] == BTSession.EXCURSION_STATE_ON_WALL)[0])
+            print(len(np.where(excursionStopCategory[s:] == BTSession.EXCURSION_STATE_ON_WALL)[0]))
+            raise ie
 
     # Now if two excursion starts have the same end, only keep the first one
     keepFlag = np.diff(excursionEnds, prepend=-1) != 0
@@ -1879,6 +1927,7 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> BTData:
     sessionNumber = None
     prevSessionNumber = None
     infoProblemSessions = []
+    posProblemSessions = []
     for seshi, (seshDir, prevSeshDir) in enumerate(zip(sessionDirs, prevSessionDirs)):
         if importOptions.debugMode and \
             importOptions.debug_maxNumSessions is not None and \
@@ -1962,7 +2011,12 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> BTData:
             # print("Analyzing LFP")
             runLFPAnalyses(sesh, lfpData, baselineLfpData)
         # print("Analyzing position")
-        runPositionAnalyses(sesh)
+        try:
+            runPositionAnalyses(sesh)
+        except Exception as e:
+            print("Error running position analyses, skipping session", sesh.name)
+            posProblemSessions.append((sesh.name, e))
+            continue
 
         # print("Running sanity checks")
         runSanityChecks(sesh, lfpData, baselineLfpData)
@@ -1974,8 +2028,12 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> BTData:
         print(
             f"Extracted data from {numExtracted} sessions, excluded {numExcluded}. Not analyzing or saving")
         if len(infoProblemSessions) > 0:
-            print("Had problems with the following sessions:")
+            print("Had info problems with the following sessions:")
             for name, e in infoProblemSessions:
+                print(name, e)
+        if len(posProblemSessions) > 0:
+            print("Had position problems with the following sessions:")
+            for name, e in posProblemSessions:
                 print(name, e)
         return
 
@@ -2002,8 +2060,12 @@ def extractAndSave(configName: str, importOptions: ImportOptions) -> BTData:
             print(sesh.name)
 
     if len(infoProblemSessions) > 0:
-        print("Had problems with the following sessions:")
+        print("Had info problems with the following sessions:")
         for name, e in infoProblemSessions:
+            print(name, e)
+    if len(posProblemSessions) > 0:
+        print("Had position problems with the following sessions:")
+        for name, e in posProblemSessions:
             print(name, e)
 
     print(f"\tposCalcVelocity: {posCalcVelocity.totalTime}")
@@ -2025,7 +2087,7 @@ def main():
     animalNames, importOptions = parseCommandLineArgs()
 
     for animalName in animalNames:
-        importOptions.skipUSB = animalName == "Martin"
+        importOptions.skipUSB = animalName == "Martin" or True
         importOptions.skipActivelinkLog = animalName == "Martin" or True
         extractAndSave(animalName, importOptions)
 
