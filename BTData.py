@@ -109,7 +109,10 @@ class BTData:
             self.allSessions = loadDict["allSessions"]
             prevStartTime = None
             for si, s in enumerate(self.allSessions):
-                startTime = datetime.strptime(s.name, "%Y%m%d_%H%M%S")
+                try:
+                    startTime = datetime.strptime(s.name, "%Y%m%d_%H%M%S")
+                except ValueError:
+                    startTime = datetime.strptime(s.name, "test%Y%m%d_%H%M%S")
                 if si == 0:
                     s.prevSession = None
                 else:

@@ -722,7 +722,7 @@ class BTSession:
             if endTrial is None:
                 endTrial = trialPosIdxs.shape[0]
 
-            if startTrial > trialPosIdxs.shape[0]:
+            if startTrial >= trialPosIdxs.shape[0]:
                 keepFlag[:] = False
             else:
                 keepFlag[0:trialPosIdxs[startTrial, 0]] = False
@@ -1662,6 +1662,8 @@ class BTSession:
         dy = ys - pos[1]
         dist2 = dx * dx + dy * dy
         dt = np.diff(ts)
+        if len(dt) == 0:
+            return 0
         dt = np.append(dt, dt[-1])
         return np.nansum(dt[dist2 < radius * radius]) / TRODES_SAMPLING_RATE
 

@@ -484,7 +484,10 @@ class PlotManager:
             self.fig.set_figwidth(self.figSizeX * subPlotLayout[1])
 
             for sdi, sd in enumerate(figSubDirs):
-                im = mpimg.imread(os.path.join(self.outputDir, sd, figFileName + ".png"))
+                imgFileName = os.path.join(self.outputDir, sd, figFileName)
+                if not os.path.exists(imgFileName):
+                    imgFileName += ".png"
+                im = mpimg.imread(imgFileName)
                 # self.axs[sdi].set_xticks([])
                 # self.axs[sdi].set_yticks([])
                 if len(self.axs.shape) > 1:
@@ -563,7 +566,7 @@ class PlotManager:
 
             plt.figure(self.fig)
 
-            fname = os.path.join(self.outputDir, outputSubDir, figFileName + "_aligned")
+            fname = os.path.join(self.outputDir, outputSubDir, figFileName + "_aligned.png")
             plt.savefig(fname, bbox_inches="tight", dpi=200)
 
             self.writeToInfoFile("wrote file {}".format(fname))
