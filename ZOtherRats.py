@@ -13,14 +13,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 import matplotlib as mpl
+from matplotlib import cm
 
-from UtilFunctions import findDataDir, plotFlagCheck, getLoadInfo, getWellPosCoordinates, getRotatedWells
+from UtilFunctions import findDataDir, plotFlagCheck, getLoadInfo, getWellPosCoordinates, getRotatedWells, numWellsVisited
 from PlotUtil import PlotManager, setupBehaviorTracePlot
 from BTData import BTData
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
 from MeasureTypes import SessionMeasure, LocationMeasure, TrialMeasure
-from consts import TRODES_SAMPLING_RATE
+from consts import TRODES_SAMPLING_RATE, offWallWellNames
 
 # This file will take the chosen measures and run them on all the rats
 
@@ -63,19 +64,28 @@ def totalInCornerTime(bp: BP, sesh: BTSession, boundary: float = 1.5) -> float:
     return np.sum(np.diff(ts)[posInCorner[:-1]]) / TRODES_SAMPLING_RATE
 
 
-def makeFigures(plotFlags="all"):
+def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=False, animalNames=None):
     dataDir = findDataDir()
     outputDir = "TheRun"
+    if testData:
+        outputDir += "_test"
     globalOutputDir = os.path.join(dataDir, "figures", outputDir)
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
 
-    animalNames = ["Martin", "B13", "B14", "B16", "B17", "B18"]
+    if animalNames is None:
+        if testData:
+            animalNames = ["Martin", "B13", "B14"]
+            # animalNames = ["Martin", "B14"]
+            # animalNames = ["B14"]
+        else:
+            animalNames = ["Martin", "B13", "B14", "B16", "B17", "B18"]
 
     infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
                      infoFileName=infoFileName, verbosity=3)
 
+    totalNumSessions = 0
     allSessionsByRat = {}
     for animalName in animalNames:
         loadDebug = False
@@ -91,6 +101,9 @@ def makeFigures(plotFlags="all"):
         ratData = BTData()
         ratData.loadFromFile(dataFilename)
         allSessionsByRat[animalName] = ratData.getSessions()
+        totalNumSessions += len(ratData.getSessions())
+
+    print("totalNumSessions =", totalNumSessions)
 
     originalPlotFlags = plotFlags
 
@@ -102,9 +115,12 @@ def makeFigures(plotFlags="all"):
         if ratName[-1] == "d":
             ratName = ratName[:-1]
         sessions: List[BTSession] = allSessionsByRat[ratName]
+        if testData:
+            pass
+            # sessions = sessions[:7]
         # nSessions = len(sessions)
         sessionsWithProbe = [sesh for sesh in sessions if sesh.probePerformed]
-        # numSessionsWithProbe = len(sessionsWithProbe)
+        numSessionsWithProbe = len(sessionsWithProbe)
         sessionsWithLog = [sesh for sesh in sessions if sesh.hasActivelinkLog]
         sessionsWithLFP = [sesh for sesh in sessions if not sesh.importOptions.skipLFP]
         sessionsWithLFPAndPrevLFP = [sesh for sesh in sessions if not sesh.importOptions.skipLFP and
@@ -121,8 +137,8 @@ def makeFigures(plotFlags="all"):
         nCtrlWithProbe = len(ctrlSessionsWithProbe)
         nSWRWithProbe = len(swrSessionsWithProbe)
 
-        # ctrlSessions = [sesh for sesh in sessions if not sesh.isRippleInterruption]
-        # swrSessions = [sesh for sesh in sessions if sesh.isRippleInterruption]
+        ctrlSessions = [sesh for sesh in sessions if not sesh.isRippleInterruption]
+        swrSessions = [sesh for sesh in sessions if sesh.isRippleInterruption]
         # nCtrlSessions = len(ctrlSessions)
         # nSWRSessions = len(swrSessions)
 
@@ -131,10 +147,11 @@ def makeFigures(plotFlags="all"):
 
         data = [[
             sesh.name, sesh.conditionString(), sesh.homeWell, len(
-                sesh.visitedAwayWells), sesh.fillTimeCutoff()
+                sesh.visitedAwayWells), sesh.fillTimeCutoff(), "None" if sesh.prevSession is None else sesh.prevSession.name,
+            sesh.secondsSincePrevSession
         ] for si, sesh in enumerate(sessions)]
         df = pd.DataFrame(data, columns=[
-            "name", "condition", "home well", "num aways found", "fill time"
+            "name", "condition", "home well", "num aways found", "fill time", "prev session", "seconds since prev"
         ])
         s = df.to_string()
         pp.writeToInfoFile(s)
@@ -416,7 +433,7 @@ def makeFigures(plotFlags="all"):
             with pp.newFig("cumWellsVisitedByRipRates") as pc:
                 for si, sesh in enumerate(sessions):
                     # use coolwarm colormap
-                    color = plt.cm.coolwarm(
+                    color = cm.coolwarm(
                         (rippleRates[si] - np.min(rippleRates)) / (np.max(rippleRates) - np.min(rippleRates)))
                     pc.ax.plot(cumWellsVisited[si, :], color=color)
 
@@ -522,9 +539,7 @@ def makeFigures(plotFlags="all"):
             nrows = math.ceil(n / ncols)
             with pp.newFig("probeTraces", subPlots=(ncols, nrows)) as pc:
                 for i, sesh in enumerate(sessions):
-                    # ax = pc.add_subplot(nrows, ncols, i + 1)
                     ax = pc.axs.flat[i]
-                    # sesh.plotPositionTrace(ax)
                     wellSize = mpl.rcParams['lines.markersize']**2 / 4
                     setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
                     ax.plot(sesh.probePosXs, sesh.probePosYs, c="#0000007f", lw=1, zorder=1.5)
@@ -532,9 +547,7 @@ def makeFigures(plotFlags="all"):
 
             with pp.newFig("taskTraces", subPlots=(ncols, nrows)) as pc:
                 for i, sesh in enumerate(sessions):
-                    # ax = pc.add_subplot(nrows, ncols, i + 1)
                     ax = pc.axs.flat[i]
-                    # sesh.plotPositionTrace(ax)
                     wellSize = mpl.rcParams['lines.markersize']**2 / 4
                     setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
                     ax.plot(sesh.btPosXs, sesh.btPosYs, c="#0000007f", lw=1, zorder=1.5)
@@ -657,18 +670,177 @@ def makeFigures(plotFlags="all"):
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
 
+        if plotFlagCheck(plotFlags, "testImmediate"):
+            lm = LocationMeasure(f"testImmediate",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.fracExcursionsVisited(
+                                         BP(probe=True), pos, 0.5, "session"),
+                                 ), sessions, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags="measureVsCtrlByCondition")
+
+        if plotFlagCheck(plotFlags, "thesis1"):
+            lm = LocationMeasure(f"probe number of visits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(
+                                         BP(probe=True), pos, 0.5),
+                                 ), sessionsWithProbe, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags="measureByCondition")
+            lm = LocationMeasure(f"probe total time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(
+                                         BP(probe=True), pos, 0.5),
+                                 ), sessionsWithProbe, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags="measureByCondition")
+
+            lm = LocationMeasure("pseudoprobe number of visits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0.5,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp)
+            lm = LocationMeasure("pseudoprobe total time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0.5,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp)
+
+            tm = TrialMeasure("duration (sec)",
+                              lambda sesh, start, end, ttype: (
+                                  sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
+                              sessions)
+            tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
+            tm = TrialMeasure("normalized path length",
+                              lambda sesh, start, end, ttype: (
+                                  sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
+                              sessions)
+            tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
+
+        if plotFlagCheck(plotFlags, "thesis2"):
+            n = len(sessionsWithProbe)
+            ncols = math.ceil(math.sqrt(n))
+            nrows = math.ceil(n / ncols)
+            with pp.newFig("probeTraces", subPlots=(ncols, nrows)) as pc:
+                for i, sesh in enumerate(ctrlSessionsWithProbe):
+                    ax = pc.axs.flat[i]
+                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+                    ax.plot(sesh.probePosXs, sesh.probePosYs, c="#0000007f", lw=1, zorder=1.5)
+                    ax.set_title(sesh.name)
+
+                for i, sesh in enumerate(swrSessionsWithProbe):
+                    ax = pc.axs.flat[i + len(ctrlSessionsWithProbe)]
+                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+                    ax.plot(sesh.probePosXs, sesh.probePosYs, c="#0000007f", lw=1, zorder=1.5)
+                    ax.set_title(sesh.name)
+
+                for i in range(len(sessionsWithProbe), len(pc.axs.flat)):
+                    pc.axs.flat[i].axis("off")
+
+            n = len(sessions)
+            ncols = math.ceil(math.sqrt(n))
+            nrows = math.ceil(n / ncols)
+            with pp.newFig("taskTraces", subPlots=(ncols, nrows)) as pc:
+                for i, sesh in enumerate(ctrlSessions):
+                    ax = pc.axs.flat[i]
+                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+                    ax.plot(sesh.btPosXs, sesh.btPosYs, c="#0000007f", lw=1, zorder=1.5)
+                    ax.set_title(sesh.name)
+
+                for i, sesh in enumerate(swrSessions):
+                    ax = pc.axs.flat[i + len(ctrlSessions)]
+                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+                    ax.plot(sesh.btPosXs, sesh.btPosYs, c="#0000007f", lw=1, zorder=1.5)
+                    ax.set_title(sesh.name)
+
+                for i in range(len(sessions), len(pc.axs.flat)):
+                    pc.axs.flat[i].axis("off")
+
+        if plotFlagCheck(plotFlags, "thesis3"):
+            # Cumulative number of wells visited in probe across sessions
+            windowSlide = 10
+            t1Array = np.arange(windowSlide, 60 * 5, windowSlide)
+            numVisitedOverTimeOffWall = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisitedOverTimeOffWall[:] = np.nan
+            numVisitedOverTimeOffWallWithRepeats = np.empty((numSessionsWithProbe, len(t1Array)))
+            numVisitedOverTimeOffWallWithRepeats[:] = np.nan
+            for si, sesh in enumerate(sessionsWithProbe):
+                t1s = t1Array * TRODES_SAMPLING_RATE + sesh.probePos_ts[0]
+                i1Array = np.searchsorted(sesh.probePos_ts, t1s)
+                for ii, i1 in enumerate(i1Array):
+                    numVisitedOverTimeOffWall[si, ii] = numWellsVisited(
+                        sesh.probeNearestWells[0:i1], countReturns=False,
+                        wellSubset=offWallWellNames)
+                    numVisitedOverTimeOffWallWithRepeats[si, ii] = numWellsVisited(
+                        sesh.probeNearestWells[0:i1], countReturns=True,
+                        wellSubset=offWallWellNames)
+
+            with pp.newFig("probe_numVisitedOverTime_bysidx_offwall") as pc:
+                cmap = cm.get_cmap("coolwarm", numSessionsWithProbe)
+                for si in range(numSessionsWithProbe):
+                    jitter = np.random.uniform(size=(numVisitedOverTimeOffWall.shape[1],)) * 0.5
+                    pc.ax.plot(t1Array, numVisitedOverTimeOffWall[si, :] + jitter, color=cmap(si))
+                pc.ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
+                pc.ax.set_ylim(0, 17)
+
+            with pp.newFig("probe_numVisitedOverTime_bysidx_offwall_withRepeats") as pc:
+                cmap = cm.get_cmap("coolwarm", numSessionsWithProbe)
+                for si in range(numSessionsWithProbe):
+                    jitter = np.random.uniform(
+                        size=(numVisitedOverTimeOffWallWithRepeats.shape[1],)) * 0.5
+                    pc.ax.plot(
+                        t1Array, numVisitedOverTimeOffWallWithRepeats[si, :] + jitter, color=cmap(si))
+                pc.ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
+
+        if plotFlagCheck(plotFlags, "thesis4"):
+            pass
+
         pp.popOutputSubDir()
 
-    # pp.makeCombinedFigs()
-    # pp.runImmediateShufflesAcrossPersistentCategories()
+    if makeCombined:
+        outputSubDir = f"combo_{'_'.join(animalNames)}"
+        if testData or len(animalNames) != 6:
+            pp.makeCombinedFigs(outputSubDir=outputSubDir)
+        else:
+            pp.makeCombinedFigs(
+                outputSubDir=outputSubDir, suggestedSubPlotLayout=(2, 3))
+    if runImmediate:
+        pp.runImmediateShufflesAcrossPersistentCategories(significantThreshold=1)
 
 
 def main():
+    testData = False
+    animalNames = None
     if len(sys.argv) > 1:
-        plotFlags = sys.argv[1:]
+        flags = sys.argv[1:]
+
+        if "--test" in flags:
+            testData = True
+            flags.remove("--test")
+
+        if "--no17" in flags:
+            animalNames = ["Martin", "B13", "B14", "B16", "B18"]
+            flags.remove("--no17")
+        if "--no14" in flags:
+            animalNames = ["Martin", "B13", "B16", "B17", "B18"]
+            flags.remove("--no14")
+        if "--no1417" in flags:
+            animalNames = ["Martin", "B13", "B16", "B18"]
+            flags.remove("--no1417")
+
+        if "--allThesis" in flags:
+            flags.remove("--allThesis")
+            flags.extend(["thesis1", "thesis2", "thesis3", "thesis4"])
+
+        plotFlags = flags
     else:
         plotFlags = ["all"]
-    makeFigures(plotFlags)
+    makeFigures(plotFlags, testData=testData, animalNames=animalNames)
 
 
 if __name__ == "__main__":

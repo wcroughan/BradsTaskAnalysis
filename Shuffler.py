@@ -198,14 +198,22 @@ class Shuffler:
                         (line.split("__!__")[1].strip(), line.split("__!__")[2].strip()))
         return statsFiles
 
-    def runImmediateShufflesAcrossPersistentCategories(
-        self, infoFileNames: List[str], numShuffles=100,
-            resultsFilter: Callable[[str, ShuffleResult, float, str], bool] = lambda *_: True) -> str:
+    def runImmediateShufflesAcrossPersistentCategories(self, infoFileNames: Optional[List[str]], numShuffles=100,
+                                                       significantThreshold: Optional[float] = 0.05,
+                                                       resultsFilter: Callable[[
+                                                           str, ShuffleResult, float, str], bool] = lambda *_: True,
+                                                       savedStatsFiles: Optional[List[Tuple[str, str]]] = None,
+                                                       outputFileName: Optional[str] = None
+                                                       ) -> str:
         self.numShuffles = numShuffles
 
-        savedStatsFiles = []
-        for infoFileName in infoFileNames:
-            savedStatsFiles += self.getListOfStatsFiles(infoFileName)
+        if infoFileNames is None and savedStatsFiles is None:
+            raise Exception("Either infoFileNames or savedStatsFiles must be specified")
+
+        if savedStatsFiles is None:
+            savedStatsFiles = []
+            for infoFileName in infoFileNames:
+                savedStatsFiles += self.getListOfStatsFiles(infoFileName)
         filesForEachPlot = {}
         for plotName, statsFile in savedStatsFiles:
             if plotName not in filesForEachPlot:
@@ -284,25 +292,54 @@ class Shuffler:
             sr = self._doShuffles(df, specs, yvalNames)
             shuffResults.append((plotName, sr, measureName))
 
-        filteredResults: List[Tuple[str, ShuffleResult, float, str]] = []
+        if significantThreshold is None:
+            significantThreshold = 1.0
+
+        if outputFileName is None:
+            outputFileName = os.path.join(os.path.dirname(
+                infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_shufflesAcrossPersistentCategories.h5"))
+
+        significantResults: List[Tuple[str, ShuffleResult, float, str]] = []
         for plotName, sr, measureName in shuffResults:
             for s in sr:
                 for s2 in s:
-                    pval = s2.getPVals().item()
-                    if resultsFilter(plotName, s2, pval, measureName):
-                        filteredResults.append(
-                            (plotName, s2, pval if pval < 0.5 else 1 - pval,
-                                measureName))
+                    for pi, pval in enumerate(s2.getPVals()):
+                        if pval < significantThreshold or pval > 1 - significantThreshold:
+                            if resultsFilter(plotName, s2, pval, measureName):
+                                # measurenameWithoutPrefix = "_".join(
+                                #     measureName.split("_")[1:])
+                                plotSuffix = plotName[len(measureName):]
+                                isCondShuf = plotSuffix == "" or plotSuffix.endswith(
+                                    "diff") or plotSuffix.endswith("cond") or plotSuffix.endswith("measureByCondition")
+                                isCtrlShuf = plotSuffix.endswith("cond") or (
+                                    "ctrl_" in plotSuffix and "diff" not in plotSuffix)
+                                isDiffShuf = plotSuffix.endswith("diff")
+                                isNextSeshDiffShuf = plotSuffix.endswith("nextsession_diff")
+                                significantResults.append(
+                                    (plotName, str(s2), pval if pval < 0.5 else 1 - pval, pval < 0.5,
+                                        measureName, plotSuffix, isCondShuf, isCtrlShuf, isDiffShuf,
+                                        isNextSeshDiffShuf, pi))
+                                # filteredResults.append(
+                                #     (plotName, s2, pval if pval < 0.5 else 1 - pval,
+                                #         measureName))
+                    # pval = s2.getPVals().item()
+                    # if resultsFilter(plotName, s2, pval, measureName):
+                    #     filteredResults.append(
+                    #         (plotName, s2, pval if pval < 0.5 else 1 - pval,
+                    #             measureName))
 
-        sdf = pd.DataFrame([(pn, str(s.specs), pv, mn) for pn, s, pv, mn in filteredResults],
-                           columns=["plot", "shuffle", "pval", "measure"])
+        # sdf = pd.DataFrame([(pn, str(s.specs), pv, mn) for pn, s, pv, mn in filteredResults],
+        #                    columns=["plot", "shuffle", "pval", "measure"])
+        sdf = pd.DataFrame(significantResults,
+                           columns=["plot", "shuffle", "pval", "direction", "measure", "plotSuffix", "isCondShuf",
+                                    "isCtrlShuf", "isDiffShuf", "isNextSeshDiffShuf", "pvalIndex"])
         sdf.sort_values(by="pval", inplace=True)
         # print("immediateShufflesAcrossPersistentCategories")
         # print(sdf.to_string(index=False))
+        # sdf.to_hdf(outputFileName, key="immediateShuffles")
+        sdf.to_hdf(outputFileName, key="significantShuffles")
+        print(sdf)
 
-        outputFileName = os.path.join(os.path.dirname(
-            infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_immediateShuffles.h5"))
-        sdf.to_hdf(outputFileName, key="immediateShuffles")
         return outputFileName
 
     def getAllShuffleSpecsWithLeaf(self, df: pd.DataFrame, leaf: List[ShuffSpec],
@@ -449,11 +486,11 @@ class Shuffler:
                                 if shuffleResultsFilter(plotName, s2, pval, measureName):
                                     # isCondShuf = any([s.categoryName == "condition" for s in s2.specs])
 
-                                    measurenameWithoutPrefix = "_".join(
-                                        measureName.split("_")[1:])
-                                    plotSuffix = plotName[len(measurenameWithoutPrefix):]
+                                    # measurenameWithoutPrefix = "_".join(
+                                    #     measureName.split("_")[1:])
+                                    plotSuffix = plotName[len(measureName):]
                                     isCondShuf = plotSuffix == "" or plotSuffix.endswith(
-                                        "diff") or plotSuffix.endswith("cond")
+                                        "diff") or plotSuffix.endswith("cond") or plotSuffix.endswith("measureByCondition")
                                     isCtrlShuf = plotSuffix.endswith("cond") or (
                                         "ctrl_" in plotSuffix and "diff" not in plotSuffix)
                                     isDiffShuf = plotSuffix.endswith("diff")
@@ -656,8 +693,10 @@ class Shuffler:
         if s.shuffType == ShuffSpec.ShuffType.ACROSS:
             vals = valSet[s.categoryName]
             withinRes: List[List[ShuffleResult]] = []
+            numInGroup: List[int] = []
             for val in vals:
                 withinIdx = df[s.categoryName] == val
+                numInGroup.append(withinIdx.sum())
                 withinRes.append(self._doShuffleSpec(
                     df.loc[withinIdx], spec[1:], valSet, dataNames))
 
@@ -669,8 +708,8 @@ class Shuffler:
                 r.diff = np.zeros((len(dataNames), 1))
                 r.shuffleDiffs = np.zeros((self.numShuffles, len(dataNames)))
                 for vi in range(len(vals)):
-                    r.diff += withinRes[vi][ei].diff
-                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs
+                    r.diff += withinRes[vi][ei].diff * numInGroup[vi]
+                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * numInGroup[vi]
                 ret.append(r)
             return ret
 
@@ -679,6 +718,7 @@ class Shuffler:
             vals = valSet[s.categoryName]
             withinRes = []
             withoutRes = []
+            numInGroup = []
             for val in vals:
                 withinIdx = df[s.categoryName] == val
                 withinRes.append(self._doShuffleSpec(
@@ -686,6 +726,7 @@ class Shuffler:
                 withoutIdx = ~ withinIdx
                 withoutRes.append(self._doShuffleSpec(
                     df.loc[withoutIdx], spec[1:], valSet, dataNames))
+                numInGroup.append(withinIdx.sum())
 
             ret = []
             # within effects
@@ -709,8 +750,8 @@ class Shuffler:
                 r.diff = np.zeros((len(dataNames), 1))
                 r.shuffleDiffs = np.zeros((self.numShuffles, len(dataNames)))
                 for vi in range(len(vals)):
-                    r.diff += withinRes[vi][ei].diff
-                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs
+                    r.diff += withinRes[vi][ei].diff * numInGroup[vi]
+                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * numInGroup[vi]
                 ret.append(r)
 
             # interaction effects

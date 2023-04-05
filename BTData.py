@@ -119,6 +119,9 @@ class BTData:
                     # sesh.name is the date and time, in year-month-day hour-minute-second format
                     if (startTime - prevStartTime).total_seconds() / 3600 < prevSessionCutoff:
                         s.prevSession = self.allSessions[si - 1]
+                        self.allSessions[si - 1].nextSession = s
+                        s.secondsSincePrevSession = (startTime - prevStartTime).total_seconds()
+                        self.allSessions[si - 1].secondsUntilNextSession = s.secondsSincePrevSession
                     else:
                         s.prevSession = None
                 prevStartTime = startTime

@@ -1020,7 +1020,8 @@ def getPreferredCategoryOrder(cats):
     elif set(cats) == {"same", "next"}:
         return ["same", "next"]
     elif set(cats) == {"SWR", "Ctrl"}:
-        return ["SWR", "Ctrl"]
+        # return ["SWR", "Ctrl"]
+        return ["Ctrl", "SWR"]
     else:
         return sorted(set(cats))
 

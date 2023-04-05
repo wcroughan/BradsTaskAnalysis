@@ -177,6 +177,8 @@ class PlotManager:
         else:
             willShowFig = False
 
+        additionalFig = None
+
         if len(self.plotContext.yvals) > 0:
             # Everything is referenced according to this name
             figureName = os.path.basename(self.plotContext.figName)
@@ -263,36 +265,97 @@ class PlotManager:
                 #         print(r)
 
                 if len(self.plotContext.yvals) == 1:
-                    pval = None
-                    for rr in immediateRes:
-                        for r in rr:
-                            if pval is not None:
-                                raise Exception("Should only be doing one shuffle here!")
+                    if len(immediateRes) == 1 and len(immediateRes[0]) == 1:
+                        # Just one shuffle, add it to the figure directly
+                        pval = None
+                        for rr in immediateRes:
+                            for r in rr:
+                                if pval is not None:
+                                    raise Exception("Should only be doing one shuffle here!")
+                                pval = r.getPVals().item()
+                                shufDiffs = r.shuffleDiffs
+                                dataDiff = r.diff
+
+                        if not np.isnan(shufDiffs).all():
+                            shuffledCategories = df[shufSpecs[0][0].categoryName].unique()
+                            cat1 = shufSpecs[0][0].value
+                            cat2 = shuffledCategories[shuffledCategories != cat1].item()
+                            direction = pval > 0.5
+                            if direction:
+                                pval = 1 - pval
+                            if pval > 0:
+                                pvalText = f"p={round(pval, 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                            else:
+                                pvalText = f"p<{round(1/numShuffles[0], 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                            self.plotContext.ax.add_artist(AnchoredText(pvalText, "upper center"))
+
+                            # Now create an inset axis in self.plotContext.ax in the bottom middle that shows the
+                            # histogram of the shuffled differences and a red vertical line at the data difference
+                            insetAx = self.plotContext.ax.inset_axes([0.4, 0.15, 0.2, 0.1])
+                            insetAx.hist(shufDiffs, bins=20, color="black")
+                            insetAx.axvline(dataDiff, color="red")
+                            insetAx.set_xlabel(f"{cat1} - {cat2}")
+                            # turn off y axis
+                            insetAx.get_yaxis().set_visible(False)
+                    else:
+                        # Multiple shuffles, make a new figure
+                        # plt.figure(2)
+                        flatRes = [r for rr in immediateRes for r in rr]
+                        additionalFig, axs = plt.subplots(2, len(flatRes))
+                        additionalFig.set_figheight(3)
+                        additionalFig.set_figwidth(3 * len(flatRes))
+                        for ri, r in enumerate(flatRes):
                             pval = r.getPVals().item()
                             shufDiffs = r.shuffleDiffs
                             dataDiff = r.diff
+                            ax = axs[1, ri]
+                            txtAx = axs[0, ri]
 
-                    if not np.isnan(shufDiffs).all():
-                        shuffledCategories = df[shufSpecs[0][0].categoryName].unique()
-                        cat1 = shufSpecs[0][0].value
-                        cat2 = shuffledCategories[shuffledCategories != cat1].item()
-                        direction = pval > 0.5
-                        if direction:
-                            pval = 1 - pval
-                        if pval > 0:
-                            pvalText = f"p={round(pval, 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
-                        else:
-                            pvalText = f"p<{round(1/numShuffles[0], 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
-                        self.plotContext.ax.add_artist(AnchoredText(pvalText, "upper center"))
+                            if not np.isnan(shufDiffs).all():
+                                # axis should have text at the top with the following on each row:
+                                #   name of shuffle with the category and type of shuffle
+                                #   pval
+                                #   direction of difference with names of the categories
+                                # Then below that text put the histogram of the shuffled differences
+                                # with a red vertical line at the data difference
+                                topText = ""
+                                for s in r.specs:
+                                    if s.shuffType == ShuffSpec.ShuffType.GLOBAL:
+                                        topText += f"Main: {s.categoryName}\n"
+                                        shuffledCategories = df[s.categoryName].unique()
+                                        cat1 = s.value
+                                        cat2 = shuffledCategories[shuffledCategories != cat1].item()
+                                    elif s.shuffType == ShuffSpec.ShuffType.ACROSS:
+                                        topText += f"Across: {s.categoryName}\n"
+                                    elif s.shuffType == ShuffSpec.ShuffType.WITHIN:
+                                        topText += f"Within: {s.value} ({s.categoryName})\n"
+                                    elif s.shuffType == ShuffSpec.ShuffType.INTERACTION:
+                                        topText += f"Interaction: {s.value} ({s.categoryName})\n"
 
-                        # Now create an inset axis in self.plotContext.ax in the bottom middle that shows the
-                        # histogram of the shuffled differences and a red vertical line at the data difference
-                        insetAx = self.plotContext.ax.inset_axes([0.4, 0.15, 0.2, 0.1])
-                        insetAx.hist(shufDiffs, bins=20, color="black")
-                        insetAx.axvline(dataDiff, color="red")
-                        insetAx.set_xlabel(f"{cat1} - {cat2}")
-                        # turn off y axis
-                        insetAx.get_yaxis().set_visible(False)
+                                # topText = f"{r.specs[0].categoryName}: {r.specs[0].shuffType}\n"
+                                direction = pval > 0.5
+                                if direction:
+                                    pval = 1 - pval
+                                if pval > 0:
+                                    topText += f"p={round(pval, 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                                else:
+                                    topText += f"p<{round(1/numShuffles[0], 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                                # txtAx.add_artist(AnchoredText(topText, "upper center"))
+                                # make this text fill up all of txtAx
+                                txtAx.axis("off")
+                                txtAx.text(0.5, 0.5, topText, horizontalalignment="center",
+                                           verticalalignment="center", transform=txtAx.transAxes)
+
+                                # insetAx = ax.inset_axes([0.4, 0.15, 0.2, 0.1])
+                                ax.hist(shufDiffs, bins=20, color="black")
+                                ax.axvline(dataDiff, color="red")
+                                ax.set_xlabel(f"{cat1} - {cat2}")
+                                # turn off y axis
+                                ax.get_yaxis().set_visible(False)
+
+                        # plt.show()
+
+                        plt.figure(self.fig)
                 else:
                     try:
                         xvals = [float(v.split("_")[-1])
@@ -357,7 +420,7 @@ class PlotManager:
 
         # Finally, save or show the figure
         if willSaveFig:
-            self.saveFig()
+            self.saveFig(additionalFig=additionalFig)
         if willShowFig:
             self.showedLastFig = True
             plt.show()
@@ -365,7 +428,7 @@ class PlotManager:
         else:
             self.showedLastFig = False
 
-    @property
+    @ property
     def fullOutputDir(self):
         if self.outputDriveDir != "" and self.outputDir.startswith("/media/"):
             outSplit = self.outputDir.split(os.sep)
@@ -375,7 +438,7 @@ class PlotManager:
 
         return os.path.join(self.outputDir, self.outputSubDir)
 
-    def saveFig(self):
+    def saveFig(self, additionalFig=None):
         fname = os.path.join(self.fullOutputDir, self.plotContext.figName)
 
         if fname[-4:] != ".png" and fname[-4:] != ".pdf":
@@ -390,7 +453,8 @@ class PlotManager:
                 except RuntimeError:
                     pass
 
-        plt.savefig(fname, bbox_inches="tight", dpi=100, transparent=self.plotContext.transparent)
+        self.fig.savefig(fname, bbox_inches="tight", dpi=100,
+                         transparent=self.plotContext.transparent)
         self.writeToInfoFile("wrote file {}".format(fname))
         if self.verbosity >= 3:
             print("wrote file {}".format(fname))
@@ -405,6 +469,13 @@ class PlotManager:
             thisFigList = self.savedFigsByName[figFileName]
             self.globalLock.release()
             thisFigList.append(self.outputSubDir)
+
+        if additionalFig is not None:
+            # ran multiple immediate shuffles, save that fig too
+            additionalFig.savefig(fname + "_immediate.png", bbox_inches="tight",
+                                  dpi=100, transparent=self.plotContext.transparent)
+            if self.verbosity >= 3:
+                print("wrote file {}".format(fname + "_immediate.png"))
 
     def clearFig(self) -> None:
         self.fig.clf()
@@ -485,6 +556,7 @@ class PlotManager:
 
             for sdi, sd in enumerate(figSubDirs):
                 imgFileName = os.path.join(self.outputDir, sd, figFileName)
+                # print("imgFileName: {}".format(imgFileName))
                 if not os.path.exists(imgFileName):
                     imgFileName += ".png"
                 im = mpimg.imread(imgFileName)
@@ -509,6 +581,7 @@ class PlotManager:
                 print("wrote file {}".format(fname))
 
             firstPickleFName = os.path.join(self.outputDir, figSubDirs[0], figFileName + ".pkl")
+            # print("firstPickleFName: {}".format(firstPickleFName))
             if not os.path.exists(firstPickleFName):
                 continue
 
@@ -573,9 +646,10 @@ class PlotManager:
             if self.verbosity >= 3:
                 print("wrote file {}".format(fname))
 
-    def runImmediateShufflesAcrossPersistentCategories(self, numShuffles=100) -> None:
+    def runImmediateShufflesAcrossPersistentCategories(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
+                                                       resultsFilter: Callable[[str, ShuffleResult, float], bool] = notNanPvalFilter) -> None:
         outFile = self.shuffler.runImmediateShufflesAcrossPersistentCategories(
-            [self.infoFileFullName], numShuffles)
+            [self.infoFileFullName], numShuffles, significantThreshold, resultsFilter)
         self.shuffler.summarizeShuffleResults(outFile)
 
     def runShuffles(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
@@ -639,7 +713,7 @@ def setupBehaviorTracePlot(axs, sesh, showWells: str = "HAO", wellZOrder=2, outl
 
 def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey", avgColor="blue", spread="std",
                              individualZOrder=1, averageZOrder=2, label=None, individualAmt=None, color=None,
-                             interpolateOverNans=False):
+                             interpolateOverNans=False, skipIndividuals=False):
     """
     values of individualAmt on range [0, 1] are interpreted as a fraction. Larger numbers as the count of traces to plot
     """
@@ -679,7 +753,8 @@ def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey"
                 yvals[:, col]), col], yvals[~np.isnan(yvals[:, col]), col],
                 left=np.nan, right=np.nan)
 
-    ax.plot(xvals2d, yvals, c=individualColor, lw=0.5, zorder=individualZOrder)
+    if not skipIndividuals:
+        ax.plot(xvals2d, yvals, c=individualColor, lw=0.5, zorder=individualZOrder)
 
     if xValsMatch:
         with warnings.catch_warnings():
@@ -803,7 +878,7 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
 
     if categoryColors is None:
         if set(categories) == {"Ctrl", "SWR"}:
-            categoryColors = ["orange", "cyan"]
+            categoryColors = ["cyan", "orange"]
         else:
             categoryColors = ["red", "blue"]
     pal = sns.color_palette(palette=categoryColors)
@@ -844,5 +919,6 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
 
 def blankPlot(ax):
     ax.cla()
-    ax.tick_params(axis="both", which="both", label1On=False,
-                   label2On=False, tick1On=False, tick2On=False)
+    # ax.tick_params(axis="both", which="both", label1On=False,
+    #                label2On=False, tick1On=False, tick2On=False)
+    ax.axis("off")

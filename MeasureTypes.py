@@ -750,11 +750,12 @@ class TrialMeasure():
             with plotManager.newFig(figName + "_byTrialAvgs_all_byCond", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, :], xvalsAll, avgColor="orange", label="SWR",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[ctrlIdx, :], xvalsAll, avgColor="cyan", label="Ctrl",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 pc.ax.set_xlim(1, len(xvalsAll))
+                pc.ax.legend()
                 pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
 
                 if runStats:
@@ -770,11 +771,12 @@ class TrialMeasure():
             with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="red", label="home",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="blue", label="away",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.legend()
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
                 if runStats:
@@ -793,54 +795,59 @@ class TrialMeasure():
                     pc.immediateShufflePvalThreshold = 0.15
 
             with plotManager.newFig(figName + "_byTrialAvgs_home", excludeFromCombo=excludeFromCombo) as pc:
-                plotIndividualAndAverage(pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="grey")
+                plotIndividualAndAverage(
+                    pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="grey", skipIndividuals=True)
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_away", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
-                    pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="grey")
+                    pc.ax, self.measure2d[:, 1::2], xvalsHalf[:-1], avgColor="grey", skipIndividuals=True)
                 pc.ax.set_xlim(1, len(xvalsHalf))
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_home_byCond", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="orange", label="SWR",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="cyan", label="Ctrl",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.legend()
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_away_byCond", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="orange", label="SWR",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="cyan", label="Ctrl",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.legend()
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_ctrl_byTrialType", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[ctrlIdx, ::2], xvalsHalf, avgColor="red", label="home",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[ctrlIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.legend()
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
             with plotManager.newFig(figName + "_byTrialAvgs_SWR_byTrialType", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, ::2], xvalsHalf, avgColor="red", label="home",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, 1::2], xvalsHalf[:-1], avgColor="blue", label="away",
-                    spread="sem")
+                    spread="sem", skipIndividuals=True)
                 pc.ax.set_xlim(1, len(xvalsHalf))
+                pc.ax.legend()
                 pc.ax.set_xticks(np.arange(0, len(xvalsHalf), 2) + 1)
 
         if "everytrial" in plotFlags:
@@ -1807,6 +1814,7 @@ class LocationMeasure():
 
         return ret
 
+    @staticmethod
     def prevSessionCtrlLocations(sesh: BTSession, seshIdx: int, otherSessions: List[BTSession]) -> List[Tuple[List[Tuple[int, float, float]], str, Tuple[str, str, str]]]:
         ret = []
         prevSessionRet = []
@@ -1814,6 +1822,12 @@ class LocationMeasure():
             prevSessionRet.append((seshIdx - 1, *getWellPosCoordinates(sesh.homeWell)))
         ret.append((prevSessionRet, "prevsession", ("same", "prev", "session type")))
         return ret
+
+    @staticmethod
+    def prevSessionHomeLocation(sesh: BTSession) -> Tuple[float, float]:
+        if sesh.prevSession is None:
+            return getWellPosCoordinates(sesh.homeWell)
+        return getWellPosCoordinates(sesh.prevSession.homeWell)
 
     def __init__(self, name: str, measureFunc: Callable[[BTSession], ArrayLike],
                  sessionList: List[BTSession],
@@ -2146,11 +2160,12 @@ class LocationMeasure():
 
                     if runStats:
                         pc.yvals[figName] = vals
+                        cat2Name = self.controlValLabels[ctrlName][2].replace(" ", "_")
                         pc.categories["condition"] = conditionCats
-                        pc.categories[self.controlValLabels[ctrlName]
-                                      [2].replace(" ", "_")] = valCtrlCats
-                        # pc.immediateShuffles.append((
-                        #     [ShuffSpec(shuffType=ShuffSpec.ShuffType.INTERACTION, categoryName="condition", value="Ctrl")], 100))
+                        pc.categories[cat2Name] = valCtrlCats
+                        pc.immediateShuffles.append((
+                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL, categoryName=cat2Name, value=None),
+                             ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
 
         if "diff" in plotFlags:
             plotFlags.remove("diff")
@@ -2759,6 +2774,107 @@ class LocationMeasure():
                 pc.categories["condition"] = cats
                 pc.categoryColors = {"SWR": "orange", "Ctrl": "cyan"}
                 pc.immediateCorrelations.append((dataName, otherDataName))
+
+        if subFolder:
+            plotManager.popOutputSubDir()
+
+    def makeDualCategoryFigures(self,
+                                plotManager: PlotManager,
+                                subFolder: bool = True,
+                                excludeFromCombo: bool = False,
+                                runStats: bool = True):
+        if not self.valid:
+            return
+
+        figName = self.name.replace(" ", "_")
+        figPrefix = "" if subFolder else figName + "_"
+        dataName = self.name.replace(" ", "_")
+
+        if subFolder:
+            plotManager.pushOutputSubDir("LM_" + figName)
+
+        # Make an array of session categories that is a concatenation of the session categories with the previous session's category
+        dualSessionList = []
+        dualSessionVals = []
+        dualCatsSame = []
+        dualCatsPrev = []
+        dualCatsCombo = []
+        for si in range(1, len(self.sessionList)):
+            sesh = self.sessionList[si]
+            if sesh.prevSession is None:
+                continue
+            dualSessionList.append(sesh)
+            dualSessionVals.append(self.sessionValsBySession[si])
+            dualCatsSame.append(self.conditionBySession[si])
+            dualCatsPrev.append(self.conditionBySession[si - 1])
+            dualCatsCombo.append(
+                self.conditionBySession[si] + "_" + self.conditionBySession[si - 1])
+
+        dualSessionVals = np.array(dualSessionVals)
+        dualCatsSame = np.array(dualCatsSame)
+        dualCatsPrev = np.array(dualCatsPrev)
+        dualCatsCombo = np.array(dualCatsCombo)
+
+        with plotManager.newFig(figName + "_byDualCond", excludeFromCombo=excludeFromCombo) as pc:
+            violinPlot(pc.ax, dualSessionVals, categories=dualCatsSame, categories2=dualCatsPrev)
+            pc.ax.set_xlabel("Previous condition")
+
+            if runStats:
+                pc.yvals[dataName] = dualSessionVals
+                pc.categories["condition"] = dualCatsSame
+                pc.categories["prevCondition"] = dualCatsPrev
+                pc.categoryColors = {"SWR": "orange", "Ctrl": "cyan"}
+                pc.immediateShuffles.append((
+                    [ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL, categoryName="prevCondition", value=None),
+                        ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+
+        with plotManager.newFig(figName + "_byThisCond", excludeFromCombo=excludeFromCombo) as pc:
+            violinPlot(pc.ax, dualSessionVals, categories=dualCatsSame)
+            pc.ax.set_xlabel("This session condition")
+
+            if runStats:
+                pc.yvals[dataName] = dualSessionVals
+                pc.categories["condition"] = dualCatsSame
+                pc.categoryColors = {"SWR": "orange", "Ctrl": "cyan"}
+                pc.immediateShuffles.append((
+                    [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+
+        with plotManager.newFig(figName + "_byPrevCond", excludeFromCombo=excludeFromCombo) as pc:
+            violinPlot(pc.ax, dualSessionVals, categories=dualCatsPrev)
+            pc.ax.set_xlabel("Previous condition")
+
+            if runStats:
+                pc.yvals[dataName] = dualSessionVals
+                pc.categories["prevCondition"] = dualCatsPrev
+                pc.categoryColors = {"SWR": "orange", "Ctrl": "cyan"}
+                pc.immediateShuffles.append((
+                    [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="prevCondition", value="SWR")], 100))
+
+        with plotManager.newFig(figName + "_byTimeSincePreviousSession", excludeFromCombo=excludeFromCombo) as pc:
+            swrswrIdx = np.logical_and(dualCatsSame == "SWR", dualCatsPrev == "SWR")
+            ctrlswrIdx = np.logical_and(dualCatsSame == "SWR", dualCatsPrev == "Ctrl")
+            swrctrlIdx = np.logical_and(dualCatsSame == "Ctrl", dualCatsPrev == "SWR")
+            ctrlctrlIdx = np.logical_and(dualCatsSame == "Ctrl", dualCatsPrev == "Ctrl")
+
+            delayTimes = np.array(
+                [sesh.secondsSincePrevSession for sesh in dualSessionList])
+            pc.ax.scatter(delayTimes[swrswrIdx], dualSessionVals[swrswrIdx], color="orange")
+            pc.ax.scatter(delayTimes[swrctrlIdx],
+                          dualSessionVals[swrctrlIdx], color="orange", marker="x")
+            pc.ax.scatter(delayTimes[ctrlswrIdx],
+                          dualSessionVals[ctrlswrIdx], color="cyan", marker="x")
+            pc.ax.scatter(delayTimes[ctrlctrlIdx], dualSessionVals[ctrlctrlIdx], color="cyan")
+
+            pc.ax.set_xlabel("Time since previous session (s)")
+            pc.ax.set_ylabel(self.name)
+
+            if runStats:
+                pc.yvals[dataName] = dualSessionVals
+                pc.xvals["delayTime"] = delayTimes
+                pc.categories["condition"] = dualCatsSame
+                pc.categories["prevCondition"] = dualCatsPrev
+                pc.categoryColors = {"SWR": "orange", "Ctrl": "cyan"}
+                pc.immediateCorrelations.append(("delayTime", dataName))
 
         if subFolder:
             plotManager.popOutputSubDir()

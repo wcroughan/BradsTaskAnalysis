@@ -182,8 +182,10 @@ class BTSession:
     # The previous session chronologically, if one exists
     prevSession: Optional[BTSession] = None
     prevSessionDir: Optional[str] = None
+    secondsSincePrevSession: Optional[int] = None
     # The next session chronologically, if one exists
     nextSession: Optional[BTSession] = None
+    secondsUntilNextSession: Optional[int] = None
     # date object representing the day of this recording
     date: Optional[datetime] = None
 
