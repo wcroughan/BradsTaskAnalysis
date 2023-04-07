@@ -1929,6 +1929,15 @@ class BTSession:
             np.sqrt(np.diff(xs[start_posIdx:end_posIdx]) ** 2 + np.diff(ys[start_posIdx:end_posIdx]) ** 2))
         return totalDistance
 
+    def normalizedPathLength(self, inProbe: bool, start_posIdx: int, end_posIdx: int) -> float:
+        xs = self.probePosXs if inProbe else self.btPosXs
+        ys = self.probePosYs if inProbe else self.btPosYs
+        totalDistance = np.nansum(
+            np.sqrt(np.diff(xs[start_posIdx:end_posIdx]) ** 2 + np.diff(ys[start_posIdx:end_posIdx]) ** 2))
+        totalDisplacement = np.sqrt((xs[end_posIdx] - xs[start_posIdx])
+                                    ** 2 + (ys[end_posIdx] - ys[start_posIdx]) ** 2)
+        return totalDistance / totalDisplacement
+
     def pathLengthInExcursionToPosition(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
                                         radius: float = 0.5, emptyVal=np.nan, noVisitVal=np.nan, mode="first",
                                         startAtPosVal: float = np.nan,

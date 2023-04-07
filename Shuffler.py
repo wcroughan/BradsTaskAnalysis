@@ -205,6 +205,10 @@ class Shuffler:
         statFig.set_figheight(3)
         statFig.set_figwidth(3 * len(flatRes))
         for ri, r in enumerate(flatRes):
+            if len(r.getPVals()) > 1:
+                # destroy the figure and return
+                plt.close(statFig)
+                return
             pval = r.getPVals().item()
             shufDiffs = r.shuffleDiffs
             dataDiff = r.diff
@@ -284,7 +288,9 @@ class Shuffler:
                 infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_shufflesAcrossPersistentCategories.h5"))
         if makePlots:
             plotOutFileNameBase = os.path.join(os.path.dirname(
-                infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_"))
+                infoFileNames[0]), "shuffleImages", datetime.now().strftime("%Y%m%d_%H%M%S_"))
+            if not os.path.exists(os.path.dirname(plotOutFileNameBase)):
+                os.makedirs(os.path.dirname(plotOutFileNameBase))
 
         todel = []
         for plotName in filesForEachPlot:
@@ -597,6 +603,9 @@ class Shuffler:
 
     def summarizeShuffleResults(self, hdfFile: str) -> None:
         df = pd.read_hdf(hdfFile, key="significantShuffles")
+        if df.empty:
+            return
+
         # print("summarizeShuffleResults")
         # print(df.to_string(index=False))
 

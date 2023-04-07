@@ -550,18 +550,39 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             with pp.newFig("probeTraces", subPlots=(ncols, nrows)) as pc:
                 for i, sesh in enumerate(sessions):
                     ax = pc.axs.flat[i]
-                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
-                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+                    wellSize = mpl.rcParams['lines.markersize']**2 * 3
+                    # setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize)
                     ax.plot(sesh.probePosXs, sesh.probePosYs, c="#0000007f", lw=1, zorder=1.5)
                     ax.set_title(sesh.name)
 
             with pp.newFig("taskTraces", subPlots=(ncols, nrows)) as pc:
                 for i, sesh in enumerate(sessions):
                     ax = pc.axs.flat[i]
-                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
-                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+                    wellSize = mpl.rcParams['lines.markersize']**2 * 3
+                    # setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize)
                     ax.plot(sesh.btPosXs, sesh.btPosYs, c="#0000007f", lw=1, zorder=1.5)
                     ax.set_title(sesh.name)
+
+        if plotFlagCheck(plotFlags, "overlayTrials"):
+            for i, sesh in enumerate(sessions):
+                with pp.newFig(f"trialTracesOverlay_{sesh.name}", subPlots=(1, 2), excludeFromCombo=True) as pc:
+                    awayAx = pc.axs.flat[0]
+                    homeAx = pc.axs.flat[1]
+                    wellSize = mpl.rcParams['lines.markersize']**2 * 3
+                    setupBehaviorTracePlot(awayAx, sesh, wellSize=wellSize, showWells="HA")
+                    setupBehaviorTracePlot(homeAx, sesh, wellSize=wellSize, showWells="HA")
+
+                    trialPosIdxs = sesh.getAllTrialPosIdxs()
+                    homeTrials = trialPosIdxs[::2, :]
+                    awayTrials = trialPosIdxs[1::2, :]
+                    for start, end in homeTrials:
+                        homeAx.plot(
+                            sesh.btPosXs[start:end], sesh.btPosYs[start:end], c="#0000007f", lw=1, zorder=1.5)
+                    for start, end in awayTrials:
+                        awayAx.plot(
+                            sesh.btPosXs[start:end], sesh.btPosYs[start:end], c="#0000007f", lw=1, zorder=1.5)
 
         if plotFlagCheck(plotFlags, "gridchyn"):
             probeBP = BP(probe=True)
@@ -697,11 +718,18 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             lm.makeFigures(pp)
 
         if plotFlagCheck(plotFlags, "thesis0"):
-            lm = LocationMeasure(f"probe number of visits",
+            lm = LocationMeasure(f"probe number of visits (smoothed)",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.numVisitsToPosition(
                                          BP(probe=True), pos, 0.5),
                                  ), sessionsWithProbe, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+            lm = LocationMeasure(f"probe number of visits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(
+                                         BP(probe=True), pos, 0.5),
+                                 ), sessionsWithProbe, smoothDist=0.0)
             lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
                            "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
             lm = LocationMeasure(f"probe total time (sec)",
@@ -712,11 +740,18 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
                            "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
 
-            lm = LocationMeasure("pseudoprobe number of visits",
+            lm = LocationMeasure("pseudoprobe number of visits (smoothed)",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.numVisitsToPosition(
                                          BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
                                  ), sessions, smoothDist=0.5,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp)
+            lm = LocationMeasure("pseudoprobe number of visits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0.0,
                                  sessionValLocation=LocationMeasure.prevSessionHomeLocation)
             lm.makeDualCategoryFigures(pp)
             lm = LocationMeasure("pseudoprobe total time (sec)",
@@ -739,8 +774,8 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                               sessions)
             tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
             tm = TrialMeasure("normalized path length",
-                              lambda sesh, start, end, ttype: (
-                                  sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
+                              lambda sesh, start, end, ttype: sesh.normalizedPathLength(
+                                  False, start, end),
                               sessions)
             tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"], runStats=False)
 
@@ -748,17 +783,17 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             n = len(sessionsWithProbe)
             ncols = math.ceil(math.sqrt(n))
             nrows = math.ceil(n / ncols)
-            with pp.newFig("probeTraces", subPlots=(ncols, nrows)) as pc:
+            with pp.newFig("probeTracesGrouped", subPlots=(ncols, nrows)) as pc:
                 for i, sesh in enumerate(ctrlSessionsWithProbe):
                     ax = pc.axs.flat[i]
-                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                    wellSize = mpl.rcParams['lines.markersize']**2 * 3
                     setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
                     ax.plot(sesh.probePosXs, sesh.probePosYs, c="#0000007f", lw=1, zorder=1.5)
                     ax.set_title(sesh.name)
 
                 for i, sesh in enumerate(swrSessionsWithProbe):
                     ax = pc.axs.flat[i + len(ctrlSessionsWithProbe)]
-                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                    wellSize = mpl.rcParams['lines.markersize']**2 * 3
                     setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
                     ax.plot(sesh.probePosXs, sesh.probePosYs, c="#0000007f", lw=1, zorder=1.5)
                     ax.set_title(sesh.name)
@@ -769,17 +804,17 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             n = len(sessions)
             ncols = math.ceil(math.sqrt(n))
             nrows = math.ceil(n / ncols)
-            with pp.newFig("taskTraces", subPlots=(ncols, nrows)) as pc:
+            with pp.newFig("taskTracesGrouped", subPlots=(ncols, nrows)) as pc:
                 for i, sesh in enumerate(ctrlSessions):
                     ax = pc.axs.flat[i]
-                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                    wellSize = mpl.rcParams['lines.markersize']**2 * 3
                     setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
                     ax.plot(sesh.btPosXs, sesh.btPosYs, c="#0000007f", lw=1, zorder=1.5)
                     ax.set_title(sesh.name)
 
                 for i, sesh in enumerate(swrSessions):
                     ax = pc.axs.flat[i + len(ctrlSessions)]
-                    wellSize = mpl.rcParams['lines.markersize']**2 / 4
+                    wellSize = mpl.rcParams['lines.markersize']**2 * 3
                     setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
                     ax.plot(sesh.btPosXs, sesh.btPosYs, c="#0000007f", lw=1, zorder=1.5)
                     ax.set_title(sesh.name)
@@ -877,6 +912,26 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                  sessionValLocation=LocationMeasure.prevSessionHomeLocation)
             lm.makeDualCategoryFigures(pp)
 
+        if plotFlagCheck(plotFlags, "thesis6"):
+            # Morris paper measure: latency and norm and raw path length in home trials 2,3,4
+            sm = SessionMeasure("Latency to home 2-4",
+                                lambda sesh: np.sum(np.diff(sesh.getAllTrialPosIdxs()[
+                                                    2:7:2, :], axis=1)) / TRODES_SAMPLING_RATE,
+                                sessions)
+            sm.makeFigures(pp, plotFlags="violin")
+
+            sm = SessionMeasure("Path length to home 2-4 (ft)",
+                                lambda sesh: np.sum([sesh.pathLength(False, i1, i2) for i1, i2 in zip(
+                                    sesh.getAllTrialPosIdxs()[2:7:2, 0], sesh.getAllTrialPosIdxs()[2:7:2, 1])]),
+                                sessions)
+            sm.makeFigures(pp, plotFlags="violin")
+
+            sm = SessionMeasure("normalized Path length to home 2-4",
+                                lambda sesh: np.sum([sesh.normalizedPathLength(False, i1, i2) for i1, i2 in zip(
+                                    sesh.getAllTrialPosIdxs()[2:7:2, 0], sesh.getAllTrialPosIdxs()[2:7:2, 1])]),
+                                sessions)
+            sm.makeFigures(pp, plotFlags="violin")
+
         pp.popOutputSubDir()
 
     if len(animalNamesToRun) > 1:
@@ -921,7 +976,8 @@ def main():
 
         if "--allThesis" in flags:
             flags.remove("--allThesis")
-            flags.extend(["thesis0", "thesis1", "thesis2", "thesis3", "thesis4", "thesis5"])
+            flags.extend(["thesis0", "thesis1", "thesis2",
+                         "thesis3", "thesis4", "thesis5", "thesis6"])
 
         if "--alldata" in flags:
             allRatRun = "yes"
