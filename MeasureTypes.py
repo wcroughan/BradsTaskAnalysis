@@ -657,19 +657,29 @@ class TrialMeasure():
                                      "wasExcluded": wasExcluded,
                                      "trial_posIdx": trial_posIdx,
                                      "dotColor": dotColors})
-        self.sessionDf = self.trialDf.groupby("sessionIdx")[["condition", "dotColor"]].nth(0)
+        self.sessionDf = self.trialDf.groupby(
+            "sessionIdx")[["condition", "dotColor", "sessionIdx"]].nth(0)
 
         # Groups home and away trials within a session, takes nanmean of each
         # Then takes difference of home and away values within each sesion
         # Finally, lines them up with sessionDf info
+        # g = self.trialDf.groupby(["sessionIdx", "trialType"]).agg(
+        #     withinSessionDiff=("val", "mean")).diff().xs("home", level="trialType")
+        # print("g")
+        # print(g)
         self.withinSessionDiffs = self.trialDf.groupby(["sessionIdx", "trialType"]).agg(
-            withinSessionDiff=("val", "mean")).diff().xs("home", level="trialType").join(self.sessionDf)
+            withinSessionDiff=("val", "mean")).diff().xs("home", level="trialType").merge(self.sessionDf, on="sessionIdx")
         diffs = self.withinSessionDiffs["withinSessionDiff"].to_numpy()
         self.diffMin = np.nanmin(diffs)
         self.diffMax = np.nanmax(diffs)
 
+        # print("withinSessionDiffs")
+        # print(self.withinSessionDiffs)
+        # print("trialDf")
         # print(self.trialDf)
+        # print("sessionDf")
         # print(self.sessionDf)
+        # exit()
 
     def makeFigures(self,
                     plotManager: PlotManager,
@@ -712,8 +722,8 @@ class TrialMeasure():
             with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
                 violinPlot(pc.ax, self.trialDf["val"], categories2=self.trialDf["trialType"],
                            categories=self.trialDf["condition"], dotColors=self.trialDf["dotColor"],
-                           axesNames=["Condition", self.name, "Trial type"],
-                           categoryOrder=["SWR", "Ctrl"], category2Order=["home", "away"])
+                           axesNames=["Condition", self.name, "Trial type"])
+                #    category2Order=["home", "away"])
 
                 if runStats:
                     pc.yvals[figName] = self.trialDf["val"].to_numpy()
@@ -726,7 +736,6 @@ class TrialMeasure():
                 violinPlot(pc.ax, self.withinSessionDiffs["withinSessionDiff"],
                            categories=self.withinSessionDiffs["condition"],
                            dotColors=self.withinSessionDiffs["dotColor"],
-                           categoryOrder=["SWR", "Ctrl"],
                            axesNames=["Contidion", self.name + " within-session difference"])
 
                 if runStats:
@@ -1812,6 +1821,14 @@ class LocationMeasure():
             prevSessionRet.append((seshIdx - 1, *getWellPosCoordinates(sesh.homeWell)))
         ret.append((prevSessionRet, "prevsession", ("same", "prev", "session type")))
 
+        nextSessionNoAwayRet = []
+        if seshIdx + 1 < len(otherSessions):
+            if sesh.homeWell not in otherSessions[seshIdx + 1].visitedAwayWells:
+                nextSessionNoAwayRet.append(
+                    (seshIdx + 1, *getWellPosCoordinates(sesh.homeWell)))
+        ret.append((nextSessionNoAwayRet, "nextsessionnoaway",
+                   ("same", "next", "session type")))
+
         return ret
 
     @staticmethod
@@ -2036,6 +2053,7 @@ class LocationMeasure():
             "measureByCondition": plot the measure values for each session, separated by condition
             "measureVsCtrl": plot the measure values for each session, with the control values for each session
             "measureVsCtrlByCondition": plot the measure values for each session, with the control values for each session, separated by condition
+            "ctrlByCondition": plot just the measure values at control locations, separated by condition
             "diff": plot the difference between the measure values for each session and the mean control values within that session
             "measureByDistance": plot average measure values for each session as a function of distance from the session location
             "measureByDistanceByCondition": plot average measure values for each session as a function of distance from the session location, separated by condition
@@ -2064,7 +2082,8 @@ class LocationMeasure():
             return
 
         figName = self.name.replace(" ", "_")
-        figPrefix = "" if subFolder else figName + "_"
+        # figPrefix = "" if subFolder else figName + "_"
+        figPrefix = "" if (subFolder and False) else figName + "_"
         if subFolder:
             plotManager.pushOutputSubDir("LM_" + figName)
 
@@ -2098,9 +2117,8 @@ class LocationMeasure():
 
             with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo) as pc:
                 violinPlot(pc.ax, self.sessionValsBySession, self.conditionBySession,
-                           dotColors=self.dotColorsBySession, axesNames=[
-                               "Condition", self.name],
-                           categoryOrder=["SWR", "Ctrl"])
+                           dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
+                #    categoryOrder=["SWR", "Ctrl"])
                 pc.ax.set_title(self.name, fontdict={'fontsize': 6})
 
                 if runStats:
@@ -2125,7 +2143,7 @@ class LocationMeasure():
                     violinPlot(pc.ax, vals, categories=valCtrlCats,
                                dotColors=dotColors, axesNames=[
                                    self.controlValLabels[ctrlName][2], self.name],
-                               categoryOrder=self.controlValLabels[ctrlName][0:2],
+                               #    categoryOrder=self.controlValLabels[ctrlName][0:2],
                                dotColorLabels={"orange": "SWR", "cyan": "Ctrl"})
                     pc.ax.set_title(self.name + " vs " + ctrlName, fontdict={'fontsize': 6})
 
@@ -2153,9 +2171,9 @@ class LocationMeasure():
                 with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_cond", excludeFromCombo=excludeFromCombo) as pc:
                     violinPlot(pc.ax, vals, conditionCats, categories2=valCtrlCats,
                                dotColors=dotColors, axesNames=[
-                                   "Condition", self.name, self.controlValLabels[ctrlName][2]],
-                               category2Order=self.controlValLabels[ctrlName][0:2],
-                               categoryOrder=["SWR", "Ctrl"])
+                                   "Condition", self.name, self.controlValLabels[ctrlName][2]])
+                    #    category2Order=self.controlValLabels[ctrlName][0:2],
+                    #    categoryOrder=["SWR", "Ctrl"])
                     pc.ax.set_title(self.name + " vs " + ctrlName, fontdict={'fontsize': 6})
 
                     if runStats:
@@ -2166,6 +2184,28 @@ class LocationMeasure():
                         pc.immediateShuffles.append((
                             [ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL, categoryName=cat2Name, value=None),
                              ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+
+        if "ctrlByCondition" in plotFlags:
+            plotFlags.remove("ctrlByCondition")
+            if verbose:
+                print(f"Plotting {self.name} control by condition")
+
+            for ctrlName in self.controlValLabels:
+                vals = np.concatenate(self.controlVals[ctrlName])
+                conditionCats = self.conditionByCtrlVal[ctrlName]
+                dotColors = self.dotColorsByCtrlVal[ctrlName]
+
+                with plotManager.newFig(f"{figPrefix}ctrl_{ctrlName}_solo_cond", excludeFromCombo=excludeFromCombo) as pc:
+                    violinPlot(pc.ax, vals, conditionCats, dotColors=dotColors,
+                               axesNames=["Condition", self.name])
+                    pc.ax.set_title(self.name + " at " + ctrlName +
+                                    " by condition", fontdict={'fontsize': 6})
+
+                    if runStats:
+                        pc.yvals[figName] = vals
+                        pc.categories["condition"] = conditionCats
+                        pc.immediateShuffles.append((
+                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
 
         if "diff" in plotFlags:
             plotFlags.remove("diff")
@@ -2179,8 +2219,8 @@ class LocationMeasure():
                 with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
                     violinPlot(pc.ax, vals, self.conditionBySession,
                                dotColors=self.dotColorsBySession, axesNames=[
-                                   "Condition", self.name],
-                               categoryOrder=["SWR", "Ctrl"])
+                                   "Condition", self.name])
+                    #    categoryOrder=["SWR", "Ctrl"])
                     pc.ax.set_title(self.name + " vs " + ctrlName +
                                     " difference", fontdict={'fontsize': 6})
 
@@ -2526,7 +2566,7 @@ class LocationMeasure():
             return
 
         figName = self.name.replace(" ", "_") + "_X_" + sm.name.replace(" ", "_")
-        figPrefix = "" if subFolder else figName + "_"
+        figPrefix = "" if (subFolder and False) else figName + "_"
         dataName = self.name.replace(" ", "_")
 
         if subFolder:
@@ -2867,6 +2907,7 @@ class LocationMeasure():
 
             pc.ax.set_xlabel("Time since previous session (s)")
             pc.ax.set_ylabel(self.name)
+            pc.ax.legend()
 
             if runStats:
                 pc.yvals[dataName] = dualSessionVals

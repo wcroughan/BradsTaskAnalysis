@@ -556,6 +556,7 @@ class PlotManager:
 
             for sdi, sd in enumerate(figSubDirs):
                 imgFileName = os.path.join(self.outputDir, sd, figFileName)
+                sdsplit = sd.split(os.path.sep)
                 # print("imgFileName: {}".format(imgFileName))
                 if not os.path.exists(imgFileName):
                     imgFileName += ".png"
@@ -566,14 +567,17 @@ class PlotManager:
                     axc = sdi % subPlotLayout[1]
                     ayc = sdi // subPlotLayout[1]
                     self.axs[ayc, axc].axis('off')
-                    self.axs[ayc, axc].set_title(sd)
+                    self.axs[ayc, axc].set_title(sdsplit[0])
                     self.axs[ayc, axc].imshow(im)
                 else:
                     self.axs[sdi].axis('off')
-                    self.axs[sdi].set_title(sd)
+                    self.axs[sdi].set_title(sdsplit[0])
                     self.axs[sdi].imshow(im)
 
-            fname = os.path.join(self.outputDir, outputSubDir, figFileName)
+            outDir = os.path.join(self.outputDir, outputSubDir, sdsplit[-1])
+            if not os.path.exists(outDir):
+                os.makedirs(outDir)
+            fname = os.path.join(self.outputDir, outputSubDir, sdsplit[-1], figFileName)
             plt.savefig(fname, bbox_inches="tight", dpi=200)
 
             self.writeToInfoFile("wrote file {}".format(fname))
@@ -596,10 +600,11 @@ class PlotManager:
 
             loaded_axs = []
             for sdi, sd in enumerate(figSubDirs):
+                sdsplit = sd.split(os.path.sep)
                 pickleFName = os.path.join(self.outputDir, sd, figFileName + ".pkl")
                 with open(pickleFName, "rb") as fid:
                     ax = pickle.load(fid)
-                    ax.set_title(sd)
+                    ax.set_title(sdsplit[0])
                     loaded_axs.append(ax)
                 y1, y2 = ax.get_ylim()
                 if y1 < ymin:
@@ -639,7 +644,11 @@ class PlotManager:
 
             plt.figure(self.fig)
 
-            fname = os.path.join(self.outputDir, outputSubDir, figFileName + "_aligned.png")
+            outDir = os.path.join(self.outputDir, outputSubDir, sdsplit[-1])
+            if not os.path.exists(outDir):
+                os.makedirs(outDir)
+            fname = os.path.join(self.outputDir, outputSubDir,
+                                 sdsplit[-1], figFileName + "_aligned.png")
             plt.savefig(fname, bbox_inches="tight", dpi=200)
 
             self.writeToInfoFile("wrote file {}".format(fname))
@@ -649,7 +658,7 @@ class PlotManager:
     def runImmediateShufflesAcrossPersistentCategories(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
                                                        resultsFilter: Callable[[str, ShuffleResult, float], bool] = notNanPvalFilter) -> None:
         outFile = self.shuffler.runImmediateShufflesAcrossPersistentCategories(
-            [self.infoFileFullName], numShuffles, significantThreshold, resultsFilter)
+            [self.infoFileFullName], numShuffles, significantThreshold, resultsFilter, makePlots=True)
         self.shuffler.summarizeShuffleResults(outFile)
 
     def runShuffles(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
@@ -845,7 +854,8 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
         dotColors = np.array([0.0 for _ in yvals])
     elif dotColorLabels is not None:
         dotColors = [dotColorLabels[c] for c in dotColors]
-        swarmPallete = sns.color_palette(palette=dotColorLabels.keys())
+        palette = getPreferredCategoryOrder(dotColorLabels.keys())
+        swarmPallete = sns.color_palette(palette=palette)
     else:
         uniqueDotColors = list(np.unique(dotColors))
         nColors = len(uniqueDotColors)

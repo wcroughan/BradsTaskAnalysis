@@ -68,6 +68,12 @@ def getSessionDirs(loadInfo: LoadInfo, importOptions: ImportOptions) -> Tuple[Li
             prevSession = session_dir
             continue
 
+        if loadInfo.maximum_date is not None and dateStr > loadInfo.maximum_date:
+            print("skipping date {}, is after maximum date {}".format(
+                dateStr, loadInfo.maximum_date))
+            prevSession = session_dir
+            continue
+
         filtered_data_dirs.append(session_dir)
         if prevSession is not None:
             d1 = date(int(dateStr[0:4]), int(dateStr[4:6]), int(dateStr[6:8]))
@@ -296,7 +302,7 @@ def parseInfoFiles(sesh: BTSession) -> None:
                 sesh.weight = float(fieldVal)
             elif fieldName.lower() == "conditiongroup":
                 cgs = fieldVal.strip().split("-")
-                if not (len(cgs) == 2 and ("B" + cgs[0] == sesh.animalName or cgs[0] == sesh.animalName)):
+                if not (len(cgs) == 2 and ("B" + cgs[0] == sesh.animalName or cgs[0] == sesh.animalName or f"{cgs[0]}_old" == sesh.animalName)):
                     print(fieldVal, cgs, sesh.animalName)
                     assert False
                 sesh.conditionGroup = fieldVal

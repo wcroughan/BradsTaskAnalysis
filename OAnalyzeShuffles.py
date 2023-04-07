@@ -66,6 +66,20 @@ def getNameFromParams(name, params, func, correlationName):
         offWallWells = params["offWallWells"]
         timePeriodsGenerator = params["timePeriodsGenerator"]
         return f"TiM_numWellsVisited_cr{countReturns}_ow{offWallWells}_{timePeriodsGenerator[1]}"
+    elif name == "makeGravityMeasure":
+        bp = params["bp"]
+        passRadius = params["passRadius"]
+        visitRadiusFactor = params["visitRadiusFactor"]
+        passDenoiseFactor = params["passDenoiseFactor"]
+        smoothDist = params["smoothDist"]
+        return f"LM_gravity_{bp.filenameString()}_pr{passRadius:.2f}_vrf{visitRadiusFactor:.2f}_df{passDenoiseFactor:.2f}_sd{smoothDist:.2f}"
+    elif name == "makeDotProdMeasure":
+        bp = params["bp"]
+        distanceWeight = params["distanceWeight"]
+        normalize = params["normalize"]
+        smoothDist = params["smoothDist"]
+        onlyPositive = params["onlyPositive"]
+        return f"LM_dotprod_{bp.filenameString()}_dw{distanceWeight:.2f}_n{normalize}_sd={smoothDist:.2f}_op{onlyPositive}"
 
     else:
         raise ValueError(f"Unrecognized name: {name}")
@@ -218,6 +232,31 @@ def getParamsForName(specName, func):
             "offWallWells": [True, False],
             **allConsideredTimePeriods
         }
+    elif specName == "makeGravityMeasure":
+        return {
+            "passRadius": np.linspace(0.5, 1.5, 3),
+            "visitRadiusFactor": np.linspace(0.2, 0.4, 2),
+            "passDenoiseFactor": [1.25],
+            "bp": allConsideredBPs,
+            "smoothDist": [0, 0.5]
+        }
+    elif specName == "makeDotProdMeasure":
+        return {
+            "distanceWeight": np.linspace(-1, 1, 5),
+            "normalize": [True, False],
+            "onlyPositive": [True, False],
+            "bp": [
+                BP(probe=False, inclusionFlags="awayTrial"),
+                BP(probe=False, inclusionFlags=["awayTrial", "moving"]),
+                BP(probe=False, inclusionFlags="moving"),
+                BP(probe=False, inclusionFlags="awayTrial", erode=3),
+                BP(probe=False, inclusionFlags=["awayTrial", "moving"], erode=3),
+                BP(probe=False, inclusionFlags="moving", erode=3),
+                BP(probe=True),
+                BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+            ],
+            "smoothDist": allConsideredSmoothDists,
+        }
 
     else:
         raise ValueError(f"Unrecognized specName: {specName}")
@@ -323,7 +362,7 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         for combo in paramValueCombos:
             params = dict(zip(specParams.keys(), combo))
             name = getNameFromParams(specName, params, func, None)
-            if specName in ["measureFromFunc"]:
+            if specName in ["measureFromFunc", "makeGravityMeasure", "makeDotProdMeasure"]:
                 if "bp" in params:
                     bpIsConvex = isConvex(params["bp"])
                     params["bp"] = params["bp"].conciseString()
@@ -333,38 +372,45 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
                                         params.values(), "", "", bpIsConvex))
                 # away control
                 paramsByPlotData.append(
-                    (name + "_ctrl_away.h5", *params.values(), "away", "", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_away_cond.h5", *
+                    (name + "_" + name[3:] + "_ctrl_away.h5", *params.values(), "away", "", bpIsConvex))
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_away_cond.h5", *
                                         params.values(), "away", "cond", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_away_diff.h5", *
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_away_diff.h5", *
                                         params.values(), "away", "diff", bpIsConvex))
                 # later sessions control
-                paramsByPlotData.append((name + "_ctrl_latersessions.h5",
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_latersessions.h5",
                                         *params.values(), "later", "", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_latersessions_cond.h5",
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_latersessions_cond.h5",
                                         *params.values(), "later", "cond", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_latersessions_diff.h5",
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_latersessions_diff.h5",
                                         *params.values(), "later", "diff", bpIsConvex))
                 # next session control
-                paramsByPlotData.append((name + "_ctrl_nextsession.h5", *
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_nextsession.h5", *
                                         params.values(), "next", "", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_nextsession_cond.h5",
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_nextsession_cond.h5",
                                         *params.values(), "next", "cond", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_nextsession_diff.h5",
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_nextsession_diff.h5",
+                                        *params.values(), "next", "diff", bpIsConvex))
+                # next session control aways excluded
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_nextsessionnoaway.h5", *
+                                        params.values(), "next", "", bpIsConvex))
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_nextsessionnoaway_cond.h5",
+                                        *params.values(), "next", "cond", bpIsConvex))
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_nextsessionnoaway_diff.h5",
                                         *params.values(), "next", "diff", bpIsConvex))
                 # other sessions control
-                paramsByPlotData.append((name + "_ctrl_othersessions.h5",
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_othersessions.h5",
                                         *params.values(), "other", "", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_othersessions_cond.h5",
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_othersessions_cond.h5",
                                         *params.values(), "other", "cond", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_othersessions_diff.h5",
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_othersessions_diff.h5",
                                         *params.values(), "other", "diff", bpIsConvex))
                 # symmetric control
-                paramsByPlotData.append((name + "_ctrl_symmetric.h5", *
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_symmetric.h5", *
                                         params.values(), "symmetric", "", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_symmetric_cond.h5", *
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_symmetric_cond.h5", *
                                         params.values(), "symmetric", "cond", bpIsConvex))
-                paramsByPlotData.append((name + "_ctrl_symmetric_diff.h5", *
+                paramsByPlotData.append((name + "_" + name[3:] + "_ctrl_symmetric_diff.h5", *
                                         params.values(), "symmetric", "diff", bpIsConvex))
 
             elif specName in ["makeNumWellsVisitedMeasure", "makeTotalDurationMeasure", "makePerPeriodMeasure"]:
@@ -383,7 +429,7 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         significantShuffles = significantShuffles.merge(paramsByPlot, on="plot")
         # print(significantShuffles.head().to_string())
 
-        if specName in ["measureFromFunc"]:
+        if specName in ["measureFromFunc", "makeGravityMeasure", "makeDotProdMeasure"]:
             # If ctrlName is empty, suffix should be empty too
             badFlags = (paramsByPlot["ctrlName"] == "") & (paramsByPlot["suffix"] != "")
             # print(f"Bad flags: {badFlags.sum()}")
@@ -420,12 +466,12 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
                      ((significantShuffles["ctrlName"] != "away") &
                      (significantShuffles["ctrlName"] != "symmetric")) |
                      (significantShuffles["bp"].str.contains("probe")))
-            # _ctrl_cond plot shows effect of cond  -  Don't need ot look at interaction, already taken care of in diff plot
-            significantShuffles["flag"] = (significantShuffles["flag"]) | \
-                (significantShuffles["suffix"] == "cond") & \
-                (significantShuffles["ctrlName"] != "") & \
-                (significantShuffles["shuffleCategory"] == "condition") & \
-                (significantShuffles["shuffleCategoryValue"] == "SWR")
+            # # _ctrl_cond plot shows effect of cond  -  Don't need ot look at interaction, already taken care of in diff plot
+            # significantShuffles["flag"] = (significantShuffles["flag"]) | \
+            #     (significantShuffles["suffix"] == "cond") & \
+            #     (significantShuffles["ctrlName"] != "") & \
+            #     (significantShuffles["shuffleCategory"] == "condition") & \
+            #     (significantShuffles["shuffleCategoryValue"] == "SWR")
 
             if "bp" in significantShuffles.columns:
                 # If a plot name has erode in it, that's the one we care about, can get rid of similar plot name without erode
@@ -445,12 +491,18 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
             significantShuffles = significantShuffles[significantShuffles["flag"]]
             # can drop the flag column now
             significantShuffles = significantShuffles.drop(
-                columns=["flag", "shuffleCategoryValue", "shuffleCategory", "bpIsConvex"])
+                columns=["flag", "bpIsConvex"])
+            # columns=["flag", "shuffleCategoryValue", "shuffleCategory", "bpIsConvex"])
             # print(significantShuffles.head(20))
             # print(significantShuffles.shape)
 
+            # lets also drop columns with only one value
+            significantShuffles = significantShuffles.drop(
+                columns=significantShuffles.columns[significantShuffles.nunique() == 1])
+
         # All column names except for plot, shuffle, pval, and direction are parameters
-        allParams = significantShuffles.drop(columns=["plot", "shuffle", "pval", "direction"])
+        allParams = significantShuffles.drop(
+            columns=["plot", "shuffle", "pval", "direction", "shuffleCategory", "shuffleCategoryValue"])
         # print("All params: ")
         # print(allParams.head().to_string())
         # Separate into numerical columns and categorical columns
@@ -465,7 +517,7 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         # print(numericalParams.columns)
         # print(categoricalParams.columns)
 
-        if specName in ["measureFromFunc"]:
+        if specName in ["measureFromFunc", "makeGravityMeasure", "makeDotProdMeasure"]:
             def acceptComboDf(comboDf):
                 if comboDf.shape[0] <= 3:
                     return False
@@ -542,9 +594,14 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
             if not acceptComboDf(comboDf):
                 continue
 
-            print("Plotting for combination: ", combo)
+            # "shuffleCategoryValue", "shuffleCategory",
+            # Value in shuffleCategoryValue and shuffleCategory should be the same for all rows of comboDF, print the first one
+            print("Plotting for combination: ", combo,
+                  "shuffleCategory: ", comboDf["shuffleCategory"].unique(),
+                  "shuffleCategoryValue: ", comboDf["shuffleCategoryValue"].unique())
+            # print("shuffle column: ", comboDf["shuffle"].unique())
 
-            fig, axs = plt.subplots(1, len(numericalParams.columns), figsize=(10, 3))
+            fig, axs = plt.subplots(1, len(numericalParams.columns), figsize=(20, 6))
             for i, col in enumerate(numericalParams.columns):
                 if len(numericalParams.columns) == 1:
                     ax = axs
@@ -638,8 +695,9 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         # print(significantCorrelations.head().to_string())
         # print(significantCorrelations.columns)
 
-        if specName in ["measureFromFunc"]:
-            ctrlNames = ["away", "symmetric", "latersessions", "nextsession", "othersessions"]
+        if specName in ["measureFromFunc", "makeGravityMeasure", "makeDotProdMeasure"]:
+            ctrlNames = ["away", "symmetric", "latersessions",
+                         "nextsession", "nextsessionnoaway", "othersessions"]
         else:
             ctrlNames = []
         paramsByPlotData = []
@@ -685,7 +743,7 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
             significantCorrelations = significantCorrelations[significantCorrelations["direction"]]
             significantCorrelations["direction"] = significantCorrelations["correlation"] > 0
 
-        if specName in ["measureFromFunc"]:
+        if specName in ["measureFromFunc", "makeGravityMeasure", "makeDotProdMeasure"]:
             # for measurebycondition, only want if there's one category but not the other, or if both categories but direction is different
             # to do this, group by plot column, and count the number of unique values in categories and direction
             # if there's only one unique value in categories, or there's two unique values in direction, then keep
@@ -755,7 +813,7 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
         categoricalParams = categoricalParams[[
             categoricalParams.columns[-2], categoricalParams.columns[-1], *categoricalParams.columns[:-2]]]
 
-        if specName in ["measureFromFunc"]:
+        if specName in ["measureFromFunc", "makeGravityMeasure", "makeDotProdMeasure"]:
             def acceptComboDf(comboDf):
                 if comboDf.shape[0] <= 3:
                     return False
@@ -909,6 +967,7 @@ def lookAtShuffles(specName, func, testData=False, filters: Optional[Callable[[D
                         "symmetric": "2",
                         "next": ">",
                         "nextsession": ">",
+                        "nextsessionnoaway": ">",
                         "later": "<",
                         "latersessions": "<",
                         "other": "^",
@@ -1347,8 +1406,205 @@ def getChosenParams(specName, func) -> List[Dict[str, Any]]:
                 "offWallWells": True,
                 "timePeriodsGenerator": (TimeMeasure.trialTimePeriodsFunction(), "trial")
             },
-
         ]
+    elif specName == "makeGravityMeasure":
+        chosenParams = [
+            # "bp": allConsideredBPs,
+            # "passRadius": np.linspace(0.5, 1.5, 3),
+            # "visitRadiusFactor": np.linspace(0.2, 0.4, 2),
+            # "passDenoiseFactor": [1.25],
+            # "smoothDist": [0, 0.5]
+            {
+                "bp": BP(probe=False, trialInterval=(3, 4)),
+                "passRadius": 0.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, trialInterval=(3, 4)),
+                "passRadius": 1.0,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, trialInterval=(2, 3)),
+                "passRadius": 1.0,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, trialInterval=(2, 7), inclusionFlags="awayTrial"),
+                "passRadius": 1.0,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="awayTrial"),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="awayTrial"),
+                "passRadius": 1.0,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, trialInterval=(2, 7)),
+                "passRadius": 1.0,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="homeTrial"),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags=["explore", "offWall"]),
+                "passRadius": 1.0,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="homeTrial", trialInterval=(2, 7)),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="homeTrial", trialInterval=(2, 7)),
+                "passRadius": 0.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="homeTrial", trialInterval=(10, 15)),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="explore"),
+                "passRadius": 0.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="explore"),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="explore"),
+                "passRadius": 0.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, inclusionFlags="offWall"),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=False, trialInterval=(0, 1)),
+                "passRadius": 1.0,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.5
+            },
+            {
+                "bp": BP(probe=True),
+                "passRadius": 0.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.0
+            },
+            {
+                "bp": BP(probe=True),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.0
+            },
+            {
+                "bp": BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+                "passRadius": 0.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.0
+            },
+            {
+                "bp": BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.0
+            },
+            {
+                "bp": BP(probe=True, inclusionFlags="moving", timeInterval=BTSession.fillTimeInterval),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.0
+            },
+            {
+                "bp": BP(probe=True, inclusionFlags="moving", timeInterval=BTSession.fillTimeInterval),
+                "passRadius": 0.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.0
+            },
+            {
+                "bp": BP(probe=True, inclusionFlags="moving"),
+                "passRadius": 0.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.0
+            },
+            {
+                "bp": BP(probe=True, timeInterval=(0, 120)),
+                "passRadius": 0.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.0
+            },
+            {
+                "bp": BP(probe=True, timeInterval=(0, 120)),
+                "passRadius": 1.5,
+                "visitRadiusFactor": 0.2,
+                "passDenoiseFactor": 1.25,
+                "smoothDist": 0.0
+            },
+        ]
+
     else:
         raise Exception("No chosen params for this specName and func")
 
@@ -1404,6 +1660,46 @@ def generateChosenPlots(specName, func, chosenParams, withCorrelations=True):
             for sm in correlationSMs:
                 lm.makeCorrelationFigures(
                     pp, sm, excludeFromCombo=True)
+        elif specName == "makeDotProdMeasure":
+            bp = params["bp"]
+            distanceWeight = params["distanceWeight"]
+            normalize = params["normalize"]
+            smoothDist = params["smoothDist"]
+            onlyPositive = params["onlyPositive"]
+            lm = LocationMeasure(f"dotprod {bp.filenameString()} "
+                                 f"dw{distanceWeight:.2f} "
+                                 f"n{normalize} "
+                                 f"sd={smoothDist:.2f} "
+                                 f"op{onlyPositive}",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.getDotProductScore(bp, pos,
+                                                                         distanceWeight=distanceWeight,
+                                                                         normalize=normalize, onlyPositive=onlyPositive)),
+                                 sessions,
+                                 smoothDist=smoothDist)
+            lm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
+        elif specName == "makeGravityMeasure":
+            bp = params["bp"]
+            passRadius = params["passRadius"]
+            visitRadiusFactor = params["visitRadiusFactor"]
+            passDenoiseFactor = params["passDenoiseFactor"]
+            smoothDist = params["smoothDist"]
+            lm = LocationMeasure(f"gravity {bp.filenameString()} "
+                                 f"pr{passRadius:.2f} "
+                                 f"vrf{visitRadiusFactor:.2f} "
+                                 f"df{passDenoiseFactor:.2f} "
+                                 f"sd{smoothDist:.2f}",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.getGravity(bp, pos,
+                                                                 passRadius=passRadius,
+                                                                 visitRadius=passRadius * visitRadiusFactor,
+                                                                 passDenoiseFactor=passDenoiseFactor)),
+                                 sessions,
+                                 smoothDist=smoothDist)
+            lm.makeFigures(pp, everySessionBehaviorPeriod=bp, excludeFromCombo=True)
+            # for sm in correlationSMs:
+            #     lm.makeCorrelationFigures(
+            #         pp, sm, excludeFromCombo=True)
         elif specName == "makeNumWellsVisitedMeasure":
             mode = params["mode"]
             inProbe = params["inProbe"]
@@ -1472,8 +1768,8 @@ if __name__ == "__main__":
     # specName = "makeCoarseTimeMeasure"
     # func = speedFunc
     # func = fracExploreFunc
-    func = fracOffWallFunc
-    specName = "makeTimePeriodsMeasure"
+    # func = fracOffWallFunc
+    # specName = "makeTimePeriodsMeasure"
     # func = durationFunc
     # func = pathOptimalityFunc
     # func = pathLengthFunc
@@ -1482,6 +1778,8 @@ if __name__ == "__main__":
     # func = avgPathLengthPerPeriod
     # specName = "makeTotalDurationMeasure" error here cause not enough params
     # specName = "makeNumWellsVisitedTimeMeasure"
+    # specName = "makeGravityMeasure"
+    specName = "makeDotProdMeasure"
 
     filters = None
     # filters = [
@@ -1491,8 +1789,8 @@ if __name__ == "__main__":
     #         "suffix": "diff"
     #     },
     # ]
-    # lookAtShuffles(specName, func, filters=filters, appendCorrelations=False,
-    #                plotCorrelations=False, plotShuffles=False)
+    lookAtShuffles(specName, func, filters=filters, appendCorrelations=False,
+                   plotCorrelations=True, plotShuffles=True)
 
-    chosenParams = getChosenParams(specName, func)
-    generateChosenPlots(specName, func, chosenParams)
+    # chosenParams = getChosenParams(specName, func)
+    # generateChosenPlots(specName, func, chosenParams)

@@ -203,6 +203,8 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
 
         shouldWriteErrFile = False
         try:
+            outDir = os.path.join(pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}")
+            os.makedirs(outDir, exist_ok=True)
             makeFigsInfoFileName = "None"
             corrInfoFileNames = []
             if not overwriteOldResults:
@@ -240,9 +242,12 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
                     pp.writeToInfoFile(
                         f"already run:{checkFileName}__!__{makeFigsInfoFileName}__!__{'__!__'.join(corrInfoFileNames)}\n")
                     return
+        except Exception as e:
+            print(
+                f"error checking for existing results for {measureFunc.__name__} with params {params}")
+            raise e
 
-            outDir = os.path.join(pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}")
-            os.makedirs(outDir, exist_ok=True)
+        try:
             if verbose:
                 print(f"output dir is {outDir} (pid {pid})")
             stdOutFileName = os.path.join(
@@ -280,19 +285,21 @@ def runDMFOnM(measureFunc: Callable[..., LocationMeasure | SessionMeasure | Time
                 shouldWriteErrFile = True
 
         except Exception as e:
-            # print(f"\n\nerror in {measureFunc.__name__} with params {params}\n\n")
-            # print(e)
+            print(f"\n\nerror in {measureFunc.__name__} with params {params}\n\n")
+            print(e)
             # make a blank error file
             shouldWriteErrFile = True
 
         if shouldWriteErrFile:
+            pp.restoreOutputSubDirSavepoint(savePoint)
             errFileName = os.path.join(
                 pp.fullOutputDir, f"{pfx}_{meas.name.replace(' ', '_')}", "error.txt")
+            if not os.path.exists(os.path.dirname(errFileName)):
+                os.makedirs(os.path.dirname(errFileName))
             with open(errFileName, "w") as f:
                 f.write("error")
-            if verbose:
+            if verbose or True:
                 print(f"\nwrote error file {errFileName}\n")
-            pp.restoreOutputSubDirSavepoint(savePoint)
             pp.setDriveOutputDir("")
 
         # Now wait a few milliseconds to make sure the file is written, and hopefully drive won't get corrupted
@@ -758,7 +765,18 @@ def main(plotFlags: List[str] | str = "tests",
                 "distanceWeight": np.linspace(-1, 1, 5),
                 "normalize": [True, False],
                 "onlyPositive": [True, False],
-                **basicParams
+                # **basicParams
+                "bp": [
+                    BP(probe=False, inclusionFlags="awayTrial"),
+                    BP(probe=False, inclusionFlags=["awayTrial", "moving"]),
+                    BP(probe=False, inclusionFlags="moving"),
+                    BP(probe=False, inclusionFlags="awayTrial", erode=3),
+                    BP(probe=False, inclusionFlags=["awayTrial", "moving"], erode=3),
+                    BP(probe=False, inclusionFlags="moving", erode=3),
+                    BP(probe=True),
+                    BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+                ],
+                "smoothDist": allConsideredSmoothDists,
             }))
 
             def makeGravityMeasure(bp: BP, passRadius, visitRadiusFactor, passDenoiseFactor, smoothDist):
@@ -884,9 +902,12 @@ def main(plotFlags: List[str] | str = "tests",
             for sm in correlationSMs:
                 sm.makeFigures(pp, excludeFromCombo=True)
 
-            # reversedSpecs = list(enumerate(allSpecs))
-            reversedSpecs = reversed(list(enumerate(allSpecs)))
+            reversedSpecs = list(enumerate(allSpecs))
+            # reversedSpecs = reversed(list(enumerate(allSpecs)))
             for mi, (makeMeasure, paramDict) in reversedSpecs:
+                if makeMeasure.__name__ != "makeDotProdMeasure":
+                    continue
+
                 # For debugging, removing stuff that's already been run
                 if testData:
                     if makeMeasure.__name__ in [

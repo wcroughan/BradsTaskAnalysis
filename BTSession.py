@@ -1573,7 +1573,7 @@ class BTSession:
         return self.getValueMap(lambda x: np.linalg.norm(np.array(x) - np.array(getWellPosCoordinates(self.homeWell))))
 
     def getGravity(self, behaviorPeriod: BehaviorPeriod, pos: Tuple[float, float],
-                   passRadius=1.25, visitRadius=0.25, passDenoiseFactor=1.1, showPlot=False) -> float:
+                   passRadius=1.0, visitRadius=0.2, passDenoiseFactor=1.125, showPlot=False) -> float:
         """
         New gravity function based on position instead of well visits
         :param behaviorPeriod: behavior period to use. If a part of the behavior period starts or

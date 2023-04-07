@@ -109,6 +109,7 @@ class LoadInfo:
     excluded_dates: List[str]
     excluded_sessions: List[str]
     minimum_date: Optional[str]
+    maximum_date: Optional[str]
 
     DEFAULT_RIP_DET_TET: Optional[int]
     DEFAULT_RIP_BAS_TET: Optional[int]
@@ -676,6 +677,7 @@ def getLoadInfo(config: str) -> LoadInfo:
                         dataDirPath=["WDC1", "martindata", "bradtask"], outputDirPath=["Harold", "processed_data"],
                         out_filename="martin_bradtask.rat",
                         excluded_dates=excluded_dates, excluded_sessions=excluded_sessions, minimum_date=None,
+                        maximum_date=None,
                         DEFAULT_RIP_DET_TET=37, DEFAULT_RIP_BAS_TET=None)
 
     if config == "B13":
@@ -715,7 +717,25 @@ def getLoadInfo(config: str) -> LoadInfo:
                         outputDirPath=["Harold", "processed_data"],
                         out_filename="B13_bradtask.rat",
                         excluded_dates=excluded_dates, excluded_sessions=excluded_sessions, minimum_date=None,
+                        maximum_date=None,
                         DEFAULT_RIP_DET_TET=7, DEFAULT_RIP_BAS_TET=2)
+
+    if config == "B14_old":
+        # This is sessions before stim was fixed, so can look at i.e. probe behavior
+        excluded_sessions = []
+        excluded_sessions += ["20211213_2"]
+
+        return LoadInfo(configName=config, animalName="B14_old",
+                        X_START=100, X_FINISH=1050, Y_START=20, Y_FINISH=900, excludeBoxes=None,
+                        # dataDirPath=["WDC6", "B14", "bradtasksessions"], outputDirPath=["WDC6", "B14", "processed_data"],
+                        # dataDirPath=["WDC6", "B14", "bradtasksessions"],
+                        dataDirPath=["Harold", "labdata", "B14",
+                                     "media", "WDC6", "B14", "bradtasksessions"],
+                        outputDirPath=["Harold", "processed_data"],
+                        out_filename="B14_old_bradtask.rat",
+                        excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
+                        maximum_date="20220219",
+                        DEFAULT_RIP_DET_TET=3, DEFAULT_RIP_BAS_TET=2)
 
     if config == "B14":
         # Minimum date only after adjusting stim to correct place
@@ -733,6 +753,7 @@ def getLoadInfo(config: str) -> LoadInfo:
                         outputDirPath=["Harold", "processed_data"],
                         out_filename="B14_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date="20220220",
+                        maximum_date=None,
                         DEFAULT_RIP_DET_TET=3, DEFAULT_RIP_BAS_TET=2)
 
     if config == "B16":
@@ -756,6 +777,7 @@ def getLoadInfo(config: str) -> LoadInfo:
                         outputDirPath=["Harold", "processed_data"],
                         out_filename="B16_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date="20221101",
+                        maximum_date=None,
                         DEFAULT_RIP_DET_TET=4, DEFAULT_RIP_BAS_TET=7)
 
     if config == "B17":
@@ -774,6 +796,7 @@ def getLoadInfo(config: str) -> LoadInfo:
                         outputDirPath=["Harold", "processed_data"],
                         out_filename="B17_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
+                        maximum_date=None,
                         DEFAULT_RIP_DET_TET=6, DEFAULT_RIP_BAS_TET=5)
 
     if config == "B18":
@@ -810,6 +833,7 @@ def getLoadInfo(config: str) -> LoadInfo:
                         outputDirPath=["Harold", "processed_data"],
                         out_filename="B18_bradtask.rat",
                         excluded_dates=[], excluded_sessions=excluded_sessions, minimum_date=None,
+                        maximum_date=None,
                         DEFAULT_RIP_DET_TET=5, DEFAULT_RIP_BAS_TET=3)
 
     raise ValueError(f"Unknown config val {config}")

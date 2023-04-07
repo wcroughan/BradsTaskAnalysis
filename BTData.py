@@ -85,6 +85,9 @@ class BTData:
             del o["__encoder_special_key_wdc"]
             for k in o:
                 o[k] = self.arrayAndDataclassDecodeHook(o[k])
+            if cstr == "LoadInfo" and "maximum_date" not in o:
+                # Changed LoadInfo after processing all the data, so need to add this field
+                o["maximum_date"] = None
             return C(**o)
         return o
 

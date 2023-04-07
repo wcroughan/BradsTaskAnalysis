@@ -12,6 +12,7 @@ import warnings
 from UtilFunctions import getPreferredCategoryOrder
 from itertools import product
 from scipy.stats import pearsonr, linregress
+import matplotlib.pyplot as plt
 
 
 def notNanPvalFilter(plotName: str, shuffleResult: ShuffleResult, pval: float, measureName: str) -> bool:
@@ -198,12 +199,70 @@ class Shuffler:
                         (line.split("__!__")[1].strip(), line.split("__!__")[2].strip()))
         return statsFiles
 
+    def makePlotsForShuffleResults(self, sr: List[List[ShuffleResult]], df: pd.DataFrame, fname: str):
+        flatRes = [r for rr in sr for r in rr]
+        statFig, axs = plt.subplots(2, len(flatRes))
+        statFig.set_figheight(3)
+        statFig.set_figwidth(3 * len(flatRes))
+        for ri, r in enumerate(flatRes):
+            pval = r.getPVals().item()
+            shufDiffs = r.shuffleDiffs
+            dataDiff = r.diff
+            ax = axs[1, ri]
+            txtAx = axs[0, ri]
+
+            if not np.isnan(shufDiffs).all():
+                # axis should have text at the top with the following on each row:
+                #   name of shuffle with the category and type of shuffle
+                #   pval
+                #   direction of difference with names of the categories
+                # Then below that text put the histogram of the shuffled differences
+                # with a red vertical line at the data difference
+                topText = ""
+                for s in r.specs:
+                    if s.shuffType == ShuffSpec.ShuffType.GLOBAL:
+                        topText += f"Main: {s.categoryName}\n"
+                        shuffledCategories = df[s.categoryName].unique()
+                        cat1 = s.value
+                        cat2 = shuffledCategories[shuffledCategories != cat1].item()
+                    elif s.shuffType == ShuffSpec.ShuffType.ACROSS:
+                        topText += f"Across: {s.categoryName}\n"
+                    elif s.shuffType == ShuffSpec.ShuffType.WITHIN:
+                        topText += f"Within: {s.value} ({s.categoryName})\n"
+                    elif s.shuffType == ShuffSpec.ShuffType.INTERACTION:
+                        topText += f"Interaction: {s.value} ({s.categoryName})\n"
+
+                # topText = f"{r.specs[0].categoryName}: {r.specs[0].shuffType}\n"
+                direction = pval > 0.5
+                if direction:
+                    pval = 1 - pval
+                if pval > 0:
+                    topText += f"p={round(pval, 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                else:
+                    topText += f"p<{round(1/len(shufDiffs), 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
+                # txtAx.add_artist(AnchoredText(topText, "upper center"))
+                # make this text fill up all of txtAx
+                txtAx.axis("off")
+                txtAx.text(0.5, 0.5, topText, horizontalalignment="center",
+                           verticalalignment="center", transform=txtAx.transAxes)
+
+                # insetAx = ax.inset_axes([0.4, 0.15, 0.2, 0.1])
+                ax.hist(shufDiffs, bins=20, color="black")
+                ax.axvline(dataDiff, color="red")
+                ax.set_xlabel(f"{cat1} - {cat2}")
+                # turn off y axis
+                ax.get_yaxis().set_visible(False)
+
+        statFig.savefig(fname + ".png", bbox_inches="tight",
+                                dpi=100, transparent=True)
+
     def runImmediateShufflesAcrossPersistentCategories(self, infoFileNames: Optional[List[str]], numShuffles=100,
                                                        significantThreshold: Optional[float] = 0.05,
                                                        resultsFilter: Callable[[
                                                            str, ShuffleResult, float, str], bool] = lambda *_: True,
                                                        savedStatsFiles: Optional[List[Tuple[str, str]]] = None,
-                                                       outputFileName: Optional[str] = None
+                                                       outputFileName: Optional[str] = None,
+                                                       makePlots: bool = False
                                                        ) -> str:
         self.numShuffles = numShuffles
 
@@ -219,6 +278,13 @@ class Shuffler:
             if plotName not in filesForEachPlot:
                 filesForEachPlot[plotName] = []
             filesForEachPlot[plotName].append(statsFile)
+
+        if outputFileName is None:
+            outputFileName = os.path.join(os.path.dirname(
+                infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_shufflesAcrossPersistentCategories.h5"))
+        if makePlots:
+            plotOutFileNameBase = os.path.join(os.path.dirname(
+                infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_"))
 
         todel = []
         for plotName in filesForEachPlot:
@@ -292,14 +358,13 @@ class Shuffler:
             sr = self._doShuffles(df, specs, yvalNames)
             shuffResults.append((plotName, sr, measureName))
 
+            if makePlots:
+                self.makePlotsForShuffleResults(sr, df, plotOutFileNameBase + plotName)
+
         if significantThreshold is None:
             significantThreshold = 1.0
 
-        if outputFileName is None:
-            outputFileName = os.path.join(os.path.dirname(
-                infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_shufflesAcrossPersistentCategories.h5"))
-
-        significantResults: List[Tuple[str, ShuffleResult, float, str]] = []
+        significantResults: List[Tuple[str, List[List[ShuffleResult]], float, str]] = []
         for plotName, sr, measureName in shuffResults:
             for s in sr:
                 for s2 in s:
@@ -575,6 +640,11 @@ class Shuffler:
             hdfFile), datetime.now().strftime("%Y%m%d_%H%M%S_summary_nonNextSesh.csv"))
         minNonNextSeshPvals.to_csv(outputFileNameCSV_nonNextSesh, index=False)
 
+        acrossRatIdx = df["shuffle"].str.startswith("[ACR rat")
+        acrossRatDf = df[acrossRatIdx]
+        acrossRatDf.to_csv(os.path.join(os.path.dirname(
+            hdfFile), datetime.now().strftime("%Y%m%d_%H%M%S_summary_acrossRat.csv")), index=False)
+
     def _doShuffles(self, df: pd.DataFrame, specs: List[List[ShuffSpec]],
                     dataNames: List[str], numShuffles: List[int] = None) -> List[List[ShuffleResult]]:
         if numShuffles is not None:
@@ -700,6 +770,8 @@ class Shuffler:
                 withinRes.append(self._doShuffleSpec(
                     df.loc[withinIdx], spec[1:], valSet, dataNames))
 
+            groupWeight = np.array(numInGroup)
+            groupWeight = groupWeight / groupWeight.sum()
             numEffects = len(withinRes[0])
             ret = []
             for ei in range(numEffects):
@@ -708,8 +780,8 @@ class Shuffler:
                 r.diff = np.zeros((len(dataNames), 1))
                 r.shuffleDiffs = np.zeros((self.numShuffles, len(dataNames)))
                 for vi in range(len(vals)):
-                    r.diff += withinRes[vi][ei].diff * numInGroup[vi]
-                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * numInGroup[vi]
+                    r.diff += withinRes[vi][ei].diff * groupWeight[vi]
+                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * groupWeight[vi]
                 ret.append(r)
             return ret
 
@@ -727,6 +799,9 @@ class Shuffler:
                 withoutRes.append(self._doShuffleSpec(
                     df.loc[withoutIdx], spec[1:], valSet, dataNames))
                 numInGroup.append(withinIdx.sum())
+
+            groupWeight = np.array(numInGroup)
+            groupWeight = groupWeight / groupWeight.sum()
 
             ret = []
             # within effects
@@ -750,8 +825,8 @@ class Shuffler:
                 r.diff = np.zeros((len(dataNames), 1))
                 r.shuffleDiffs = np.zeros((self.numShuffles, len(dataNames)))
                 for vi in range(len(vals)):
-                    r.diff += withinRes[vi][ei].diff * numInGroup[vi]
-                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * numInGroup[vi]
+                    r.diff += withinRes[vi][ei].diff * groupWeight[vi]
+                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * groupWeight[vi]
                 ret.append(r)
 
             # interaction effects

@@ -1,3 +1,200 @@
+Gravity
+
+Shuffles
+BT 3-4
+    other   diff    1/1.5 all rev
+                    .5 all rev, 1.5 all dot
+    next            .5/1 all rev all p=0. 1.5 mixed
+    later   diff    all rev
+    later           same as next
+BT 2-3
+    other   diff    all dot, best at 1.5, 1 ok
+                    all rev .5/1, mixed at 1.5 (vrf .2 is rev), p=0
+    next    diff    all dot
+                    all rev .5/1, 1.5/vrf.2 also rev
+    later   diff    all dot
+                    same as other
+BT away 2-7
+    other   diff    1/1.5 avs
+                    .5/1 all rev, 1.5 all dot
+    next    diff    same other
+                    avs rev except 1.5/.4 avs dot
+    later   diff    same other
+                    same other
+BT away 10-15
+    other   diff    1.5 rev
+                    1.5 avs, .5 all rev
+    later           same other
+BT away
+    other   diff    all dots
+                    avs except .5
+    next    diff    same other
+                    same other
+    later   diff    all dots, best r1.5
+                    same other
+BT 2-7
+    other   diff    all dots, except .5
+                    avs, .5 worst
+    next    diff    same other
+                    avs
+    later   diff    same other
+                    avs
+BT home
+    other   diff    all dots, bigger r better
+                    all rev
+    next    diff    dots r1/1.5
+                    all rev
+    later   diff    1/1.5 avs
+                    all rev
+BT E OW
+    other   diff    all dots
+                    1/1.5 all rev avs
+    next    diff    big r better, avs
+                    .5/1 all rev avs. 1.5 mixed
+    later   diff    avs
+                    .5/1 avs rev
+BT 10-15
+    other           avs
+    next            avs except .5
+    later           same next
+BT home 2-7
+    other   diff    .5 avs     
+                    all rev
+    next    diff    .5/1 dots
+                    all rev
+    later   diff    .5 avs
+                    all rev
+BT home 10-15
+    other   diff    vrf.2 avs
+                    all rev
+    next    diff    1.5 all rev
+                    all rev
+    later           allr ev
+BT
+    other   diff    1.5 avs
+                    avs
+    next    diff    1/1.5 avs
+                    1/1.5 avs
+    later   diff    same next
+                    avs
+BT E
+    other   diff    all dots, .5 best
+                    .5 avs rev, 1.5 avs dots
+    next    diff    avs, .5 worst
+                    avs rev except 1.5 mixed
+    later   diff    avs
+                    same other
+BT M
+    other           .5 avs rev, 1/1.5 avs dots
+    next    diff    1.5 avs
+                    same other
+    later           same other
+BT OW
+    other   diff    1.5 avs
+                    avs
+    next    diff    avs .5 worst
+                    avs, .5 worst
+    later   diff    avs, 1.5 best
+                    avs
+BT 0-1
+    other   diff    avs
+                    avs rev
+    next    diff    1/1.5 avs
+                    avs rev
+    later   diff    all dots, 1.5 best
+                    all rev
+
+BT 0-1
+    sym     diff    avs
+    away    diff    avs
+BT OW
+    away    diff    1.5 avs
+BT M
+    sym     diff    .5 avs rev, 1.5 mixed
+BT E
+    away    diff    small r dots
+BT
+    sym     diff    1.5 avs
+    away    diff    same sym
+BT home 10-15
+    sym     diff    1.5 rev
+BT home 2-7
+    sym     diff    1.5 avs
+BT 10-15
+    sym     diff    all rev
+BT home
+    sym     diff    r1 avs, 1.5 too but worse
+BT 2-7
+    sym     diff    same other
+BT away
+    sym     diff    all dots, best vrf.2
+    away    diff    all dots, best r.5
+BT away 2-7
+    away    diff    same other
+BT 2-3
+    sym     diff    all dot
+    away    diff    all dot, 1.5 best, .5 mixed
+BT 3-4
+    sym     diff    .5 all dot p=0
+
+
+P
+    other   diff    pr.5/s0 rev. pr1.5/s0 dot
+                    all vsig
+    next            avs
+    later   diff    same as other, better
+                    avs
+    sym     diff    r.5/1 all rev, 1.5 all dot
+    away    diff    same as sym but worse
+P 1min
+    other   diff    .5 all rev p=0, 1.5 all dots
+                    avs
+    next    diff    .5 all dog p=0, 1.0 all rev, 1.5 mixed
+                    avs
+    later   diff    same as other
+                    avs
+    sym     diff    same as later
+    away    diff    same as later
+PFT
+    other   diff    1.5 all dot, mixed other r
+                    avs, .5 owrst
+    next            avs
+    later   diff    1.5 all dot, .5/1 rev .5 better
+                    avs
+    sym     diff    1.5 all dot, .5 all rev
+    away    diff    same as sym
+P 2min
+    other   diff    1.5 all dot
+                    avs .5 worst
+    next            avs
+    later   diff    1/1.5 dot meh
+                    avs
+    sym     diff    .5 all rev, 1.5 all dot
+    away    diff    same as sym
+P M
+    other   diff    .5 all rev
+                    avs
+    next            avs
+    later   diff    same as other
+                    avs
+    sym     diff    same as other, also r1
+    away    diff    same as sym
+PFT M
+    other   diff    .5 rev, 1.5 dots
+                    avs
+    next            avs
+    later   diff    .5/1 rev, 1.5 dots
+                    avs
+    sym     diff    .5/1 rev, 1.5 dots
+    away    diff    same sym
+
+
+
+
+
+
+
+
 Measure might want to add:
     how often are aways checked on way to home. Specifically t2-7
     How often are previously rewarded wells checked during away trials? Specifically t2-7

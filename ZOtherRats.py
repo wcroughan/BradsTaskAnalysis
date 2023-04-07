@@ -64,20 +64,25 @@ def totalInCornerTime(bp: BP, sesh: BTSession, boundary: float = 1.5) -> float:
     return np.sum(np.diff(ts)[posInCorner[:-1]]) / TRODES_SAMPLING_RATE
 
 
-def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=False, animalNames=None):
+def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=False, animalNames=None, allRatRun="no", excludeNoStim=False):
     dataDir = findDataDir()
     outputDir = "TheRun"
     if testData:
         outputDir += "_test"
+    if allRatRun != "no":
+        outputDir += f"_allRats_{allRatRun}"
+    if excludeNoStim:
+        outputDir += "_excludeNoStim"
     globalOutputDir = os.path.join(dataDir, "figures", outputDir)
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
 
     if animalNames is None:
         if testData:
-            animalNames = ["Martin", "B13", "B14"]
+            # animalNames = ["Martin", "B13", "B14"]
             # animalNames = ["Martin", "B14"]
             # animalNames = ["B14"]
+            animalNames = ["Martin"]
         else:
             animalNames = ["Martin", "B13", "B14", "B16", "B17", "B18"]
 
@@ -87,37 +92,41 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
 
     totalNumSessions = 0
     allSessionsByRat = {}
+    allSessionsByRat["allRats"] = []
     for animalName in animalNames:
-        loadDebug = False
-        if animalName[-1] == "d":
-            loadDebug = True
-            animalName = animalName[:-1]
         animalInfo = getLoadInfo(animalName)
         # dataFilename = os.path.join(dataDir, animalName, "processed_data", animalInfo.out_filename)
         dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
-        if loadDebug:
-            dataFilename += ".debug.dat"
         print("loading from " + dataFilename)
         ratData = BTData()
         ratData.loadFromFile(dataFilename)
         allSessionsByRat[animalName] = ratData.getSessions()
         totalNumSessions += len(ratData.getSessions())
 
+        if allRatRun != "no":
+            allSessionsByRat["allRats"] = allSessionsByRat["allRats"] + ratData.getSessions()
+
     print("totalNumSessions =", totalNumSessions)
 
     originalPlotFlags = plotFlags
 
-    for ratName in animalNames:
+    animalNamesToRun = animalNames.copy()
+    if allRatRun == "yes":
+        animalNamesToRun.append("allRats")
+    elif allRatRun == "only":
+        animalNamesToRun = ["allRats"]
+
+    for ratName in animalNamesToRun:
         plotFlags = [plotFlag for plotFlag in originalPlotFlags]
         # if ratName != "Martin":
         #     return
         print("======================\n", ratName)
-        if ratName[-1] == "d":
-            ratName = ratName[:-1]
         sessions: List[BTSession] = allSessionsByRat[ratName]
         if testData:
             pass
             # sessions = sessions[:7]
+        if excludeNoStim:
+            sessions = [sesh for sesh in sessions if sesh.condition != BTSession.CONDITION_NO_STIM]
         # nSessions = len(sessions)
         sessionsWithProbe = [sesh for sesh in sessions if sesh.probePerformed]
         numSessionsWithProbe = len(sessionsWithProbe)
@@ -158,7 +167,8 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
         print(s)
 
         pp.pushOutputSubDir(ratName)
-        pp.setStatCategory("rat", ratName)
+        if len(animalNamesToRun) > 1:
+            pp.setStatCategory("rat", ratName)
 
         if plotFlagCheck(plotFlags, "hyp1", excludeFromAll=True):
             # num visits, trial 0-1, r0.5, s0.5
@@ -671,26 +681,36 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             ])
 
         if plotFlagCheck(plotFlags, "testImmediate"):
-            lm = LocationMeasure(f"testImmediate",
-                                 lambda sesh: sesh.getValueMap(
-                                     lambda pos: sesh.fracExcursionsVisited(
-                                         BP(probe=True), pos, 0.5, "session"),
-                                 ), sessions, smoothDist=0.5)
-            lm.makeFigures(pp, plotFlags="measureVsCtrlByCondition")
+            def testFunc(sesh: BTSession):
+                val = 0
+                if sesh.animalName == "Martin":
+                    val = 1
+                else:
+                    val = int(sesh.animalName[1:])
+                if sesh.isRippleInterruption:
+                    val += 100
+                    factor = -1
+                else:
+                    factor = 1
+                return sesh.getTestMap() * factor + val
+            lm = LocationMeasure(f"testImmediate", testFunc, sessions, smoothDist=0.5)
+            lm.makeFigures(pp)
 
-        if plotFlagCheck(plotFlags, "thesis1"):
+        if plotFlagCheck(plotFlags, "thesis0"):
             lm = LocationMeasure(f"probe number of visits",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.numVisitsToPosition(
                                          BP(probe=True), pos, 0.5),
                                  ), sessionsWithProbe, smoothDist=0.5)
-            lm.makeFigures(pp, plotFlags="measureByCondition")
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
             lm = LocationMeasure(f"probe total time (sec)",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.totalTimeAtPosition(
                                          BP(probe=True), pos, 0.5),
                                  ), sessionsWithProbe, smoothDist=0.5)
-            lm.makeFigures(pp, plotFlags="measureByCondition")
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
 
             lm = LocationMeasure("pseudoprobe number of visits",
                                  lambda sesh: sesh.getValueMap(
@@ -707,7 +727,13 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                  sessionValLocation=LocationMeasure.prevSessionHomeLocation)
             lm.makeDualCategoryFigures(pp)
 
+        if plotFlagCheck(plotFlags, "thesis1"):
             tm = TrialMeasure("duration (sec)",
+                              lambda sesh, start, end, ttype: (
+                                  sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
+                              sessions)
+            tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"], runStats=False)
+            tm = TrialMeasure("duration (sec) with shuffles",
                               lambda sesh, start, end, ttype: (
                                   sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
                               sessions)
@@ -716,7 +742,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                               lambda sesh, start, end, ttype: (
                                   sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
                               sessions)
-            tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
+            tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"], runStats=False)
 
         if plotFlagCheck(plotFlags, "thesis2"):
             n = len(sessionsWithProbe)
@@ -798,24 +824,78 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                 pc.ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
         if plotFlagCheck(plotFlags, "thesis4"):
-            pass
+            # num visits to position in next, trialInterval 0-1, r.5, s.5
+            lm = LocationMeasure("Number of visits to position in next trial",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0.5)
+            # lm.makeFigures(pp, plotFlags="ctrlByCondition")
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+
+            # total time at position, r1, s0, full task
+            lm = LocationMeasure("Total time at position",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(
+                                         BP(probe=False), pos, 1),
+                                 ), sessions, smoothDist=0)
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+
+            # average time at position, r1, s.5, full task
+            lm = LocationMeasure("Total time at position",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.avgDwellTimeAtPosition(
+                                         BP(probe=False), pos, 1),
+                                 ), sessions, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+
+        if plotFlagCheck(plotFlags, "thesis5"):
+            lm = LocationMeasure(f"task gravity",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.getGravity(
+                                         BP(probe=False, inclusionFlags="awayTrial"), pos),
+                                 ), sessionsWithProbe, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+
+            lm = LocationMeasure(f"probe gravity",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.getGravity(
+                                         BP(probe=True), pos),
+                                 ), sessionsWithProbe, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+
+            lm = LocationMeasure("pseudoprobe gravity",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.getGravity(
+                                         BP(probe=False, trialInterval=(0, 1)), pos),
+                                 ), sessions, smoothDist=0.5,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp)
 
         pp.popOutputSubDir()
 
-    if makeCombined:
-        outputSubDir = f"combo_{'_'.join(animalNames)}"
-        if testData or len(animalNames) != 6:
-            pp.makeCombinedFigs(outputSubDir=outputSubDir)
-        else:
-            pp.makeCombinedFigs(
-                outputSubDir=outputSubDir, suggestedSubPlotLayout=(2, 3))
-    if runImmediate:
-        pp.runImmediateShufflesAcrossPersistentCategories(significantThreshold=1)
+    if len(animalNamesToRun) > 1:
+        if makeCombined:
+            outputSubDir = f"combo_{'_'.join(animalNames)}"
+            if testData or len(animalNames) != 6:
+                pp.makeCombinedFigs(outputSubDir=outputSubDir)
+            else:
+                pp.makeCombinedFigs(
+                    outputSubDir=outputSubDir, suggestedSubPlotLayout=(2, 3))
+        if runImmediate:
+            pp.runImmediateShufflesAcrossPersistentCategories(significantThreshold=1)
 
 
 def main():
     testData = False
     animalNames = None
+    allRatRun = "no"
+    excludeNoStim = False
     if len(sys.argv) > 1:
         flags = sys.argv[1:]
 
@@ -832,15 +912,41 @@ def main():
         if "--no1417" in flags:
             animalNames = ["Martin", "B13", "B16", "B18"]
             flags.remove("--no1417")
+        if "--just17" in flags:
+            animalNames = ["B17"]
+            flags.remove("--just17")
+        if "--just14old" in flags:
+            animalNames = ["B14_old"]
+            flags.remove("--just14old")
 
         if "--allThesis" in flags:
             flags.remove("--allThesis")
-            flags.extend(["thesis1", "thesis2", "thesis3", "thesis4"])
+            flags.extend(["thesis0", "thesis1", "thesis2", "thesis3", "thesis4", "thesis5"])
+
+        if "--alldata" in flags:
+            allRatRun = "yes"
+            flags.remove("--alldata")
+
+        if "--alldataonly" in flags:
+            allRatRun = "only"
+            flags.remove("--alldataonly")
+
+        if "--excludeNoStim" in flags:
+            excludeNoStim = True
+            flags.remove("--excludeNoStim")
+            if animalNames is not None:
+                if "Martin" in animalNames:
+                    animalNames.remove("Martin")
+            elif testData:
+                animalNames = ["B13", "B14"]
+            else:
+                animalNames = ["B13", "B14", "B16", "B17", "B18"]
 
         plotFlags = flags
     else:
         plotFlags = ["all"]
-    makeFigures(plotFlags, testData=testData, animalNames=animalNames)
+    makeFigures(plotFlags, testData=testData, animalNames=animalNames,
+                allRatRun=allRatRun, excludeNoStim=excludeNoStim)
 
 
 if __name__ == "__main__":

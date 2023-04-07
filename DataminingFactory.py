@@ -55,7 +55,7 @@ def runEveryCombination(function: Callable, parameters: Dict[str, Iterable],
             # args = zip(args, repeat(sharedDict, len(args)))
             # args = [seqParam + parParam for parParam in product(*parParams)]
             # print(f"{ args = }")
-            with Pool(processes=None, initializer=_setDMFFunction, initargs=(function, )) as pool:
+            with Pool(processes=7, initializer=_setDMFFunction, initargs=(function, )) as pool:
                 pool.map(_runParFunc, args)
             # sharedDictCallback(sharedDict)
         else:
