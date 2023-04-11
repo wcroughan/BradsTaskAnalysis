@@ -233,7 +233,8 @@ class TimeMeasure():
                     plotFlags: str | List[str] = ["noteveryperiod", "noteverysession"],
                     subFolder: bool = True,
                     runStats: bool = True,
-                    excludeFromCombo: bool = False):
+                    excludeFromCombo: bool = False,
+                    numShuffles: int = 100):
 
         figName = self.name.replace(" ", "_")
         figPrefix = "" if subFolder else figName + "_"
@@ -271,7 +272,7 @@ class TimeMeasure():
                     pc.yvals[figName] = self.measureDf["val"].to_numpy()
                     pc.categories["condition"] = self.measureDf["condition"].to_numpy()
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "measureByCat" in plotFlags:
             plotFlags.remove("measureByCat")
@@ -309,7 +310,7 @@ class TimeMeasure():
                             pc.yvals[figName] = catMeasureDf["val"].to_numpy()
                             pc.categories["condition"] = catMeasureDf["condition"].to_numpy()
                             pc.immediateShuffles.append((
-                                [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                                [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "diff" in plotFlags:
             plotFlags.remove("diff")
@@ -329,7 +330,7 @@ class TimeMeasure():
                             pc.categories["condition"] = catVals["condition"].to_numpy()
 
                             pc.immediateShuffles.append((
-                                [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                                [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "averages" in plotFlags:
             plotFlags.remove("averages")
@@ -368,7 +369,7 @@ class TimeMeasure():
                     pc.categories["condition"] = np.array(
                         ["SWR" if v else "Ctrl" for v in swrIdx])
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
             if self.hasCategories:
                 cmap = mpl.colormaps["Dark2"]
@@ -418,7 +419,7 @@ class TimeMeasure():
                         #     # print(f"{ cats.shape=  }")
 
                         #     pc.immediateShuffles.append((
-                        #         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="trialType", value="home")], 100))
+                        #         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="trialType", value="home")], numShuffles))
                         #     pc.immediateShufflePvalThreshold = 0.15
 
                 for cat in uc:
@@ -453,7 +454,7 @@ class TimeMeasure():
                             pc.categories["condition"] = np.array(
                                 ["SWR" if v else "Ctrl" for v in swrIdx])
                             pc.immediateShuffles.append((
-                                [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                                [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "everyperiod" in plotFlags:
             plotFlags.remove("everyperiod")
@@ -686,7 +687,8 @@ class TrialMeasure():
                     plotFlags: str | List[str] = "all",
                     subFolder: bool = True,
                     excludeFromCombo: bool = False,
-                    runStats: bool = True):
+                    runStats: bool = True,
+                    numShuffles: int = 100):
 
         figName = self.name.replace(" ", "_")
         if subFolder:
@@ -742,7 +744,7 @@ class TrialMeasure():
                     pc.yvals[figName] = self.withinSessionDiffs["withinSessionDiff"].to_numpy()
                     pc.categories["condition"] = self.withinSessionDiffs["condition"].to_numpy()
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "averages" in plotFlags:
             plotFlags.remove("averages")
@@ -774,7 +776,7 @@ class TrialMeasure():
                     pc.categories["condition"] = np.array(
                         ["SWR" if v else "Ctrl" for v in swrIdx])
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
                     pc.immediateShufflePvalThreshold = 0.15
 
             with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType", excludeFromCombo=excludeFromCombo) as pc:
@@ -800,7 +802,7 @@ class TrialMeasure():
                     # print(f"{ cats.shape=  }")
 
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="trialType", value="home")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="trialType", value="home")], numShuffles))
                     pc.immediateShufflePvalThreshold = 0.15
 
             with plotManager.newFig(figName + "_byTrialAvgs_home", excludeFromCombo=excludeFromCombo) as pc:
@@ -1167,7 +1169,8 @@ class WellMeasure():
                     radialTraceTimeInterval: None |
                     Callable[[BTSession, int], tuple | list] |
                     Iterable[Callable[[BTSession], tuple | list]] = None,
-                    runStats: bool = True):
+                    runStats: bool = True,
+                    numShuffles: int = 100):
         figName = self.name.replace(" ", "_")
 
         if isinstance(plotFlags, str):
@@ -1212,7 +1215,7 @@ class WellMeasure():
                     pc.yvals[figName + "_diff"] = self.withinSessionMeasureDifference
                     pc.categories["condition"] = self.conditionCategoryBySession
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="Ctrl")], numShuffles))
 
         if "othersesh" in plotFlags:
             plotFlags.remove("othersesh")
@@ -1245,7 +1248,7 @@ class WellMeasure():
                     pc.yvals[figName + "_othersesh_diff"] = self.acrossSessionMeasureDifference
                     pc.categories["condition"] = self.conditionCategoryBySession
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "radial" in plotFlags:
             plotFlags.remove("radial")
@@ -1496,7 +1499,8 @@ class SessionMeasure:
                     everySessionBehaviorPeriod: Optional[BP | Callable[[BTSession], BP]] = None,
                     everySessionBackground: Optional[Callable[[BTSession], ArrayLike]] = None,
                     runStats: bool = True, subFolder: bool = True,
-                    excludeFromCombo=False) -> None:
+                    excludeFromCombo=False,
+                    numShuffles: int = 100) -> None:
         """
         Make figures for this measure
         :param plotManager: plot manager to use
@@ -1541,7 +1545,7 @@ class SessionMeasure:
                     pc.yvals[figName] = self.sessionVals
                     pc.categories["condition"] = self.conditionBySession
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "everysession" in plotFlags:
             plotFlags.remove("everysession")
@@ -2046,7 +2050,8 @@ class LocationMeasure():
                     runStats: bool = True,
                     subFolder: bool = True,
                     excludeFromCombo=False,
-                    verbose=False) -> None:
+                    verbose=False,
+                    numShuffles: int = 100) -> None:
         """
         :param plotManager: PlotManager to use to make figures
         :param plotFlags: "all" or list of strings indicating which figures to make. Possible values are:
@@ -2125,7 +2130,7 @@ class LocationMeasure():
                     pc.yvals[figName] = self.sessionValsBySession
                     pc.categories["condition"] = self.conditionBySession
                     pc.immediateShuffles.append((
-                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                        [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "measureVsCtrl" in plotFlags:
             plotFlags.remove("measureVsCtrl")
@@ -2152,7 +2157,7 @@ class LocationMeasure():
                         pc.yvals[figName] = vals
                         pc.categories[catName] = valCtrlCats
                         pc.immediateShuffles.append((
-                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName=catName, value=self.controlValLabels[ctrlName][0])], 100))
+                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName=catName, value=self.controlValLabels[ctrlName][0])], numShuffles))
 
         if "measureVsCtrlByCondition" in plotFlags:
             plotFlags.remove("measureVsCtrlByCondition")
@@ -2183,7 +2188,7 @@ class LocationMeasure():
                         pc.categories[cat2Name] = valCtrlCats
                         pc.immediateShuffles.append((
                             [ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL, categoryName=cat2Name, value=None),
-                             ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                             ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "ctrlByCondition" in plotFlags:
             plotFlags.remove("ctrlByCondition")
@@ -2205,7 +2210,7 @@ class LocationMeasure():
                         pc.yvals[figName] = vals
                         pc.categories["condition"] = conditionCats
                         pc.immediateShuffles.append((
-                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "diff" in plotFlags:
             plotFlags.remove("diff")
@@ -2228,7 +2233,7 @@ class LocationMeasure():
                         pc.yvals[figName] = vals
                         pc.categories["condition"] = self.conditionBySession
                         pc.immediateShuffles.append((
-                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                            [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         if "measureByDistance" in plotFlags:
             plotFlags.remove("measureByDistance")
@@ -2822,7 +2827,8 @@ class LocationMeasure():
                                 plotManager: PlotManager,
                                 subFolder: bool = True,
                                 excludeFromCombo: bool = False,
-                                runStats: bool = True):
+                                runStats: bool = True,
+                                numShuffles: int = 100):
         if not self.valid:
             return
 
@@ -2856,7 +2862,9 @@ class LocationMeasure():
         dualCatsCombo = np.array(dualCatsCombo)
 
         with plotManager.newFig(figName + "_byDualCond", excludeFromCombo=excludeFromCombo) as pc:
-            violinPlot(pc.ax, dualSessionVals, categories=dualCatsSame, categories2=dualCatsPrev)
+            violinPlot(pc.ax, dualSessionVals, categories=dualCatsSame, categories2=dualCatsPrev,
+                       dotColors=["orange" if c == "SWR" else "cyan" for c in dualCatsPrev],
+                       dotColorLabels={"orange": "SWR", "cyan": "Ctrl"})
             pc.ax.set_xlabel("Previous condition")
 
             if runStats:
@@ -2866,10 +2874,12 @@ class LocationMeasure():
                 pc.categoryColors = {"SWR": "orange", "Ctrl": "cyan"}
                 pc.immediateShuffles.append((
                     [ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL, categoryName="prevCondition", value=None),
-                        ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                        ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         with plotManager.newFig(figName + "_byThisCond", excludeFromCombo=excludeFromCombo) as pc:
-            violinPlot(pc.ax, dualSessionVals, categories=dualCatsSame)
+            violinPlot(pc.ax, dualSessionVals, categories=dualCatsSame,
+                       dotColors=["orange" if c == "SWR" else "cyan" for c in dualCatsSame],
+                       dotColorLabels={"orange": "SWR", "cyan": "Ctrl"})
             pc.ax.set_xlabel("This session condition")
 
             if runStats:
@@ -2877,10 +2887,12 @@ class LocationMeasure():
                 pc.categories["condition"] = dualCatsSame
                 pc.categoryColors = {"SWR": "orange", "Ctrl": "cyan"}
                 pc.immediateShuffles.append((
-                    [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], 100))
+                    [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
         with plotManager.newFig(figName + "_byPrevCond", excludeFromCombo=excludeFromCombo) as pc:
-            violinPlot(pc.ax, dualSessionVals, categories=dualCatsPrev)
+            violinPlot(pc.ax, dualSessionVals, categories=dualCatsPrev,
+                       dotColors=["orange" if c == "SWR" else "cyan" for c in dualCatsSame],
+                       dotColorLabels={"orange": "SWR", "cyan": "Ctrl"})
             pc.ax.set_xlabel("Previous condition")
 
             if runStats:
@@ -2888,7 +2900,7 @@ class LocationMeasure():
                 pc.categories["prevCondition"] = dualCatsPrev
                 pc.categoryColors = {"SWR": "orange", "Ctrl": "cyan"}
                 pc.immediateShuffles.append((
-                    [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="prevCondition", value="SWR")], 100))
+                    [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="prevCondition", value="SWR")], numShuffles))
 
         with plotManager.newFig(figName + "_byTimeSincePreviousSession", excludeFromCombo=excludeFromCombo) as pc:
             swrswrIdx = np.logical_and(dualCatsSame == "SWR", dualCatsPrev == "SWR")

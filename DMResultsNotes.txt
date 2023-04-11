@@ -1,3 +1,166 @@
+Dotprod
+Shuffles
+BT Away
+    N P
+        other           -1 avs, 0-1 avs rev
+                diff    -0.5-1 avs
+        later           same other worse
+                diff    same other better
+        next            same other better at -1
+                diff    all avs
+        away    diff    neg avs rev, .5/1 dots 1 better
+        sym     diff    neg rev, 1 dots
+    N ~P
+        other           avs rev
+                diff    avs
+        later           same other
+                diff    same other
+        next            avs rev
+                diff    avs
+    ~N P
+        other           .5/1 rev
+                diff    all dots, higher cleaner
+        later   diff    same other
+        next            meh rev
+                diff    all dots
+        away    diff    -1/-.5 avs rev, 1 avs, 0 meh rev
+        sym     diff    same away
+    ~N ~P
+        other           avs rev
+                diff    avs
+        later           avs rev
+                diff    avs
+        next            avs rev
+                diff    all dots
+        away    diff    all rev
+BT Away M
+    N P
+        other           avs rev -1 worst
+                diff    -.5-1 dots higher gets better
+        later           same other
+                diff    same other
+        next            asme other worse everywhere
+                diff    avs
+        away    diff    0-1 avs 0 worst
+        sym     diff    same away
+    N ~P
+        other           avs rev
+                diff    avs
+        later           same other
+                diff    same other
+        next            0-1 avs rev, -.5 rev
+                diff    avs
+        sym     diff    all dots
+    ~N P
+        other           -.5-1 all rev higher cleaner
+                diff    avs
+        later           same other better
+                diff    avs
+        next    diff    avs
+        away    diff    0-1 dots
+        sym     diff    same away
+    ~N ~P
+        other           avs rev
+                diff    avs
+        later           avs rev
+                diff    avs
+        next            0-1 avs rev
+                diff    avs
+BT M
+    N P
+        later           0-1 avs
+        next            neg rev, 1 dots
+                diff    avs except 1
+        away    diff    -1 rev 0-1 dots all meh
+        sym     diff    same away worse
+    N ~P
+        later           all dots
+        next    diff    avs, 1 worst
+        sym     diff    1 rev
+    ~N P
+        later   diff    all dots
+        next    diff    all dots except 1, more neg better
+        away    diff    dots 0-1
+        sym     diff    0.5-1 dots meh
+    ~N ~P
+        later           all dots
+        next            .5/1 rev
+                diff    avs
+        away    diff    -1 dots, -.5/0 dots worse
+        sym     diff    -1 dotxs meh
+PFT
+    N P
+        other           avs
+                diff    avs, cleaner -0.5-.5
+        later           same other
+                diff    same other
+        next            all dots, cleanest around 0
+                diff    all dots except -1
+        away    diff    -0.5-1 dots, increasing gets better
+        sym     diff    same away
+    N ~P
+        other           avs
+                diff    avs
+        later           avs
+                diff    avs
+        next            avs
+                diff    all dots
+        away    diff    all dots
+        sym     diff    all dots
+    ~N P
+        other   diff    all dots
+        later   diff    all dots
+        next            -1/-.5 dots
+                diff    avs
+        away    diff    rev  middle vals meh
+        sym     diff    -1 avs rev, 1 dots
+    ~N ~P
+        other           -1 avs, increasing still dots but worse
+                diff    avs
+        later           -1 dots
+                diff    avs
+        next            all dots
+                diff    avs
+        away    diff    -1 avs, -0.5 dots
+        sym     diff    same away, also meh 0
+Probe
+    N P
+        other           neg dots
+                diff    pos dots
+        later           pos dots
+                diff    bigger better dots
+        next            -1/-.5 avs
+                diff    -1 avs rev, -.5 all rev, 1 all dots
+        away    diff    neg avs rev, 1 dots
+        sym     diff    same away better
+    N ~P
+        other   diff    avs
+        later   diff    all dots
+        next            all dots
+        away    diff    all rev, cleaner more pos
+        sym     diff    same away worse
+    ~N P
+        other           -0.5-1 avs rev
+                diff    -0.5-1 avs
+        later           small sd avs rev
+                diff    same other
+        next            -1 dots 1 rev
+                diff    -1 avs rev, .5/1 dots
+        away    diff    -1-0 avs rev
+        sym     diff    neg avs rev, 1 avs dots
+    ~N ~P
+        other   diff    avs
+        later   diff    avs
+        next            all dots
+        away    diff    all rev
+        sym     diff    0-1 rev
+        
+
+
+
+
+
+
 Gravity
 
 Shuffles

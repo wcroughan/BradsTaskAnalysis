@@ -215,7 +215,7 @@ class Shuffler:
             ax = axs[1, ri]
             txtAx = axs[0, ri]
 
-            if not np.isnan(shufDiffs).all():
+            if not np.isnan(shufDiffs).all() and not np.isnan(dataDiff).all():
                 # axis should have text at the top with the following on each row:
                 #   name of shuffle with the category and type of shuffle
                 #   pval
@@ -258,7 +258,7 @@ class Shuffler:
                 ax.get_yaxis().set_visible(False)
 
         statFig.savefig(fname + ".png", bbox_inches="tight",
-                                dpi=100, transparent=True)
+                                dpi=100, transparent=False)
 
     def runImmediateShufflesAcrossPersistentCategories(self, infoFileNames: Optional[List[str]], numShuffles=100,
                                                        significantThreshold: Optional[float] = 0.05,
@@ -288,9 +288,9 @@ class Shuffler:
                 infoFileNames[0]), datetime.now().strftime("%Y%m%d_%H%M%S_shufflesAcrossPersistentCategories.h5"))
         if makePlots:
             plotOutFileNameBase = os.path.join(os.path.dirname(
-                infoFileNames[0]), "shuffleImages", datetime.now().strftime("%Y%m%d_%H%M%S_"))
-            if not os.path.exists(os.path.dirname(plotOutFileNameBase)):
-                os.makedirs(os.path.dirname(plotOutFileNameBase))
+                infoFileNames[0]), "shuffleImages")
+            if not os.path.exists(plotOutFileNameBase):
+                os.makedirs(plotOutFileNameBase)
 
         todel = []
         for plotName in filesForEachPlot:
@@ -365,7 +365,16 @@ class Shuffler:
             shuffResults.append((plotName, sr, measureName))
 
             if makePlots:
-                self.makePlotsForShuffleResults(sr, df, plotOutFileNameBase + plotName)
+                if "rat" in catsToShuffle:
+                    # get unique rats
+                    rats = sorted(list(df["rat"].unique()))
+                    outdir = os.path.join(plotOutFileNameBase, "_".join(rats))
+                    if not os.path.exists(outdir):
+                        os.makedirs(outdir)
+                    fname = os.path.join(outdir, plotName)
+                else:
+                    fname = os.path.join(plotOutFileNameBase, plotName)
+                self.makePlotsForShuffleResults(sr, df, fname)
 
         if significantThreshold is None:
             significantThreshold = 1.0
@@ -789,8 +798,9 @@ class Shuffler:
                 r.diff = np.zeros((len(dataNames), 1))
                 r.shuffleDiffs = np.zeros((self.numShuffles, len(dataNames)))
                 for vi in range(len(vals)):
-                    r.diff += withinRes[vi][ei].diff * groupWeight[vi]
-                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * groupWeight[vi]
+                    if not np.isnan(withinRes[vi][ei].diff).any():
+                        r.diff += withinRes[vi][ei].diff * groupWeight[vi]
+                        r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * groupWeight[vi]
                 ret.append(r)
             return ret
 
@@ -834,8 +844,9 @@ class Shuffler:
                 r.diff = np.zeros((len(dataNames), 1))
                 r.shuffleDiffs = np.zeros((self.numShuffles, len(dataNames)))
                 for vi in range(len(vals)):
-                    r.diff += withinRes[vi][ei].diff * groupWeight[vi]
-                    r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * groupWeight[vi]
+                    if not np.isnan(withinRes[vi][ei].diff).any():
+                        r.diff += withinRes[vi][ei].diff * groupWeight[vi]
+                        r.shuffleDiffs += withinRes[vi][ei].shuffleDiffs * groupWeight[vi]
                 ret.append(r)
 
             # interaction effects

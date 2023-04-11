@@ -1605,6 +1605,52 @@ def getChosenParams(specName, func) -> List[Dict[str, Any]]:
             },
         ]
 
+    elif specName == "makeDotProdMeasure":
+        # "distanceWeight": np.linspace(-1, 1, 5),
+        # "normalize": [True, False],
+        # "onlyPositive": [True, False],
+        # "bp": [
+        #     BP(probe=False, inclusionFlags="awayTrial"),
+        #     BP(probe=False, inclusionFlags=["awayTrial", "moving"]),
+        #     BP(probe=False, inclusionFlags="moving"),
+        #     BP(probe=False, inclusionFlags="awayTrial", erode=3),
+        #     BP(probe=False, inclusionFlags=["awayTrial", "moving"], erode=3),
+        #     BP(probe=False, inclusionFlags="moving", erode=3),
+        #     BP(probe=True),
+        #     BP(probe=True, timeInterval=BTSession.fillTimeInterval),
+        # ],
+        # "smoothDist": allConsideredSmoothDists,
+        chosenParams = [
+            {
+                "distanceWeight": 0.0,
+                "normalize": False,
+                "onlyPositive": False,
+                "bp": BP(probe=False, inclusionFlags="moving"),
+                "smoothDist": 0.0
+            },
+            {
+                "distanceWeight": -1.0,
+                "normalize": False,
+                "onlyPositive": False,
+                "bp": BP(probe=False, inclusionFlags="moving"),
+                "smoothDist": 0.0
+            },
+            {
+                "distanceWeight": 0.0,
+                "normalize": False,
+                "onlyPositive": False,
+                "bp": BP(probe=True),
+                "smoothDist": 0.0
+            },
+            {
+                "distanceWeight": -1.0,
+                "normalize": False,
+                "onlyPositive": False,
+                "bp": BP(probe=True),
+                "smoothDist": 0.0
+            },
+        ]
+
     else:
         raise Exception("No chosen params for this specName and func")
 
@@ -1789,8 +1835,8 @@ if __name__ == "__main__":
     #         "suffix": "diff"
     #     },
     # ]
-    lookAtShuffles(specName, func, filters=filters, appendCorrelations=False,
-                   plotCorrelations=True, plotShuffles=True)
+    # lookAtShuffles(specName, func, filters=filters, appendCorrelations=False,
+    #                plotCorrelations=True, plotShuffles=True)
 
-    # chosenParams = getChosenParams(specName, func)
-    # generateChosenPlots(specName, func, chosenParams)
+    chosenParams = getChosenParams(specName, func)
+    generateChosenPlots(specName, func, chosenParams)

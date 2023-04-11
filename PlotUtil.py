@@ -276,7 +276,7 @@ class PlotManager:
                                 shufDiffs = r.shuffleDiffs
                                 dataDiff = r.diff
 
-                        if not np.isnan(shufDiffs).all():
+                        if not np.isnan(shufDiffs).all() and not np.isnan(dataDiff):
                             shuffledCategories = df[shufSpecs[0][0].categoryName].unique()
                             cat1 = shufSpecs[0][0].value
                             cat2 = shuffledCategories[shuffledCategories != cat1].item()
@@ -311,7 +311,7 @@ class PlotManager:
                             ax = axs[1, ri]
                             txtAx = axs[0, ri]
 
-                            if not np.isnan(shufDiffs).all():
+                            if not np.isnan(shufDiffs).all() and not np.isnan(dataDiff):
                                 # axis should have text at the top with the following on each row:
                                 #   name of shuffle with the category and type of shuffle
                                 #   pval

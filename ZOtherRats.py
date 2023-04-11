@@ -64,7 +64,11 @@ def totalInCornerTime(bp: BP, sesh: BTSession, boundary: float = 1.5) -> float:
     return np.sum(np.diff(ts)[posInCorner[:-1]]) / TRODES_SAMPLING_RATE
 
 
-def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=False, animalNames=None, allRatRun="no", excludeNoStim=False):
+def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=False, animalNames=None,
+                allRatRun="no", excludeNoStim=False, numShuffles=100):
+    print("makeFigures(plotFlags=", plotFlags, ", runImmediate=", runImmediate, ", makeCombined=", makeCombined, ", testData=",
+          testData, ", animalNames=", animalNames, ", allRatRun=", allRatRun, ", excludeNoStim=", excludeNoStim, ", numShuffles=", numShuffles, " )", sep="")
+
     dataDir = findDataDir()
     outputDir = "TheRun"
     if testData:
@@ -206,6 +210,57 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             lm.makeFigures(pp, plotFlags=[
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
+
+        if plotFlagCheck(plotFlags, "hyp1Mod", excludeFromAll=True):
+            # num visits, trial 0-1, r0.5, s0.5
+            lm = LocationMeasure("hyp1Mod_numVisits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(BP(probe=False, trialInterval=(0, 1)), pos, radius=0.5)),
+                                 sessions, smoothDist=0)
+            lm.makeFigures(pp, plotFlags=[
+                "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
+            ])
+
+            # total time spent in whole task, r1, s0
+            lm = LocationMeasure("hyp1Mod_totalTime",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(BP(probe=False, trialInterval=(0, 1)), pos, radius=1)),
+                                 sessions, smoothDist=0)
+            lm.makeFigures(pp, plotFlags=[
+                "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
+            ])
+
+            # avgdwelltime, r1, s0.5
+            lm = LocationMeasure("hyp1Mod_avgDwellTime",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.avgDwellTimeAtPosition(BP(probe=False, trialInterval=(0, 1)), pos, radius=1)),
+                                 sessions, smoothDist=0)
+            lm.makeFigures(pp, plotFlags=[
+                "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
+            ])
+
+            lm = LocationMeasure("hyp1Mod pseudoprobe number of visits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0.0,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp)
+            lm = LocationMeasure("hyp1Mod pseudoprobe total time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp)
+        if plotFlagCheck(plotFlags, "hyp1Mod2", excludeFromAll=True):
+            lm = LocationMeasure("hyp1Mod pseudoprobe avg dwell time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.avgDwellTimeAtPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp)
 
         if plotFlagCheck(plotFlags, "hyp2", excludeFromAll=True):
             # session measure of total time spent at symmetric wells during home trials from trial 10-15
@@ -914,23 +969,99 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
 
         if plotFlagCheck(plotFlags, "thesis6"):
             # Morris paper measure: latency and norm and raw path length in home trials 2,3,4
-            sm = SessionMeasure("Latency to home 2-4",
-                                lambda sesh: np.sum(np.diff(sesh.getAllTrialPosIdxs()[
-                                                    2:7:2, :], axis=1)) / TRODES_SAMPLING_RATE,
+            sm = SessionMeasure("Latency to home 2-4 (sec)",
+                                lambda sesh: np.sum([sesh.btPos_secs[i2] - sesh.btPos_secs[i1] for i1, i2 in zip(
+                                    sesh.getAllTrialPosIdxs()[2:7:2, 0], sesh.getAllTrialPosIdxs()[2:7:2, 1])]),
                                 sessions)
-            sm.makeFigures(pp, plotFlags="violin")
+            sm.makeFigures(pp, plotFlags="violin", numShuffles=numShuffles)
 
             sm = SessionMeasure("Path length to home 2-4 (ft)",
                                 lambda sesh: np.sum([sesh.pathLength(False, i1, i2) for i1, i2 in zip(
                                     sesh.getAllTrialPosIdxs()[2:7:2, 0], sesh.getAllTrialPosIdxs()[2:7:2, 1])]),
                                 sessions)
-            sm.makeFigures(pp, plotFlags="violin")
+            sm.makeFigures(pp, plotFlags="violin", numShuffles=numShuffles)
 
             sm = SessionMeasure("normalized Path length to home 2-4",
                                 lambda sesh: np.sum([sesh.normalizedPathLength(False, i1, i2) for i1, i2 in zip(
                                     sesh.getAllTrialPosIdxs()[2:7:2, 0], sesh.getAllTrialPosIdxs()[2:7:2, 1])]),
                                 sessions)
-            sm.makeFigures(pp, plotFlags="violin")
+            sm.makeFigures(pp, plotFlags="violin", numShuffles=numShuffles)
+
+        if plotFlagCheck(plotFlags, "thesisBigShuffles"):
+            # Here run exactly just  the plots across all rats that are shown in the slides, and use 5000 shuffles
+            numShuffles = 5000
+            lm = LocationMeasure(f"BS probe number of visits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(
+                                         BP(probe=True), pos, 0.5),
+                                 ), sessionsWithProbe, smoothDist=0.0)
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl"], numShuffles=numShuffles)
+            lm = LocationMeasure(f"BS probe total time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(
+                                         BP(probe=True), pos, 0.5),
+                                 ), sessionsWithProbe, smoothDist=0.0)
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl"], numShuffles=numShuffles)
+            lm = LocationMeasure(f"BS probe avg dwell time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.avgDwellTimeAtPosition(
+                                         BP(probe=True), pos, 0.5),
+                                 ), sessionsWithProbe, smoothDist=0.0)
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl"], numShuffles=numShuffles)
+            lm = LocationMeasure("BS pseudoprobe number of visits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0.0,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp, numShuffles=numShuffles)
+            lm = LocationMeasure("BS pseudoprobe total time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0.0,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp, numShuffles=numShuffles)
+            lm = LocationMeasure("BS pseudoprobe avg dwell time time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.avgDwellTimeAtPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0.0,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp, numShuffles=numShuffles)
+
+            lm = LocationMeasure(f"BS task gravity",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.getGravity(
+                                         BP(probe=False, inclusionFlags="awayTrial"), pos),
+                                 ), sessionsWithProbe, smoothDist=0.5)
+            lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
+                           "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
+
+        if plotFlagCheck(plotFlags, "testNan"):
+            lm = LocationMeasure("BS pseudoprobe avg dwell time time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.avgDwellTimeAtPosition(
+                                         BP(probe=False, trialInterval=(0, 1)), pos, 0.5),
+                                 ), sessions, smoothDist=0.0,
+                                 sessionValLocation=LocationMeasure.prevSessionHomeLocation)
+            lm.makeDualCategoryFigures(pp, numShuffles=numShuffles)
+
+        if plotFlagCheck(plotFlags, "pseudoProbeTrace"):
+            for si, (sesh, nextSesh) in enumerate(zip(sessions[:-1], sessions[1:])):
+                with pp.newFig(f"pseudoProbeTrace_{si}", subPlots=(1, 2)) as pc:
+                    wellSize = mpl.rcParams['lines.markersize']**2 * 3
+                    ax = pc.axs[0]
+                    setupBehaviorTracePlot(ax, sesh, showWells="HA", wellSize=wellSize)
+                    ax.plot(sesh.btPosXs, sesh.btPosYs, c="#0000007f", lw=1, zorder=1.5)
+                    ax2 = pc.axs[1]
+                    setupBehaviorTracePlot(ax2, nextSesh, showWells="HA", wellSize=wellSize)
+                    pseudoProbeEnd_posIdx = nextSesh.getAllTrialPosIdxs()[0, 1]
+                    ax2.plot(nextSesh.btPosXs[:pseudoProbeEnd_posIdx],
+                             nextSesh.btPosYs[:pseudoProbeEnd_posIdx], c="#0000007f", lw=1, zorder=1.5)
 
         pp.popOutputSubDir()
 
@@ -943,7 +1074,8 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                 pp.makeCombinedFigs(
                     outputSubDir=outputSubDir, suggestedSubPlotLayout=(2, 3))
         if runImmediate:
-            pp.runImmediateShufflesAcrossPersistentCategories(significantThreshold=1)
+            pp.runImmediateShufflesAcrossPersistentCategories(
+                significantThreshold=1, numShuffles=numShuffles)
 
 
 def main():
@@ -951,6 +1083,7 @@ def main():
     animalNames = None
     allRatRun = "no"
     excludeNoStim = False
+    numShuffles = 100
     if len(sys.argv) > 1:
         flags = sys.argv[1:]
 
@@ -998,11 +1131,19 @@ def main():
             else:
                 animalNames = ["B13", "B14", "B16", "B17", "B18"]
 
+        if "--moreshuffles" in flags:
+            flags.remove("--moreshuffles")
+            numShuffles = 5000
+
+        if "--lessshuffles" in flags:
+            flags.remove("--lessshuffles")
+            numShuffles = 25
+
         plotFlags = flags
     else:
         plotFlags = ["all"]
     makeFigures(plotFlags, testData=testData, animalNames=animalNames,
-                allRatRun=allRatRun, excludeNoStim=excludeNoStim)
+                allRatRun=allRatRun, excludeNoStim=excludeNoStim, numShuffles=numShuffles)
 
 
 if __name__ == "__main__":
