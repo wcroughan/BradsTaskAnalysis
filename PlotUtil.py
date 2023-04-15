@@ -38,6 +38,7 @@ class PlotContext:
     excludeFromCombo: bool = False
     immediateShufflePvalThreshold: float = 0.15
     transparent: bool = False
+    uniqueID: Optional[str] = None
 
     @property
     def ax(self) -> Axes:
@@ -61,6 +62,17 @@ class PlotContext:
 
 
 class PlotManager:
+    # This is a single instance of plot manager that can be used easily
+    _globalPlotManager = None
+
+    @staticmethod
+    def getGlobalPlotManager(**kwargs) -> PlotManager:
+        if PlotManager._globalPlotManager is None:
+            PlotManager._globalPlotManager = PlotManager(**kwargs)
+        elif len(kwargs) > 0:
+            print("Warning: PlotManager.getGlobalPlotManager called with kwargs but global plot manager already exists! Ignoring kwargs.")
+        return PlotManager._globalPlotManager
+
     def __init__(self, outputDir: Optional[str] = None,
                  randomSeed=None, verbosity: int = 3, infoFileName: Optional[str] = None) -> None:
         self.figSizeX: int = 5
@@ -109,7 +121,7 @@ class PlotManager:
     def newFig(self, figName: str, subPlots: Optional[Tuple[int, int] | List[int, int]] = None,
                figScale: float = 1.0, excludeFromCombo: bool = False,
                showPlot: bool = None, savePlot: bool = None, enableOverwriteSameName: bool = False,
-               transparent=False) -> PlotManager:
+               transparent=False, uniqueID=None) -> PlotManager:
         fname = os.path.join(self.fullOutputDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
             raise Exception("Would overwrite file {} that was just made!".format(fname))
@@ -132,12 +144,12 @@ class PlotManager:
 
         self.plotContext = PlotContext(fname, self.axs, showPlot=showPlot,
                                        savePlot=savePlot, excludeFromCombo=excludeFromCombo,
-                                       transparent=transparent)
+                                       transparent=transparent, uniqueID=uniqueID)
 
         return self
 
     def continueFig(self, figName, showPlot=None, savePlot=None, excludeFromCombo=False,
-                    enableOverwriteSameName=False, transparent=False):
+                    enableOverwriteSameName=False, transparent=False, uniqueID=None):
         if self.showedLastFig:
             raise Exception("currently unable to show a figure and then continue it")
 
@@ -153,6 +165,7 @@ class PlotManager:
         self.plotContext.immediateShuffles = []
         self.plotContext.categories = {}
         self.plotContext.infoVals = {}
+        self.plotContext.uniqueID = uniqueID
         return self
 
     def setStatCategory(self, category: str, value: Any):
@@ -218,7 +231,11 @@ class PlotManager:
 
             # Save the stats to a file
             statsDir = os.path.join(self.fullOutputDir, "stats")
-            uniqueID = f"{self.outputSubDirStack[-1]}_{figureName}"
+            if self.plotContext.uniqueID is not None:
+                uniqueID = self.plotContext.uniqueID
+            else:
+                # uniqueID = f"{self.outputSubDirStack[-1]}_{figureName}"
+                uniqueID = f"{figureName}"
             if not os.path.exists(statsDir):
                 os.makedirs(statsDir)
             statsFile = os.path.join(statsDir, figureName + ".h5")
@@ -279,7 +296,11 @@ class PlotManager:
                         if not np.isnan(shufDiffs).all() and not np.isnan(dataDiff):
                             shuffledCategories = df[shufSpecs[0][0].categoryName].unique()
                             cat1 = shufSpecs[0][0].value
-                            cat2 = shuffledCategories[shuffledCategories != cat1].item()
+                            otherCategories = shuffledCategories[shuffledCategories != cat1]
+                            if len(otherCategories) == 1:
+                                cat2 = otherCategories.item()
+                            else:
+                                cat2 = "other"
                             direction = pval > 0.5
                             if direction:
                                 pval = 1 - pval
@@ -324,7 +345,11 @@ class PlotManager:
                                         topText += f"Main: {s.categoryName}\n"
                                         shuffledCategories = df[s.categoryName].unique()
                                         cat1 = s.value
-                                        cat2 = shuffledCategories[shuffledCategories != cat1].item()
+                                        otherCategories = shuffledCategories[shuffledCategories != cat1]
+                                        if len(otherCategories) == 1:
+                                            cat2 = otherCategories.item()
+                                        else:
+                                            cat2 = "other"
                                     elif s.shuffType == ShuffSpec.ShuffType.ACROSS:
                                         topText += f"Across: {s.categoryName}\n"
                                     elif s.shuffType == ShuffSpec.ShuffType.WITHIN:
@@ -439,7 +464,8 @@ class PlotManager:
         return os.path.join(self.outputDir, self.outputSubDir)
 
     def saveFig(self, additionalFig=None):
-        fname = os.path.join(self.fullOutputDir, self.plotContext.figName)
+        # fname = os.path.join(self.fullOutputDir, self.plotContext.figName)
+        fname = self.plotContext.figName
 
         if fname[-4:] != ".png" and fname[-4:] != ".pdf":
             fname += ".png"
@@ -530,7 +556,11 @@ class PlotManager:
                 f.write(txt + suffix)
 
     def makeCombinedFigs(self, outputSubDir: str = "combined",
-                         suggestedSubPlotLayout: Optional[Tuple[int, int] | List[int, int]] = None) -> None:
+                         suggestedSubPlotLayout: Optional[Tuple[int, int] | List[int, int]] = None,
+                         alignAxes="y") -> None:
+        if alignAxes not in ["x", "y", "none", "xy", "yx", ""]:
+            raise ValueError("alignAxes must be one of 'x', 'y', 'xy', 'yx', '', or 'none'")
+
         if not os.path.exists(os.path.join(self.outputDir, outputSubDir)):
             os.makedirs(os.path.join(self.outputDir, outputSubDir))
 
@@ -597,6 +627,8 @@ class PlotManager:
 
             ymin = np.inf
             ymax = -np.inf
+            xmin = np.inf
+            xmax = -np.inf
 
             loaded_axs = []
             for sdi, sd in enumerate(figSubDirs):
@@ -611,6 +643,11 @@ class PlotManager:
                     ymin = y1
                 if y2 > ymax:
                     ymax = y2
+                x1, x2 = ax.get_xlim()
+                if x1 < xmin:
+                    xmin = x1
+                if x2 > xmax:
+                    xmax = x2
 
             # print(ymin, ymax)
             ax_xbuf = 0.2
@@ -625,7 +662,10 @@ class PlotManager:
                 assert isinstance(ax, Axes)
                 ax.figure = self.fig
                 self.fig.add_axes(ax)
-                ax.set_ylim(ymin, ymax)
+                if 'y' in alignAxes:
+                    ax.set_ylim(ymin, ymax)
+                if 'x' in alignAxes:
+                    ax.set_xlim(xmin, xmax)
                 if len(self.axs.shape) > 1:
                     self.axs[ayc, axc].remove()
                 else:
@@ -654,6 +694,8 @@ class PlotManager:
             self.writeToInfoFile("wrote file {}".format(fname))
             if self.verbosity >= 3:
                 print("wrote file {}".format(fname))
+
+        self.savedFigsByName = {}
 
     def runImmediateShufflesAcrossPersistentCategories(self, numShuffles=100, significantThreshold: Optional[float] = 0.15,
                                                        resultsFilter: Callable[[str, ShuffleResult, float], bool] = notNanPvalFilter) -> None:
@@ -841,7 +883,7 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
         sortingCategories2 = categories2
         cat2IsFake = True
         if axesNames is not None:
-            axesNames.append("Z")
+            axesNames.append("defaultCatZ")
     else:
         cat2IsFake = False
 
@@ -876,7 +918,7 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
 
     if axesNames is None:
         hideAxes = True
-        axesNames = ["X", "Y", "Z"]
+        axesNames = ["defaultCatX", "defaultCatY", "defaultCatZ"]
     else:
         hideAxes = False
 
@@ -895,6 +937,10 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
     sx = np.array(s[axesNamesNoSpaces[2]])
     # sy = np.array(s[axesNamesNoSpaces[1]]).astype(float)
     sh = np.array(s[axesNamesNoSpaces[0]])
+    # if either is string, convert the other to string
+    if isinstance(sx[0], str) or isinstance(sh[0], str):
+        sx = sx.astype(str)
+        sh = sh.astype(str)
     swarmx = np.array([a + b for a, b in zip(sx, sh)])
 
     swarmCategories = [(a, b) for a, b in zip(categories, categories2)]

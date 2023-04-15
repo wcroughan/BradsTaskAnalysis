@@ -237,6 +237,7 @@ class TimeMeasure():
                     numShuffles: int = 100):
 
         figName = self.name.replace(" ", "_")
+        statsId = self.name + "_"
         figPrefix = "" if subFolder else figName + "_"
         if subFolder:
             plotManager.pushOutputSubDir("TiM_" + figName)
@@ -264,7 +265,7 @@ class TimeMeasure():
 
             dotColors = ["orange" if c ==
                          "SWR" else "cyan" for c in self.measureDf["condition"]]
-            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName) as pc:
                 violinPlot(pc.ax, self.measureDf["val"], categories=self.measureDf["condition"],
                            dotColors=dotColors, axesNames=["Condition", self.name])
 
@@ -280,7 +281,7 @@ class TimeMeasure():
             if self.hasCategories:
                 dotColors = ["orange" if c ==
                              "SWR" else "cyan" for c in self.measureDf["condition"]]
-                with plotManager.newFig(figName + "_byCat", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(figName + "_byCat", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_byCat") as pc:
                     violinPlot(pc.ax, self.measureDf["val"], categories2=self.measureDf["timePeriodCategory"],
                                categories=self.measureDf["condition"], dotColors=dotColors,
                                axesNames=["Condition", self.name, "Category"])
@@ -301,7 +302,7 @@ class TimeMeasure():
                     dotColors = ["orange" if c ==
                                  "SWR" else "cyan" for c in catMeasureDf["condition"]]
                     catReplace = cat.replace(" ", "_")
-                    with plotManager.newFig(f"{figName}_withinCat_{catReplace}", excludeFromCombo=excludeFromCombo) as pc:
+                    with plotManager.newFig(f"{figName}_withinCat_{catReplace}", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figName}_withinCat_{catReplace}") as pc:
                         violinPlot(pc.ax, catMeasureDf["val"],
                                    categories=catMeasureDf["condition"], dotColors=dotColors,
                                    axesNames=["Condition", self.name])
@@ -318,7 +319,7 @@ class TimeMeasure():
             if self.hasCategories:
                 for cat in self.uniqueCategories:
                     catReplace = cat.replace(" ", "_")
-                    with plotManager.newFig(f"{figName}_cat_{catReplace}_diff", excludeFromCombo=excludeFromCombo) as pc:
+                    with plotManager.newFig(f"{figName}_cat_{catReplace}_diff", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figName}_cat_{catReplace}_diff") as pc:
                         catVals = self.withinCategoryAvgs.xs(cat, level=1)
                         dotColors = ["orange" if c ==
                                      "SWR" else "cyan" for c in catVals["condition"]]
@@ -353,7 +354,7 @@ class TimeMeasure():
             with plotManager.newFig(figName + "_avgs_all", excludeFromCombo=excludeFromCombo) as pc:
                 plotIndividualAndAverage(pc.ax, self.measure2d, xvals, avgColor="grey")
 
-            with plotManager.newFig(figName + "_avgs_byCond", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName + "_avgs_byCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_avgs_byCond") as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, :], swrXVals, avgColor="orange", label="SWR",
                     spread="sem")
@@ -433,7 +434,7 @@ class TimeMeasure():
                         pc.ax.legend()
 
                 for cat in uc:
-                    with plotManager.newFig(f"{figName}_avgs_cat_{cat}_byCond", excludeFromCombo=excludeFromCombo) as pc:
+                    with plotManager.newFig(f"{figName}_avgs_cat_{cat}_byCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figName}_avgs_cat_{cat}_byCond") as pc:
                         m = self.measure2d.copy()
                         m[self.category2d != cat] = np.nan
                         swrm = m[swrIdx, :]
@@ -691,6 +692,7 @@ class TrialMeasure():
                     numShuffles: int = 100):
 
         figName = self.name.replace(" ", "_")
+        statsId = self.name + "_"
         if subFolder:
             plotManager.pushOutputSubDir("TrM_" + figName)
 
@@ -721,7 +723,7 @@ class TrialMeasure():
 
         if "measure" in plotFlags:
             plotFlags.remove("measure")
-            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName) as pc:
                 violinPlot(pc.ax, self.trialDf["val"], categories2=self.trialDf["trialType"],
                            categories=self.trialDf["condition"], dotColors=self.trialDf["dotColor"],
                            axesNames=["Condition", self.name, "Trial type"])
@@ -729,12 +731,12 @@ class TrialMeasure():
 
                 if runStats:
                     pc.yvals[figName] = self.trialDf["val"].to_numpy()
-                    pc.categories["trial"] = self.trialDf["trialType"].to_numpy()
+                    pc.categories["trialType"] = self.trialDf["trialType"].to_numpy()
                     pc.categories["condition"] = self.trialDf["condition"].to_numpy()
 
         if "diff" in plotFlags:
             plotFlags.remove("diff")
-            with plotManager.newFig(figName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName + "_diff", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_diff") as pc:
                 violinPlot(pc.ax, self.withinSessionDiffs["withinSessionDiff"],
                            categories=self.withinSessionDiffs["condition"],
                            dotColors=self.withinSessionDiffs["dotColor"],
@@ -758,7 +760,7 @@ class TrialMeasure():
                 pc.ax.set_xlim(1, len(xvalsAll))
                 pc.ax.set_xticks(np.arange(0, len(xvalsAll), 2) + 1)
 
-            with plotManager.newFig(figName + "_byTrialAvgs_all_byCond", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_all_byCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_byTrialAvgs_all_byCond") as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[swrIdx, :], xvalsAll, avgColor="orange", label="SWR",
                     spread="sem", skipIndividuals=True)
@@ -779,7 +781,7 @@ class TrialMeasure():
                         [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
                     pc.immediateShufflePvalThreshold = 0.15
 
-            with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName + "_byTrialAvgs_all_byTrialType", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_byTrialAvgs_all_byTrialType") as pc:
                 plotIndividualAndAverage(
                     pc.ax, self.measure2d[:, ::2], xvalsHalf, avgColor="red", label="home",
                     spread="sem", skipIndividuals=True)
@@ -1515,6 +1517,7 @@ class SessionMeasure:
         :param excludeFromCombo: whether to exclude this measure from the combo figure
         """
         figName = self.name.replace(" ", "_")
+        statsId = self.name + "_"
         if subFolder:
             plotManager.pushOutputSubDir("SM_" + figName)
 
@@ -1537,7 +1540,7 @@ class SessionMeasure:
 
         if "violin" in plotFlags:
             plotFlags.remove("violin")
-            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName) as pc:
                 violinPlot(pc.ax, self.sessionVals, categories=self.conditionBySession,
                            dotColors=self.dotColors, axesNames=["Condition", self.name])
 
@@ -1601,7 +1604,7 @@ class SessionMeasure:
         if "bySessionIdx" in plotFlags:
             plotFlags.remove("bySessionIdx")
 
-            with plotManager.newFig(figName + "_overTime", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName + "_overTime", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_overTime") as pc:
                 xvals = np.arange(len(self.sessionList))
                 pc.ax.scatter(range(len(self.sessionList)), self.sessionVals, color="black")
                 pc.ax.set_ylabel(self.name)
@@ -1615,7 +1618,7 @@ class SessionMeasure:
         if "bySessionIdxByCond" in plotFlags:
             plotFlags.remove("bySessionIdxByCond")
 
-            with plotManager.newFig(figName + "_overTime_byCond", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(figName + "_overTime_byCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_overTime_byCond") as pc:
                 xvals = np.arange(len(self.sessionList))
                 pc.ax.scatter(range(len(self.sessionList)), self.sessionVals, color=self.dotColors)
                 pc.ax.set_ylabel(self.name)
@@ -1644,6 +1647,7 @@ class SessionMeasure:
                                subFolder: bool = True,
                                excludeFromCombo=False):
         figName = self.name.replace(" ", "_") + "_X_" + sm.name.replace(" ", "_")
+        statsId = self.name + "_"
         figPrefix = "" if subFolder else figName + "_"
         dataName = self.name.replace(" ", "_")
 
@@ -1672,7 +1676,7 @@ class SessionMeasure:
 
         if "measure" in plotFlags:
             plotFlags.remove("measure")
-            with plotManager.newFig(f"{figPrefix}measure", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(f"{figPrefix}measure", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}measure") as pc:
                 pc.ax.scatter(smVals, selfVals)
                 pc.ax.set_xlabel(sm.name)
                 pc.ax.set_ylabel(self.name)
@@ -1686,7 +1690,7 @@ class SessionMeasure:
             plotFlags.remove("measureByCondition")
             swrIdx = sm.conditionBySession == "SWR"
             ctrlIdx = sm.conditionBySession == "Ctrl"
-            with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}measureByCondition") as pc:
                 pc.ax.scatter(
                     smVals[swrIdx], selfVals[swrIdx], label="SWR", color="orange")
                 pc.ax.scatter(
@@ -2087,6 +2091,7 @@ class LocationMeasure():
             return
 
         figName = self.name.replace(" ", "_")
+        statsId = self.name + "_"
         # figPrefix = "" if subFolder else figName + "_"
         figPrefix = "" if (subFolder and False) else figName + "_"
         if subFolder:
@@ -2120,7 +2125,7 @@ class LocationMeasure():
             if verbose:
                 print(f"Plotting {self.name} by condition")
 
-            with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}measureByCondition") as pc:
                 violinPlot(pc.ax, self.sessionValsBySession, self.conditionBySession,
                            dotColors=self.dotColorsBySession, axesNames=["Condition", self.name])
                 #    categoryOrder=["SWR", "Ctrl"])
@@ -2144,7 +2149,7 @@ class LocationMeasure():
                 valCtrlCats = np.concatenate((np.full_like(self.sessionValsBySession, self.controlValLabels[ctrlName][0], dtype=object),
                                               np.full_like(self.dotColorsByCtrlVal[ctrlName], self.controlValLabels[ctrlName][1], dtype=object)))
 
-                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}ctrl_" + ctrlName) as pc:
                     violinPlot(pc.ax, vals, categories=valCtrlCats,
                                dotColors=dotColors, axesNames=[
                                    self.controlValLabels[ctrlName][2], self.name],
@@ -2173,7 +2178,7 @@ class LocationMeasure():
                 valCtrlCats = np.concatenate((np.full_like(self.sessionValsBySession, self.controlValLabels[ctrlName][0], dtype=object),
                                               np.full_like(self.conditionByCtrlVal[ctrlName], self.controlValLabels[ctrlName][1], dtype=object)))
 
-                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_cond", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_cond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}ctrl_" + ctrlName + "_cond") as pc:
                     violinPlot(pc.ax, vals, conditionCats, categories2=valCtrlCats,
                                dotColors=dotColors, axesNames=[
                                    "Condition", self.name, self.controlValLabels[ctrlName][2]])
@@ -2200,7 +2205,7 @@ class LocationMeasure():
                 conditionCats = self.conditionByCtrlVal[ctrlName]
                 dotColors = self.dotColorsByCtrlVal[ctrlName]
 
-                with plotManager.newFig(f"{figPrefix}ctrl_{ctrlName}_solo_cond", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_{ctrlName}_solo_cond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}ctrl_{ctrlName}_solo_cond") as pc:
                     violinPlot(pc.ax, vals, conditionCats, dotColors=dotColors,
                                axesNames=["Condition", self.name])
                     pc.ax.set_title(self.name + " at " + ctrlName +
@@ -2221,7 +2226,7 @@ class LocationMeasure():
                 vals = self.sessionValsBySession - self.controlValMeans[ctrlName]
                 if all(np.isnan(vals)):
                     continue
-                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}ctrl_" + ctrlName + "_diff") as pc:
                     violinPlot(pc.ax, vals, self.conditionBySession,
                                dotColors=self.dotColorsBySession, axesNames=[
                                    "Condition", self.name])
@@ -2571,6 +2576,7 @@ class LocationMeasure():
             return
 
         figName = self.name.replace(" ", "_") + "_X_" + sm.name.replace(" ", "_")
+        statsId = self.name + "_"
         figPrefix = "" if (subFolder and False) else figName + "_"
         dataName = self.name.replace(" ", "_")
 
@@ -2599,7 +2605,7 @@ class LocationMeasure():
 
         if "measure" in plotFlags:
             plotFlags.remove("measure")
-            with plotManager.newFig(f"{figPrefix}measure", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(f"{figPrefix}measure", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}measure") as pc:
                 pc.ax.scatter(smVals, self.sessionValsBySession)
                 pc.ax.set_xlabel(sm.name)
                 pc.ax.set_ylabel(self.name)
@@ -2614,7 +2620,7 @@ class LocationMeasure():
             plotFlags.remove("measureByCondition")
             swrIdx = sm.conditionBySession == "SWR"
             ctrlIdx = sm.conditionBySession == "Ctrl"
-            with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo) as pc:
+            with plotManager.newFig(f"{figPrefix}measureByCondition", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}measureByCondition") as pc:
                 pc.ax.scatter(
                     smVals[swrIdx], self.sessionValsBySession[swrIdx], label="SWR", color="orange")
                 pc.ax.scatter(
@@ -2645,7 +2651,7 @@ class LocationMeasure():
                 valIdx = valCtrlCats == self.controlValLabels[ctrlName][0]
                 ctrlIdx = valCtrlCats == self.controlValLabels[ctrlName][1]
 
-                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName, excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}ctrl_" + ctrlName) as pc:
                     pc.ax.scatter(xvals[valIdx], vals[valIdx],
                                   label=self.controlValLabels[ctrlName][0], color="red", zorder=2)
                     pc.ax.scatter(xvals[ctrlIdx], vals[ctrlIdx],
@@ -2683,7 +2689,7 @@ class LocationMeasure():
                 ctrlValIdx = ~swrIdx & valIdx
                 ctrlCtrlIdx = ~swrIdx & ~valIdx
 
-                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_byCond", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_byCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}ctrl_" + ctrlName + "_byCond") as pc:
                     pc.ax.scatter(xvals[swrValIdx], vals[swrValIdx],
                                   label=self.controlValLabels[ctrlName][0] + " SWR", color="orange", marker="o", zorder=2)
                     pc.ax.scatter(xvals[ctrlValIdx], vals[ctrlValIdx],
@@ -2709,7 +2715,7 @@ class LocationMeasure():
             plotFlags.remove("diff")
             for ctrlName in self.controlValLabels:
                 vals = self.sessionValsBySession - self.controlValMeans[ctrlName]
-                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_diff", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}ctrl_" + ctrlName + "_diff") as pc:
                     if all(np.isnan(vals)):
                         continue
                     pc.ax.scatter(smVals, vals, color="black")
@@ -2730,7 +2736,7 @@ class LocationMeasure():
                 swrIdx = sm.conditionBySession == "SWR"
                 ctrlIdx = sm.conditionBySession == "Ctrl"
 
-                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_diff_byCond", excludeFromCombo=excludeFromCombo) as pc:
+                with plotManager.newFig(f"{figPrefix}ctrl_" + ctrlName + "_diff_byCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + f"{figPrefix}ctrl_" + ctrlName + "_diff_byCond") as pc:
                     if all(np.isnan(vals)):
                         continue
                     pc.ax.scatter(smVals[swrIdx], vals[swrIdx], color="orange")
@@ -2768,6 +2774,7 @@ class LocationMeasure():
             return
 
         figName = self.name.replace(" ", "_") + "_X_" + lm.name.replace(" ", "_")
+        statsId = self.name + "_"
         figPrefix = "" if subFolder else figName + "_"
         dataName = self.name.replace(" ", "_")
         otherDataName = lm.name.replace(" ", "_")
@@ -2787,7 +2794,7 @@ class LocationMeasure():
                 otherMeasureVals[si, pi] = LocationMeasure.measureAtLocation(
                     lm.measureValsBySession[si], pxlPairs, smoothDist=lm.smoothDist)
 
-        with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo) as pc:
+        with plotManager.newFig(figName, excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName) as pc:
             pc.ax.scatter(thisMeasureVals.flatten(),
                           otherMeasureVals.flatten(), color="black", s=0.1)
             pc.ax.set_xlabel(self.name)
@@ -2799,7 +2806,7 @@ class LocationMeasure():
                 pc.xvals[dataName] = thisMeasureVals.flatten()
                 pc.immediateCorrelations.append((dataName, otherDataName))
 
-        with plotManager.newFig(figName + "_byCond", excludeFromCombo=excludeFromCombo) as pc:
+        with plotManager.newFig(figName + "_byCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_byCond") as pc:
             swrIdx = self.conditionBySession == "SWR"
             ctrlIdx = self.conditionBySession == "Ctrl"
             pc.ax.scatter(thisMeasureVals[swrIdx, :].flatten(),
@@ -2833,6 +2840,7 @@ class LocationMeasure():
             return
 
         figName = self.name.replace(" ", "_")
+        statsId = self.name + "_"
         figPrefix = "" if subFolder else figName + "_"
         dataName = self.name.replace(" ", "_")
 
@@ -2861,7 +2869,7 @@ class LocationMeasure():
         dualCatsPrev = np.array(dualCatsPrev)
         dualCatsCombo = np.array(dualCatsCombo)
 
-        with plotManager.newFig(figName + "_byDualCond", excludeFromCombo=excludeFromCombo) as pc:
+        with plotManager.newFig(figName + "_byDualCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_byDualCond") as pc:
             violinPlot(pc.ax, dualSessionVals, categories=dualCatsSame, categories2=dualCatsPrev,
                        dotColors=["orange" if c == "SWR" else "cyan" for c in dualCatsPrev],
                        dotColorLabels={"orange": "SWR", "cyan": "Ctrl"})
@@ -2876,7 +2884,7 @@ class LocationMeasure():
                     [ShuffSpec(shuffType=ShuffSpec.ShuffType.RECURSIVE_ALL, categoryName="prevCondition", value=None),
                         ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
-        with plotManager.newFig(figName + "_byThisCond", excludeFromCombo=excludeFromCombo) as pc:
+        with plotManager.newFig(figName + "_byThisCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_byThisCond") as pc:
             violinPlot(pc.ax, dualSessionVals, categories=dualCatsSame,
                        dotColors=["orange" if c == "SWR" else "cyan" for c in dualCatsSame],
                        dotColorLabels={"orange": "SWR", "cyan": "Ctrl"})
@@ -2889,7 +2897,7 @@ class LocationMeasure():
                 pc.immediateShuffles.append((
                     [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="condition", value="SWR")], numShuffles))
 
-        with plotManager.newFig(figName + "_byPrevCond", excludeFromCombo=excludeFromCombo) as pc:
+        with plotManager.newFig(figName + "_byPrevCond", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_byPrevCond") as pc:
             violinPlot(pc.ax, dualSessionVals, categories=dualCatsPrev,
                        dotColors=["orange" if c == "SWR" else "cyan" for c in dualCatsSame],
                        dotColorLabels={"orange": "SWR", "cyan": "Ctrl"})
@@ -2902,7 +2910,7 @@ class LocationMeasure():
                 pc.immediateShuffles.append((
                     [ShuffSpec(shuffType=ShuffSpec.ShuffType.GLOBAL, categoryName="prevCondition", value="SWR")], numShuffles))
 
-        with plotManager.newFig(figName + "_byTimeSincePreviousSession", excludeFromCombo=excludeFromCombo) as pc:
+        with plotManager.newFig(figName + "_byTimeSincePreviousSession", excludeFromCombo=excludeFromCombo, uniqueID=statsId + figName + "_byTimeSincePreviousSession") as pc:
             swrswrIdx = np.logical_and(dualCatsSame == "SWR", dualCatsPrev == "SWR")
             ctrlswrIdx = np.logical_and(dualCatsSame == "SWR", dualCatsPrev == "Ctrl")
             swrctrlIdx = np.logical_and(dualCatsSame == "Ctrl", dualCatsPrev == "SWR")

@@ -212,8 +212,12 @@ class Shuffler:
             pval = r.getPVals().item()
             shufDiffs = r.shuffleDiffs
             dataDiff = r.diff
-            ax = axs[1, ri]
-            txtAx = axs[0, ri]
+            if len(flatRes) == 1:
+                shufAx = axs[1]
+                txtAx = axs[0]
+            else:
+                shufAx = axs[1, ri]
+                txtAx = axs[0, ri]
 
             if not np.isnan(shufDiffs).all() and not np.isnan(dataDiff).all():
                 # axis should have text at the top with the following on each row:
@@ -228,7 +232,11 @@ class Shuffler:
                         topText += f"Main: {s.categoryName}\n"
                         shuffledCategories = df[s.categoryName].unique()
                         cat1 = s.value
-                        cat2 = shuffledCategories[shuffledCategories != cat1].item()
+                        otherCats = shuffledCategories[shuffledCategories != cat1]
+                        if len(otherCats) == 1:
+                            cat2 = otherCats.item()
+                        else:
+                            cat2 = "other"
                     elif s.shuffType == ShuffSpec.ShuffType.ACROSS:
                         topText += f"Across: {s.categoryName}\n"
                     elif s.shuffType == ShuffSpec.ShuffType.WITHIN:
@@ -250,12 +258,12 @@ class Shuffler:
                 txtAx.text(0.5, 0.5, topText, horizontalalignment="center",
                            verticalalignment="center", transform=txtAx.transAxes)
 
-                # insetAx = ax.inset_axes([0.4, 0.15, 0.2, 0.1])
-                ax.hist(shufDiffs, bins=20, color="black")
-                ax.axvline(dataDiff, color="red")
-                ax.set_xlabel(f"{cat1} - {cat2}")
+                # insetAx = shufAx.inset_axes([0.4, 0.15, 0.2, 0.1])
+                shufAx.hist(shufDiffs, bins=20, color="black")
+                shufAx.axvline(dataDiff, color="red")
+                shufAx.set_xlabel(f"{cat1} - {cat2}")
                 # turn off y axis
-                ax.get_yaxis().set_visible(False)
+                shufAx.get_yaxis().set_visible(False)
 
         statFig.savefig(fname + ".png", bbox_inches="tight",
                                 dpi=100, transparent=False)
@@ -318,6 +326,7 @@ class Shuffler:
 
         shuffResults: List[Tuple[str, List[List[ShuffleResult]], str]] = []
         for plotName in tqdm(filesForEachPlot, desc="Running shuffles", total=len(filesForEachPlot)):
+            print("Running shuffles for {}".format(plotName))
             # for plotName in filesForEachPlot:
             # Get the immediate shuffles. Should be the same for all files
             fname = filesForEachPlot[plotName][0]
