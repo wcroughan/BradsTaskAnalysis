@@ -2093,7 +2093,7 @@ class LocationMeasure():
         figName = self.name.replace(" ", "_")
         statsId = self.name + "_"
         # figPrefix = "" if subFolder else figName + "_"
-        figPrefix = "" if (subFolder and False) else figName + "_"
+        figPrefix = "" if subFolder else figName + "_"
         if subFolder:
             plotManager.pushOutputSubDir("LM_" + figName)
 

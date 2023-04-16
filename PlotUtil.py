@@ -101,7 +101,7 @@ class PlotManager:
         # I know it's a bad way to organize it but I can't have folders that are too big apparently so here we go...
         self.setOutputDir(outputDir)
         self.createdPlots = set()
-        self.savedFigsByName: Dict[str, List[str]] = {}
+        self.savedFigsByName: Dict[str, List[tuple[str, str]]] = {}
 
         self.persistentCategories: Dict[str, Any] = {}
         self.persistentInfoValues: Dict[str, Any] = {}
@@ -487,14 +487,19 @@ class PlotManager:
         self.createdPlots.add(fname)
 
         figFileName = os.path.basename(fname)
+        if self.plotContext.uniqueID is not None:
+            uniqueId = self.plotContext.uniqueID
+        else:
+            uniqueId = figFileName
+
         self.globalLock.acquire()
-        if figFileName not in self.savedFigsByName:
-            self.savedFigsByName[figFileName] = [self.outputSubDir]
+        if uniqueId not in self.savedFigsByName:
+            self.savedFigsByName[uniqueId] = [(self.outputSubDir, figFileName)]
             self.globalLock.release()
         else:
-            thisFigList = self.savedFigsByName[figFileName]
+            thisFigList = self.savedFigsByName[uniqueId]
             self.globalLock.release()
-            thisFigList.append(self.outputSubDir)
+            thisFigList.append((self.outputSubDir, figFileName))
 
         if additionalFig is not None:
             # ran multiple immediate shuffles, save that fig too
@@ -567,16 +572,17 @@ class PlotManager:
         if suggestedSubPlotLayout is not None:
             assert len(suggestedSubPlotLayout) == 2
 
-        for figFileName in self.savedFigsByName:
-            figSubDirs = self.savedFigsByName[figFileName]
-            if len(figSubDirs) <= 1:
+        for uniqueID in self.savedFigsByName:
+            figInfos = self.savedFigsByName[uniqueID]
+
+            if len(figInfos) <= 1:
                 continue
 
             if suggestedSubPlotLayout is not None and \
-                    len(figSubDirs) == suggestedSubPlotLayout[0] * suggestedSubPlotLayout[1]:
+                    len(figInfos) == suggestedSubPlotLayout[0] * suggestedSubPlotLayout[1]:
                 subPlotLayout = suggestedSubPlotLayout
             else:
-                subPlotLayout = (1, len(figSubDirs))
+                subPlotLayout = (1, len(figInfos))
 
             self.clearFig()
             self.axs[0].remove()
@@ -584,7 +590,7 @@ class PlotManager:
             self.fig.set_figheight(self.figSizeY * subPlotLayout[0])
             self.fig.set_figwidth(self.figSizeX * subPlotLayout[1])
 
-            for sdi, sd in enumerate(figSubDirs):
+            for sdi, (sd, figFileName) in enumerate(figInfos):
                 imgFileName = os.path.join(self.outputDir, sd, figFileName)
                 sdsplit = sd.split(os.path.sep)
                 # print("imgFileName: {}".format(imgFileName))
@@ -607,14 +613,14 @@ class PlotManager:
             outDir = os.path.join(self.outputDir, outputSubDir, sdsplit[-1])
             if not os.path.exists(outDir):
                 os.makedirs(outDir)
-            fname = os.path.join(self.outputDir, outputSubDir, sdsplit[-1], figFileName)
+            fname = os.path.join(self.outputDir, outputSubDir, sdsplit[-1], figInfos[0][1])
             plt.savefig(fname, bbox_inches="tight", dpi=200)
 
             self.writeToInfoFile("wrote file {}".format(fname))
             if self.verbosity >= 3:
                 print("wrote file {}".format(fname))
 
-            firstPickleFName = os.path.join(self.outputDir, figSubDirs[0], figFileName + ".pkl")
+            firstPickleFName = os.path.join(self.outputDir, figInfos[0][0], figInfos[0][1] + ".pkl")
             # print("firstPickleFName: {}".format(firstPickleFName))
             if not os.path.exists(firstPickleFName):
                 continue
@@ -631,7 +637,7 @@ class PlotManager:
             xmax = -np.inf
 
             loaded_axs = []
-            for sdi, sd in enumerate(figSubDirs):
+            for sdi, (sd, figFileName) in enumerate(figInfos):
                 sdsplit = sd.split(os.path.sep)
                 pickleFName = os.path.join(self.outputDir, sd, figFileName + ".pkl")
                 with open(pickleFName, "rb") as fid:
@@ -688,7 +694,7 @@ class PlotManager:
             if not os.path.exists(outDir):
                 os.makedirs(outDir)
             fname = os.path.join(self.outputDir, outputSubDir,
-                                 sdsplit[-1], figFileName + "_aligned.png")
+                                 sdsplit[-1], figInfos[0][1] + "_aligned.png")
             plt.savefig(fname, bbox_inches="tight", dpi=200)
 
             self.writeToInfoFile("wrote file {}".format(fname))

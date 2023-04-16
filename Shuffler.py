@@ -267,6 +267,7 @@ class Shuffler:
 
         statFig.savefig(fname + ".png", bbox_inches="tight",
                                 dpi=100, transparent=False)
+        plt.close(statFig)
 
     def runImmediateShufflesAcrossPersistentCategories(self, infoFileNames: Optional[List[str]], numShuffles=100,
                                                        significantThreshold: Optional[float] = 0.05,

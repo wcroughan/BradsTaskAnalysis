@@ -15,25 +15,20 @@ def main():
     print("loading from " + dataFilename)
     ratData = BTData()
     ratData.loadFromFile(dataFilename)
-    sessions = ratData.getSessions()
+    sessions = ratData.getSessions()[:6]
 
     pm = PlotManager.getGlobalPlotManager(
         outputDir=os.path.join(os.curdir, "examplePlots"), randomSeed=0)
 
-    # :param measureFunc: a function that takes a session, a start posIdx, an end posIdx, a bool indicating whether posIdxs are in probe,
-    #     and a value of type T and returns a float
-    m1 = TimeMeasure("time", lambda sesh, start, end, inProbe, val: end - start, sessions)
-    m1.makeFigures(pm)
-
-    # measureFunc(session, trialStart_posIdx, trialEnd_posIdx, trial type ("home" | "away")) -> measure value
-    m2 = TrialMeasure("trial", lambda sesh, start, end, type: end - start, sessions)
-    m2.makeFigures(pm)
-
-    m3 = SessionMeasure("session", lambda sesh: sesh.btPos_secs[-1], sessions)
-    m3.makeFigures(pm)
-
     m4 = LocationMeasure("location", lambda sesh: sesh.getTestMap(), sessions, smoothDist=0.5)
     m4.makeFigures(pm)
+
+    m4 = LocationMeasure("location2", lambda sesh: sesh.getTestMap() -
+                         1000, sessions, smoothDist=0.5)
+    m4.makeFigures(pm)
+
+    pm.makeCombinedFigs()
+    pm.runImmediateShufflesAcrossPersistentCategories()
 
 
 if __name__ == "__main__":
