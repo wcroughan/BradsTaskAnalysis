@@ -5,16 +5,19 @@ import os
 import warnings
 import pandas as pd
 from matplotlib.axes import Axes
+import sys
+import numpy as np
 
-from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo
+from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo, plotFlagCheck
 from PlotUtil import PlotManager
 from BTData import BTData
 from BTSession import BTSession
-from MeasureTypes import LocationMeasure
+from MeasureTypes import LocationMeasure, TrialMeasure, SessionMeasure
 from BTSession import BehaviorPeriod as BP
 
 
-def main(plotFlags: List[str] | str = "tests", testData=False):
+def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True,
+         runImmediate=True, numShuffles=100):
     if isinstance(plotFlags, str):
         plotFlags = [plotFlags]
 
@@ -26,23 +29,17 @@ def main(plotFlags: List[str] | str = "tests", testData=False):
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
 
-    animalNames = parseCmdLineAnimalNames(default=["B17"])
+    animalNames = parseCmdLineAnimalNames(default=["all"])
 
     infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
-    pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
+    pm = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
                      infoFileName=infoFileName, verbosity=3)
 
     allSessionsByRat = {}
     for animalName in animalNames:
-        loadDebug = False
-        if animalName[-1] == "d":
-            loadDebug = True
-            animalName = animalName[:-1]
         animalInfo = getLoadInfo(animalName)
         # dataFilename = os.path.join(dataDir, animalName, "processed_data", animalInfo.out_filename)
         dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
-        if loadDebug:
-            dataFilename += ".debug.dat"
         print("loading from " + dataFilename)
         ratData = BTData()
         ratData.loadFromFile(dataFilename)
@@ -52,8 +49,6 @@ def main(plotFlags: List[str] | str = "tests", testData=False):
     for ratName in animalNames:
         plotFlags = savedPlotFlags.copy()
         print("======================\n", ratName)
-        if ratName[-1] == "d":
-            ratName = ratName[:-1]
         sessions: List[BTSession] = allSessionsByRat[ratName]
         if testData:
             sessions = sessions[:6]
@@ -85,7 +80,7 @@ def main(plotFlags: List[str] | str = "tests", testData=False):
             "name", "condition", "home well", "num aways found", "fill time"
         ])
         s = df.to_string()
-        pp.writeToInfoFile(s)
+        pm.writeToInfoFile(s)
         print(s)
 
         # if hasattr(sessions[0], "probeFillTime"):
@@ -93,22 +88,17 @@ def main(plotFlags: List[str] | str = "tests", testData=False):
         # else:
         #     sessionsWithProbeFillPast90 = sessionsWithProbe
 
-        pp.pushOutputSubDir(ratName)
+        pm.pushOutputSubDir(ratName)
         if len(animalNames) > 1:
-            pp.setStatCategory("rat", ratName)
+            pm.setStatCategory("rat", ratName)
 
-        if "tests" in plotFlags:
-            plotFlags.remove("tests")
-
+        if plotFlagCheck(plotFlags, "tests"):
             with warnings.catch_warnings():
                 warnings.filterwarnings("error")
 
-        if "taskPerformance" in plotFlags:
-            plotFlags.remove("taskPerformance")
-
-            pp.pushOutputSubDir("taskPerformance")
-
-            with pp.newFig("numWellsFound", transparent=True) as pc:
+        if plotFlagCheck(plotFlags, "taskPerformance"):
+            # TODO combine these into one plot
+            with pm.newFig("numWellsFound", transparent=True) as pc:
                 x = range(len(sessions))
                 ax = pc.ax
                 assert isinstance(ax, Axes)
@@ -116,7 +106,7 @@ def main(plotFlags: List[str] | str = "tests", testData=False):
                 ax.set_xlabel("session")
                 ax.set_ylabel("num wells found")
 
-            with pp.newFig("taskDuration", transparent=True) as pc:
+            with pm.newFig("taskDuration", transparent=True) as pc:
                 x = range(len(sessions))
                 ax = pc.ax
                 assert isinstance(ax, Axes)
@@ -126,34 +116,62 @@ def main(plotFlags: List[str] | str = "tests", testData=False):
                 ax.tick_params(axis="y", which="both", labelcolor="tab:blue",
                                labelleft=False, labelright=True)
 
-            pp.popOutputSubDir()
+        if plotFlagCheck(plotFlags, "trialLatency"):
+            # measureFunc(session, trialStart_posIdx, trialEnd_posIdx, trial type ("home" | "away")) -> measure value
+            tm = TrialMeasure("Latency (s)", lambda sesh, start, end,
+                              ttype: sesh.btPos_secs[end] - sesh.btPos_secs[start], sessions)
+            tm.makeFigures(pm, plotFlags="averages", runStats=False)
+            tm = TrialMeasure("Path length (ft)", lambda sesh, start, end,
+                              ttype: sesh.btPos_secs[end] - sesh.btPos_secs[start], sessions)
+            tm.makeFigures(pm, plotFlags="averages", runStats=False)
+            tm = TrialMeasure("Normalized path length", lambda sesh, start, end,
+                              ttype: sesh.normalizedPathLength(False, start, end), sessions)
+            tm.makeFigures(pm, plotFlags="averages", runStats=False)
 
-        if "stimLocations" in plotFlags:
-            plotFlags.remove("stimLocations")
+        if plotFlagCheck(plotFlags, "morrisPaper"):
+            sm = SessionMeasure("Latency to home 2-4 (sec)",
+                                lambda sesh: np.sum([sesh.btPos_secs[i2] - sesh.btPos_secs[i1] for i1, i2 in zip(
+                                    sesh.getAllTrialPosIdxs()[2:7:2, 0], sesh.getAllTrialPosIdxs()[2:7:2, 1])]),
+                                sessions)
+            sm.makeFigures(pm, plotFlags="violin", numShuffles=numShuffles)
+            sm = SessionMeasure("Path length to home 2-4 (ft)",
+                                lambda sesh: np.sum([sesh.pathLength(False, i1, i2) for i1, i2 in zip(
+                                    sesh.getAllTrialPosIdxs()[2:7:2, 0], sesh.getAllTrialPosIdxs()[2:7:2, 1])]),
+                                sessions)
+            sm.makeFigures(pm, plotFlags="violin", numShuffles=numShuffles)
+            sm = SessionMeasure("normalized Path length to home 2-4",
+                                lambda sesh: np.sum([sesh.normalizedPathLength(False, i1, i2) for i1, i2 in zip(
+                                    sesh.getAllTrialPosIdxs()[2:7:2, 0], sesh.getAllTrialPosIdxs()[2:7:2, 1])]),
+                                sessions)
+            sm.makeFigures(pm, plotFlags="violin", numShuffles=numShuffles)
 
-            pp.pushOutputSubDir("stimLocations")
-
-            radius = 7/18  # roughly a pixel
-            LocationMeasure("stim count",
-                            lambda sesh: sesh.getValueMap(
-                                lambda pos: sesh.numStimsAtLocation(pos, radius=radius),
-                            ), sessions, smoothDist=0).makeFigures(pp, excludeFromCombo=True)
-
-            LocationMeasure("stim rate",
-                            lambda sesh: sesh.getValueMap(
-                                lambda pos: sesh.numStimsAtLocation(
-                                    pos, radius=radius) / sesh.totalTimeAtPosition(BP(probe=False), pos, radius=radius),
-                            ), sessions, smoothDist=0).makeFigures(pp, excludeFromCombo=True)
-
-            pp.popOutputSubDir()
+        # home vs away provbe behavior
+        # at home, condition diff
+        # pseudoprobe stuff
+        # Cumulative num stims, num ripples
+        # Cumulative wells visited during probe
 
         if len(plotFlags) != 0:
             print("Warning, unused plot flags:", plotFlags)
 
+        pm.popOutputSubDir()
+
+    if len(animalNames) > 1:
+        if makeCombined:
+            outputSubDir = f"combo_{'_'.join(animalNames)}"
+            if testData or len(animalNames) != 6:
+                pm.makeCombinedFigs(outputSubDir=outputSubDir)
+            else:
+                pm.makeCombinedFigs(
+                    outputSubDir=outputSubDir, suggestedSubPlotLayout=(2, 3))
+        if runImmediate:
+            pm.runImmediateShufflesAcrossPersistentCategories(
+                significantThreshold=1, numShuffles=numShuffles)
+
 
 if __name__ == "__main__":
-    plotFlags = [
-        # "stimLocations",
-        "taskPerformance"
-    ]
-    main(plotFlags)
+    if len(sys.argv) > 1:
+        flags = sys.argv[1:]
+    else:
+        flags = ["all"]
+    main(flags)

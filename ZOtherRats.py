@@ -987,6 +987,28 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                 sessions)
             sm.makeFigures(pp, plotFlags="violin", numShuffles=numShuffles)
 
+        if plotFlagCheck(plotFlags, "thesisBigShufflesDiff"):
+            # Here run exactly just  the plots across all rats that are shown in the slides, and use 5000 shuffles
+            numShuffles = 5000
+            lm = LocationMeasure(f"BS probe number of visits",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.numVisitsToPosition(
+                                         BP(probe=True), pos, 0.5),
+                                 ), sessionsWithProbe, smoothDist=0.0)
+            lm.makeFigures(pp, plotFlags="diff", numShuffles=numShuffles)
+            lm = LocationMeasure(f"BS probe total time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.totalTimeAtPosition(
+                                         BP(probe=True), pos, 0.5),
+                                 ), sessionsWithProbe, smoothDist=0.0)
+            lm.makeFigures(pp, plotFlags="diff", numShuffles=numShuffles)
+            lm = LocationMeasure(f"BS probe avg dwell time (sec)",
+                                 lambda sesh: sesh.getValueMap(
+                                     lambda pos: sesh.avgDwellTimeAtPosition(
+                                         BP(probe=True), pos, 0.5),
+                                 ), sessionsWithProbe, smoothDist=0.0)
+            lm.makeFigures(pp, plotFlags="diff", numShuffles=numShuffles)
+
         if plotFlagCheck(plotFlags, "thesisBigShuffles"):
             # Here run exactly just  the plots across all rats that are shown in the slides, and use 5000 shuffles
             numShuffles = 5000
