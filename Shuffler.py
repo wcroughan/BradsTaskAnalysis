@@ -229,7 +229,7 @@ class Shuffler:
                 topText = ""
                 for s in r.specs:
                     if s.shuffType == ShuffSpec.ShuffType.GLOBAL:
-                        topText += f"Main: {s.categoryName}\n"
+                        topText += f"Main: {s.value} ({s.categoryName})\n"
                         shuffledCategories = df[s.categoryName].unique()
                         cat1 = s.value
                         otherCats = shuffledCategories[shuffledCategories != cat1]
@@ -327,7 +327,7 @@ class Shuffler:
 
         shuffResults: List[Tuple[str, List[List[ShuffleResult]], str]] = []
         for plotName in tqdm(filesForEachPlot, desc="Running shuffles", total=len(filesForEachPlot)):
-            print("Running shuffles for {}".format(plotName))
+            # print("Running shuffles for {}".format(plotName))
             # for plotName in filesForEachPlot:
             # Get the immediate shuffles. Should be the same for all files
             fname = filesForEachPlot[plotName][0]
@@ -494,7 +494,7 @@ class Shuffler:
                        outputFileName: Optional[str] = None,
                        justGlobal=False,
                        skipCorrelations=False,
-                       skipShuffles=False) -> str:
+                       skipShuffles=False, makePlots=True) -> str:
         self.numShuffles = numShuffles
 
         if infoFileNames is None and savedStatsFiles is None:
@@ -509,6 +509,12 @@ class Shuffler:
             if plotName not in filesForEachPlot:
                 filesForEachPlot[plotName] = []
             filesForEachPlot[plotName].append(statsFile)
+
+        if makePlots:
+            plotOutFileNameBase = os.path.join(os.path.dirname(
+                infoFileNames[0]), "shuffleImages")
+            if not os.path.exists(plotOutFileNameBase):
+                os.makedirs(plotOutFileNameBase)
 
         shuffResults: List[Tuple[str, List[List[ShuffleResult]], str]] = []
         correlationResults: List[Tuple[str, List[Tuple[Iterable[str], float, float]], str]] = []
@@ -549,6 +555,18 @@ class Shuffler:
                 # print("\n".join([str(s) for s in specs]))
                 sr = self._doShuffles(df, specs, yvalNames)
                 shuffResults.append((plotName, sr, measureName))
+
+                if makePlots:
+                    if "rat" in catsToShuffle:
+                        # get unique rats
+                        rats = sorted(list(df["rat"].unique()))
+                        outdir = os.path.join(plotOutFileNameBase, "_".join(rats))
+                        if not os.path.exists(outdir):
+                            os.makedirs(outdir)
+                        fname = os.path.join(outdir, plotName)
+                    else:
+                        fname = os.path.join(plotOutFileNameBase, plotName)
+                    self.makePlotsForShuffleResults(sr, df, fname)
 
             if not skipCorrelations:
                 # Look for xval correlations

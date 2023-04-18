@@ -9,7 +9,7 @@ import sys
 
 from BTData import BTData
 from PlotUtil import PlotManager, plotIndividualAndAverage
-from UtilFunctions import getLoadInfo, findDataDir, getWellPosCoordinates, plotFlagCheck
+from UtilFunctions import getLoadInfo, findDataDir, getWellPosCoordinates, flagCheck
 from MeasureTypes import LocationMeasure, SessionMeasure, TrialMeasure
 from BTSession import BTSession
 from BTSession import BehaviorPeriod as BP
@@ -139,7 +139,7 @@ def makeFigures(plotFlags="all"):
     pp = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
                      infoFileName=infoFileName, verbosity=3)
 
-    if plotFlagCheck(plotFlags, "4basicNextLast", excludeFromAll=True):
+    if flagCheck(plotFlags, "4basicNextLast", excludeFromAll=True):
         # early and late task away trials. All 4 basic measures. Next/last session difference.
         #   total: r1s.5
         earlyAwayBP = BP(probe=False, trialInterval=(2, 7), inclusionFlags="awayTrial")
@@ -197,7 +197,7 @@ def makeFigures(plotFlags="all"):
                              sessions, smoothDist=0.5)
         lm.makeFigures(pp, everySessionBehaviorPeriod=lateAwayBP, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "lateTaskHomeAvgDwell", excludeFromAll=True):
+    if flagCheck(plotFlags, "lateTaskHomeAvgDwell", excludeFromAll=True):
         # Late task, avg dwell time at home
         #   r1s.5
         lateBP = BP(probe=False, trialInterval=(10, 15))
@@ -208,7 +208,7 @@ def makeFigures(plotFlags="all"):
                              sessions, smoothDist=0.5)
         lm.makeFigures(pp, everySessionBehaviorPeriod=lateBP, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "timeInCorner"):
+    if flagCheck(plotFlags, "timeInCorner"):
         # Total time in corner (Session measure)
         #   first plot total dwell time at rsmall, find boundary to use, then make session measure
         lm = LocationMeasure("totalTimeSmallR",
@@ -220,7 +220,7 @@ def makeFigures(plotFlags="all"):
         sm = SessionMeasure("totalTimeInCorner", lambda sesh: totalInCornerTime(
             BP(probe=False), sesh, boundary=0.5), sessions)
 
-    if plotFlagCheck(plotFlags, "totalSymTimeLateHomeTrials"):
+    if flagCheck(plotFlags, "totalSymTimeLateHomeTrials"):
         # Total time across all sym during late home trials
         #   r.5s.5
         radius = 0.5
@@ -231,7 +231,7 @@ def makeFigures(plotFlags="all"):
                              sessions, smoothDist=0.5)
         lm.makeFigures(pp, everySessionBehaviorPeriod=lateBP, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "beforeFirstExcursion"):
+    if flagCheck(plotFlags, "beforeFirstExcursion"):
         # Distance travelled on wall before first excursion. Start time of first excursion
         #   no params to worry about
         sm = SessionMeasure("timeAtFirstExcursion", lambda sesh: sesh.btPos_secs[sesh.btExcursionStart_posIdx[0]],
@@ -242,7 +242,7 @@ def makeFigures(plotFlags="all"):
         smDist.makeFigures(pp, excludeFromCombo=True)
         sm.makeCorrelationFigures(pp, smDist, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "velocityPSTH"):
+    if flagCheck(plotFlags, "velocityPSTH"):
         # Velocity PSTH around stim.
         #   same
         margin = 30
@@ -288,7 +288,7 @@ def makeFigures(plotFlags="all"):
 
             pp.popOutputSubDir()
 
-    if plotFlagCheck(plotFlags, "wellVisitedVsRippleRate"):
+    if flagCheck(plotFlags, "wellVisitedVsRippleRate"):
         # Cumulative num wells visited in task with repeats, colored by ripple rate. And correlate slope of NWV with ripple rate
         #   same
         maxPosIdx = np.max([len(sesh.btPos_ts) for sesh in sessions])
@@ -324,7 +324,7 @@ def makeFigures(plotFlags="all"):
                     (rippleRates[si] - np.min(rippleRates)) / (np.max(rippleRates) - np.min(rippleRates)))
                 pc.ax.plot(cumWellsVisited[si, :], color=color)
 
-    if plotFlagCheck(plotFlags, "excursionWithHomeStats"):
+    if flagCheck(plotFlags, "excursionWithHomeStats"):
         # In excursions where home was checked, how many wells checked, and what is total time of excursion? Effect of condition or correlation with ripple rate
         #   with and without repeats
         smProbeDur = SessionMeasure("probe_excursionsWithHomeAvgDuration",
@@ -347,7 +347,7 @@ def makeFigures(plotFlags="all"):
         smProbeWells.makeCorrelationFigures(pp, smRippleRate, excludeFromCombo=True)
         smTaskWells.makeCorrelationFigures(pp, smRippleRate, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "stimsVsOccupancy"):
+    if flagCheck(plotFlags, "stimsVsOccupancy"):
         # Correlation b/w num stims in a location and occupancy in next sesh early trials or this sesh probes, and curvature next and probe.
         #   r1, consider grid at half-well resolution (0.5)
         radius = 1
@@ -433,7 +433,7 @@ def makeFigures(plotFlags="all"):
         lmStimRatePrevSession.makeLocationCorrelationFigures(
             pp, lmCurvatureProbe, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "rippleLocations", excludeFromAll=True):
+    if flagCheck(plotFlags, "rippleLocations", excludeFromAll=True):
         LocationMeasure("taskRippleCount", lambda sesh:
                         sesh.getValueMap(
                             partial(BTSession.numRipplesAtLocation, sesh, BP(probe=False))
@@ -451,7 +451,7 @@ def makeFigures(plotFlags="all"):
                             partial(BTSession.rippleRateAtLocation, sesh, BP(probe=True))
                         ), sessions, smoothDist=0.5).makeFigures(pp, everySessionBehaviorPeriod=BP(probe=True), excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "ripVsStimRate", excludeFromAll=True):
+    if flagCheck(plotFlags, "ripVsStimRate", excludeFromAll=True):
         stimCount = SessionMeasure("stimCount", lambda sesh: len(sesh.btLFPBumps_posIdx), sessions)
         rippleCount = SessionMeasure(
             "rippleCount", lambda sesh: len(sesh.btRipsProbeStats), sessions)
@@ -468,7 +468,7 @@ def makeFigures(plotFlags="all"):
         rippleRate.makeFigures(pp, excludeFromCombo=True)
         stimRate.makeCorrelationFigures(pp, rippleRate, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "duration", excludeFromAll=True):
+    if flagCheck(plotFlags, "duration", excludeFromAll=True):
         probeDuration = SessionMeasure(f"totalDuration_probe",
                                        lambda sesh: sesh.probeDuration,
                                        sessions)
@@ -482,7 +482,7 @@ def makeFigures(plotFlags="all"):
             tdur = SessionMeasure(f"t{ti+1}Dur", lambda sesh: sesh.getTrialDuration(ti), sessions)
             tdur.makeFigures(pp, excludeFromCombo=True)
 
-    if plotFlagCheck(plotFlags, "trialDuration", excludeFromAll=True):
+    if flagCheck(plotFlags, "trialDuration", excludeFromAll=True):
         tm = TrialMeasure("duration",
                           lambda sesh, start, end, ttype: (
                               sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
@@ -516,7 +516,7 @@ def makeFigures(plotFlags="all"):
                           sessions, trialFilter=isLateTrial)
         tm.makeFigures(pp, excludeFromCombo=True, plotFlags=["noteverytrial", "noteverysession"])
 
-    if plotFlagCheck(plotFlags, "trialTraces", excludeFromAll=True):
+    if flagCheck(plotFlags, "trialTraces", excludeFromAll=True):
         tm = TrialMeasure("trialTraces",
                           lambda sesh, start, end, ttype: np.nan,
                           sessions)

@@ -1050,11 +1050,11 @@ def getPreferredCategoryOrder(cats):
         return sorted(set(cats))
 
 
-def plotFlagCheck(plotFlags: List[str], flag: str, excludeFromAll=False) -> bool:
+def flagCheck(flags: List[str], flag: str, excludeFromAll=False) -> bool:
     try:
-        plotFlags.remove(flag)
+        flags.remove(flag)
         return True
     except ValueError:
         if excludeFromAll:
             return False
-        return "all" in plotFlags
+        return "all" in flags

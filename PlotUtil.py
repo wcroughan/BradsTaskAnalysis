@@ -272,8 +272,13 @@ class PlotManager:
                 numShuffles = [x for _, x in self.plotContext.immediateShuffles]
                 df.drop(columns=list(self.persistentCategories.keys()) +
                         list(self.persistentInfoValues.keys()), inplace=True)
-                immediateRes = self.shuffler._doShuffles(df, shufSpecs, list(
-                    self.plotContext.yvals.keys()), numShuffles=numShuffles)
+                try:
+                    immediateRes = self.shuffler._doShuffles(df, shufSpecs, list(
+                        self.plotContext.yvals.keys()), numShuffles=numShuffles)
+                    shuffleValid = True
+                except Exception as e:
+                    print("Error doing immediate shuffles: {}".format(e))
+                    shuffleValid = False
 
                 # print("Immediate shuffles:")
                 # for rr in immediateRes:
@@ -281,7 +286,7 @@ class PlotManager:
                 #     for r in rr:
                 #         print(r)
 
-                if len(self.plotContext.yvals) == 1:
+                if len(self.plotContext.yvals) == 1 and shuffleValid:
                     if len(immediateRes) == 1 and len(immediateRes[0]) == 1:
                         # Just one shuffle, add it to the figure directly
                         pval = None
@@ -381,7 +386,7 @@ class PlotManager:
                         # plt.show()
 
                         plt.figure(self.fig)
-                else:
+                elif len(self.plotContext.yvals) > 1 and shuffleValid:
                     try:
                         xvals = [float(v.split("_")[-1])
                                  for v in list(self.plotContext.yvals.keys())]
@@ -579,7 +584,7 @@ class PlotManager:
                 continue
 
             if suggestedSubPlotLayout is not None and \
-                    len(figInfos) == suggestedSubPlotLayout[0] * suggestedSubPlotLayout[1]:
+                    len(figInfos) <= suggestedSubPlotLayout[0] * suggestedSubPlotLayout[1]:
                 subPlotLayout = suggestedSubPlotLayout
             else:
                 subPlotLayout = (1, len(figInfos))
@@ -609,6 +614,14 @@ class PlotManager:
                     self.axs[sdi].axis('off')
                     self.axs[sdi].set_title(sdsplit[0])
                     self.axs[sdi].imshow(im)
+
+            for sdi in range(len(figInfos), subPlotLayout[0] * subPlotLayout[1]):
+                if len(self.axs.shape) > 1:
+                    axc = sdi % subPlotLayout[1]
+                    ayc = sdi // subPlotLayout[1]
+                    self.axs[ayc, axc].axis('off')
+                else:
+                    self.axs[sdi].axis('off')
 
             outDir = os.path.join(self.outputDir, outputSubDir, sdsplit[-1])
             if not os.path.exists(outDir):

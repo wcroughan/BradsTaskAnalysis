@@ -15,7 +15,7 @@ import math
 import matplotlib as mpl
 from matplotlib import cm
 
-from UtilFunctions import findDataDir, plotFlagCheck, getLoadInfo, getWellPosCoordinates, getRotatedWells, numWellsVisited
+from UtilFunctions import findDataDir, flagCheck, getLoadInfo, getWellPosCoordinates, getRotatedWells, numWellsVisited
 from PlotUtil import PlotManager, setupBehaviorTracePlot
 from BTData import BTData
 from BTSession import BTSession
@@ -174,7 +174,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
         if len(animalNamesToRun) > 1:
             pp.setStatCategory("rat", ratName)
 
-        if plotFlagCheck(plotFlags, "hyp1", excludeFromAll=True):
+        if flagCheck(plotFlags, "hyp1", excludeFromAll=True):
             # num visits, trial 0-1, r0.5, s0.5
             lm = LocationMeasure("hyp1_numVisits",
                                  lambda sesh: sesh.getValueMap(
@@ -211,7 +211,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
 
-        if plotFlagCheck(plotFlags, "hyp1Mod", excludeFromAll=True):
+        if flagCheck(plotFlags, "hyp1Mod", excludeFromAll=True):
             # num visits, trial 0-1, r0.5, s0.5
             lm = LocationMeasure("hyp1Mod_numVisits",
                                  lambda sesh: sesh.getValueMap(
@@ -253,7 +253,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                  ), sessions, smoothDist=0,
                                  sessionValLocation=LocationMeasure.prevSessionHomeLocation)
             lm.makeDualCategoryFigures(pp)
-        if plotFlagCheck(plotFlags, "hyp1Mod2", excludeFromAll=True):
+        if flagCheck(plotFlags, "hyp1Mod2", excludeFromAll=True):
             lm = LocationMeasure("hyp1Mod pseudoprobe avg dwell time (sec)",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.avgDwellTimeAtPosition(
@@ -262,7 +262,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                  sessionValLocation=LocationMeasure.prevSessionHomeLocation)
             lm.makeDualCategoryFigures(pp)
 
-        if plotFlagCheck(plotFlags, "hyp2", excludeFromAll=True):
+        if flagCheck(plotFlags, "hyp2", excludeFromAll=True):
             # session measure of total time spent at symmetric wells during home trials from trial 10-15
             # r.5
             def totalTimeAtSymmetricWells(sesh: BTSession):
@@ -276,7 +276,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                 sessions)
             sm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
 
-        if plotFlagCheck(plotFlags, "hyp3", excludeFromAll=True):
+        if flagCheck(plotFlags, "hyp3", excludeFromAll=True):
             # total time at home throughout session r1, s0
             lm = LocationMeasure("hyp3_totalTimeAtHome",
                                  lambda sesh: sesh.getValueMap(
@@ -304,7 +304,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             sm = SessionMeasure("hyp3_totalOffWallTime", totalOffWallTime, sessions)
             sm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
 
-        if plotFlagCheck(plotFlags, "4basicNextLast", excludeFromAll=True):
+        if flagCheck(plotFlags, "4basicNextLast", excludeFromAll=True):
             # early and late task away trials. All 4 basic measures. Next/last session difference.
             #   total: r1s.5
             earlyAwayBP = BP(probe=False, trialInterval=(2, 7), inclusionFlags="awayTrial")
@@ -411,7 +411,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
 
-        if plotFlagCheck(plotFlags, "lateTaskHomeAvgDwell", excludeFromAll=True):
+        if flagCheck(plotFlags, "lateTaskHomeAvgDwell", excludeFromAll=True):
             # Late task, avg dwell time at home
             #   r1s.5
             lateBP = BP(probe=False, trialInterval=(10, 15))
@@ -425,7 +425,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             ])
 
         # Plots to make:
-        if plotFlagCheck(plotFlags, "totalSymTimeLateHomeTrials", excludeFromAll=True):
+        if flagCheck(plotFlags, "totalSymTimeLateHomeTrials", excludeFromAll=True):
             # Total time across all sym during late home trials
             #   r.5s.5
             radius = 0.5
@@ -448,7 +448,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
 
-        if plotFlagCheck(plotFlags, "beforeFirstExcursion", excludeFromAll=True):
+        if flagCheck(plotFlags, "beforeFirstExcursion", excludeFromAll=True):
             # Distance travelled on wall before first excursion. Start time of first excursion
             #   no params to worry about
             sm = SessionMeasure("timeAtFirstExcursion", lambda sesh: sesh.btPos_secs[sesh.btExcursionStart_posIdx[0]],
@@ -459,14 +459,14 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             smDist.makeFigures(pp, plotFlags="noteverysession")
             sm.makeCorrelationFigures(pp, smDist)
 
-        if plotFlagCheck(plotFlags, "timeInCorner", excludeFromAll=True):
+        if flagCheck(plotFlags, "timeInCorner", excludeFromAll=True):
             # Total time in corner (Session measure)
             #   session measure, boundary = 1.5
             boundary = 1.5
             sm = SessionMeasure("totalTimeInCorner", lambda sesh: totalInCornerTime(
                 BP(probe=False), sesh, boundary=boundary), sessions)
 
-        if plotFlagCheck(plotFlags, "wellVisitedVsRippleRate", excludeFromAll=True):
+        if flagCheck(plotFlags, "wellVisitedVsRippleRate", excludeFromAll=True):
             # Cumulative num wells visited in task with repeats, colored by ripple rate. And correlate slope of NWV with ripple rate
             #   same
             maxPosIdx = np.max([len(sesh.btPos_ts) for sesh in sessions])
@@ -502,7 +502,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                         (rippleRates[si] - np.min(rippleRates)) / (np.max(rippleRates) - np.min(rippleRates)))
                     pc.ax.plot(cumWellsVisited[si, :], color=color)
 
-        if plotFlagCheck(plotFlags, "stimsVsOccupancy", excludeFromAll=True) and ratName != "Martin":
+        if flagCheck(plotFlags, "stimsVsOccupancy", excludeFromAll=True) and ratName != "Martin":
             # Correlation b/w num stims in a location and occupancy in next sesh early trials or this sesh probes, and curvature next and probe.
             #   r1, consider grid at half-well resolution (0.5)
             radius = 1
@@ -591,14 +591,14 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             # lmStimRatePrevSession.makeLocationCorrelationFigures(
             #     pp, lmCurvatureProbe)
 
-        if plotFlagCheck(plotFlags, "trialDuration"):
+        if flagCheck(plotFlags, "trialDuration"):
             tm = TrialMeasure("duration",
                               lambda sesh, start, end, ttype: (
                                   sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
                               sessions)
             tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
 
-        if plotFlagCheck(plotFlags, "allTraces"):
+        if flagCheck(plotFlags, "allTraces"):
             n = len(sessions)
             ncols = math.ceil(math.sqrt(n))
             nrows = math.ceil(n / ncols)
@@ -620,7 +620,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                     ax.plot(sesh.btPosXs, sesh.btPosYs, c="#0000007f", lw=1, zorder=1.5)
                     ax.set_title(sesh.name)
 
-        if plotFlagCheck(plotFlags, "overlayTrials"):
+        if flagCheck(plotFlags, "overlayTrials"):
             for i, sesh in enumerate(sessions):
                 with pp.newFig(f"trialTracesOverlay_{sesh.name}", subPlots=(1, 2), excludeFromCombo=True) as pc:
                     awayAx = pc.axs.flat[0]
@@ -639,7 +639,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                         awayAx.plot(
                             sesh.btPosXs[start:end], sesh.btPosYs[start:end], c="#0000007f", lw=1, zorder=1.5)
 
-        if plotFlagCheck(plotFlags, "gridchyn"):
+        if flagCheck(plotFlags, "gridchyn"):
             probeBP = BP(probe=True)
             radius = 0.5
             sm = SessionMeasure("probeTotalDwell", lambda sesh: sesh.totalTimeAtPosition(
@@ -675,7 +675,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                 probeFillBP, getWellPosCoordinates(sesh.homeWell), radius=radius), sessionsWithProbe)
             sm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"])
 
-        if plotFlagCheck(plotFlags, "gridchyn2"):
+        if flagCheck(plotFlags, "gridchyn2"):
             probeBP = BP(probe=True)
             radius = 0.5
             lm = LocationMeasure("probeTotalDwell",
@@ -746,7 +746,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
 
-        if plotFlagCheck(plotFlags, "fracExcursions"):
+        if flagCheck(plotFlags, "fracExcursions"):
             lm = LocationMeasure(f"fracExcursions_probe",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.fracExcursionsVisited(
@@ -756,7 +756,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                 "measureByCondition", "measureVsCtrl", "measureVsCtrlByCondition", "diff", "everysession", "everysessionoverlayatlocation", "everysessionoverlayatctrl", "everysessionoverlayatlocationbycondition", "everysessionoverlaydirect"
             ])
 
-        if plotFlagCheck(plotFlags, "testImmediate"):
+        if flagCheck(plotFlags, "testImmediate"):
             def testFunc(sesh: BTSession):
                 val = 0
                 if sesh.animalName == "Martin":
@@ -772,7 +772,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             lm = LocationMeasure(f"testImmediate", testFunc, sessions, smoothDist=0.5)
             lm.makeFigures(pp)
 
-        if plotFlagCheck(plotFlags, "thesis0"):
+        if flagCheck(plotFlags, "thesis0"):
             lm = LocationMeasure(f"probe number of visits (smoothed)",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.numVisitsToPosition(
@@ -817,7 +817,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                  sessionValLocation=LocationMeasure.prevSessionHomeLocation)
             lm.makeDualCategoryFigures(pp)
 
-        if plotFlagCheck(plotFlags, "thesis1"):
+        if flagCheck(plotFlags, "thesis1"):
             tm = TrialMeasure("duration (sec)",
                               lambda sesh, start, end, ttype: (
                                   sesh.btPos_ts[end] - sesh.btPos_ts[start]) / TRODES_SAMPLING_RATE,
@@ -834,7 +834,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                               sessions)
             tm.makeFigures(pp, plotFlags=["noteverytrial", "noteverysession"], runStats=False)
 
-        if plotFlagCheck(plotFlags, "thesis2"):
+        if flagCheck(plotFlags, "thesis2"):
             n = len(sessionsWithProbe)
             ncols = math.ceil(math.sqrt(n))
             nrows = math.ceil(n / ncols)
@@ -877,7 +877,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                 for i in range(len(sessions), len(pc.axs.flat)):
                     pc.axs.flat[i].axis("off")
 
-        if plotFlagCheck(plotFlags, "thesis3"):
+        if flagCheck(plotFlags, "thesis3"):
             # Cumulative number of wells visited in probe across sessions
             windowSlide = 10
             t1Array = np.arange(windowSlide, 60 * 5, windowSlide)
@@ -913,7 +913,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                         t1Array, numVisitedOverTimeOffWallWithRepeats[si, :] + jitter, color=cmap(si))
                 pc.ax.set_xticks(np.arange(0, 60 * 5 + 1, 60))
 
-        if plotFlagCheck(plotFlags, "thesis4"):
+        if flagCheck(plotFlags, "thesis4"):
             # num visits to position in next, trialInterval 0-1, r.5, s.5
             lm = LocationMeasure("Number of visits to position in next trial",
                                  lambda sesh: sesh.getValueMap(
@@ -942,7 +942,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
                            "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
 
-        if plotFlagCheck(plotFlags, "thesis5"):
+        if flagCheck(plotFlags, "thesis5"):
             lm = LocationMeasure(f"task gravity",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.getGravity(
@@ -967,7 +967,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                  sessionValLocation=LocationMeasure.prevSessionHomeLocation)
             lm.makeDualCategoryFigures(pp)
 
-        if plotFlagCheck(plotFlags, "thesis6"):
+        if flagCheck(plotFlags, "thesis6"):
             # Morris paper measure: latency and norm and raw path length in home trials 2,3,4
             sm = SessionMeasure("Latency to home 2-4 (sec)",
                                 lambda sesh: np.sum([sesh.btPos_secs[i2] - sesh.btPos_secs[i1] for i1, i2 in zip(
@@ -987,7 +987,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                 sessions)
             sm.makeFigures(pp, plotFlags="violin", numShuffles=numShuffles)
 
-        if plotFlagCheck(plotFlags, "thesisBigShufflesDiff"):
+        if flagCheck(plotFlags, "thesisBigShufflesDiff"):
             # Here run exactly just  the plots across all rats that are shown in the slides, and use 5000 shuffles
             numShuffles = 5000
             lm = LocationMeasure(f"BS probe number of visits",
@@ -1009,7 +1009,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                  ), sessionsWithProbe, smoothDist=0.0)
             lm.makeFigures(pp, plotFlags="diff", numShuffles=numShuffles)
 
-        if plotFlagCheck(plotFlags, "thesisBigShuffles"):
+        if flagCheck(plotFlags, "thesisBigShuffles"):
             # Here run exactly just  the plots across all rats that are shown in the slides, and use 5000 shuffles
             numShuffles = 5000
             lm = LocationMeasure(f"BS probe number of visits",
@@ -1063,7 +1063,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
             lm.makeFigures(pp, plotFlags=["ctrlByCondition", "measureByCondition",
                            "measureVsCtrl", "measureVsCtrlByCondition", "diff"])
 
-        if plotFlagCheck(plotFlags, "testNan"):
+        if flagCheck(plotFlags, "testNan"):
             lm = LocationMeasure("BS pseudoprobe avg dwell time time (sec)",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.avgDwellTimeAtPosition(
@@ -1072,7 +1072,7 @@ def makeFigures(plotFlags="all", runImmediate=True, makeCombined=True, testData=
                                  sessionValLocation=LocationMeasure.prevSessionHomeLocation)
             lm.makeDualCategoryFigures(pp, numShuffles=numShuffles)
 
-        if plotFlagCheck(plotFlags, "pseudoProbeTrace"):
+        if flagCheck(plotFlags, "pseudoProbeTrace"):
             for si, (sesh, nextSesh) in enumerate(zip(sessions[:-1], sessions[1:])):
                 with pp.newFig(f"pseudoProbeTrace_{si}", subPlots=(1, 2)) as pc:
                     wellSize = mpl.rcParams['lines.markersize']**2 * 3
