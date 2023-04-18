@@ -7,6 +7,7 @@ import pandas as pd
 from matplotlib.axes import Axes
 import sys
 import numpy as np
+from matplotlib.ticker import MaxNLocator
 
 from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo, plotFlagCheck
 from PlotUtil import PlotManager
@@ -29,7 +30,7 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
 
-    animalNames = parseCmdLineAnimalNames(default=["all"])
+    animalNames = ["Martin", "B13", "B14", "B16", "B17", "B18"]
 
     infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
     pm = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
@@ -96,7 +97,7 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
             with warnings.catch_warnings():
                 warnings.filterwarnings("error")
 
-        if plotFlagCheck(plotFlags, "taskPerformance"):
+        if plotFlagCheck(plotFlags, "taskPerformanceOld"):
             # TODO combine these into one plot
             with pm.newFig("numWellsFound", transparent=True) as pc:
                 x = range(len(sessions))
@@ -115,6 +116,31 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                 ax.set_ylabel("task duration (min)")
                 ax.tick_params(axis="y", which="both", labelcolor="tab:blue",
                                labelleft=False, labelright=True)
+
+        if plotFlagCheck(plotFlags, "taskPerformance"):
+            # Now let's plot both of the above using two y-axes on the same plot
+            with pm.newFig("taskPerformance", transparent=True) as pc:
+                x = np.arange(len(sessions)) + 1
+                ax = pc.ax
+                assert isinstance(ax, Axes)
+                ax.plot(x, [sesh.numWellsFound for sesh in sessions],
+                        label="num wells found", color="tab:red")
+                ax.set_xlabel("session")
+                ax.set_ylabel("number of trials completed")
+                ax.tick_params(axis="y", which="both", labelcolor="tab:red",
+                               labelleft=True, labelright=False)
+                ax.set_ylim(bottom=0)
+                ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+                ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+                ax2 = ax.twinx()
+                ax2.plot(x, [sesh.taskDuration / 60 for sesh in sessions],
+                         label="task duration", color="tab:blue")
+                ax2.set_ylabel("task duration (min)")
+                ax2.tick_params(axis="y", which="both", labelcolor="tab:blue",
+                                labelleft=False, labelright=True)
+                ax2.set_ylim(bottom=0)
+                ax2.yaxis.set_major_locator(MaxNLocator(integer=True))
 
         if plotFlagCheck(plotFlags, "trialLatency"):
             # measureFunc(session, trialStart_posIdx, trialEnd_posIdx, trial type ("home" | "away")) -> measure value
@@ -145,7 +171,7 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                                 sessions)
             sm.makeFigures(pm, plotFlags="violin", numShuffles=numShuffles)
 
-        # home vs away provbe behavior
+        # home vs away probe behavior
         # at home, condition diff
         # pseudoprobe stuff
         # Cumulative num stims, num ripples
