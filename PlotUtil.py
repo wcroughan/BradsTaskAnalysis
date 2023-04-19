@@ -950,8 +950,10 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
     if categoryColors is None:
         if set(categories) == {"Ctrl", "SWR"}:
             categoryColors = ["cyan", "orange"]
-        else:
+        elif len(set(categories)) == 2:
             categoryColors = ["red", "blue"]
+        else:
+            categoryColors = sns.color_palette(palette="colorblind", n_colors=len(set(categories)))
     pal = sns.color_palette(palette=categoryColors)
     sx = np.array(s[axesNamesNoSpaces[2]])
     # sy = np.array(s[axesNamesNoSpaces[1]]).astype(float)
@@ -984,7 +986,8 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
     if dotColorLabels is not None:
         ax.legend(handles, labels, fontsize=6).set_zorder(2)
     else:
-        ax.legend(handles[:2], labels[:2], fontsize=6).set_zorder(2)
+        n = len(categoryOrder)
+        ax.legend(handles[:n], labels[:n], fontsize=6).set_zorder(2)
 
     if not hideAxes:
         if not cat2IsFake:

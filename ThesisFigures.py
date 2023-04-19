@@ -35,6 +35,8 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
     outputDir = "ThesisFigures"
     if testData:
         outputDir += "_test"
+    if excludeNoStim:
+        outputDir += "_noStim"
     globalOutputDir = os.path.join(dataDir, "figures", outputDir)
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
@@ -191,14 +193,14 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                                      lambda pos: sesh.numVisitsToPosition(
                                          BP(probe=True), pos, 0.5),
                                  ), sessionsWithProbe, smoothDist=0.0)
-            lm.makeFigures(pm, plotFlags=["ctrlByCondition",
+            lm.makeFigures(pm, plotFlags=["ctrlByCondition", "measureVsCtrl",
                            "measureByCondition"], numShuffles=numShuffles)
             lm = LocationMeasure(f"total time at well during probe (sec)",
                                  lambda sesh: sesh.getValueMap(
                                      lambda pos: sesh.totalTimeAtPosition(
                                          BP(probe=True), pos, 0.5),
                                  ), sessionsWithProbe, smoothDist=0.0)
-            lm.makeFigures(pm, plotFlags=["ctrlByCondition",
+            lm.makeFigures(pm, plotFlags=["ctrlByCondition", "measureVsCtrl",
                            "measureByCondition"], numShuffles=numShuffles)
 
         if flagCheck(plotFlags, "pseudoprobeBehavior"):
