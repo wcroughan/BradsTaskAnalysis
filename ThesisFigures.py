@@ -41,11 +41,15 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
     rseed = int(time.perf_counter())
     print("random seed =", rseed)
 
+    fontSize = 12
+    labelFontSize = 18
+
     animalNames = ["Martin", "B13", "B14", "B16", "B17", "B18"]
     # if excludeNoStim:
     #     animalNames = [n for n in animalNames if n != "Martin"]
 
-    infoFileName = datetime.now().strftime("_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
+    infoFileName = datetime.now().strftime(
+        "_".join(animalNames) + "_%Y%m%d_%H%M%S" + ".txt")
     pm = PlotManager(outputDir=globalOutputDir, randomSeed=rseed,
                      infoFileName=infoFileName, verbosity=3)
 
@@ -53,12 +57,14 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
     for animalName in animalNames:
         animalInfo = getLoadInfo(animalName)
         # dataFilename = os.path.join(dataDir, animalName, "processed_data", animalInfo.out_filename)
-        dataFilename = os.path.join(animalInfo.output_dir, animalInfo.out_filename)
+        dataFilename = os.path.join(
+            animalInfo.output_dir, animalInfo.out_filename)
         print("loading from " + dataFilename)
         ratData = BTData()
         ratData.loadFromFile(dataFilename)
         if excludeNoStim:
-            allSessionsByRat[animalName] = ratData.getSessions(lambda s: not s.isNoInterruption)
+            allSessionsByRat[animalName] = ratData.getSessions(
+                lambda s: not s.isNoInterruption)
         else:
             allSessionsByRat[animalName] = ratData.getSessions()
 
@@ -118,7 +124,8 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                 x = range(len(sessions))
                 ax = pc.ax
                 assert isinstance(ax, Axes)
-                ax.plot(x, [sesh.numWellsFound for sesh in sessions], label="num wells found")
+                ax.plot(x, [sesh.numWellsFound for sesh in sessions],
+                        label="num wells found")
                 ax.set_xlabel("session")
                 ax.set_ylabel("num wells found")
 
@@ -126,7 +133,8 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                 x = range(len(sessions))
                 ax = pc.ax
                 assert isinstance(ax, Axes)
-                ax.plot(x, [sesh.taskDuration / 60 for sesh in sessions], label="task duration")
+                ax.plot(x, [sesh.taskDuration /
+                        60 for sesh in sessions], label="task duration")
                 ax.set_xlabel("session")
                 ax.set_ylabel("task duration (min)")
                 ax.tick_params(axis="y", which="both", labelcolor="tab:blue",
@@ -147,6 +155,14 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                 ax.set_ylim(bottom=0)
                 ax.yaxis.set_major_locator(MaxNLocator(integer=True))
                 ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+                # Set the font size for axis tick labels
+                for tick in ax.xaxis.get_major_ticks():
+                    tick.label.set_fontsize(fontSize)
+                for tick in ax.yaxis.get_major_ticks():
+                    tick.label.set_fontsize(fontSize)
+                # Set the font size for the axis labels
+                ax.xaxis.label.set_fontsize(labelFontSize)
+                ax.yaxis.label.set_fontsize(labelFontSize)
 
                 ax2 = ax.twinx()
                 ax2.plot(x, [sesh.taskDuration / 60 for sesh in sessions],
@@ -156,6 +172,9 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                                 labelleft=False, labelright=True)
                 ax2.set_ylim(bottom=0)
                 ax2.yaxis.set_major_locator(MaxNLocator(integer=True))
+                for tick in ax2.yaxis.get_major_ticks():
+                    tick.label.set_fontsize(fontSize)
+                ax2.yaxis.label.set_fontsize(labelFontSize)
 
         if flagCheck(plotFlags, "trialLatency"):
             # measureFunc(session, trialStart_posIdx, trialEnd_posIdx, trial type ("home" | "away")) -> measure value
@@ -263,19 +282,22 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                                                    sesh.itiLfpEnd_ts)] - sesh.itiLfpStart_ts
                     stimTs = stimTs.astype(np.float64)
                     stimTs /= TRODES_SAMPLING_RATE
-                    itiStimCounts[si, :], _ = np.histogram(stimTs, bins=itiBins)
+                    itiStimCounts[si, :], _ = np.histogram(
+                        stimTs, bins=itiBins)
 
                     for i in reversed(range(len(itiBins)-1)):
                         if itiStimCounts[si, i] != 0:
                             break
                         itiStimCounts[si, i] = np.nan
 
-                    ripTs = np.array([r.start_ts for r in sesh.itiRipsPreStats])
+                    ripTs = np.array(
+                        [r.start_ts for r in sesh.itiRipsPreStats])
                     ripTs = ripTs[np.logical_and(ripTs > sesh.itiLfpStart_ts, ripTs <
                                                  sesh.itiLfpEnd_ts)] - sesh.itiLfpStart_ts
                     ripTs = ripTs.astype(np.float64)
                     ripTs /= TRODES_SAMPLING_RATE
-                    itiRippleCounts[si, :], _ = np.histogram(ripTs, bins=itiBins)
+                    itiRippleCounts[si, :], _ = np.histogram(
+                        ripTs, bins=itiBins)
 
                     for i in reversed(range(len(itiBins)-1)):
                         if itiRippleCounts[si, i] != 0:
@@ -288,19 +310,22 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                                                    sesh.probePos_ts[-1])] - sesh.probePos_ts[0]
                     stimTs = stimTs.astype(np.float64)
                     stimTs /= TRODES_SAMPLING_RATE
-                    probeStimCounts[si, :], _ = np.histogram(stimTs, bins=probeBins)
+                    probeStimCounts[si, :], _ = np.histogram(
+                        stimTs, bins=probeBins)
 
                     for i in reversed(range(len(probeBins)-1)):
                         if probeStimCounts[si, i] != 0:
                             break
                         probeStimCounts[si, i] = np.nan
 
-                    ripTs = np.array([r.start_ts for r in sesh.probeRipsProbeStats])
+                    ripTs = np.array(
+                        [r.start_ts for r in sesh.probeRipsProbeStats])
                     ripTs = ripTs[np.logical_and(ripTs > sesh.probePos_ts[0], ripTs <
                                                  sesh.probePos_ts[-1])] - sesh.probePos_ts[0]
                     ripTs = ripTs.astype(np.float64)
                     ripTs /= TRODES_SAMPLING_RATE
-                    probeRippleCounts[si, :], _ = np.histogram(ripTs, bins=probeBins)
+                    probeRippleCounts[si, :], _ = np.histogram(
+                        ripTs, bins=probeBins)
 
                     for i in reversed(range(len(probeBins)-1)):
                         if probeRippleCounts[si, i] != 0:
@@ -370,7 +395,8 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                 ax.set_ylabel("Cumulative Stim Count")
             with pm.newFig("lfp iti rippleCounts by cond") as pc:
                 ax = pc.ax
-                ax.plot(itiBins[1:], itiRippleCountsSWR.T, c="orange", zorder=1)
+                ax.plot(itiBins[1:], itiRippleCountsSWR.T,
+                        c="orange", zorder=1)
                 ax.plot(itiBins[1:], itiRippleCountsCtrl.T, c="cyan", zorder=1)
                 ax.set_xlabel("Time (s)")
                 ax.set_ylabel("Cumulative Ripple Count")
@@ -387,14 +413,18 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                 ax.set_ylabel("Cumulative Ripple Count")
             with pm.newFig("lfp probe stimCounts by cond") as pc:
                 ax = pc.ax
-                ax.plot(probeBins[1:], probeStimCountsSWR.T, c="orange", zorder=1)
-                ax.plot(probeBins[1:], probeStimCountsCtrl.T, c="cyan", zorder=1)
+                ax.plot(probeBins[1:], probeStimCountsSWR.T,
+                        c="orange", zorder=1)
+                ax.plot(probeBins[1:], probeStimCountsCtrl.T,
+                        c="cyan", zorder=1)
                 ax.set_xlabel("Time (s)")
                 ax.set_ylabel("Cumulative Stim Count")
             with pm.newFig("lfp probe rippleCounts by cond") as pc:
                 ax = pc.ax
-                ax.plot(probeBins[1:], probeRippleCountsSWR.T, c="orange", zorder=1)
-                ax.plot(probeBins[1:], probeRippleCountsCtrl.T, c="cyan", zorder=1)
+                ax.plot(probeBins[1:], probeRippleCountsSWR.T,
+                        c="orange", zorder=1)
+                ax.plot(probeBins[1:], probeRippleCountsCtrl.T,
+                        c="cyan", zorder=1)
                 ax.set_xlabel("Time (s)")
                 ax.set_ylabel("Cumulative Ripple Count")
 

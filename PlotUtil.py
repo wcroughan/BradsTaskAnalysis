@@ -27,7 +27,8 @@ class PlotContext:
     figName: str
     axs: ArrayLike[Axes]
     yvals: Dict[str, ArrayLike] = field(default_factory=dict)
-    immediateShuffles: List[Tuple[List[ShuffSpec], int]] = field(default_factory=list)
+    immediateShuffles: List[Tuple[List[ShuffSpec], int]
+                            ] = field(default_factory=list)
     xvals: Dict[str, ArrayLike] = field(default_factory=dict)
     immediateCorrelations: List[Tuple[str, str]] = field(default_factory=list)
     categories: Dict[str, ArrayLike] = field(default_factory=dict)
@@ -97,7 +98,8 @@ class PlotManager:
         self.outputSubDirStack: List[str] = []
         if outputDir is None:
             outputDir = os.curdir
-        self.outputDriveDir = ""  # This is an optional path to go between /media/WDCX/ and the rest of the output
+        # This is an optional path to go between /media/WDCX/ and the rest of the output
+        self.outputDriveDir = ""
         # I know it's a bad way to organize it but I can't have folders that are too big apparently so here we go...
         self.setOutputDir(outputDir)
         self.createdPlots = set()
@@ -124,7 +126,8 @@ class PlotManager:
                transparent=False, uniqueID=None) -> PlotManager:
         fname = os.path.join(self.fullOutputDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
-            raise Exception("Would overwrite file {} that was just made!".format(fname))
+            raise Exception(
+                "Would overwrite file {} that was just made!".format(fname))
 
         self.clearFig()
 
@@ -151,7 +154,8 @@ class PlotManager:
     def continueFig(self, figName, showPlot=None, savePlot=None, excludeFromCombo=False,
                     enableOverwriteSameName=False, transparent=False, uniqueID=None):
         if self.showedLastFig:
-            raise Exception("currently unable to show a figure and then continue it")
+            raise Exception(
+                "currently unable to show a figure and then continue it")
 
         self.plotContext.showPlot = showPlot
         self.plotContext.savePlot = savePlot
@@ -159,7 +163,8 @@ class PlotManager:
         self.plotContext.excludeFromCombo = excludeFromCombo
         fname = os.path.join(self.fullOutputDir, figName)
         if fname in self.createdPlots and not enableOverwriteSameName:
-            raise Exception("Would overwrite file {} that was just made!".format(fname))
+            raise Exception(
+                "Would overwrite file {} that was just made!".format(fname))
         self.plotContext.figName = fname
         self.plotContext.yvals = {}
         self.plotContext.immediateShuffles = []
@@ -221,13 +226,18 @@ class PlotManager:
             allData.update(self.persistentCategories)
             allData.update(self.persistentInfoValues)
             df = pd.DataFrame(data=allData)
-            yvalNames = pd.Series(list(self.plotContext.yvals.keys()), dtype=object)
-            xvalNames = pd.Series(list(self.plotContext.xvals.keys()), dtype=object)
-            categoryNames = pd.Series(list(self.plotContext.categories.keys()), dtype=object)
+            yvalNames = pd.Series(
+                list(self.plotContext.yvals.keys()), dtype=object)
+            xvalNames = pd.Series(
+                list(self.plotContext.xvals.keys()), dtype=object)
+            categoryNames = pd.Series(
+                list(self.plotContext.categories.keys()), dtype=object)
             persistentCategoryNames = pd.Series(
                 list(self.persistentCategories.keys()), dtype=object)
-            infoNames = pd.Series(list(self.plotContext.infoVals.keys()), dtype=object)
-            persistentInfoNames = pd.Series(list(self.persistentInfoValues.keys()), dtype=object)
+            infoNames = pd.Series(
+                list(self.plotContext.infoVals.keys()), dtype=object)
+            persistentInfoNames = pd.Series(
+                list(self.persistentInfoValues.keys()), dtype=object)
 
             # Save the stats to a file
             statsDir = os.path.join(self.fullOutputDir, "stats")
@@ -243,9 +253,11 @@ class PlotManager:
             yvalNames.to_hdf(statsFile, key="yvalNames", mode="a")
             xvalNames.to_hdf(statsFile, key="xvalNames", mode="a")
             categoryNames.to_hdf(statsFile, key="categoryNames", mode="a")
-            persistentCategoryNames.to_hdf(statsFile, key="persistentCategoryNames", mode="a")
+            persistentCategoryNames.to_hdf(
+                statsFile, key="persistentCategoryNames", mode="a")
             infoNames.to_hdf(statsFile, key="infoNames", mode="a")
-            persistentInfoNames.to_hdf(statsFile, key="persistentInfoNames", mode="a")
+            persistentInfoNames.to_hdf(
+                statsFile, key="persistentInfoNames", mode="a")
             self.writeToInfoFile(f"statsFile:__!__{uniqueID}__!__{statsFile}")
 
             # If neither showing nor saving the figure, can safely skip this part since
@@ -269,7 +281,8 @@ class PlotManager:
                 self.plotContext.immediateShuffles = [x for _, x in sorted(
                     zip(ss, self.plotContext.immediateShuffles))]
                 shufSpecs = [x for x, _ in self.plotContext.immediateShuffles]
-                numShuffles = [x for _, x in self.plotContext.immediateShuffles]
+                numShuffles = [
+                    x for _, x in self.plotContext.immediateShuffles]
                 df.drop(columns=list(self.persistentCategories.keys()) +
                         list(self.persistentInfoValues.keys()), inplace=True)
                 try:
@@ -293,13 +306,15 @@ class PlotManager:
                         for rr in immediateRes:
                             for r in rr:
                                 if pval is not None:
-                                    raise Exception("Should only be doing one shuffle here!")
+                                    raise Exception(
+                                        "Should only be doing one shuffle here!")
                                 pval = r.getPVals().item()
                                 shufDiffs = r.shuffleDiffs
                                 dataDiff = r.diff
 
                         if not np.isnan(shufDiffs).all() and not np.isnan(dataDiff):
-                            shuffledCategories = df[shufSpecs[0][0].categoryName].unique()
+                            shuffledCategories = df[shufSpecs[0]
+                                                    [0].categoryName].unique()
                             cat1 = shufSpecs[0][0].value
                             otherCategories = shuffledCategories[shuffledCategories != cat1]
                             if len(otherCategories) == 1:
@@ -313,16 +328,35 @@ class PlotManager:
                                 pvalText = f"p={round(pval, 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
                             else:
                                 pvalText = f"p<{round(1/numShuffles[0], 3)}\n{cat1} {'<' if direction else '>'} {cat2}"
-                            self.plotContext.ax.add_artist(AnchoredText(pvalText, "upper center"))
+                            self.plotContext.ax.add_artist(
+                                AnchoredText(pvalText, "upper center", prop=dict(size=18), zorder=-1))
 
                             # Now create an inset axis in self.plotContext.ax in the bottom middle that shows the
-                            # histogram of the shuffled differences and a red vertical line at the data difference
-                            insetAx = self.plotContext.ax.inset_axes([0.4, 0.15, 0.2, 0.1])
+                            # histogram of the shuffled differences and a red line at the data difference
+                            # Make the histogram sideways so it fits better
+                            insetAx = self.plotContext.ax.inset_axes(
+                                [0.4, 0.15, 0.2, 0.1])
+                            # insetAx.hist(shufDiffs, bins=20,
+                            #              color="black", orientation="horizontal")
                             insetAx.hist(shufDiffs, bins=20, color="black")
                             insetAx.axvline(dataDiff, color="red")
                             insetAx.set_xlabel(f"{cat1} - {cat2}")
-                            # turn off y axis
+                            insetAx.xaxis.label.set_fontsize(14)
                             insetAx.get_yaxis().set_visible(False)
+                            # turn off x ticks and tick labels
+                            insetAx.set_xticks([])
+                            insetAx.set_xticklabels([])
+                            # # Add y ticks as the y axis limits to show the range of values
+                            # insetAx.set_yticks(insetAx.get_ylim())
+                            # insetAx.set_yticklabels(
+                            #     [round(x, 2) for x in insetAx.get_ylim()])
+                            # insetAx.spines["top"].set_visible(False)
+                            # insetAx.spines["right"].set_visible(False)
+                            # insetAx.spines["bottom"].set_visible(False)
+                            # insetAx.spines["left"].set_visible(False)
+                            # insetAx.tick_params(
+                            #     axis="both", which="both", length=0)
+
                     else:
                         # Multiple shuffles, make a new figure
                         # plt.figure(2)
@@ -348,7 +382,8 @@ class PlotManager:
                                 for s in r.specs:
                                     if s.shuffType == ShuffSpec.ShuffType.GLOBAL:
                                         topText += f"Main: {s.categoryName}\n"
-                                        shuffledCategories = df[s.categoryName].unique()
+                                        shuffledCategories = df[s.categoryName].unique(
+                                        )
                                         cat1 = s.value
                                         otherCategories = shuffledCategories[shuffledCategories != cat1]
                                         if len(otherCategories) == 1:
@@ -411,9 +446,11 @@ class PlotManager:
                 # and indicate it on the plot. If there are multiple categories, do this for each
                 # category separately
                 if not self.plotContext.isSinglePlot:
-                    raise Exception("Can't have multiple plots and do correlation")
+                    raise Exception(
+                        "Can't have multiple plots and do correlation")
                 if len(self.plotContext.immediateCorrelations) > 1:
-                    raise Exception("Can't have multiple immediate correlations")
+                    raise Exception(
+                        "Can't have multiple immediate correlations")
 
                 ic = self.plotContext.immediateCorrelations[0]
                 xvar = ic[0]
@@ -441,12 +478,14 @@ class PlotManager:
                             color = self.plotContext.categoryColors[catlist[0]]
                         except:
                             color = "black"
-                            print(f"Warning: no color for category {catlist[0]}")
+                            print(
+                                f"Warning: no color for category {catlist[0]}")
                     else:
                         color = "black"
                     self.plotContext.ax.plot(
                         [xmin, xmax], [m * xmin + b, m * xmax + b], color=color)
-                self.plotContext.ax.add_artist(AnchoredText("\n".join(resTest), "upper center"))
+                self.plotContext.ax.add_artist(
+                    AnchoredText("\n".join(resTest), "upper center"))
 
         # Finally, save or show the figure
         if willSaveFig:
@@ -566,10 +605,12 @@ class PlotManager:
                 f.write(txt + suffix)
 
     def makeCombinedFigs(self, outputSubDir: str = "combined",
-                         suggestedSubPlotLayout: Optional[Tuple[int, int] | List[int, int]] = None,
+                         suggestedSubPlotLayout: Optional[Tuple[int,
+                                                                int] | List[int, int]] = None,
                          alignAxes="y") -> None:
         if alignAxes not in ["x", "y", "none", "xy", "yx", ""]:
-            raise ValueError("alignAxes must be one of 'x', 'y', 'xy', 'yx', '', or 'none'")
+            raise ValueError(
+                "alignAxes must be one of 'x', 'y', 'xy', 'yx', '', or 'none'")
 
         if not os.path.exists(os.path.join(self.outputDir, outputSubDir)):
             os.makedirs(os.path.join(self.outputDir, outputSubDir))
@@ -626,14 +667,16 @@ class PlotManager:
             outDir = os.path.join(self.outputDir, outputSubDir, sdsplit[-1])
             if not os.path.exists(outDir):
                 os.makedirs(outDir)
-            fname = os.path.join(self.outputDir, outputSubDir, sdsplit[-1], figInfos[0][1])
+            fname = os.path.join(self.outputDir, outputSubDir,
+                                 sdsplit[-1], figInfos[0][1])
             plt.savefig(fname, bbox_inches="tight", dpi=200)
 
             self.writeToInfoFile("wrote file {}".format(fname))
             if self.verbosity >= 3:
                 print("wrote file {}".format(fname))
 
-            firstPickleFName = os.path.join(self.outputDir, figInfos[0][0], figInfos[0][1] + ".pkl")
+            firstPickleFName = os.path.join(
+                self.outputDir, figInfos[0][0], figInfos[0][1] + ".pkl")
             # print("firstPickleFName: {}".format(firstPickleFName))
             if not os.path.exists(firstPickleFName):
                 continue
@@ -652,7 +695,8 @@ class PlotManager:
             loaded_axs = []
             for sdi, (sd, figFileName) in enumerate(figInfos):
                 sdsplit = sd.split(os.path.sep)
-                pickleFName = os.path.join(self.outputDir, sd, figFileName + ".pkl")
+                pickleFName = os.path.join(
+                    self.outputDir, sd, figFileName + ".pkl")
                 with open(pickleFName, "rb") as fid:
                     ax = pickle.load(fid)
                     ax.set_title(sdsplit[0])
@@ -681,6 +725,15 @@ class PlotManager:
                 assert isinstance(ax, Axes)
                 ax.figure = self.fig
                 self.fig.add_axes(ax)
+                # remove legend from ax
+                ax.legend_ = None
+                for tick in ax.yaxis.get_major_ticks():
+                    tick.label.set_fontsize(14)
+                for tick in ax.xaxis.get_major_ticks():
+                    tick.label.set_fontsize(14)
+                ax.xaxis.label.set_fontsize(18)
+                ax.yaxis.label.set_fontsize(18)
+                ax.title.set_fontsize(18)
                 if 'y' in alignAxes:
                     ax.set_ylim(ymin, ymax)
                 if 'x' in alignAxes:
@@ -824,13 +877,16 @@ def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey"
                 left=np.nan, right=np.nan)
 
     if not skipIndividuals:
-        ax.plot(xvals2d, yvals, c=individualColor, lw=0.5, zorder=individualZOrder)
+        ax.plot(xvals2d, yvals, c=individualColor,
+                lw=0.5, zorder=individualZOrder)
 
     if xValsMatch:
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", r"Degrees of freedom <= 0 for slice")
+            warnings.filterwarnings(
+                "ignore", r"Degrees of freedom <= 0 for slice")
             warnings.filterwarnings("ignore", r"Mean of empty slice")
-            warnings.filterwarnings("ignore", r"invalid value encountered in subtract")
+            warnings.filterwarnings(
+                "ignore", r"invalid value encountered in subtract")
             hm = np.nanmean(dataPoints, axis=0)
             try:
                 hs = np.nanstd(dataPoints, axis=0)
@@ -842,7 +898,8 @@ def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey"
                 print(f"{ np.isinf(dataPoints).sum(axis=0)=  }")
                 raise re
         if spread == "sem":
-            n = dataPoints.shape[0] - np.count_nonzero(np.isnan(dataPoints), axis=0)
+            n = dataPoints.shape[0] - \
+                np.count_nonzero(np.isnan(dataPoints), axis=0)
             hs = hs / np.sqrt(n)
         h1 = hm - hs
         h2 = hm + hs
@@ -862,7 +919,8 @@ def plotIndividualAndAverage(ax: Axes, dataPoints, xvals, individualColor="grey"
         else:
             labelKwarg = {"label": label}
         ax.plot(xvals, hm, color=avgColor, zorder=averageZOrder, **labelKwarg)
-        ax.fill_between(xvals, h1, h2, facecolor=avgColor, alpha=0.3, zorder=averageZOrder)
+        ax.fill_between(xvals, h1, h2, facecolor=avgColor,
+                        alpha=0.3, zorder=averageZOrder)
 
 
 def pctilePvalSig(val):
@@ -922,14 +980,16 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
         nColors = len(uniqueDotColors)
         if isinstance(dotColors[0], str):
             dotColors = [uniqueDotColors.index(c) for c in dotColors]
-            swarmPallete = sns.color_palette(palette=uniqueDotColors, n_colors=nColors)
+            swarmPallete = sns.color_palette(
+                palette=uniqueDotColors, n_colors=nColors)
         else:
             swarmPallete = sns.color_palette("coolwarm", n_colors=nColors)
 
     # Same sorting here as in perseveration plot function so colors are always the same
     # sortList = ["{}__{}__{}".format(x, y, xi)
     #             for xi, (x, y) in enumerate(zip(sortingCategories, sortingCategories2))]
-    sortList = [(x, y, xi) for xi, (x, y) in enumerate(zip(sortingCategories, sortingCategories2))]
+    sortList = [(x, y, xi) for xi, (x, y) in enumerate(
+        zip(sortingCategories, sortingCategories2))]
     categories = [x for _, x in sorted(zip(sortList, categories))]
     yvals = [x for _, x in sorted(zip(sortList, yvals))]
     categories2 = [x for _, x in sorted(zip(sortList, categories2))]
@@ -943,7 +1003,8 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
 
     axesNamesNoSpaces = [a.replace(" ", "_") for a in axesNames]
     axesNamesNoSpaces.append("dotcoloraxisname")
-    s = pd.Series([categories, yvals, categories2, dotColors], index=axesNamesNoSpaces)
+    s = pd.Series([categories, yvals, categories2, dotColors],
+                  index=axesNamesNoSpaces)
 
     ax.cla()
 
@@ -953,7 +1014,8 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
         elif len(set(categories)) == 2:
             categoryColors = ["red", "blue"]
         else:
-            categoryColors = sns.color_palette(palette="colorblind", n_colors=len(set(categories)))
+            categoryColors = sns.color_palette(
+                palette="colorblind", n_colors=len(set(categories)))
     pal = sns.color_palette(palette=categoryColors)
     sx = np.array(s[axesNamesNoSpaces[2]])
     # sy = np.array(s[axesNamesNoSpaces[1]]).astype(float)
@@ -965,7 +1027,8 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
     swarmx = np.array([a + b for a, b in zip(sx, sh)])
 
     swarmCategories = [(a, b) for a, b in zip(categories, categories2)]
-    swarmxSortList = [(x, y) for x, y in product(categoryOrder, category2Order)]
+    swarmxSortList = [(x, y)
+                      for x, y in product(categoryOrder, category2Order)]
     swarmxValue = np.array([swarmxSortList.index(v) for v in swarmCategories])
 
     # p1 = sns.violinplot(ax=ax, hue=sh,
