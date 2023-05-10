@@ -8,9 +8,11 @@ from matplotlib.axes import Axes
 import sys
 import numpy as np
 from matplotlib.ticker import MaxNLocator
+import matplotlib as mpl
+import math
 
 from UtilFunctions import findDataDir, parseCmdLineAnimalNames, getLoadInfo, flagCheck
-from PlotUtil import PlotManager
+from PlotUtil import PlotManager, setupBehaviorTracePlot, blankPlot
 from BTData import BTData
 from BTSession import BTSession
 from MeasureTypes import LocationMeasure, TrialMeasure, SessionMeasure
@@ -428,7 +430,24 @@ def main(plotFlags: List[str] | str = "tests", testData=False, makeCombined=True
                 ax.set_xlabel("Time (s)")
                 ax.set_ylabel("Cumulative Ripple Count")
 
-        # Cumulative num stims, num ripples
+        if flagCheck(plotFlags, "pseudoTraces"):
+            n = len(sessions)
+            ncols = math.ceil(math.sqrt(n))
+            nrows = math.ceil(n / ncols)
+            with pm.newFig("firstTrialTraces", subPlots=(ncols, nrows)) as pc:
+                for i, sesh in enumerate(sessions):
+                    ax = pc.axs.flat[i]
+                    wellSize = mpl.rcParams['lines.markersize']**2 * 3
+                    # setupBehaviorTracePlot(ax, sesh, wellSize=wellSize, showWells="HA")
+                    setupBehaviorTracePlot(ax, sesh, wellSize=wellSize)
+                    tpis = sesh.getAllTrialPosIdxs()
+                    if len(tpis) > 0:
+                        i1 = tpis[0, 1]
+                        ax.plot(sesh.btPosXs[0:i1], sesh.btPosYs[0:i1],
+                                c="#0000007f", lw=1, zorder=1.5)
+                        ax.set_title(sesh.name)
+                    else:
+                        blankPlot(ax)
 
         if len(plotFlags) != 0:
             print("Warning, unused plot flags:", plotFlags)
