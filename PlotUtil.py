@@ -1035,7 +1035,9 @@ def violinPlot(ax: Axes, yvals: pd.Series | ArrayLike, categories: pd.Series | A
     #                     y=sy, x=swarmx, data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
     # sns.stripplot(ax=ax, x=swarmx, y=sy, hue=dotColors, data=s,
     #               zorder=3, dodge=False, palette=swarmPallete)
-    p1 = sns.violinplot(ax=ax, hue=categories,
+    hue = categories if not isinstance(categories[0], (int, float, np.integer, np.float_)) else [
+    str(c) for c in categories]
+    p1 = sns.violinplot(ax=ax, hue=hue,
                         y=yvals, x=swarmx, data=s, palette=pal, linewidth=0.2, cut=0, zorder=1)
     sns.stripplot(ax=ax, x=swarmxValue, y=yvals, hue="dotcoloraxisname", data=s,
                   zorder=3, dodge=False, palette=swarmPallete, linewidth=1)
